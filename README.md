@@ -219,7 +219,7 @@ Home Hub is meant for a home network, not the open internet: keep it on your LAN
   | `software:write` | The software watch list |
   | `security:read` | SSH key inventory, versions, host protection |
 
-- **API keys never reach administration.** Users, roles, keys, service accounts and device tokens can be
+- **API keys never reach administration.** Users, roles, keys, service accounts and app tokens can be
   managed only from a browser signed in with a password; no scope opens those routes.
 - Every write is checked by role or scope, and by revision or hash where it is stored. A stale write is refused.
 - The inventory records where a secret is kept, never its value. Tokens and request bodies are never logged.

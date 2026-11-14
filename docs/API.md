@@ -26,19 +26,19 @@ Every POST must send `Content-Type: application/json` exactly (no `; charset=utf
 1. `POST /api/session` with headers `Origin: https://hub.example.lan` and `Content-Type: application/json`, body `{"username":"admin","password":"…"}`.
    - `200 {"ok":true}` plus `Set-Cookie: homehub=<64 hex>; …`. Keep that cookie for step 2 only.
    - `401 LOGIN_FAILED` for the wrong username or password. `429 LOGIN_FAILED` after 8 failures in 15 minutes. `400 LOGIN_FAILED` for a malformed body.
-2. `POST /api/devices/tokens` with the cookie, the same `Origin` and `Content-Type`, body `{"name":"Alex's iPhone"}`. The name is 1 to 60 characters with no control characters.
-   - `201 {"token":"hh_…","device":{"id":"<16 hex>","name":"…","createdAt":"…","lastUsedAt":null}}`
+2. `POST /api/app-tokens` with the cookie, the same `Origin` and `Content-Type`, body `{"name":"Alex's iPhone"}`. The name is 1 to 60 characters with no control characters.
+   - `201 {"token":"hh_…","app":{"id":"<16 hex>","name":"…","createdAt":"…","lastUsedAt":null}}`
    - **The token appears only in this response.** The server stores only its SHA-256 hash. Save it in the Keychain behind Face ID (for example `kSecAccessControlBiometryCurrentSet`).
    - This route accepts **only the cookie**. A bearer token cannot mint more tokens (`401 AUTH_REQUIRED`).
-   - `409 DEVICE_LIMIT` when 20 devices already have tokens. Revoke one first.
+   - `409 APP_TOKEN_LIMIT` when 20 app tokens already exist. Revoke one first.
 3. Optional: `POST /api/logout` with the cookie and `Origin`, body `{}`, to drop the 12-hour browser-style session.
 4. From then on, send `Authorization: Bearer <token>` on every request. No cookie and no `Origin` header are needed.
 
-### Managing devices
+### Managing app tokens
 
-- `GET /api/devices/tokens` → `{"devices":[{"id","name","createdAt","lastUsedAt","current"}]}`. `current` is `true` for the token that made the request. `lastUsedAt` is updated at most once a minute.
-- `POST /api/devices/tokens/revoke` with body `{"id":"<16 hex>"}` → `{"ok":true,"devices":[…]}`. The cookie or any valid token may revoke any device, including itself; revoking yourself is how the app signs out. `404 NOT_FOUND` if the id is unknown.
-- The web UI has the same list under **Services → Control → Devices with access**.
+- `GET /api/app-tokens` → `{"tokens":[{"id","name","createdAt","lastUsedAt","current"}]}`. `current` is `true` for the token that made the request. `lastUsedAt` is updated at most once a minute.
+- `POST /api/app-tokens/revoke` with body `{"id":"<16 hex>"}` → `{"ok":true,"tokens":[…]}`. The cookie or any valid token may revoke any app token, including itself; revoking yourself is how the app signs out. `404 NOT_FOUND` if the id is unknown.
+- The web UI has the same list under **Users and API → App sign-ins**.
 - After a revoke, the next request with that token gets `401 AUTH_REQUIRED`. The app should then delete it from the Keychain and show sign-in.
 
 ## Access: people, roles, service accounts
@@ -65,8 +65,8 @@ caller is checked against it the same way.
 | `viewer` | `read` | no |
 | custom | exactly the scopes listed | never |
 
-**Administration** (users, roles, service accounts, keys, the audit, device tokens) is not a scope. It
-belongs to `owner` and `admin`, and only with a password sign-in. `/api/admin/*`, `/api/devices/tokens*`,
+**Administration** (users, roles, service accounts, keys, the audit, app tokens) is not a scope. It
+belongs to `owner` and `admin`, and only with a password sign-in. `/api/admin/*`, `/api/app-tokens*`,
 `/api/session` and `/api/profile/*` answer `403` to every API key, whatever its scopes: also to a
 full-access one.
 
@@ -77,7 +77,7 @@ the only place the wildcard is accepted.
 `GET /api/me` → `{id, username, name, role, roleId, roleName, authKind, canWrite, canAdmin, scopes[], build}`.
 `role` is `admin` for anyone who administers (the owner included, as before roles existed), otherwise the
 role id; `roleId` is the exact role (`owner`, `admin`, `editor`, `viewer` or a custom id; `null` for a key
-or a device). `scopes` is the resolved list. A key reports `role: "api"` and, with the wildcard, `fullAccess: true`.
+or an app token). `scopes` is the resolved list. A key reports `role: "api"` and, with the wildcard, `fullAccess: true`.
 
 A refused call is `403` with `READ_ONLY` (the caller cannot write at all), `SCOPE_REQUIRED` (it lacks this
 scope), `ADMIN_REQUIRED` (administration) or `SESSION_REQUIRED` (password sign-in only).
@@ -95,7 +95,7 @@ scope), `ADMIN_REQUIRED` (administration) or `SESSION_REQUIRED` (password sign-i
 - `POST /api/admin/accounts` `{name, description?, scopes[]}` → `201 {account}`; `scopes` is a list of scope ids or `["*"]`. `POST /api/admin/accounts/action` `{id, scopes}` | `{id, description}` | `{id, disabled}` | `{id, remove:true}` (removing revokes the account's keys). `POST /api/admin/accounts/keys` `{accountId, name?}` → `201 {token, key, account}`: the token appears only here.
 - `GET /api/admin/keys` → every key without its value; `POST /api/admin/keys/revoke` `{id}`. `POST /api/admin/keys` `{name, permission: read|write}` still issues a key without a service account (kept for scripts that use it).
 - `GET /api/admin/agents` → `{agents:[{id, machine, name, prefix, createdAt, createdBy, revokedAt, revokedBy, lastReportAt, agentVersion, platform}]}`: push agent keys, revoked ones included, never a token or its hash. `lastReportAt`, `agentVersion` and `platform` are those of the key's last accepted report (`null` before one). `POST /api/admin/agents` `{machine, name?}` → `201 {token, agent}`: the token (`hha_` + 64 hex) appears only here. `machine` is an id of the overview (a machine of `site.json` or an added device); `400 AGENT_INVALID` for an id that names nothing, the router, the NAS (`ssh.probe: "nas"`) and a machine whose `platform` is `other`, `409 AGENT_LIMIT` beyond two keys per machine (one to rotate) or 100 that are not revoked. `POST /api/admin/agents/revoke` `{id}` → `200 {agent}`, `404 NOT_FOUND`. A key whose machine is removed, or removed and added again under the same id, is revoked by the hub itself (`revokedBy: "machine-removed"`), and so is one whose machine would now be refused at issue (`revokedBy: "machine-changed"`). The same with the hub stopped: `node scripts/manage-access.mjs create-agent-key --machine <id> [--name <n>] --output /abs/file` (writes `{"schema": 1, "agent": {id, machine, name, prefix, createdAt}, "token": "hha_…"}`, 0600, only to a file that does not exist), `revoke-agent-key --id <id>` (also while the hub runs: it reads `agents.json` again when the file changes); `list` shows the keys without secrets.
-- `GET /api/admin/audit?kind=access|device|api|agent&q=<text>&limit=1..1000` (default 200) → `{events:[{at, kind, event, id, subject, detail?, by?, status?}]}`, newest first. `access` = changes to users, roles, accounts, keys and agent keys (`agent-key-created`, `agent-key-revoked`; `by` is the administrator, `local administration`, `machine-removed` or `machine-changed`); `device` = device tokens; `api` = every write through a key or MCP tool, refused ones included; `agent` = what a push agent did that changed something (`agent-refused` with its code, at most once per key and code in ten minutes; `agent-first-report`; `agent-report-after-no-news`; `agent-version-changed`; `agent-platform-changed`; the last three at most once per key and event in ten minutes), `id` the agent key, `subject` the machine. No event holds a password, a token or a request body.
+- `GET /api/admin/audit?kind=access|app|api|agent&q=<text>&limit=1..1000` (default 200) → `{events:[{at, kind, event, id, subject, detail?, by?, status?}]}`, newest first. `access` = changes to users, roles, accounts, keys and agent keys (`agent-key-created`, `agent-key-revoked`; `by` is the administrator, `local administration`, `machine-removed` or `machine-changed`); `app` = app tokens (`app-token-issued`, `app-token-revoked`); `api` = every write through a key or MCP tool, refused ones included; `agent` = what a push agent did that changed something (`agent-refused` with its code, at most once per key and code in ten minutes; `agent-first-report`; `agent-report-after-no-news`; `agent-version-changed`; `agent-platform-changed`; the last three at most once per key and event in ten minutes), `id` the agent key, `subject` the machine. No event holds a password, a token or a request body.
 
 Limits: 100 users, 30 custom roles, 50 service accounts, 100 active keys, 100 active agent keys (`409`). Invalid input is `400 ACCESS_FAILED` (`AGENT_INVALID` for agent keys).
 
@@ -190,7 +190,7 @@ overview (Administration, above). The machine is the key's and never part of the
 pipeline goes by the route that matched, never by a path prefix: with an agent key, every page, every other `/api/` route
 (any method, `GET` included), `/mcp`, a path nothing matches and a plugin's route (even one whose pattern covers
 `/api/agent/…`) answer `403 AGENT_ONLY`. The routes of the core module `agent` answer `403 AGENT_CREDENTIAL_REQUIRED` to
-every other credential (a session, an API key of any scope including `*`, a device token) and `401 AUTH_REQUIRED` without
+every other credential (a session, an API key of any scope including `*`, an app token) and `401 AUTH_REQUIRED` without
 one. The key needs no `Origin`. An older Home Hub does not know `hha_`: such a key gets `401` there on `/api/` and
 `/mcp`. `GET /healthz` answers `{ok:true}` before any credential is read, as always.
 
@@ -422,7 +422,7 @@ Every JSON error has this shape:
 | 403 | `ORIGIN_REJECTED` | Wrong or missing `Origin` (cookie POSTs) or `Content-Type` |
 | 404 | `NOT_FOUND` | Unknown route or id |
 | 405 | `METHOD_NOT_ALLOWED` | Only GET and POST exist |
-| 409 | `DEVICE_LIMIT` | 20 device tokens already exist |
+| 409 | `APP_TOKEN_LIMIT` | 20 app tokens already exist |
 | 413 | `TOO_LARGE` | Body over 16 KB |
 | 403 | `SCOPE_REQUIRED`, `SESSION_REQUIRED`, `READ_ONLY`, `ADMIN_REQUIRED` | The credential may not do this: a role or API key without the scope, a route that needs a password sign-in, a read-only account, a non-administrator |
 | 403 | `AGENT_ONLY`, `AGENT_CREDENTIAL_REQUIRED` | An agent key outside the agent report; another credential on the agent report (Push agent) |
@@ -550,7 +550,7 @@ and `pages` marks it `admin: true`. The data routes behind a page check the scop
 
 - `GET /api/profile/home-order` → `{"order":["studio","mini",…],"saved":true|false,"known":["studio","mini","nas","router"]}`. `order` always lists every known machine: the saved ones first, then any missing in the default order (`saved:false` = nothing saved).
 - `POST /api/profile/home-order` with body `{"order":["studio","nas"]}` → `{"order":[…full list…],"saved":true}`. Only known ids, each at most once; a partial list is fine, `[]` returns to the default order. `400 INVALID_ORDER` otherwise. Read-only viewers may set their own order.
-- Stored per account in `state/access.json` (`prefs.<account id>.homeOrder`); deleting the user deletes it. Session cookie only: device tokens and API keys get `403 SESSION_REQUIRED`, and the POST needs the same `Origin` and `Content-Type` as every browser write. The app keeps the default order.
+- Stored per account in `state/access.json` (`prefs.<account id>.homeOrder`); deleting the user deletes it. Session cookie only: app tokens and API keys get `403 SESSION_REQUIRED`, and the POST needs the same `Origin` and `Content-Type` as every browser write. The app keeps the default order.
 
 ### Machines (web UI with write access, or an API key with `home:write`; MCP tools)
 
@@ -618,7 +618,7 @@ probes, Thermo and the router adapter keep reading the site's values (a changed 
 - Own picture: `PUT /api/home/devices/<id>/image` and `POST /api/home/devices/image/remove` `{"id"}` work for a site
   machine too (its override's `image`); it is served at `GET /api/home/devices/<id>/image` (not under `/images/home/`,
   where the site's own picture is a static file).
-- API keys, native device tokens and accounts signed in otherwise are refused (`403`); `machine_upsert` /
+- API keys, app tokens and accounts signed in otherwise are refused (`403`); `machine_upsert` /
   `machine_remove` keep refusing site machines (`MACHINE_READ_ONLY`). A Thermo Mac and the router are editable the same
   way; their editor says who reads their telemetry, which this edit never changes.
 
@@ -666,7 +666,7 @@ What needs a person: uploading a picture and giving the hub a Thermo login. A de
 
 The Add/Edit device dialog builds a connection on the server, one step at a time, in a **draft**
 (`server/windows-ssh.mjs`). Every route below is for a person signed in with a password and write access only (`403` for API
-keys, native device tokens and read-only accounts), and a draft is visible only to the person who made it. A draft lives in memory, for at most 30 minutes after its last step; at most 3 per person (the oldest gives way) and
+keys, app tokens and read-only accounts), and a draft is visible only to the person who made it. A draft lives in memory, for at most 30 minutes after its last step; at most 3 per person (the oldest gives way) and
 16 in all. Each reply carries `draft` = `{"id","device","host","port","user","key":{"type","bits","fingerprint","publicKey","source","reused"}|null,"hostKeys":[{"type","fingerprint"}]|null,"trusted":{"type","fingerprint","reused"}|null,"tested":{"at"}|null,"expiresAt"}`
 — never a private key, never a path. Refusals are `WINDOWS_SETUP_FAILED` with a `reason` and a sentence (`draft-missing` 404;
 `busy`, `needs-key`, `needs-scan`, `needs-trust`, `needs-test`, `stale`, `trust-mismatch`, `limit` 409; `key-format`,
@@ -805,7 +805,7 @@ Four more providers beside Thermo (the agent) and Windows over SSH, in core modu
   selectable. The snapshot is the target's newest scrape: its `up` sample must be 1 (`target-down`) and inside the
   two-minute window (`stale`); every other series contributes only its sample of exactly that scrape; the reading is
   stamped with the scrape time. A poll that finds the same scrape as before records nothing (no fabricated freshness).
-- **Set-up drafts** (`server/endpoint-setup.mjs`; password sign-in with write access only, `403` for API keys and native
+- **Set-up drafts** (`server/endpoint-setup.mjs`; password sign-in with write access only, `403` for API keys and app
   tokens). A draft belongs to its person, is bound to one device (or a new one) and one provider, lives in memory only
   (30 min idle), and holds the password or token one-way: a view says only `password:{set,reused}`.
   - `GET /api/home/devices/hub-address` → `{"address"}`: the hub's own IPv4 address inside the site's networks
@@ -941,7 +941,7 @@ Routes:
 
 MCP `tickets_list` uses `query` for text search and an integer `limit` of 1–200 (default 50); HTTP uses `q` and supports `limit` of 1–5000. `release_save` accepts `releasedAt` as well as `targetDate`. MCP `ticket_search` takes `query` plus the same filters as `GET /api/tickets/search` and returns the same document.
 
-`message` in a tracker, review or search error is Czech source text for a browser session or a device token (the web UI translates it through its dictionary) and English for an API key.
+`message` in a tracker, review or search error is Czech source text for a browser session or an app token (the web UI translates it through its dictionary) and English for an API key.
 
 Attachments (stored in `state/tickets/attachments/<sha256>`, at most 20 per ticket and 100 MB per file, 2 GB in total):
 
@@ -1401,7 +1401,7 @@ Integrations); `HOME_HUB_UPDATE_CHECK=off` in the environment turns it off for g
     `scripts/update.mjs`, `docs/updating.md`). `apply.tag` is the release tag to switch to and `apply.command` the
     command a person runs on the server for it, from the core checkout (`node scripts/update.mjs apply <tag>`;
     `null` when no newer release is known); `apply.automatic` is always `false`.
-- `POST /api/updates/check` `{}` (administrator, password sign-in; never an API key or a device token) →
+- `POST /api/updates/check` `{}` (administrator, password sign-in; never an API key or an app token) →
   `{checked, reason?, updates}`. `checked: false` with `reason` `too-soon` (one forced check a minute),
   `rate-limited`, `env-off` or `no-repo` means no request was made. `409 INTEGRATION_DISABLED` while it is off.
 - `POST /api/updates/dismiss` `{version}` (the same) → `{updates}`: stop pointing at that release in the footer.
@@ -1424,7 +1424,7 @@ H='https://hub.example.lan'
 curl -s -c jar -H "Origin: $H" -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"…"}' "$H/api/session"
 TOKEN=$(curl -s -b jar -H "Origin: $H" -H 'Content-Type: application/json' \
-  -d '{"name":"curl test"}' "$H/api/devices/tokens" | jq -r .token)
+  -d '{"name":"curl test"}' "$H/api/app-tokens" | jq -r .token)
 curl -s -H "Authorization: Bearer $TOKEN" "$H/api/home" | jq '.machines[] | {id, online}'
 curl -s -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"project":"my-app","title":"Filed from curl"}' "$H/api/tickets"

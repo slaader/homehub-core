@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {mkdir,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {hub} from './hub-helper.mjs';
-import {provenance,inventoryProvenance,authorKinds,authoredProvenance,collectorSource,PROVENANCE_KINDS} from '../server/provenance.mjs';
+import {provenance,inventoryProvenance,authorKinds,authoredProvenance,collectorSource,PROVENANCE_KINDS,APP_AUTHOR} from '../server/provenance.mjs';
 import {collectorRun,readRun} from '../server/collector-run.mjs';
 import {collectorState} from '../server/collector-state.mjs';
 import {routerProvenance,normalizeRouter,ROUTER_ADAPTERS} from '../server/router-data.mjs';
@@ -56,7 +56,7 @@ test('inventory: the verified_by stamp of each entry decides manual, agent (with
 test('authors: people, service accounts and the native app are told apart; a name nobody carries is other',()=>{
  const store={users:()=>[{username:'admin'},{username:'alice'}],accounts:()=>[{name:'codex'}],keys:()=>[{name:'old-script'}]};
  const kind=authorKinds(store);
- assert.deepEqual(['admin','alice','codex','old-script','Native device','gone','',null].map(kind),['manual','manual','agent','agent','manual','other',null,null]);
+ assert.deepEqual(['admin','alice','codex','old-script',APP_AUTHOR,'Native device','gone','',null].map(kind),['manual','manual','agent','agent','manual','manual','other',null,null],'the name 1.0.0 wrote for an app token is still a person\'s work');
  const p=authoredProvenance(store,{created:[['codex','2026-11-08T10:00:00.000Z'],['codex','2026-11-08T11:00:00.000Z'],['alice','2026-11-07T10:00:00.000Z'],['gone','2026-10-01T00:00:00.000Z']],
   changes:[['admin','2026-11-09T09:00:00.000Z'],['codex','2026-11-08T12:00:00.000Z']]},{extra:[{kind:'config',source:'site.json → tracker.projects',count:2,unit:'items'}]});
  assert.equal(p.kind,'mixed');

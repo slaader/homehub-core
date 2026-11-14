@@ -13,7 +13,7 @@ test('scope table: admin and token routes are never reachable with a key, legacy
  assert.equal(scopeFor('GET','/api/home'),'read');
  assert.equal(scopeFor('GET','/api/security'),'security:read');
  assert.equal(scopeFor('GET','/api/systems'),'security:read');
- for(const [m,p] of [['POST','/api/profile/password'],['GET','/api/admin/users'],['POST','/api/admin/accounts'],['POST','/api/devices/tokens'],['GET','/api/devices/tokens'],['POST','/api/session'],['POST','/api/unknown']])assert.equal(scopeFor(m,p),null,`${m} ${p}`);
+ for(const [m,p] of [['POST','/api/profile/password'],['GET','/api/admin/users'],['POST','/api/admin/accounts'],['POST','/api/app-tokens'],['GET','/api/app-tokens'],['POST','/api/session'],['POST','/api/unknown']])assert.equal(scopeFor(m,p),null,`${m} ${p}`);
  assert.deepEqual(legacyScopes('read'),['read']);
  assert.ok(legacyScopes('write').includes('tickets:write')&&!legacyScopes('write').includes('security:read'));
  assert.deepEqual(validScopes(['inventory:write']),['read','inventory:write'],'read is always included');

@@ -76,7 +76,7 @@ test('refusals: stale base, site-controlled fields, bad or secret values, addres
   assert.equal((await call(url,b,key.headers)).status,403,url);
  const put=await fetch(`${h.origin}/api/home/devices/nas/image`,{method:'PUT',headers:{Origin:h.origin,'Content-Type':'image/jpeg',...key.headers},body:JPEG});assert.equal(put.status,403);
  // Native clients have write permission, but cannot change the owner's site overrides or pictures.
- const native=await h.handler.hub.deviceTokens.issue('Test native client');
+ const native=await h.handler.hub.appTokens.issue('Test native client');
  const guest=await (await h.post('/api/admin/users',{username:'guest'},h.admin)).json();
  const login=await h.post('/api/session',{username:'guest',password:guest.initialPassword});
  const reader={Cookie:login.headers.get('set-cookie').split(';')[0]};

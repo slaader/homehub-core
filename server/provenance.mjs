@@ -71,13 +71,16 @@ export function provenance(sources=[]){
 // --- who wrote it: people, service accounts, anything else ---------------------------------------
 // A record names its author (a user name, a service-account name, a key's name). The access store says
 // which of those are people and which are agents today; a name nobody carries any more is "other".
-export const DEVICE_AUTHOR='Native device';
+// What an app token writes under. 1.0.0 wrote another name, and records keep the author they were written with.
+export const APP_AUTHOR='Native app';
+const LEGACY_APP_AUTHORS=Object.freeze(['Native device']);
+const appAuthor=name=>name===APP_AUTHOR||LEGACY_APP_AUTHORS.includes(name);
 export function authorKinds(accessStore){
  const list=fn=>{try{return (fn()||[]).filter(n=>typeof n==='string'&&n);}catch{return [];}};
  const people=new Set(list(()=>accessStore.users().map(u=>u.username)));
  // A key issued before service accounts acts under its own name.
  const agents=new Set(list(()=>[...accessStore.accounts().map(a=>a.name),...accessStore.keys().map(k=>k.name)]));
- return name=>typeof name!=='string'||!name?null:people.has(name)||name===DEVICE_AUTHOR?'manual':agents.has(name)?'agent':'other';
+ return name=>typeof name!=='string'||!name?null:people.has(name)||appAuthor(name)?'manual':agents.has(name)?'agent':'other';
 }
 // Collects authored records per kind. add(name, at, {change}) counts one record created (or, with
 // change, one later change) by that author; sources(unit) gives the provenance sources, busiest first.

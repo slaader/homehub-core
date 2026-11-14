@@ -39,7 +39,7 @@ test('the wildcard: only where it is allowed, resolved when asked, and never a w
  registerScopes('late-plugin',{'late:write':{label:'Late',desc:'Registered after the account was made.'}});
  assert.ok(resolveScopes(['*']).includes('late:write'),'a scope registered later is covered');
  assert.ok(roleOf('admin').scopes.includes('late:write')&&roleOf('editor').scopes.includes('late:write'));
- for(const [m,p] of [['GET','/api/admin/users'],['POST','/api/admin/roles'],['POST','/api/admin/roles/action'],['GET','/api/admin/audit'],['POST','/api/devices/tokens'],['GET','/api/devices/tokens'],['POST','/api/session'],['GET','/api/profile'],['POST','/api/profile/prefs'],['POST','/api/profile/password']])
+ for(const [m,p] of [['GET','/api/admin/users'],['POST','/api/admin/roles'],['POST','/api/admin/roles/action'],['GET','/api/admin/audit'],['POST','/api/app-tokens'],['GET','/api/app-tokens'],['POST','/api/session'],['GET','/api/profile'],['POST','/api/profile/prefs'],['POST','/api/profile/password']])
   assert.equal(scopeFor(m,p),null,`${m} ${p} needs no scope a key could hold`);
  const presets=accountPresets([{id:'night',name:'Night',description:'',scopes:['read','tickets:write']}]);
  assert.deepEqual(presets.map(p=>p.id),['read','role:editor','role:admin','role:night','full']);
@@ -57,6 +57,11 @@ test('custom roles: create, change, apply at once, and delete only once nobody h
  await assert.rejects(s.createRole({name:'Editor',scopes:[]}),/conflict/,'a built-in name is taken');
  await assert.rejects(s.createRole({name:'Other',id:'admin',scopes:[]}),/conflict/,'a built-in id is taken');
  assert.throws(()=>s.createRole({name:'Wild',scopes:['*']}),/invalid/);
+ // The principal kinds are not role ids. "app" joined them in 2.0; a role that 1.0 stored under it still loads.
+ await assert.rejects(s.createRole({name:'Other',id:'app',scopes:[]}),/conflict/,'a principal kind is taken');
+ assert.equal((await s.createRole({name:'App',scopes:[]})).role.id,'app-2','a name that would make that id gets another');
+ {const dir=await temp(t,'hub-roles-app-');await writeFile(path.join(dir,'access.json'),JSON.stringify({schemaVersion:1,users:[],keys:[],roles:[{id:'app',name:'App team',description:'',scopes:['read']},{id:'device',name:'Device team',description:'',scopes:['read']}]}));
+  assert.deepEqual(createAccessStore(dir,credentials).roles().filter(r=>!r.builtin).map(r=>r.id),['app','device']);}
  assert.throws(()=>s.createRole({name:'Bad',scopes:['root']}),/invalid/);
  assert.throws(()=>s.createRole({name:'',scopes:[]}),/invalid/);
  assert.throws(()=>s.createRole({name:'X',scopes:[],admin:true}),/invalid/,'a custom role cannot be given administration');
@@ -189,7 +194,7 @@ test('HTTP: people are held to their role\'s scopes; administration needs an adm
 
  // Administration: the owner and the Admin role, nobody else, and never a key.
  for(const who of [editor,viewer,auditor]){
-  for(const url of ['/api/admin/users','/api/admin/roles','/api/admin/accounts','/api/admin/keys','/api/admin/audit','/api/devices/tokens'])assert.equal((await get(url,who.headers)).status,403,url);
+  for(const url of ['/api/admin/users','/api/admin/roles','/api/admin/accounts','/api/admin/keys','/api/admin/audit','/api/app-tokens'])assert.equal((await get(url,who.headers)).status,403,url);
   assert.equal((await h.post('/api/admin/users/action',{id:who.id,role:'admin'},who.headers)).status,403,'nobody promotes themselves');
   assert.equal((await h.post('/api/admin/roles',{name:'Mine',scopes:[]},who.headers)).status,403);
  }
@@ -230,9 +235,9 @@ test('HTTP: a full-access agent holds every scope, also a later one, and still n
  assert.equal((await h.post('/api/tickets/projects',{id:'agent-project',key:'AP',name:'Agent project'},full.headers)).status,201);
  assert.equal((await h.post('/api/demo/notes',{text:'plugin scope'},full.headers)).status,201,'a plugin\'s scope is covered');
  assert.equal((await fetch(h.origin+'/api/security',{headers:full.headers})).status,404,'security:read is covered (no snapshot here)');
- for(const [method,url,body] of [['GET','/api/admin/users'],['GET','/api/admin/roles'],['GET','/api/admin/accounts'],['GET','/api/admin/keys'],['GET','/api/admin/audit'],['GET','/api/devices/tokens'],['GET','/api/profile'],['GET','/api/profile/home-order'],
+ for(const [method,url,body] of [['GET','/api/admin/users'],['GET','/api/admin/roles'],['GET','/api/admin/accounts'],['GET','/api/admin/keys'],['GET','/api/admin/audit'],['GET','/api/app-tokens'],['GET','/api/profile'],['GET','/api/profile/home-order'],
   ['POST','/api/admin/users',{username:'evil'}],['POST','/api/admin/roles',{name:'Evil',scopes:[]}],['POST','/api/admin/accounts',{name:'escalate',scopes:['*']}],['POST','/api/admin/accounts/keys',{accountId:full.account.id}],['POST','/api/admin/users/password',{id:'owner'}],
-  ['POST','/api/devices/tokens',{name:'x'}],['POST','/api/devices/tokens/revoke',{id:'x'}],['POST','/api/session',{username:'admin',password:'administrator-test-password'}],['POST','/api/profile/prefs',{timeZone:null}],['POST','/api/profile/password',{currentPassword:'a',newPassword:'b'}],
+  ['POST','/api/app-tokens',{name:'x'}],['POST','/api/app-tokens/revoke',{id:'x'}],['POST','/api/session',{username:'admin',password:'administrator-test-password'}],['POST','/api/profile/prefs',{timeZone:null}],['POST','/api/profile/password',{currentPassword:'a',newPassword:'b'}],
   ['POST','/api/home/devices',{name:'x'}]]){
   const r=method==='GET'?await fetch(h.origin+url,{headers:full.headers}):await h.post(url,body,full.headers);
   assert.equal(r.status,403,`${method} ${url}`);assert.ok(['ADMIN_REQUIRED','FORBIDDEN','SCOPE_REQUIRED','SESSION_REQUIRED'].includes((await r.json()).error.code),`${method} ${url}`);

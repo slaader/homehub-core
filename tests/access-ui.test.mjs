@@ -31,10 +31,10 @@ test('the audit filter: by kind, by refusal, and by text in any column',()=>{
   {at:'2026-11-10T10:01:00.000Z',kind:'api',event:'api-write',subject:'agent-studio',detail:'/api/tickets · HH-12',status:201},
   {at:'2026-11-10T10:02:00.000Z',kind:'api',event:'mcp-call',subject:'agent-studio',detail:'inventory_update',status:'denied'},
   {at:'2026-11-10T10:03:00.000Z',kind:'api',event:'api-write',subject:'agent-reader',detail:'/api/admin/users',status:403},
-  {at:'2026-11-10T10:04:00.000Z',kind:'device',event:'device-issued',subject:'Phone'}];
+  {at:'2026-11-10T10:04:00.000Z',kind:'app',event:'app-token-issued',subject:'Phone'}];
  const keep=f=>events.filter(e=>auditMatches(e,f)).map(e=>e.at.slice(14,16));
  assert.deepEqual(keep({}),['00','01','02','03','04']);
- assert.deepEqual(keep({kind:'api'}),['01','02','03']);assert.deepEqual(keep({kind:'access'}),['00']);assert.deepEqual(keep({kind:'device'}),['04']);
+ assert.deepEqual(keep({kind:'api'}),['01','02','03']);assert.deepEqual(keep({kind:'access'}),['00']);assert.deepEqual(keep({kind:'app'}),['04']);
  assert.deepEqual(keep({only:'refused'}),['02','03'],'denied MCP calls and 403s');
  assert.deepEqual(keep({text:'hh-12'}),['01']);assert.deepEqual(keep({text:'ALEX'}),['00']);assert.deepEqual(keep({text:'agent-studio',only:'refused'}),['02']);
  assert.deepEqual(keep({text:'role created'}),['00'],'the event name as shown is searchable');

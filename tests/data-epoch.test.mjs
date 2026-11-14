@@ -17,9 +17,10 @@ import {SECURITY_SCHEMA,SECURITY_PROBES_SCHEMA} from '../server/security-data.mj
 import {UPSTREAM_CACHE_VERSION} from '../server/systems-upstream.mjs';
 import {UPDATES_SCHEMA} from '../server/update-check.mjs';
 import {AGENTS_SCHEMA,AGENT_REPORTS_SCHEMA} from '../server/agent-store.mjs';
+import {APP_TOKENS_SCHEMA} from '../server/app-tokens.mjs';
 
-const TABLE={epoch:1,schemas:{db:1,integrations:1,watch:1,systems:1,security:1,upstreamCache:2,updates:1,agents:1,agentReports:1,securityProbes:1}};
-const NOW={db:DB_SCHEMA,integrations:INTEGRATIONS_SCHEMA,watch:WATCH_SCHEMA,systems:SYSTEMS_SCHEMA,security:SECURITY_SCHEMA,upstreamCache:UPSTREAM_CACHE_VERSION,updates:UPDATES_SCHEMA,agents:AGENTS_SCHEMA,agentReports:AGENT_REPORTS_SCHEMA,securityProbes:SECURITY_PROBES_SCHEMA};
+const TABLE={epoch:2,schemas:{db:1,integrations:1,watch:1,systems:1,security:1,upstreamCache:2,updates:1,agents:1,agentReports:1,securityProbes:1,appTokens:2}};
+const NOW={db:DB_SCHEMA,integrations:INTEGRATIONS_SCHEMA,watch:WATCH_SCHEMA,systems:SYSTEMS_SCHEMA,security:SECURITY_SCHEMA,upstreamCache:UPSTREAM_CACHE_VERSION,updates:UPDATES_SCHEMA,agents:AGENTS_SCHEMA,agentReports:AGENT_REPORTS_SCHEMA,securityProbes:SECURITY_PROBES_SCHEMA,appTokens:APP_TOKENS_SCHEMA};
 
 test('a changed on-disk format raises the data epoch',()=>{
  const epoch=readPackage().dataEpoch;

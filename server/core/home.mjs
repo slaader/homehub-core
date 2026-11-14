@@ -70,14 +70,14 @@ const SECRETS_LOCKED='Uložená hesla teď nejdou otevřít: chybí klíč, kter
 const lockedFailure=(c,e)=>e?.reason==='secrets-locked'?c.json(503,{error:{code:'SECRETS_LOCKED',message:SECRETS_LOCKED}}):null;
 const devices=handler=>async c=>{if(c.principal.authKind==='api-key')return c.error(403,'SCOPE_REQUIRED','API keys cannot use this endpoint.');try{return await handler(c);}catch(e){return lockedFailure(c,e)||windowsFailure(c,e)||feedFailure(c,e)||setupFailure(c,e)||deviceError(c,e);}};
 // Keys, host trust and connection tests of app-managed SSH: a person signed in with a password and write access.
-// Not an API key, not a native device token: nothing but that person's own browser session reaches a set-up draft.
+// Not an API key, not a native app token: nothing but that person's own browser session reaches a set-up draft.
 const sessionWrite=handler=>devices(async c=>c.principal?.authKind==='session'&&c.canWrite?handler(c)
  :c.error(403,'SESSION_REQUIRED','Spojení s Windows a jeho klíč nastavuje jen účet se zápisem, přihlášený heslem.'));
 // The same rule for the other providers' set-up and connection (its message does not name one system).
 const sessionFeed=handler=>devices(async c=>c.principal?.authKind==='session'&&c.canWrite?handler(c)
  :c.error(403,'SESSION_REQUIRED','Telemetrické spojení a jeho tajemství nastavuje jen účet se zápisem, přihlášený heslem.'));
 // The owner's edit of a machine of the site configuration (its display metadata, over the site's defaults): a person
-// signed in with a password and write access. Not an API key, not a native device token; agents keep machine_upsert,
+// signed in with a password and write access. Not an API key, not a native app token; agents keep machine_upsert,
 // which refuses site machines. Refusals carry the machine API's codes (MACHINE_INVALID, MACHINE_CONFLICT, …).
 const siteEdit=handler=>machines(async c=>c.principal?.authKind==='session'&&c.canWrite?handler(c)
  :c.error(403,'SESSION_REQUIRED','Stroj z konfigurace webu upravuje jen účet se zápisem, přihlášený heslem.'));
@@ -86,7 +86,7 @@ const managedInput=w=>{only(w,['draft','host','port','user']);return w;};
 const stamped=(record,principal)=>({...record,configuredAt:new Date().toISOString(),configuredBy:principal.username});
 // What a telemetry set-up or connection is for: an added device, or a machine of the site configuration that can take
 // an agent-less binding (no thermoId, not the router; the site's platform, when it names one, must be the provider's).
-// Unknown id: 404. A site machine is only ever reached by a person signed in with a password (never a device token).
+// Unknown id: 404. A site machine is only ever reached by a person signed in with a password (never an app token).
 async function telemetryTarget(state,id,{provider=null,principal=null}={}){
  if(typeof id!=='string'||!DEVICE_ID.test(id))throw new Error('invalid');
  const target=await state.homeDevices.telemetryTarget(id);if(!target)throw new Error('not-found');

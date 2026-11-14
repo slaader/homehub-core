@@ -1,5 +1,5 @@
 // Core module "access": people and their roles, service accounts with scopes and API keys, the access
-// audit, and device tokens for native clients. Everything under /api/admin/ needs an administrator's
+// audit, and app tokens for native clients. Everything under /api/admin/ needs an administrator's
 // password sign-in (the owner or the Admin role; enforced by the pipeline). No API key reaches these
 // routes, whatever its scopes, and none of this is offered over MCP: the one tool here, whoami, only
 // tells a key what it already holds.
@@ -14,7 +14,7 @@ const ADMIN_MESSAGES={
  'in-use':'People still hold this role. Choose the role they move to, then delete it.',
  builtin:'Built-in roles cannot be changed or deleted.'};
 const adminError=e=>[({invalid:400,builtin:400,'not-found':404,conflict:409,limit:409,'in-use':409})[e.message]||503,e.message==='in-use'?'ROLE_IN_USE':'ACCESS_FAILED',ADMIN_MESSAGES[e.message]||'Access management is unavailable.'];
-const deviceError=(e,c)=>[({invalid:400,'not-found':404,conflict:409,busy:429})[e.message]||503,'UPDATE_FAILED',({invalid:'Invalid request.','not-found':'Device not found.',conflict:'This record changed in another session. Reload the record before saving.',busy:'Another service action is running. Please retry shortly.'})[e.message]||(c.req.method==='GET'?'Cannot reach service controls. Try refreshing.':'Unable to confirm the operation. Refresh the current state before retrying.')];
+const appTokenError=(e,c)=>[({invalid:400,'not-found':404,conflict:409,busy:429})[e.message]||503,'UPDATE_FAILED',({invalid:'Invalid request.','not-found':'App token not found.',conflict:'This record changed in another session. Reload the record before saving.',busy:'Another service action is running. Please retry shortly.'})[e.message]||(c.req.method==='GET'?'Cannot reach service controls. Try refreshing.':'Unable to confirm the operation. Refresh the current state before retrying.')];
 // What the admin UI lists: id → {label, desc, write, legacy, module}. write:false = holding it changes nothing;
 // legacy:false = a key from before service accounts (permission "write") never holds it.
 const scopeCatalog=hub=>Object.fromEntries(Object.entries(SCOPES).map(([id,{label,desc,readOnly,legacy}])=>[id,{label,desc,write:!readOnly,legacy:legacy!==false,module:hub.registry.scopes.get(id)?.module??null}]));
@@ -26,7 +26,7 @@ const agentError=e=>e?.message==='invalid'?[400,'AGENT_INVALID',e.detail||'Inval
 const agents=hub=>hub.state('agent').admin;
 // Who made the change, for the audit line.
 const by=c=>({by:c.principal.username});
-// GET /api/admin/audit?kind=access|device|api|agent&q=text&limit=1..1000
+// GET /api/admin/audit?kind=access|app|api|agent&q=text&limit=1..1000
 function auditQuery(query){
  const extra=Object.keys(query).filter(k=>!['kind','q','limit'].includes(k));
  const limit=query.limit===undefined?200:Number(query.limit);
@@ -34,7 +34,7 @@ function auditQuery(query){
  return {kind:query.kind??null,q:query.q??'',limit};
 }
 // What a key may not do, whatever its scopes. Told to agents by whoami so they do not go looking.
-const NEVER=['/api/admin/* (users, roles, service accounts, keys, audit)','/api/devices/tokens (device tokens)','/api/session (password sign-in)','/api/profile/* (own account settings)','/api/agent/* (push agents, with their own agent keys)'];
+const NEVER=['/api/admin/* (users, roles, service accounts, keys, audit)','/api/app-tokens (app tokens)','/api/session (password sign-in)','/api/profile/* (own account settings)','/api/agent/* (push agents, with their own agent keys)'];
 
 export default {
  id:'access',title:'Users and API',
@@ -47,7 +47,7 @@ export default {
   {method:'GET',path:'/api/admin/accounts',handler:({json,hub})=>json(200,{accounts:hub.accessStore.accounts(),scopes:scopeCatalog(hub),presets:hub.accessStore.presets()})},
   {method:'GET',path:'/api/admin/audit',async handler({query,json,hub}){
     const filter=auditQuery(query);
-    return json(200,{events:await readAccessAudit(hub.stateDirectory,{accessStore:hub.accessStore,deviceTokens:hub.deviceTokens,agentStore:hub.agentStore,...filter}),...filter});}},
+    return json(200,{events:await readAccessAudit(hub.stateDirectory,{accessStore:hub.accessStore,appTokens:hub.appTokens,agentStore:hub.agentStore,...filter}),...filter});}},
   {method:'POST',path:'/api/admin/users',handler:async c=>c.json(201,await c.hub.accessStore.createUser(c.input,by(c)))},
   {method:'POST',path:'/api/admin/users/action',async handler(c){await c.hub.accessStore.updateUser(c.input,by(c));return c.json(200,{users:c.hub.accessStore.users()});}},
   {method:'POST',path:'/api/admin/users/password',handler:async c=>c.json(200,await c.hub.accessStore.resetPassword(c.input,by(c)))},
@@ -62,15 +62,15 @@ export default {
   {method:'POST',path:'/api/admin/agents',error:agentError,handler:async c=>c.json(201,await agents(c.hub).issue(c.input,by(c)))},
   {method:'POST',path:'/api/admin/agents/revoke',error:agentError,handler:async c=>c.json(200,await agents(c.hub).revoke(c.input,by(c)))},
  ]),
-  // Device tokens: the pipeline already limits these paths to administrators and keeps API keys out.
-  {method:'GET',path:'/api/devices/tokens',scope:null,error:deviceError,handler:({device,json,hub})=>json(200,{devices:hub.deviceTokens.list(device)})},
+  // App tokens: the pipeline already limits these paths to administrators and keeps API keys out.
+  {method:'GET',path:'/api/app-tokens',scope:null,error:appTokenError,handler:({appToken,json,hub})=>json(200,{tokens:hub.appTokens.list(appToken)})},
   // Minting a token needs a password sign-in (the cookie); a token cannot create more tokens.
-  {method:'POST',path:'/api/devices/tokens',scope:null,error:deviceError,async handler({req,input,json,error,hub}){
-    if(!hub.auth.valid(req.headers.cookie))return error(401,'AUTH_REQUIRED','Sign in with your password to add a device.');
+  {method:'POST',path:'/api/app-tokens',scope:null,error:appTokenError,async handler({req,input,json,error,hub}){
+    if(!hub.auth.valid(req.headers.cookie))return error(401,'AUTH_REQUIRED','Sign in with your password to add an app.');
     if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>k!=='name'))return error(400,'INVALID_INPUT','Invalid request.');
-    try{return json(201,await hub.deviceTokens.issue(input.name));}catch(e){return e.message==='limit'?error(409,'DEVICE_LIMIT','Twenty devices already have access. Revoke one first.'):error(400,'INVALID_INPUT','Device name must be 1 to 60 characters.');}}},
-  {method:'POST',path:'/api/devices/tokens/revoke',scope:null,error:deviceError,async handler({device,input,json,error,hub}){
-    try{await hub.deviceTokens.revoke(input?.id);}catch{return error(404,'NOT_FOUND','That device no longer has access.');}return json(200,{ok:true,devices:hub.deviceTokens.list(device)});}},
+    try{return json(201,await hub.appTokens.issue(input.name));}catch(e){return e.message==='limit'?error(409,'APP_TOKEN_LIMIT','Twenty apps already have access. Revoke one first.'):error(400,'INVALID_INPUT','App name must be 1 to 60 characters.');}}},
+  {method:'POST',path:'/api/app-tokens/revoke',scope:null,error:appTokenError,async handler({appToken,input,json,error,hub}){
+    try{await hub.appTokens.revoke(input?.id);}catch{return error(404,'NOT_FOUND','That app no longer has access.');}return json(200,{ok:true,tokens:hub.appTokens.list(appToken)});}},
  ],
  mcpInstructions:'Access: whoami explains the scopes of this key and what no key can ever reach. Call it when a tool is refused or missing from the list.',
  // Not administrative: a key learns only about itself. Users, roles and keys are never managed over MCP.

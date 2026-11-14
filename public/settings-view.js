@@ -10,7 +10,7 @@ import {pageHeader,segmented,themeSwitch} from './ui.js';
 
 // The role's own name when the server sent one (Vlastník, Admin, Editor, Čtenář or a custom role's name).
 export const roleLabel=me=>me?.roleName?t(me.roleName):me?.role==='admin'?t('Správce'):me?.role==='viewer'?t('Čtenář'):me?.role||'';
-const signIn=me=>me?.authKind==='session'?t('heslem'):me?.authKind==='device'?t('tokenem zařízení'):me?.authKind==='api-key'?t('API klíčem'):me?.authKind||'—';
+const signIn=me=>me?.authKind==='session'?t('heslem'):me?.authKind==='app'?t('tokenem aplikace'):me?.authKind==='api-key'?t('API klíčem'):me?.authKind||'—';
 const browserZone=()=>{try{return Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC';}catch{return 'UTC';}};
 const zones=()=>{try{return Intl.supportedValuesOf('timeZone');}catch{return [];}};
 const clockIn=zone=>{try{return new Intl.DateTimeFormat(locale(),{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',timeZone:zone||undefined,timeZoneName:'short'}).format(new Date());}catch{return '';}};
@@ -121,8 +121,8 @@ export function settingsView(me){
     themeSwitch()),
    zone,
    el('section',{class:'set-card'},el('h3',{},t('Změna hesla')),
-    session?[el('p',{class:'set-dim'},t('Po změně skončí všechna ostatní přihlášení tohoto účtu (jiné prohlížeče a záložky). Tokeny zařízení a API klíče platí dál.')),passwordForm(me)]
-     :el('p',{class:'set-dim'},t('Heslo se dá změnit jen po přihlášení heslem v prohlížeči, ne přes token zařízení nebo API klíč.')))));
+    session?[el('p',{class:'set-dim'},t('Po změně skončí všechna ostatní přihlášení tohoto účtu (jiné prohlížeče a záložky). Tokeny aplikací a API klíče platí dál.')),passwordForm(me)]
+     :el('p',{class:'set-dim'},t('Heslo se dá změnit jen po přihlášení heslem v prohlížeči, ne přes token aplikace nebo API klíč.')))));
 }
 // Page entry for the shell (app.js): every page module exports (context) => Node, and the server's UI
 // manifest names it. context = {me, page, sub, machine, site}.

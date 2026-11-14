@@ -15,7 +15,8 @@ import {openDb} from './db.mjs';
 import {createAccessStore,apiBearerOf,validCredentials} from './access-store.mjs';
 import {registerScopes,scopeFor,scopeIds,sessionOnly,useRoutes} from './scopes.mjs';
 import {createMcp,MCP_TOOLS} from './mcp.mjs';
-import {createDeviceTokens,bearerOf} from './device-tokens.mjs';
+import {createAppTokens,bearerOf} from './app-tokens.mjs';
+import {APP_AUTHOR} from './provenance.mjs';
 import {createAgentStore,agentBearerOf} from './agent-store.mjs';
 import {readBuild} from './build-info.mjs';
 import {readVersion} from './version.mjs';
@@ -93,7 +94,7 @@ export function siteImages(directory){
 export function createHandler(options) {
   const {directory,credentials,authFile=null,origin,allowedOrigins=(process.env.ORIGIN_ALIASES||'').split(',').filter(Boolean),secure=true,
    stateDirectory=process.env.STATE_DIR||path.join(directory,'state'),site=loadedSite(),plugins,siteImagesDirectory,
-   deviceTokens=createDeviceTokens(stateDirectory),accessStore=createAccessStore(stateDirectory,credentials,{ownerFile:authFile}),
+   appTokens=createAppTokens(stateDirectory),accessStore=createAccessStore(stateDirectory,credentials,{ownerFile:authFile}),
    agentStore=createAgentStore(stateDirectory,{now:options.agentClock||Date.now})}=options;
   const registry=plugins?buildRegistry(plugins):startupRegistry;
   // Tickets, the review index, sign-in sessions and the search index: one SQLite file (server/db.mjs, docs/storage.md).
@@ -109,7 +110,7 @@ export function createHandler(options) {
   const silenced=(module,name)=>registry.integrations.some(i=>i.module===module&&i.provides.includes(name)&&!integrationStore.enabled(i.id));
   const providers=name=>registry.providers(name).filter(p=>!silenced(p.module,name));
   const version=options.version||HUB_VERSION;
-  const hub={root,directory,stateDirectory,site,edition:readEdition(),origin,secure,build,version,options,db,auth,accessStore,deviceTokens,agentStore,registry,
+  const hub={root,directory,stateDirectory,site,edition:readEdition(),origin,secure,build,version,options,db,auth,accessStore,appTokens,agentStore,registry,
    state:id=>states.get(id)??null,
    // Values from every module that provides `name` (docs/plugins.md → extension points).
    collect:name=>providers(name).map(p=>p.provide(states.get(p.module),hub)),
@@ -145,11 +146,11 @@ export function createHandler(options) {
     try {
       const url = new URL(req.url,origin),pathname=url.pathname;
       if(req.method==='GET'&&pathname==='/healthz') return json(200,{ok:true});
-      // Native clients send a device token instead of the cookie; such requests need no Origin header (browsers never attach it on their own).
-      const bearer=bearerOf(req.headers.authorization),apiBearer=apiBearerOf(req.headers.authorization),agentBearer=agentBearerOf(req.headers.authorization),device=bearer?deviceTokens.verify(bearer):null;
-      // Every principal carries the scopes it holds: a person's role, a key's account, everything for a device token,
+      // Native clients send an app token instead of the cookie; such requests need no Origin header (browsers never attach it on their own).
+      const bearer=bearerOf(req.headers.authorization),apiBearer=apiBearerOf(req.headers.authorization),agentBearer=agentBearerOf(req.headers.authorization),appToken=bearer?appTokens.verify(bearer):null;
+      // Every principal carries the scopes it holds: a person's role, a key's account, everything for an app token,
       // nothing for a push agent's key (authKind "agent").
-      const principal=apiBearer?accessStore.verifyKey(apiBearer):agentBearer?agentStore.verify(agentBearer):device?{id:device,username:'Native device',role:'admin',permission:'write',authKind:'device',scopes:scopeIds()}:req.headers.authorization?null:auth.principal(req.headers.cookie);
+      const principal=apiBearer?accessStore.verifyKey(apiBearer):agentBearer?agentStore.verify(agentBearer):appToken?{id:appToken,username:APP_AUTHOR,role:'admin',permission:'write',authKind:'app',scopes:scopeIds()}:req.headers.authorization?null:auth.principal(req.headers.cookie);
       const signedIn=Boolean(principal),canWrite=principal?.permission==='write',canAdmin=principal?.role==='admin'&&principal.authKind==='session',agentKey=principal?.authKind==='agent';
       if(req.headers.authorization&&!principal&&pathname.startsWith('/api/'))return error(401,'AUTH_REQUIRED','This access credential is no longer valid. Please sign in again.');
       // The push agent's gate (docs/agent.md §2), by the route that matched, never by a path prefix: an agent key reaches
@@ -172,14 +173,14 @@ export function createHandler(options) {
         req.setEncoding('utf8');let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>65536)return error(413,'TOO_LARGE','Request too large.');}
         const out=await mcp(raw,principal);res.writeHead(out.status,out.headers||{});return res.end(out.body||'');
       }
-      // People and devices are held to the route's scope like keys are: a role is a set of scopes (server/scopes.mjs).
+      // People and app tokens are held to the route's scope like keys are: a role is a set of scopes (server/scopes.mjs).
       const lacksScope=Boolean(principal&&principal.authKind!=='api-key'&&typeof route?.scope==='string'&&!principal.scopes?.includes(route.scope));
       const scopeRefused=()=>error(403,'SCOPE_REQUIRED',`Your role lacks the "${route.scope}" permission.`);
       // What a route handler gets. subject = what a write touched (ticket id, entry id), for the write log.
-      c={req,res,url,pathname,params:hit?.params||null,query:Object.fromEntries(url.searchParams),principal,device,signedIn,canWrite,canAdmin,input:undefined,subject:null,
-       json,error,hub,state:route?states.get(route.module):null,fromBrowser:!device&&!apiBearer&&!agentKey};
+      c={req,res,url,pathname,params:hit?.params||null,query:Object.fromEntries(url.searchParams),principal,appToken,signedIn,canWrite,canAdmin,input:undefined,subject:null,
+       json,error,hub,state:route?states.get(route.module):null,fromBrowser:!appToken&&!apiBearer&&!agentKey};
       if(pathname.startsWith('/api/admin/')&&principal&&!canAdmin)return error(403,'ADMIN_REQUIRED','Administrator password sign-in is required.');
-      if(pathname.startsWith('/api/devices/tokens')&&principal&&principal.role!=='admin')return error(403,'FORBIDDEN','Device access is managed by the administrator.');
+      if(pathname.startsWith('/api/app-tokens')&&principal&&principal.role!=='admin')return error(403,'FORBIDDEN','App access is managed by the administrator.');
       // API keys only reach what their scopes allow (legacy read/write keys map to the same scopes as before).
       if(principal?.authKind==='api-key'&&pathname.startsWith('/api/')){const need=scopeFor(req.method,pathname,registry.match);
         if(!need&&sessionOnly(pathname))return error(403,'SESSION_REQUIRED','Tohle jde jen po přihlášení heslem.');
@@ -188,7 +189,7 @@ export function createHandler(options) {
       if(req.method==='PUT'&&route?.raw){
         res.setHeader('Connection','close');
         const browserOnly=route.scope===null; // no API keys, so a key never stands in for the Origin check
-        if((!device&&!(apiBearer&&!browserOnly)&&!origins.includes(req.headers.origin))||req.headers['content-type']!==route.contentType){req.resume();return error(403,'ORIGIN_REJECTED','Request not allowed.');}
+        if((!appToken&&!(apiBearer&&!browserOnly)&&!origins.includes(req.headers.origin))||req.headers['content-type']!==route.contentType){req.resume();return error(403,'ORIGIN_REJECTED','Request not allowed.');}
         if(!signedIn){req.resume();return error(401,'AUTH_REQUIRED','Please sign in.');}
         if(!canWrite||(browserOnly&&principal.authKind==='api-key')){req.resume();return error(403,'READ_ONLY',route.denied||'This account or API key has read-only access.');}
         if(lacksScope){req.resume();return scopeRefused();}
@@ -196,7 +197,7 @@ export function createHandler(options) {
         return await route.handler(c);
       }
       if(req.method==='POST') {
-        if((!device&&!apiBearer&&!agentKey&&!origins.includes(req.headers.origin)) || req.headers['content-type']!=='application/json') return error(403,'ORIGIN_REJECTED','Request not allowed.');
+        if((!appToken&&!apiBearer&&!agentKey&&!origins.includes(req.headers.origin)) || req.headers['content-type']!=='application/json') return error(403,'ORIGIN_REJECTED','Request not allowed.');
         if(!route) return error(404,'NOT_FOUND','Not found.');
         if(!route.public&&!signedIn)return error(401,'AUTH_REQUIRED','Please sign in.');
         if(route.write&&!canWrite)return error(403,'READ_ONLY','This account or API key has read-only access.');

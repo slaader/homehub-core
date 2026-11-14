@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {hashPassword} from '../server/auth.mjs';
-import {createAccessStore,readAccessAudit} from '../server/access-store.mjs';
+import {createAccessStore,readAccessAudit,AUDIT_KINDS} from '../server/access-store.mjs';
 import {createHandler} from '../server/index.mjs';
 
 const credentials={username:'admin',...hashPassword('administrator-test-password')};
@@ -81,12 +81,13 @@ test('admin API: reset ends the user’s sessions, audit lists events without se
  for(const asset of ['/access-view.js','/access.css'])assert.equal((await fetch(origin+asset)).status,200);
 });
 
-test('audit reader merges device events and survives missing files',async t=>{
+test('audit reader merges app token events and survives missing files',async t=>{
  const dir=await mkdtemp(path.join(os.tmpdir(),'hub-audit-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  assert.deepEqual(await readAccessAudit(dir),[]);
  const {writeFile}=await import('node:fs/promises');
- await writeFile(path.join(dir,'device-tokens-audit.jsonl'),JSON.stringify({at:'2026-11-08T10:00:00.000Z',event:'issued',id:'abcdabcdabcdabcd',name:'iPhone'})+'\nnot json\n');
+ await writeFile(path.join(dir,'app-tokens-audit.jsonl'),JSON.stringify({at:'2026-11-08T10:00:00.000Z',event:'issued',id:'abcdabcdabcdabcd',name:'iPhone'})+'\nnot json\n');
  await writeFile(path.join(dir,'access-audit.jsonl'),JSON.stringify({at:'2026-11-08T11:00:00.000Z',event:'user-created',id:'gone'})+'\n');
  const events=await readAccessAudit(dir);
- assert.deepEqual(events.map(e=>[e.event,e.subject]),[['user-created',null],['device-issued','iPhone']]);
+ assert.deepEqual((await readAccessAudit(dir,{kind:'app'})).map(e=>[e.kind,e.event,e.id]),[['app','app-token-issued','abcdabcdabcdabcd']]);assert(AUDIT_KINDS.includes('app'));
+ assert.deepEqual(events.map(e=>[e.event,e.subject]),[['user-created',null],['app-token-issued','iPhone']]);
 });

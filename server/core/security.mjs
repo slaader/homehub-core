@@ -33,7 +33,7 @@ const keysCollectedAt=doc=>doc?(Object.hasOwn(doc,'collectorCollectedAt')?doc.co
 const offSource=(id,script)=>provenance([{kind:'collector',id,source:script,state:'disabled'}]);
 const offCollector=setup=>({...setup,state:'disabled'});
 
-// The pipeline has already checked the route's scope (security:read) for keys, people and devices alike; this
+// The pipeline has already checked the route's scope (security:read) for keys, people and app tokens alike; this
 // is the same rule once more at the door: administrators, and any role or key that holds security:read.
 const adminOnly=(c,message)=>{if(c.principal.role==='admin'||c.principal.authKind==='api-key'||c.principal.scopes?.includes('security:read'))return false;c.error(403,'ADMIN_REQUIRED',message);return true;};
 // The state of one collector as /api/collectors gives it: the fields of collector-state.mjs, nothing of the snapshot.

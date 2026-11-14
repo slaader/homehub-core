@@ -286,7 +286,7 @@ A handler gets one context object:
 | `req`, `res`, `url`, `pathname`, `query` | The request; `query` is the search parameters as an object |
 | `params` | The match of a `match` route, else `null` |
 | `input` | The parsed JSON body of a POST |
-| `principal` | Who is calling: `{id, username, role, permission, authKind, scopes}` (`session`, `device` or `api-key`). `scopes` is what the caller holds: a person's role, a key's account, everything for a device. `role` is `admin` for an administrator (the owner included), else the role id; `roleId` is the exact role |
+| `principal` | Who is calling: `{id, username, role, permission, authKind, scopes}` (`session`, `app` or `api-key`). `scopes` is what the caller holds: a person's role, a key's account, everything for an app token. `role` is `admin` for an administrator (the owner included), else the role id; `roleId` is the exact role |
 | `canWrite`, `canAdmin`, `signedIn`, `device` | Shortcuts |
 | `json(status, data)`, `error(status, code, message)` | Replies |
 | `state` | What this module's `setup` returned |

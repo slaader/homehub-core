@@ -1,7 +1,7 @@
 // Service-account scopes: which API key may call which endpoint. One registry for the HTTP API and
 // the MCP tools, so a scope always means the same thing. Core defines its scopes below; a plugin adds
 // its own through its module definition (server/plugins.mjs), never by editing this file. Which scope
-// a route needs is declared on the route. Admin routes (users, roles, keys, accounts) and device-token
+// a route needs is declared on the route. Admin routes (users, roles, keys, accounts) and app-token
 // minting are never reachable with an API key, whatever its scopes: not even with the wildcard.
 // People are checked against the same table: a role is a set of these scopes (see the end of this file).
 
@@ -51,7 +51,7 @@ let defaultMatch=()=>null;
 export const useRoutes=match=>{defaultMatch=match;};
 // The scope an API key needs for this request, or null when keys may never call it.
 export function scopeFor(method,pathname,match=defaultMatch){
- if(pathname.startsWith('/api/admin/')||pathname.startsWith('/api/devices/tokens')||pathname==='/api/session'||sessionOnly(pathname))return null;
+ if(pathname.startsWith('/api/admin/')||pathname.startsWith('/api/app-tokens')||pathname==='/api/session'||sessionOnly(pathname))return null;
  const hit=match(method==='HEAD'?'GET':method,pathname);
  if(hit)return hit.route.scope;
  return method==='GET'||method==='HEAD'?'read':null;
@@ -76,7 +76,7 @@ export function validScopes(input,{wildcard=false}={}){
 
 // Roles for people. A role is a set of scopes; a signed-in person may call a route when their role holds
 // the route's scope, exactly like an API key. Administration (users, roles, service accounts, keys,
-// device tokens) is not a scope: only the roles marked admin have it, and only with a password sign-in.
+// app tokens) is not a scope: only the roles marked admin have it, and only with a password sign-in.
 // Built-in roles are resolved when asked, so they follow the scopes plugins register:
 //   owner   the built-in account from the auth file; cannot be deleted, disabled or given another role
 //   admin   everything, including administration
@@ -85,13 +85,15 @@ export function validScopes(input,{wildcard=false}={}){
 // name/description are source-language text (Czech), translated in the UI like scope labels.
 export const BUILTIN_ROLES=Object.freeze([
  {id:'owner',name:'Vlastník',description:'Vestavěný účet tohoto Home Hubu. Smí všechno včetně správy; nejde smazat, zakázat ani mu změnit roli.',admin:true,assignable:false,grants:()=>scopeIds()},
- {id:'admin',name:'Admin',description:'Všechno včetně správy uživatelů, rolí, servisních účtů, klíčů a zařízení.',admin:true,assignable:true,grants:()=>scopeIds()},
+ {id:'admin',name:'Admin',description:'Všechno včetně správy uživatelů, rolí, servisních účtů, klíčů a tokenů aplikací.',admin:true,assignable:true,grants:()=>scopeIds()},
  {id:'editor',name:'Editor',description:'Čtení a všechny zápisy. Bez správy přístupu a bez citlivých přehledů (bezpečnost).',admin:false,assignable:true,grants:()=>scopeIds().filter(s=>s==='read'||!SCOPES[s].readOnly)},
  {id:'viewer',name:'Čtenář',description:'Jen čtení: vidí přehled, stroje, inventář a tracker, nic nemění.',admin:false,assignable:true,grants:()=>['read']},
 ]);
 export const ROLE_ID=/^[a-z][a-z0-9-]{1,31}$/;
-// Ids a custom role may not take: the built-in ones and the principal kinds.
-export const RESERVED_ROLE_IDS=Object.freeze([...BUILTIN_ROLES.map(r=>r.id),'api','device','service','none']);
+// Ids a new custom role may not take: the built-in ones and the principal kinds. "app" joined them in 2.0;
+// a role that 1.0 stored under that id still loads (STORED_ROLE_IDS_KEPT, read by server/access-store.mjs).
+export const RESERVED_ROLE_IDS=Object.freeze([...BUILTIN_ROLES.map(r=>r.id),'api','app','service','none']);
+export const STORED_ROLE_IDS_KEPT=Object.freeze(['app']);
 export const builtinRole=id=>BUILTIN_ROLES.find(r=>r.id===id)||null;
 // One role as the rest of the server sees it. custom: the stored custom roles ([{id,name,description,scopes}]).
 // An id that names nothing (a deleted role left on a hand-edited file) resolves to viewer, marked missing.
@@ -117,6 +119,6 @@ export function accountPresets(custom=[]){
   fromRole(roleOf('editor')),
   fromRole(roleOf('admin'),'Všechna oprávnění, která existují teď, jako pevný seznam: později přidaná už ne. Bez správy přístupu.'),
   ...custom.map(r=>fromRole(roleOf(r.id,custom))),
-  {id:'full',name:'Plný přístup (agent)',description:'Všechna oprávnění, která existují teď, i ta, která později přidá plugin. Ke správě uživatelů, rolí, klíčů a zařízení se klíč nedostane nikdy.',scopes:[ALL_SCOPES],wildcard:true,warn:true},
+  {id:'full',name:'Plný přístup (agent)',description:'Všechna oprávnění, která existují teď, i ta, která později přidá plugin. Ke správě uživatelů, rolí, klíčů a tokenů aplikací se klíč nedostane nikdy.',scopes:[ALL_SCOPES],wildcard:true,warn:true},
  ];
 }

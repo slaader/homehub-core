@@ -26,7 +26,7 @@ export function updatesPayload(state,hub){
 }
 export const applyCommand=tag=>typeof tag==='string'&&/^v[0-9A-Za-z][0-9A-Za-z.+-]{0,63}$/.test(tag)?`node scripts/update.mjs apply ${tag}`:null;
 const status=(state,hub)=>integrationStatus(state.checker.view({repoSource:state.settings.repoSource}),zone(hub));
-// Checking and dismissing are an administrator's, signed in with a password: no API key, no device token.
+// Checking and dismissing are an administrator's, signed in with a password: no API key, no app token.
 const adminOnly=handler=>c=>c.canAdmin?handler(c):c.error(403,'ADMIN_REQUIRED','Administrator password sign-in is required.');
 const only=(input,keys)=>input&&typeof input==='object'&&!Array.isArray(input)&&Object.keys(input).every(k=>keys.includes(k));
 

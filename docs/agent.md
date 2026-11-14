@@ -74,11 +74,11 @@ devices (`server/home-devices.mjs`). Thermo host ids and router device ids are n
 ## 2. The agent credential
 
 An agent key is a principal of its own kind, `authKind: "agent"`. It is not a service account, not a legacy key,
-not a device token and not a role, and it holds **no scope**: not `read`, not anything else.
+not an app token and not a role, and it holds **no scope**: not `read`, not anything else.
 
 | | |
 |---|---|
-| Token | `hha_` + 64 lowercase hex (32 random bytes). `hh_` is a device token, `hhk_` an API key; neither parser (`bearerOf`, `apiBearerOf`) matches `hha_` |
+| Token | `hha_` + 64 lowercase hex (32 random bytes). `hh_` is an app token, `hhk_` an API key; neither parser (`bearerOf`, `apiBearerOf`) matches `hha_` |
 | Stored | `<state>/agents.json` (0600, its own file; `access.json` is not touched): `{schemaVersion: 1, agents: [{id, machine, machineCreatedAt, name, prefix, hash, createdAt, createdBy, revokedAt, revokedBy}]}`. `hash` is the SHA-256 of the token, `prefix` its first 12 characters. Module `server/agent-store.mjs`, constant `AGENTS_SCHEMA = 1` |
 | Limits | 100 keys that are not revoked; at most two per machine, so a key can be rotated (issue, install, revoke the old one) |
 | Last seen | Never in `agents.json`. Kept in the report store (below), so a report never rewrites the credential file |
@@ -95,7 +95,7 @@ worked out and the unknown-credential `401`, before the `/mcp` branch). The agen
    every page, every other `/api/` route, `GET` included, a path nothing matches, `/mcp`, and a plugin route, even
    one whose `match` RegExp covers `/api/agent/x`. The gate goes by the route, never by a path prefix.
 2. **A route of the `agent` module** reached by any other principal (session, API key of any scope including `*`,
-   device token) is `403 AGENT_CREDENTIAL_REQUIRED`; without credentials it is `401 AUTH_REQUIRED`.
+   app token) is `403 AGENT_CREDENTIAL_REQUIRED`; without credentials it is `401 AUTH_REQUIRED`.
 3. The agent credential passes the origin check the way an API key does (`fromBrowser` is false). `scope: null` and
    `write: false` make the scope and write checks pass by construction, so the gate is the only one.
 4. Plugins are not restricted: a plugin route may use any path, `/api/agent/` included; core's exact paths win over
@@ -103,7 +103,7 @@ worked out and the unknown-credential `401`, before the `/mcp` branch). The agen
    published plugin has it.
 
 **No new scope.** The gate is by principal kind, so `scopeIds()` does not change, and the wildcard `*`, the editor
-role, legacy write keys and device tokens, all derived from it, cannot reach an agent route. A later scope in this
+role, legacy write keys and app tokens, all derived from it, cannot reach an agent route. A later scope in this
 area is `legacy: false`; enqueueing for a machine is an administrator action, never a scope (see the mailbox).
 
 **Rollback.** An older core does not read `agents.json` and its parsers do not match `hha_`: a request with one gets
@@ -984,7 +984,7 @@ Each limit has a test, part of the step that builds the limit.
 | Flood the hub | 20 s floor (429), 512 KiB (413), per-part minimums | `agent-report.test.mjs`: 429 with `Retry-After`, 413, `too-soon` |
 | Plant markup or a secret on a page | Closed tags and fields, length caps, `secretIn` per the table, text-safe rendering | `agent-report.test.mjs` (secret and markup refused per part; every record of today's probe fixtures accepted); `tests/collectors-dom.test.mjs` (a record holding `<img onerror>` renders as text) |
 | Outlive its revocation | No: the next request is `401`, and so is one still sending its body when the key is revoked (the key is checked again before anything is stored); a machine without a live key has its records ignored by the readers, and so does a record whose last report came with a key revoked since, while the machine's other key is live | `agent-auth.test.mjs`: revoke through the admin API, next report 401; revoke mid-body, 401 and nothing stored; revoke with the CLI while the hub runs, 401; `tests/systems.test.mjs`: revoked, the machine's record no longer shows |
-| Gain a scope later | No: the gate is by kind, and no scope is added | `agent-auth.test.mjs`: `scopeIds()` unchanged; a `*` key, an editor and a device token get `AGENT_CREDENTIAL_REQUIRED` |
+| Gain a scope later | No: the gate is by kind, and no scope is added | `agent-auth.test.mjs`: `scopeIds()` unchanged; a `*` key, an editor and an app token get `AGENT_CREDENTIAL_REQUIRED` |
 | Work against an older core | Inert: `401` | `tests/agent-store.test.mjs`: `apiBearerOf` and `bearerOf` reject `hha_`; `access.json` round-trips unchanged |
 | Come back after an archive restore | Yes, until revoked again | Not limited by code; written under `### Data` and in `docs/updating.md` |
 

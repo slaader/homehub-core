@@ -8,7 +8,7 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {createAgentStore,createReportStore,agentBearerOf,findMachine,machineRefusal,boundTo,AGENTS_SCHEMA,AGENT_REPORTS_SCHEMA,AGENT_LIMITS} from '../server/agent-store.mjs';
 import {apiBearerOf,createAccessStore} from '../server/access-store.mjs';
-import {bearerOf} from '../server/device-tokens.mjs';
+import {bearerOf} from '../server/app-tokens.mjs';
 import {secretIn,namedSecretIn} from '../server/secret-patterns.mjs';
 import {secretIn as reexported} from '../server/home-devices.mjs';
 import {credentials,SITE} from './hub-helper.mjs';

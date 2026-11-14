@@ -6,6 +6,39 @@ Home Hub core, newest first. One section per release; the section is the text of
 number promises is in `AGENTS.md` → Versioning. The top section is the release being prepared, `## Unreleased`
 until the release gives it its number: a change to the public surface adds its line there in the same commit.
 
+## 2.0.0
+
+A major release: names on the public surface change, with no alias for the old ones.
+
+### Changed
+
+- **Breaking: device tokens are now app tokens.** The long-lived `hh_…` token of a native app keeps working, and
+  everything that named it changes. A native app must be updated together with the hub:
+  - Routes: `GET` and `POST /api/app-tokens` and `POST /api/app-tokens/revoke` replace `/api/devices/tokens` and
+    `/api/devices/tokens/revoke`, which now answer `404`.
+  - Answers: issuing returns `{token, app}` (was `{token, device}`); the list and the revoke answer carry `tokens`
+    (was `devices`).
+  - The error code `APP_TOKEN_LIMIT` replaces `DEVICE_LIMIT`.
+  - `GET /api/me` reports `authKind: "app"` (was `"device"`) and the user name `Native app` (was `Native device`).
+    Records written under the old name keep it and are still counted as a person's work.
+  - The audit: `GET /api/admin/audit?kind=app` (was `kind=device`), with the events `app-token-issued` and
+    `app-token-revoked` (were `device-issued`, `device-revoked`). Events recorded by 1.0 are shown under the new names.
+  - A custom role can no longer be created with the id `app` (`device` is free again). A role that already has that
+    id keeps working.
+
+### Plugin contract
+
+- **Breaking:** `principal.authKind` is `app` for a native app's token (was `device`).
+
+### Data
+
+- **The data epoch is 2.** Going back to 1.x after 2.0 has started needs the backup made before the update
+  (`node scripts/update.mjs apply` makes one), not only the older code.
+- `state/device-tokens.json` (`{schemaVersion: 1, devices}`) becomes `state/app-tokens.json`
+  (`{schemaVersion: 2, tokens}`) and `state/device-tokens-audit.jsonl` becomes `state/app-tokens-audit.jsonl`. Both
+  are moved once, at the first start; ids and hashes are unchanged, so every issued token keeps working. A 1.x hub
+  started on the migrated state finds no token file: every app token is refused until the backup is restored.
+
 ## 1.0.0
 
 The first release of Home Hub core: one hub for a household's machines, services, software and work, with an HTTP

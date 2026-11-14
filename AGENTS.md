@@ -56,11 +56,11 @@ Rules that keep the split honest:
 thing every time, always**: a subset is no substitute for it, however long it takes. It ends with a summary and exits non-zero on a failure:
 
 ```
-core     tests 876  pass 876  fail 0
-total    tests 876  pass 876  fail 0
+core     tests 880  pass 880  fail 0
+total    tests 880  pass 880  fail 0
 ```
 
-- **Core: 876 tests in 102 files (2026-11-13). None may fail and none is skipped, on any machine.** One of them,
+- **Core: 880 tests in 102 files (2026-11-14). None may fail and none is skipped, on any machine.** One of them,
   `public edition: no overlay in the tree…`, fails in a checkout that has `local/site.json` or `local/plugins/`:
   develop core without them.
 - **Plugins test themselves.** A plugin source runs its tests against this core with

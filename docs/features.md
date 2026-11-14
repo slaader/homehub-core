@@ -98,14 +98,14 @@ with a password) sees seven tabs; everyone else sees only how to connect.
   **custom roles**: a named set of scopes. A role in use is deleted only by moving its people to another.
 - **Service accounts:** identities for agents and scripts. Created from a preset that shows what it includes:
   Read only, any role, a custom selection, or **Full access (agent)**: every scope there is and any a plugin
-  adds later (stored as `["*"]`). No key, full access included, reaches users, roles, keys, devices or
+  adds later (stored as `["*"]`). No key, full access included, reaches users, roles, keys, app tokens or
   anyone's own account. The key is shown once, with ready-to-paste settings for Claude Code, Codex and a
   generic MCP client.
 - **API keys:** every key in one list (active, revoked, last used) with revoke. Only a SHA-256 is stored.
-- **Devices:** native-app tokens (`hh_…`) with revoke.
+- **App sign-ins:** app tokens (`hh_…`), the long-lived tokens of native apps, with revoke.
 - **Connect and API:** the MCP connection card, who may do what, the scope table, the MCP tools this hub
   offers (from the modules that are loaded, plugins included) and every endpoint.
-- **Audit:** changes to users, roles, accounts, keys and devices (with who made them) and every write through
+- **Audit:** changes to users, roles, accounts, keys and app tokens (with who made them) and every write through
   a key or MCP tool, refused ones included; filter by kind, by refusal and by text. No secrets.
 
 Settings (the account menu) holds the account's own password, language, theme and time zone.
@@ -310,7 +310,7 @@ Home Hub is meant for a home network. It is not hardened for the open internet: 
   | `security:read` | SSH key inventory, versions, host protection |
 
   A plugin adds its own scopes to the same table.
-- **API keys never reach administration.** Users, roles, keys, service accounts, device tokens and your own
+- **API keys never reach administration.** Users, roles, keys, service accounts, app tokens and your own
   password can be managed only from a browser signed in with a password. No scope opens those routes.
 - **Every write is checked twice**: by role or scope when the request arrives, and by revision or hash where
   it is stored. A stale write is refused, not merged.

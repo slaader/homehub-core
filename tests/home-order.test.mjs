@@ -73,13 +73,13 @@ test('the saved order survives a restart',async t=>{
  assert.deepEqual((await (await fetch(base+ROUTE,{headers:{Cookie:cookie}})).json()).order,['nas','studio','mini','mini_server','router']);
 });
 
-test('password sign-in only: API keys and device tokens are refused, anonymous gets 401',async t=>{
+test('password sign-in only: API keys and app tokens are refused, anonymous gets 401',async t=>{
  const h=await hub(t);
  const key=await h.account('agent.reader',['read','home:settings','inventory:write']);
  for(const r of [await get(h,key.headers),await h.post(ROUTE,{order:['nas']},key.headers)]){assert.equal(r.status,403);assert.equal((await r.json()).error.code,'SESSION_REQUIRED');}
- const minted=await (await h.post('/api/devices/tokens',{name:'Test iPhone'},h.admin)).json();
- const device={Authorization:`Bearer ${minted.token}`};
- for(const r of [await get(h,device),await h.post(ROUTE,{order:['nas']},device)]){assert.equal(r.status,403);assert.equal((await r.json()).error.code,'SESSION_REQUIRED');}
+ const minted=await (await h.post('/api/app-tokens',{name:'Test iPhone'},h.admin)).json();
+ const appToken={Authorization:`Bearer ${minted.token}`};
+ for(const r of [await get(h,appToken),await h.post(ROUTE,{order:['nas']},appToken)]){assert.equal(r.status,403);assert.equal((await r.json()).error.code,'SESSION_REQUIRED');}
  assert.equal((await get(h,{})).status,401);
  assert.equal((await h.post(ROUTE,{order:['nas']})).status,401);
  assert.equal((await (await get(h,h.admin)).json()).saved,false,'nothing was written');

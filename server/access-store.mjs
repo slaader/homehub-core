@@ -18,7 +18,7 @@ import {randomBytes,createHash,timingSafeEqual,scrypt} from 'node:crypto';
 import {promisify} from 'node:util';
 import path from 'node:path';
 import {hashPassword} from './auth.mjs';
-import {legacyScopes,validScopes,writesWith,resolveScopes,isWildcard,roleOf,legacyRole,builtinRole,accountPresets,BUILTIN_ROLES,ROLE_ID,RESERVED_ROLE_IDS} from './scopes.mjs';
+import {legacyScopes,validScopes,writesWith,resolveScopes,isWildcard,roleOf,legacyRole,builtinRole,accountPresets,BUILTIN_ROLES,ROLE_ID,RESERVED_ROLE_IDS,STORED_ROLE_IDS_KEPT} from './scopes.mjs';
 
 const derive=promisify(scrypt),sha=s=>createHash('sha256').update(s).digest('hex');
 const plain=v=>Boolean(v)&&typeof v==='object'&&!Array.isArray(v);
@@ -53,7 +53,7 @@ function load(file){
  let state={schemaVersion:1,users:[],keys:[],accounts:[],prefs:{},roles:[]};
  try{state=JSON.parse(readFileSync(file,'utf8'));}catch(e){if(e.code!=='ENOENT')throw e;return state;}
  const list=v=>v===undefined||Array.isArray(v);
- const roleOk=r=>plain(r)&&typeof r.id==='string'&&ROLE_ID.test(r.id)&&!RESERVED_ROLE_IDS.includes(r.id)&&typeof r.name==='string'&&Array.isArray(r.scopes)&&r.scopes.every(s=>typeof s==='string');
+ const roleOk=r=>plain(r)&&typeof r.id==='string'&&ROLE_ID.test(r.id)&&(!RESERVED_ROLE_IDS.includes(r.id)||STORED_ROLE_IDS_KEPT.includes(r.id))&&typeof r.name==='string'&&Array.isArray(r.scopes)&&r.scopes.every(s=>typeof s==='string');
  if(!plain(state)||state.schemaVersion!==1||!Array.isArray(state.users)||!Array.isArray(state.keys)||!list(state.accounts)||!list(state.roles)||state.prefs!==undefined&&!plain(state.prefs)||(state.roles||[]).some(r=>!roleOk(r)))throw new Error('Invalid access store');
  state.accounts??=[];state.prefs??={};state.roles??=[];
  return state;
@@ -292,24 +292,25 @@ export function createAccessStore(directory,credentials,{now=Date.now,ownerFile=
 }
 
 // Recent access events for the admin audit, newest first: changes to users, roles, service accounts,
-// keys and agent keys (kind "access"), device tokens ("device"), every write through an API key or MCP tool
+// keys and agent keys (kind "access"), app tokens ("app"), every write through an API key or MCP tool
 // ("api"), and what push agents did that changed something: a refusal, a first report, a report after no
 // news, a new version or platform ("agent", agent-audit.jsonl; server/agent-store.mjs).
 // The files hold ids and names only; a name is looked up in the stores first (it may have changed) and
 // falls back to the one written with the event. kind / q narrow the list; limit is 1 to 1000.
-export const AUDIT_KINDS=Object.freeze(['access','device','api','agent']);
-export async function readAccessAudit(directory,{accessStore,deviceTokens,agentStore,limit=200,kind=null,q=''}={}){
+export const AUDIT_KINDS=Object.freeze(['access','app','api','agent']);
+export async function readAccessAudit(directory,{accessStore,appTokens,agentStore,limit=200,kind=null,q=''}={}){
  const lines=async f=>{try{return (await readFile(path.join(directory,f),'utf8')).split('\n').filter(Boolean).slice(-limit).map(l=>{try{return JSON.parse(l);}catch{return null;}}).filter(Boolean);}catch(e){if(e.code==='ENOENT')return [];throw e;}};
  const users=new Map((accessStore?.users()||[]).map(u=>[u.id,u.username])),keys=new Map((accessStore?.keys()||[]).map(k=>[k.id,k.name]));
  const accounts=new Map((accessStore?.accounts?.()||[]).map(a=>[a.id,a.name])),roles=new Map((accessStore?.roles?.()||[]).map(r=>[r.id,r.name]));
- const devices=new Map((deviceTokens?.list()||[]).map(d=>[d.id,d.name])),agentKeys=new Map((agentStore?.list()||[]).map(a=>[a.id,a.name]));
+ const apps=new Map((appTokens?.list()||[]).map(a=>[a.id,a.name])),agentKeys=new Map((agentStore?.list()||[]).map(a=>[a.id,a.name]));
  const nameOf=e=>(e.event?.startsWith('key-')?keys:e.event?.startsWith('agent-key-')?agentKeys:e.event?.startsWith('account-')?accounts:e.event?.startsWith('role-')?roles:users).get(e.id)||(typeof e.name==='string'?e.name:null);
  const want=k=>!kind||kind===k;
  const access=want('access')?(await lines('access-audit.jsonl')).map(e=>({at:e.at,kind:'access',event:e.event,id:e.id||null,subject:nameOf(e),...(e.detail?{detail:e.detail}:{}),...(e.by?{by:e.by}:{})})):[];
  const api=want('api')?(await lines('api-audit.jsonl')).map(e=>({at:e.at,kind:'api',event:e.event,id:e.key||null,subject:e.name||null,detail:[e.tool||e.route,e.subject].filter(Boolean).join(' · '),status:e.status})):[];
- const device=want('device')?(await lines('device-tokens-audit.jsonl')).map(e=>({at:e.at,kind:'device',event:`device-${e.event}`,id:e.id||null,subject:e.name||devices.get(e.id)||null})):[];
+ // The file holds the bare event (issued, revoked), from 1.0.0 on; the server/app-tokens.mjs migration carries the older file over.
+ const app=want('app')?(await lines('app-tokens-audit.jsonl')).map(e=>({at:e.at,kind:'app',event:`app-token-${e.event}`,id:e.id||null,subject:e.name||apps.get(e.id)||null})):[];
  const agent=want('agent')?(await lines('agent-audit.jsonl')).map(e=>({at:e.at,kind:'agent',event:e.event,id:e.agent||null,subject:typeof e.machine==='string'?e.machine:null,detail:[e.code,e.detail].filter(Boolean).join(' · ')})):[];
  const needle=String(q||'').trim().toLowerCase();
  const hit=e=>!needle||[e.event,e.subject,e.detail,e.by,e.id,e.status].some(v=>v!=null&&String(v).toLowerCase().includes(needle));
- return [...access,...device,...api,...agent].filter(e=>typeof e.at==='string'&&hit(e)).sort((a,b)=>b.at.localeCompare(a.at)).slice(0,limit);
+ return [...access,...app,...api,...agent].filter(e=>typeof e.at==='string'&&hit(e)).sort((a,b)=>b.at.localeCompare(a.at)).slice(0,limit);
 }

@@ -1,6 +1,6 @@
 // Administration → Users and API (#access). Administrators (the owner or the Admin role, signed in with
 // a password) manage people and their roles, custom roles, service accounts with their API keys, and
-// device tokens, and read the access audit. Everyone else sees how to connect and the API reference.
+// app tokens, and read the access audit. Everyone else sees how to connect and the API reference.
 // Secrets (generated passwords, API keys) are shown once in a dialog and never kept in this module.
 // Text-safe DOM only: every string from the server lands in a text node or an attribute.
 import {el} from './views.js';
@@ -31,7 +31,7 @@ const rolePill=(id,name,title)=>pill(t(name)||id,ROLE_TONE[id]||'info',title);
 // ---- talking to the server ---------------------------------------------------------------------
 // What a refusal means, said in the UI's language: by error code first, then by status.
 const BY_CODE={ROLE_IN_USE:'Tuhle roli ještě někdo má. Vyber, kam se lidé přesunou.',ADMIN_REQUIRED:'Na tohle je potřeba přihlášení administrátorským heslem.'};
-const BY_STATUS={400:'Neplatný požadavek. Jméno má 3–40 znaků (malá písmena, číslice, . _ -), heslo aspoň 12 znaků.',403:'Na tohle je potřeba přihlášení administrátorským heslem.',404:'Uživatel, klíč nebo zařízení už neexistuje.',409:'Takové jméno už existuje, nebo je dosažen limit.'};
+const BY_STATUS={400:'Neplatný požadavek. Jméno má 3–40 znaků (malá písmena, číslice, . _ -), heslo aspoň 12 znaků.',403:'Na tohle je potřeba přihlášení administrátorským heslem.',404:'Uživatel, klíč nebo token aplikace už neexistuje.',409:'Takové jméno už existuje, nebo je dosažen limit.'};
 async function api(url,body){
  const lost=authGuard(),r=await fetch(url,{...(body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(15000)});
  const data=await r.json().catch(()=>({}));
@@ -211,7 +211,7 @@ function rolesTab(status){
  }
  const card=r=>el('article',{class:'ax-card ax-role'},
   el('header',{class:'ax-card-head'},
-   el('div',{},el('h3',{},rolePill(r.id,r.name),r.builtin?pill(t('vestavěná'),'dim'):null,r.admin?pill(t('správa přístupu'),'bad',t('Smí spravovat uživatele, role, servisní účty, klíče a zařízení. Jen po přihlášení heslem.')):null),
+   el('div',{},el('h3',{},rolePill(r.id,r.name),r.builtin?pill(t('vestavěná'),'dim'):null,r.admin?pill(t('správa přístupu'),'bad',t('Smí spravovat uživatele, role, servisní účty, klíče a tokeny aplikací. Jen po přihlášení heslem.')):null),
     el('p',{class:'ax-note'},t(r.description)||'—')),
    el('div',{class:'ax-row-actions'},el('span',{class:'ax-count'},tp(r.users,'{n} uživatel|{n} uživatelé|{n} uživatelů')),
     r.builtin?null:[button(t('Upravit'),()=>edit(r).catch(err=>status(err.message,true)),'small'),button(t('Smazat'),()=>remove(r),'small danger')])),
@@ -242,7 +242,7 @@ function accountsTab(status){
   const ack=el('input',{type:'checkbox',name:'ack'});
   const warning=el('div',{class:'ax-warning',role:'alert'},el('strong',{},t('Plný přístup: rozmysli si to')),
    el('p',{},t('Klíč smí všechno, co umí kterákoli role: měnit inventář a tickety, ovládat služby a spouštět akce, číst bezpečnostní přehledy. Platí to i pro oprávnění, která teprve přidá nějaký plugin.')),
-   el('p',{},t('Nikdy se nedostane ke správě uživatelů, rolí, klíčů a zařízení ani k tvému účtu. Dej ho jen agentovi, kterému věříš, na stroji, který máš pod kontrolou.')),
+   el('p',{},t('Nikdy se nedostane ke správě uživatelů, rolí, klíčů a tokenů aplikací ani k tvému účtu. Dej ho jen agentovi, kterému věříš, na stroji, který máš pod kontrolou.')),
    el('label',{class:'ax-check'},ack,el('span',{},t('Rozumím, chci plný přístup.'))));
   const detail=el('div',{class:'ax-preset-detail'});
   const cards=el('div',{class:'ax-preset-grid',role:'radiogroup','aria-label':t('Předvolba oprávnění')},[...presets,custom].map(p=>{
@@ -388,25 +388,25 @@ function agentsTab(status){
   button(t('+ Nový klíč agenta'),()=>issue().catch(err=>status(err.message,true)),'primary')),list.host);
 }
 
-// ---- devices ----------------------------------------------------------------------------------
-function devicesTab(status){
- async function revoke(d){
-  if(!await confirmDialog(t('Odebrat {name}?',{name:d.name}),t('Zařízení se při dalším požadavku odhlásí a bude se muset znovu přihlásit heslem.'),t('Odebrat')))return;
-  try{await api('/api/devices/tokens/revoke',{id:d.id});status(t('{name} odebráno.',{name:d.name}));list.reload();}catch(err){status(err.message,true);}
+// ---- app tokens -------------------------------------------------------------------------------
+function appsTab(status){
+ async function revoke(a){
+  if(!await confirmDialog(t('Odebrat {name}?',{name:a.name}),t('Aplikace se při dalším požadavku odhlásí a bude se muset znovu přihlásit heslem.'),t('Odebrat')))return;
+  try{await api('/api/app-tokens/revoke',{id:a.id});status(t('{name} odebráno.',{name:a.name}));list.reload();}catch(err){status(err.message,true);}
  }
- const list=loader(async()=>(await api('/api/devices/tokens')).devices,devices=>devices.length?el('div',{class:'ax-rows'},devices.map(d=>el('article',{class:'ax-row'},
-   el('span',{class:'ax-avatar','aria-hidden':'true'},'▯'),el('div',{class:'ax-row-main'},el('div',{class:'ax-row-title'},el('b',{},d.name)),el('div',{class:'ax-row-sub'},el('code',{},'hh_…'))),
-   el('dl',{class:'ax-row-meta'},el('div',{},el('dt',{},t('Přidáno')),el('dd',{},time(d.createdAt))),el('div',{},el('dt',{},t('Naposledy použito')),el('dd',{},d.lastUsedAt?time(d.lastUsedAt,true):t('zatím nepoužito')))),
-   el('div',{class:'ax-row-actions'},button(t('Odebrat'),()=>revoke(d),'small danger'))))):
+ const list=loader(async()=>(await api('/api/app-tokens')).tokens,tokens=>tokens.length?el('div',{class:'ax-rows'},tokens.map(a=>el('article',{class:'ax-row'},
+   el('span',{class:'ax-avatar','aria-hidden':'true'},'▯'),el('div',{class:'ax-row-main'},el('div',{class:'ax-row-title'},el('b',{},a.name)),el('div',{class:'ax-row-sub'},el('code',{},'hh_…'))),
+   el('dl',{class:'ax-row-meta'},el('div',{},el('dt',{},t('Přidáno')),el('dd',{},time(a.createdAt))),el('div',{},el('dt',{},t('Naposledy použito')),el('dd',{},a.lastUsedAt?time(a.lastUsedAt,true):t('zatím nepoužito')))),
+   el('div',{class:'ax-row-actions'},button(t('Odebrat'),()=>revoke(a),'small danger'))))):
   emptyState({icon:'key',title:t('Žádná aplikace není přihlášená'),body:t('Nativní aplikace se přihlásí jménem a heslem a nechá si vystavit vlastní token. Tady ho pak uvidíš a můžeš odebrat.'),
-   steps:[t('V aplikaci zadej adresu tohoto Home Hubu a přihlas se.'),t('Aplikace si uloží token do klíčenky zařízení; heslo si nepamatuje.'),t('Ztracené zařízení tady odebereš jedním klepnutím.')]}));
+   steps:[t('V aplikaci zadej adresu tohoto Home Hubu a přihlas se.'),t('Aplikace si uloží token do klíčenky telefonu; heslo si nepamatuje.'),t('Ztracený telefon tady odebereš jedním klepnutím.')]}));
  return el('div',{class:'ax-stack'},sectionHead(t('Přihlášení aplikací'),null),el('p',{class:'ax-note'},...rich(t('Nativní aplikace s dlouhodobým tokenem {token}. Token smí všechno jako Admin kromě správy uživatelů, rolí a klíčů a platí, dokud ho neodebereš.'),{token:el('code',{},'hh_…')}),' ',t('Stroje (počítače, NAS, server) jsou v Integracích → Stroje.')),list.host);
 }
 
 // ---- audit ------------------------------------------------------------------------------------
 const EVENTS={'account-created':'Vytvořen servisní účet','account-updated':'Změněn servisní účet','account-deleted':'Smazán servisní účet','api-write':'Zápis přes API','mcp-call':'Nástroj přes MCP','user-created':'Vytvořen uživatel','user-updated':'Změněn stav uživatele','user-deleted':'Smazán uživatel','user-password-reset':'Nové heslo uživatele',
  'user-password-changed':'Uživatel si změnil heslo','owner-password-changed':'Vlastník si změnil heslo','user-role-changed':'Změněna role uživatele','role-created':'Vytvořena role','role-updated':'Změněna role','role-deleted':'Smazána role',
- 'key-created':'Vytvořen API klíč','key-revoked':'Odvolán API klíč','device-issued':'Přidáno zařízení','device-revoked':'Odebráno zařízení',
+ 'key-created':'Vytvořen API klíč','key-revoked':'Odvolán API klíč','app-token-issued':'Přidán token aplikace','app-token-revoked':'Odebrán token aplikace',
  'integration-enabled':'Zapnuta integrace','integration-disabled':'Vypnuta integrace','integration-tested':'Otestována integrace','integration-settings':'Změněno nastavení integrace','integration-secret-cleared':'Smazána tajná hodnota integrace'};
 const outcome=s=>s===undefined?null:s==='ok'||(s>=200&&s<300)?'ok':s===403||s===401||s==='denied'?'refused':'error';
 let auditKind='all',auditOnly='all',auditText='';
@@ -426,7 +426,7 @@ function auditTab(){
  const result=e=>{const o=outcome(e.status);return o?pill(o==='ok'?t('provedeno'):o==='refused'?t('odmítnuto'):t('chyba'),o==='ok'?'good':'warn',String(e.status)):el('span',{class:'ax-dim'},'—');};
  function paint(){
   const shown=events.filter(e=>auditMatches(e,{kind:auditKind,only:auditOnly,text:auditText}));
-  body.replaceChildren(!events.length?emptyState({icon:'☰',title:t('Audit je zatím prázdný'),body:t('Zapíše se sem každá změna uživatelů, rolí, servisních účtů, klíčů a zařízení a každý zápis přes API nebo MCP, i odmítnutý.')}):
+  body.replaceChildren(!events.length?emptyState({icon:'☰',title:t('Audit je zatím prázdný'),body:t('Zapíše se sem každá změna uživatelů, rolí, servisních účtů, klíčů a tokenů aplikací a každý zápis přes API nebo MCP, i odmítnutý.')}):
    !shown.length?el('p',{class:'ax-note ax-hint'},t('Filtru neodpovídá žádná událost.')):
    el('div',{class:'ax-table-wrap'},el('table',{class:'ax-table ax-audit'},
     el('thead',{},el('tr',{},...[t('Kdy'),t('Událost'),t('Kdo / čeho se týká'),t('Co'),t('Provedl'),t('Výsledek')].map(h=>el('th',{scope:'col'},h)))),
@@ -438,7 +438,7 @@ function auditTab(){
  }
  const count=el('span',{class:'ax-count'});
  function draw(){
-  bar.replaceChildren(seg(t('Druh události'),auditKind,[['all',t('Vše')],['access',t('Změny přístupu')],['api',t('Zápisy API a MCP')],['device',t('Zařízení')]],v=>{auditKind=v;}),
+  bar.replaceChildren(seg(t('Druh události'),auditKind,[['all',t('Vše')],['access',t('Změny přístupu')],['api',t('Zápisy API a MCP')],['app',t('Tokeny aplikací')]],v=>{auditKind=v;}),
    seg(t('Výsledek'),auditOnly,[['all',t('Všechny výsledky')],['refused',t('Jen odmítnuté a chyby')]],v=>{auditOnly=v;}),search,count);
   paint();
  }
@@ -447,8 +447,8 @@ function auditTab(){
 }
 
 // ---- connect: MCP, who may do what, the API reference ------------------------------------------
-// who: public | read | write | admin (administrator, password) | adminRole (administrator or device) | password (cookie) | a scope id
-const WHO={security:['security:read','warn'],key:['klíč servisního účtu','warn'],public:['bez přihlášení','dim'],read:['čtení','good'],write:['zápis','warn'],admin:['admin heslem','bad'],adminRole:['admin / zařízení','bad'],password:['přihlášení heslem','warn']};
+// who: public | read | write | admin (administrator, password) | adminRole (administrator or app token) | password (cookie) | a scope id
+const WHO={security:['security:read','warn'],key:['klíč servisního účtu','warn'],public:['bez přihlášení','dim'],read:['čtení','good'],write:['zápis','warn'],admin:['admin heslem','bad'],adminRole:['admin / token aplikace','bad'],password:['přihlášení heslem','warn']};
 const ROUTES=[
  ['Účet',[['GET','/api/me','read','Kdo jsem a co smím: role, scopes, canWrite, canAdmin.'],['POST','/api/session','public','Přihlášení {username,password} → cookie homehub.'],['POST','/api/logout','read','Odhlášení.']]],
  ['Domov',[['GET','/api/home','read','Dlaždice strojů: Thermo, služby, router.'],['GET','/api/home/history?machine=<id>&range=30m|7d|30d|6m','read','Řady pro grafy.'],
@@ -463,7 +463,7 @@ const ROUTES=[
   ['POST','/api/tickets','tickets:write','Nový ticket {project, title, type?, priority?, release?, …}.'],['POST','/api/tickets/update','tickets:write','Změna polí {id, rev, …}; starý rev → 409.'],
   ['POST','/api/tickets/comment','tickets:write','Komentář {id, text}.'],['POST','/api/tickets/releases','tickets:write','Release {project, version, status?, targetDate?, notes?, rev?}.'],['POST','/api/tickets/projects','tickets:write','Nový projekt {id, key, name, description?} nebo změna {id, rev, name?, description?}.']]],
  ['MCP',[['POST','/mcp','key','JSON-RPC 2.0 (initialize, tools/list, tools/call, ping); nástroje podle scopes servisního účtu.']]],
- ['Zařízení',[['GET','/api/devices/tokens','adminRole','Zařízení s tokenem.'],['POST','/api/devices/tokens','password','{name} → token hh_… jednou (jen z přihlášení heslem).'],['POST','/api/devices/tokens/revoke','adminRole','{id}.']]],
+ ['Tokeny aplikací',[['GET','/api/app-tokens','adminRole','Aplikace s tokenem.'],['POST','/api/app-tokens','password','{name} → token hh_… jednou (jen z přihlášení heslem).'],['POST','/api/app-tokens/revoke','adminRole','{id}.']]],
 ];
 // Core groups, then what the loaded modules documented (their apiDocs, from the UI manifest). Rows for a
 // title that already exists join that card; a route a module documents replaces the row written here.
@@ -473,7 +473,7 @@ export function allDocs(docs=site().apiDocs||[]){
  for(const d of docs){const taken=new Set(d.routes.map(key));for(const [title,rows] of out)out.set(title,rows.filter(r=>!taken.has(key(r))));out.set(d.title,[...(out.get(d.title)||[]),...d.routes]);}
  return [...out].filter(([,rows])=>rows.length);
 }
-const whoPill=who=>{const [label,tone]=WHO[who]||[who,'warn'];return pill(t(label),tone,WHO[who]?null:t('Role nebo servisní účet s tímto oprávněním; zařízení a starý klíč se zápisem také.'));};
+const whoPill=who=>{const [label,tone]=WHO[who]||[who,'warn'];return pill(t(label),tone,WHO[who]?null:t('Role nebo servisní účet s tímto oprávněním; token aplikace a starý klíč se zápisem také.'));};
 // The MCP tools as the running server registered them (UI manifest → tools): the core ones and every
 // plugin's, in the order tools/list returns them. Nothing is listed here by hand. A description is written
 // for agents, in English: toolLead splits it into its first sentence (shown) and the rest (opens on demand).
@@ -502,7 +502,7 @@ function connectTab(admin){
  const base=location.origin;
  const yes=()=>el('span',{class:'ax-yes','aria-label':t('ano')},'✓'),no=()=>el('span',{class:'ax-no','aria-label':t('ne')},'—'),some=()=>el('span',{class:'ax-dim'},t('podle oprávnění'));
  const cell=c=>el('td',{},c==='scope'?some():c==='legacy'?el('span',{class:'ax-dim'},t('jen dřívější oprávnění')):c?yes():no());
- const matrix=[[t('Vlastník, Admin'),1,1,1,1],[t('Editor'),1,1,0,0],[t('Čtenář'),1,0,0,0],[t('Vlastní role'),1,'scope','scope',0],[t('Servisní účet'),1,'scope','scope',0],[t('Servisní účet · plný přístup'),1,1,1,0],[t('Zařízení (nativní aplikace)'),1,1,1,0],[t('Starý klíč · čtení'),1,0,0,0],[t('Starý klíč · zápis'),1,'legacy',0,0]];
+ const matrix=[[t('Vlastník, Admin'),1,1,1,1],[t('Editor'),1,1,0,0],[t('Čtenář'),1,0,0,0],[t('Vlastní role'),1,'scope','scope',0],[t('Servisní účet'),1,'scope','scope',0],[t('Servisní účet · plný přístup'),1,1,1,0],[t('Nativní aplikace'),1,1,1,0],[t('Starý klíč · čtení'),1,0,0,0],[t('Starý klíč · zápis'),1,'legacy',0,0]];
  const scopeCard=el('section',{class:'ax-card'});
  if(admin){const scopes=loader(async()=>(await api('/api/admin/roles')).scopes,catalog=>el('div',{class:'ax-table-wrap flat'},el('table',{class:'ax-table'},el('tbody',{},
   Object.entries(catalog).map(([id,sc])=>el('tr',{},el('td',{},el('code',{class:'ax-route'},id)),el('td',{},el('b',{},t(sc.label)),' ',sc.write?pill(t('zápis'),'warn'):pill(t('čtení'),'good'),sc.legacy===false?[' ',pill(t('ne pro staré klíče'),'dim',t('Klíč z doby před servisními účty tohle oprávnění nedostane, ani když smí zapisovat.'))]:null),el('td',{class:'ax-dim'},t(sc.desc))))))));
@@ -517,13 +517,13 @@ function connectTab(admin){
     el('dl',{class:'ax-dl'},el('dt',{},t('Adresa')),el('dd',{},el('code',{},base)),
      el('dt',{},t('Prohlížeč')),el('dd',{},...rich(t('cookie {cookie} po {login}; POST musí mít stejný {origin}.'),{cookie:el('code',{},'homehub'),login:el('code',{},'POST /api/session'),origin:el('code',{},'Origin')})),
      el('dt',{},t('Skripty')),el('dd',{},el('code',{},'Authorization: Bearer hhk_…'),' ',t('(API klíč)')),
-     el('dt',{},t('Aplikace')),el('dd',{},el('code',{},'Authorization: Bearer hh_…'),' ',t('(token zařízení)')),
+     el('dt',{},t('Aplikace')),el('dd',{},el('code',{},'Authorization: Bearer hh_…'),' ',t('(token aplikace)')),
      el('dt',{},t('POST tělo')),el('dd',{},...rich(t('JSON, {type} (přesně), max 16 kB'),{type:el('code',{},'Content-Type: application/json')})),
      el('dt',{},t('Chyby')),el('dd',{},el('code',{},'{"error":{"code","message"}}'),' ',t('· 401 přihlásit · 403 chybí právo · 404 · 409 konflikt')))),
    el('section',{class:'ax-card'},el('h3',{},t('Kdo co smí')),
     el('div',{class:'ax-table-wrap flat'},el('table',{class:'ax-table ax-matrix'},el('thead',{},el('tr',{},...['',t('Číst'),t('Zápis a akce'),t('Bezpečnost'),t('Správa přístupu')].map(h=>el('th',{scope:'col'},h)))),
      el('tbody',{},matrix.map(([label,...cells])=>el('tr',{},el('th',{scope:'row'},label),...cells.map(cell)))))),
-    el('p',{class:'ax-note'},t('Správa přístupu (uživatelé, role, servisní účty, klíče, zařízení) je vždy jen pro Vlastníka a Admina přihlášeného heslem. Žádný klíč ji nedostane, ani s plným přístupem.')),
+    el('p',{class:'ax-note'},t('Správa přístupu (uživatelé, role, servisní účty, klíče, tokeny aplikací) je vždy jen pro Vlastníka a Admina přihlášeného heslem. Žádný klíč ji nedostane, ani s plným přístupem.')),
     el('p',{class:'ax-note'},t('Editor a předvolby servisních účtů se počítají z tabulky oprávnění, takže zahrnují i ta, která přidá plugin. Starý klíč se zápisem má jen oprávnění z doby před servisními účty; novější nedostane nikdy.')))),
   admin?scopeCard:null,
   toolsCard(),
@@ -542,7 +542,7 @@ let tab='people',openTab=()=>{};
 // the hash changes and the shell builds the page again. Only a tab id is ever written there.
 export function accessView(me,{open}={}){
  const admin=me?.canAdmin===true;
- const tabs=admin?[['people',t('Lidé')],['roles',t('Role a oprávnění')],['accounts',t('Servisní účty')],['keys',t('API klíče')],['agents',t('Push agenti')],['devices',t('Přihlášení aplikací')],['connect',t('Připojení a API')],['audit',t('Audit')]]:[['connect',t('Připojení a API')]];
+ const tabs=admin?[['people',t('Lidé')],['roles',t('Role a oprávnění')],['accounts',t('Servisní účty')],['keys',t('API klíče')],['agents',t('Push agenti')],['apps',t('Přihlášení aplikací')],['connect',t('Připojení a API')],['audit',t('Audit')]]:[['connect',t('Připojení a API')]];
  if(open&&tabs.some(([id])=>id===open))tab=open;
  if(!tabs.some(([id])=>id===tab))tab=tabs[0][0];
  const statusLine=el('p',{class:'ax-status',role:'status','aria-live':'polite'});
@@ -554,16 +554,16 @@ export function accessView(me,{open}={}){
   e.preventDefault();openTab(tabs[(i+step+tabs.length)%tabs.length][0]);nav.querySelector(`[data-tab="${tab}"]`)?.focus();});
  function paint(){
   status('');
-  content.replaceChildren(tab==='roles'?rolesTab(status):tab==='accounts'?accountsTab(status):tab==='keys'?keysTab(status):tab==='agents'?agentsTab(status):tab==='devices'?devicesTab(status):tab==='audit'?auditTab():tab==='connect'?connectTab(admin):peopleTab(status,me));
+  content.replaceChildren(tab==='roles'?rolesTab(status):tab==='accounts'?accountsTab(status):tab==='keys'?keysTab(status):tab==='agents'?agentsTab(status):tab==='apps'?appsTab(status):tab==='audit'?auditTab():tab==='connect'?connectTab(admin):peopleTab(status,me));
   nav.querySelectorAll('button').forEach(b=>{const on=b.dataset.tab===tab;b.classList.toggle('on',on);b.setAttribute('aria-selected',String(on));b.tabIndex=on?0:-1;});
   const want=`#access/${tab}`;
   if(typeof location!=='undefined'&&String(location.hash).startsWith('#access')&&location.hash!==want&&typeof history!=='undefined')history.replaceState?.(null,'',want);
  }
  openTab=id=>{if(tabs.some(([x])=>x===id)){tab=id;paint();}};
- const how=admin?t('heslem'):me?.authKind==='device'?t('tokenem zařízení'):me?.authKind==='api-key'?t('API klíčem'):t('heslem');
+ const how=admin?t('heslem'):me?.authKind==='app'?t('tokenem aplikace'):me?.authKind==='api-key'?t('API klíčem'):t('heslem');
  const box=el('div',{class:'ax'},
   pageHeader({eyebrow:t('Správa'),title:t('Uživatelé a API'),
-   lead:admin?t('Kdo se smí přihlásit a co smí: lidé a jejich role, agenti se servisními účty, klíče a zařízení.'):t('Jak se k tomuto Home Hubu připojit. Správa přístupu je jen pro Vlastníka a Admina přihlášeného heslem.')}),
+   lead:admin?t('Kdo se smí přihlásit a co smí: lidé a jejich role, agenti se servisními účty, klíče a tokeny aplikací.'):t('Jak se k tomuto Home Hubu připojit. Správa přístupu je jen pro Vlastníka a Admina přihlášeného heslem.')}),
   el('p',{class:'ax-whoami'},t('Přihlášen {name} · {role} · {how}',{name:me?.name||me?.username||'?',role:t(me?.roleName)||me?.role||'',how})),
   nav,statusLine,content);
  paint();

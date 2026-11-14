@@ -67,7 +67,7 @@ test('a plugin route whose RegExp covers /api/agent/… answers 403 AGENT_ONLY t
  assert.equal((await fetch(h.origin+'/api/agent/x',{headers:h.admin})).status,200);
 });
 
-test('no other credential reaches the agent route: sessions, every API key, device tokens; none at all is 401',async t=>{
+test('no other credential reaches the agent route: sessions, every API key, app tokens; none at all is 401',async t=>{
  const h=await hub(t,{thermoPoller:quiet});
  const report=reportTo(h);
  const full=await h.account('agent-full',['*']),reader=await h.account('agent-reader',['read']);
@@ -75,8 +75,8 @@ test('no other credential reaches the agent route: sessions, every API key, devi
  await h.post('/api/admin/users',{username:'eddie',role:'editor',password:'editor-test-password'},h.admin);
  const editorLogin=await h.post('/api/session',{username:'eddie',password:'editor-test-password'});
  const editor={Cookie:editorLogin.headers.get('set-cookie').split(';')[0]};
- const device={Authorization:'Bearer '+(await (await h.post('/api/devices/tokens',{name:'Phone'},h.admin)).json()).token};
- for(const [who,headers] of [['admin session',{...h.admin,Origin:h.origin}],['editor session',{...editor,Origin:h.origin}],['full-access key (*)',full.headers],['read key',reader.headers],['legacy write key',legacy],['device token',device]]){
+ const appToken={Authorization:'Bearer '+(await (await h.post('/api/app-tokens',{name:'Phone'},h.admin)).json()).token};
+ for(const [who,headers] of [['admin session',{...h.admin,Origin:h.origin}],['editor session',{...editor,Origin:h.origin}],['full-access key (*)',full.headers],['read key',reader.headers],['legacy write key',legacy],['app token',appToken]]){
   const r=await report(null,envelope(),headers);
   assert.equal(r.status,403,who);assert.equal(await code(r),'AGENT_CREDENTIAL_REQUIRED',who);
  }
@@ -103,7 +103,7 @@ test('an agent report is not in the API write log',async t=>{
  assert.equal(raw.includes('/api/agent/report'),false);
 });
 
-test('no scope is added: the wildcard, the editor, legacy keys and device tokens gain nothing',async t=>{
+test('no scope is added: the wildcard, the editor, legacy keys and app tokens gain nothing',async t=>{
  const before=scopeIds();
  const h=await hub(t,{thermoPoller:quiet});
  assert.deepEqual(scopeIds(),before,'scopeIds() unchanged by the agent module');
@@ -195,10 +195,10 @@ test('revoked through the admin API: the next report is 401; the admin API is fo
  const missing=await h.post('/api/admin/agents/revoke',{id:'0'.repeat(16)},h.admin);assert.equal(missing.status,404);assert.equal(await code(missing),'NOT_FOUND');
  // Only an administrator signed in with a password.
  const full=await h.account('agent-full',['*']);
- const device={Authorization:'Bearer '+(await (await h.post('/api/devices/tokens',{name:'Phone'},h.admin)).json()).token};
+ const appToken={Authorization:'Bearer '+(await (await h.post('/api/app-tokens',{name:'Phone'},h.admin)).json()).token};
  await h.post('/api/admin/users',{username:'eddie',role:'editor',password:'editor-test-password'},h.admin);
  const editor={Cookie:(await h.post('/api/session',{username:'eddie',password:'editor-test-password'})).headers.get('set-cookie').split(';')[0]};
- for(const [who,headers,expected] of [['full key',full.headers,'ADMIN_REQUIRED'],['device token',device,'ADMIN_REQUIRED'],['editor',editor,'ADMIN_REQUIRED']]){
+ for(const [who,headers,expected] of [['full key',full.headers,'ADMIN_REQUIRED'],['app token',appToken,'ADMIN_REQUIRED'],['editor',editor,'ADMIN_REQUIRED']]){
   for(const [url,body] of [['/api/admin/agents',{machine:'mini'}],['/api/admin/agents/revoke',{id:key.agent.id}]]){
    const r=await h.post(url,body,headers);assert.equal(r.status,403,`${who} ${url}`);assert.equal(await code(r),expected,`${who} ${url}`);}
   assert.equal((await fetch(h.origin+'/api/admin/agents',{headers})).status,403,who);
