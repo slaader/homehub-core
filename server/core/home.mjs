@@ -374,7 +374,7 @@ export default {
  apiDocs:[{title:'Domov',routes:[
   ['GET','/api/home/devices','read','Stroje: z konfigurace webu (jen ke čtení) a přidané, s otiskem. MCP device_list.'],
   ['POST','/api/home/devices','home:write','Založit nebo nahradit stroj {device, base?}. MCP device_upsert.'],
-  ['POST','/api/home/devices/remove','home:write','Odebrat přidaný stroj {id, base}; base je nepovinné jen po přihlášení heslem. MCP device_remove.'],
+  ['POST','/api/home/devices/remove','home:write','Odebrat přidaný stroj {id, base}; osobě nebo aplikaci se zápisem stačí id. MCP device_remove.'],
   ['POST','/api/home/runtime','home:write','Zveřejnit runtime stack stroje {device, stack|null, base?}. MCP runtime_publish.']]}],
  setup(hub){
   const {site,directory,stateDirectory,options}=hub;
@@ -507,8 +507,9 @@ export default {
   {method:'POST',path:'/api/home/devices',scope:'home:write',error:homeError,handler:deviceApi(async c=>{
     c.subject=typeof c.input?.device?.id==='string'&&DEVICE_ID.test(c.input.device.id)?c.input.device.id:null;
     const r=await upsertDevice(c.state,c.input,c.principal);return c.json(r.created?201:200,r);})},
-  // One removal for keys, MCP and the overview: an API key sends base, a person signed in with a password may leave it out.
-  {method:'POST',path:'/api/home/devices/remove',scope:'home:write',error:homeError,handler:deviceApi(async c=>c.json(200,await removeDevice(c.state,c.input,{baseOptional:c.principal.authKind==='session'})))},
+  // One removal for keys, MCP and the overview. An API key needs home:write and sends base; a person or an app with
+  // write access (as in 1.x, whatever the role's scopes) may leave base out, and a base that is sent is checked.
+  {method:'POST',path:'/api/home/devices/remove',scope:'home:write',people:'write',error:homeError,handler:deviceApi(async c=>c.json(200,await removeDevice(c.state,c.input,{baseOptional:['session','app'].includes(c.principal.authKind)})))},
   {method:'POST',path:'/api/home/runtime',scope:'home:write',bodyLimit:65536,error:homeError,handler:deviceApi(async c=>{
     c.subject=typeof c.input?.device==='string'&&DEVICE_ID.test(c.input.device)?c.input.device:null;
     return c.json(200,await publishRuntime(c.state,c.hub,c.input,c.principal));})},

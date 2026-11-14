@@ -174,7 +174,8 @@ export function createHandler(options) {
         const out=await mcp(raw,principal);res.writeHead(out.status,out.headers||{});return res.end(out.body||'');
       }
       // People and app tokens are held to the route's scope like keys are: a role is a set of scopes (server/scopes.mjs).
-      const lacksScope=Boolean(principal&&principal.authKind!=='api-key'&&typeof route?.scope==='string'&&!principal.scopes?.includes(route.scope));
+      // A route with people:'write' asks a person or an app only for write access; an API key still needs the scope.
+      const lacksScope=Boolean(principal&&principal.authKind!=='api-key'&&typeof route?.scope==='string'&&!principal.scopes?.includes(route.scope)&&!(route.people==='write'&&canWrite));
       const scopeRefused=()=>error(403,'SCOPE_REQUIRED',`Your role lacks the "${route.scope}" permission.`);
       // What a route handler gets. subject = what a write touched (ticket id, entry id), for the write log.
       c={req,res,url,pathname,params:hit?.params||null,query:Object.fromEntries(url.searchParams),principal,appToken,signedIn,canWrite,canAdmin,input:undefined,subject:null,

@@ -302,6 +302,14 @@ test('device API over HTTP: home:write for keys, a write session for people, sit
  assert.equal((await h.post('/api/home/devices/remove',{id:'pi-hole',extra:1},h.admin)).status,400);
  const spare=await (await h.post('/api/home/devices',{device:{id:'spare',name:'Spare'}},writer.headers)).json();assert.equal(spare.created,true);
  assert.deepEqual(await (await h.post('/api/home/devices/remove',{id:'spare'},h.admin)).json(),{ok:true,id:'spare',removed:true},'a session removes without base');
+ // A person whose role writes but has no home:write removes as in 1.x (the overview offers the button to canWrite).
+ const {role}=await (await h.post('/api/admin/roles',{name:'Tickets only',scopes:['tickets:write']},h.admin)).json();
+ const {initialPassword}=await (await h.post('/api/admin/users',{username:'bob',role:role.id},h.admin)).json();
+ const bobLogin=await h.post('/api/session',{username:'bob',password:initialPassword});assert.equal(bobLogin.status,200);
+ const bob={Cookie:bobLogin.headers.get('set-cookie').split(';')[0]};
+ assert.equal((await (await h.post('/api/home/devices',{device:{id:'bobs',name:'Bobs'}},writer.headers)).json()).created,true);
+ assert.deepEqual(await (await h.post('/api/home/devices/remove',{id:'bobs'},bob)).json(),{ok:true,id:'bobs',removed:true},'write access is enough for a person');
+ assert.equal((await h.post('/api/home/devices',{device:{id:'bobs2',name:'Bobs'}},bob)).status,403,'the upsert still needs the scope');
  const siteRemove=await h.post('/api/home/devices/remove',{id:'studio'},h.admin);assert.equal(siteRemove.status,403);assert.equal((await siteRemove.json()).error.code,'DEVICE_READ_ONLY');
  assert.equal((await h.post('/api/home/devices/remove',{id:'pi-hole',base:made.hash},writer.headers)).status,409);
  assert.equal((await h.post('/api/home/devices/remove',{id:'studio',base:made.hash},writer.headers)).status,403);

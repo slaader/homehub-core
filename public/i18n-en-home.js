@@ -335,7 +335,7 @@ export default {
  // server/core/home.mjs: API reference rows
  'Stroje: z konfigurace webu (jen ke čtení) a přidané, s otiskem. MCP device_list.':'Devices: from the site configuration (read-only) and added ones, with their hash. MCP device_list.',
  'Založit nebo nahradit stroj {device, base?}. MCP device_upsert.':'Create or replace a device {device, base?}. MCP device_upsert.',
- 'Odebrat přidaný stroj {id, base}; base je nepovinné jen po přihlášení heslem. MCP device_remove.':'Remove an added device {id, base}; base is optional only with a password sign-in. MCP device_remove.',
+ 'Odebrat přidaný stroj {id, base}; osobě nebo aplikaci se zápisem stačí id. MCP device_remove.':'Remove an added device {id, base}; a person or an app with write access needs only the id. MCP device_remove.',
  'Zveřejnit runtime stack stroje {device, stack|null, base?}. MCP runtime_publish.':'Publish a device\'s runtime stack {device, stack|null, base?}. MCP runtime_publish.',
  ':{port} · živě':':{port} · live',
  ':{port} · dřív':':{port} · earlier',

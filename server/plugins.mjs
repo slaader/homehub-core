@@ -50,7 +50,7 @@ export function defineModule(raw,{core=false,directory=null,manifest=null}={}){
   if(typeof r.path==='string'&&!/^\/[A-Za-z0-9._~/-]*$/.test(r.path))bad(id,`${where}.path "${r.path}" is not a plain URL path`);
   if(r.match&&(r.match.global||r.match.sticky))bad(id,`${where}.match must not use the g or y flag`);
   if(!fn(r.handler))bad(id,`${where}.handler must be a function`);
-  const extraKeys=Object.keys(r).filter(k=>!['method','path','match','scope','handler','public','write','session','head','raw','contentType','bodyLimit','parse','denied','error'].includes(k));
+  const extraKeys=Object.keys(r).filter(k=>!['method','path','match','scope','handler','public','write','session','head','raw','contentType','bodyLimit','parse','denied','error','people'].includes(k));
   if(extraKeys.length)bad(id,`${where} has unknown field(s): ${extraKeys.join(', ')}`);
   // scope: what an API key needs. GET defaults to "read"; a write route must say it (null = never with a key).
   if(r.method!=='GET'&&r.scope===undefined)bad(id,`${where} (${r.method} ${r.path??r.match}) must declare scope (a scope id, or null for password sign-in only)`);
@@ -62,11 +62,12 @@ export function defineModule(raw,{core=false,directory=null,manifest=null}={}){
   if(r.head&&r.method!=='GET')bad(id,`${where}: head applies to GET routes`);
   if(r.bodyLimit!==undefined&&(!Number.isSafeInteger(r.bodyLimit)||r.bodyLimit<1||r.bodyLimit>1048576))bad(id,`${where}.bodyLimit must be 1..1048576 bytes`);
   if(r.error!==undefined&&!fn(r.error))bad(id,`${where}.error must be a function`);
+  if(r.people!==undefined&&(r.people!=='write'||typeof scope!=='string'||r.method==='GET'))bad(id,`${where}.people must be "write", on a write route with a scope`);
   return Object.freeze({module:id,method:r.method,path:r.path??null,match:r.match??null,scope,handler:r.handler,
    public:r.public===true,session:r.session===true,head:r.head===true,raw:r.raw===true,contentType:r.contentType??null,
    // write: the caller needs write permission. Default: every non-GET route whose scope is not "read".
    write:r.write===undefined?(r.method!=='GET'&&scope!=='read'):r.write===true,
-   bodyLimit:r.bodyLimit??16384,parse:r.parse!==false,denied:r.denied??null,error:r.error??null});
+   bodyLimit:r.bodyLimit??16384,parse:r.parse!==false,denied:r.denied??null,error:r.error??null,people:r.people??null});
  });
  const mcpTools=(raw.mcpTools??[]).map((tool,i)=>{
   const where=`mcpTools[${i}]`;

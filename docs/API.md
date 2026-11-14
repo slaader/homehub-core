@@ -579,8 +579,9 @@ keeps the device's; `null` clears it. A device without a platform hashes exactly
   `base`, a device that already holds exactly these fields is left alone (`changed:false`), so a repeated create is harmless;
   different fields without `base`, or a stale `base`, are `409 DEVICE_CONFLICT`.
 - `POST /api/home/devices/remove` `{"id","base"?}` → `{"ok":true,"id","removed":true}`. One route for keys, apps and the
-  overview's **Remove device**. `base` (the `hash` read) is required, with one exception: a person signed in with a
-  password may leave it out. A `base` that is sent is always checked (`409 DEVICE_CONFLICT` when stale). The tile, the
+  overview's **Remove device**. An API key needs `home:write` and `base` (the `hash` read). A person or an app with
+  write access needs neither the scope nor `base`, as in 1.x. A `base` that is sent is always checked (`409
+  DEVICE_CONFLICT` when stale). The tile, the
   uploaded picture, the stored Thermo login or Windows connection (with the hub's key and known_hosts for it), any
   other telemetry connection and a published runtime stack go with it; metric history stays.
 - `POST /api/home/runtime` (≤ 64 kB) `{"device","stack"|null,"base"?}` → `{"ok","id","hash","changed","published","publishedAt","by"}`.

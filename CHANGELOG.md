@@ -31,9 +31,9 @@ A major release: names on the public surface change, with no alias for the old o
   - `POST /api/home/devices/add` is the overview's **Add device** form (a person or an app, never an API key). It was
     `POST /api/home/devices`; a client that still posts the form there gets `400` from the upsert.
   - `POST /api/home/devices/remove` `{id, base?}` is the one removal and answers `{ok: true, id, removed: true}`
-    (the overview's old route answered `{removed: <id>}`). It replaces `POST /api/home/machines/remove` and needs the
-    scope `home:write`. `base` is required and checked as before; only a person signed in with a password may leave it
-    out. An app token that removed with `{id}` alone must now send `base`.
+    (the overview's old route answered `{removed: <id>}`). It replaces `POST /api/home/machines/remove`. An API key
+    needs the scope `home:write` and sends `base`, checked as before. A person or an app with write access may remove
+    with `{id}` alone, whatever the role's scopes, as the overview's old route allowed; a `base` that is sent is checked.
 - **Breaking: a machine is now a device, everywhere.** What the hub called a machine (a computer, a NAS, the router:
   whatever `site.json` lists or the overview adds) is a device in the configuration, the API, the MCP tools, the
   commands and the plugin contract. The old names are gone, with no alias. Where the difference matters, a **site
@@ -68,6 +68,8 @@ A major release: names on the public surface change, with no alias for the old o
 
 ### Plugin contract
 
+- A route may declare `people: "write"`: a person or a native app then needs only write permission, not the
+  route's `scope`; an API key still needs the scope (docs/plugins.md → Route fields).
 - **Breaking:** `principal.authKind` is `app` for a native app's token (was `device`), and a route handler's context
   carries `appToken` (was `device`).
 - **Breaking:** the extension point `machines.facets` is `devices.facets`, and an integration's field `machines` is

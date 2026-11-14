@@ -305,6 +305,7 @@ everyone: a key, a person (through their role) and a native app.
 | `scope` | `read` for GET; required otherwise | The scope an API key needs; `null` = never with an API key |
 | `public` | `false` | No sign-in needed |
 | `write` | `true` for non-GET routes whose scope is not `read` | The caller needs write permission |
+| `people` | — | `"write"`: a person or a native app needs only write permission, not the `scope` (an API key still needs it). On a non-GET route with a scope |
 | `head` | `false` | Also answer HEAD (GET routes) |
 | `bodyLimit` | `16384` | Largest POST body in bytes |
 | `parse` | `true` | Parse the POST body as JSON |
