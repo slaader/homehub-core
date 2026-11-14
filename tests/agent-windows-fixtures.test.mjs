@@ -151,7 +151,7 @@ test('over HTTP: the hub takes each fixture from a Windows agent key, and /api/s
  const h=await readerHub(t,{thermoPoller:quiet});
  const writer=await h.account('agent-windows',['home:write']),report=reportTo(h);
  for(const [id,file] of [['winbox','report-full.json'],['winlap','report-degraded.json']]){
-  const r=await h.post('/api/home/machines',{machine:{id,name:id,hostname:`${id}.example.lan`,ip:id==='winbox'?'10.0.0.61':'10.0.0.62',role:'computer',platform:'windows'}},writer.headers);
+  const r=await h.post('/api/home/devices',{machine:{id,name:id,hostname:`${id}.example.lan`,ip:id==='winbox'?'10.0.0.61':'10.0.0.62',role:'computer',platform:'windows'}},writer.headers);
   assert.ok(r.status<300,`add ${id}: ${r.status}`);
   const key=await issueAgent(h,id);
   const answer=await report(key.token,json(file));
@@ -164,7 +164,7 @@ test('over HTTP: the hub takes each fixture from a Windows agent key, and /api/s
  // The first run on a real machine: an added device whose platform was never set takes the agent's report, as it
  // did (report-first-run.json has the shape of the envelope LocalService sent, every value invented, none the machine's).
  {
-  const r=await h.post('/api/home/machines',{machine:{id:'winnew',name:'winnew',hostname:'winnew.example.lan',ip:'10.0.0.63',role:'computer'}},writer.headers);
+  const r=await h.post('/api/home/devices',{machine:{id:'winnew',name:'winnew',hostname:'winnew.example.lan',ip:'10.0.0.63',role:'computer'}},writer.headers);
   assert.ok(r.status<300,`add winnew: ${r.status}`);
   const key=await issueAgent(h,'winnew'),answer=await report(key.token,json('report-first-run.json'));
   assert.equal(answer.status,200);

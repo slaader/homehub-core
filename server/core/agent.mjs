@@ -16,7 +16,7 @@
 // happens on a report, at the start, and when devices.json changes.
 //
 // The overview shows the agent of each machine that holds a key (overview(), read by server/home-data.mjs → agentFor:
-// machines[].agent on GET /api/home, GET /api/home/machines and the MCP tool machine_list), and the integration
+// machines[].agent on GET /api/home, GET /api/home/devices and the MCP tool machine_list), and the integration
 // "agent.reports" puts the agents on Administration → Integrations (docs/agent.md §7, step 4). Turned off there, the hub
 // takes no report (409 INTEGRATION_DISABLED, nothing stored) and the readers join no agent record, so /api/systems,
 // /api/security and home.runtimes answer as on a hub without agents; the keys and what was stored stay as they are.
@@ -57,12 +57,12 @@ function setupAgent(hub){
  const now=hub.options.agentClock||Date.now;
  const keys=hub.agentStore,reports=createReportStore(hub.stateDirectory,{now}),audit=createAgentAudit(hub.stateDirectory,{now});
  const home=hub.state('home');
- const devices=async()=>home?.homeDevices?await home.homeDevices.list():[];
+ const addedMachines=async()=>home?.homeDevices?await home.homeDevices.list():[];
  // The integration "agent.reports" (below): off, no report is taken and no agent record is read.
  const on=()=>typeof hub.integrationEnabled==='function'?hub.integrationEnabled(AGENT_INTEGRATION):true;
  // The hub's software watch list, the one the systems page reads.
  const watchRegistry=()=>readWatch({file:hub.state('security')?.watch?.file??watchPath()}).then(w=>w?.registry||null).catch(()=>null);
- const machineNow=async id=>findMachine(id,{siteMachines:hub.site.machines,devices:await devices()});
+ const machineNow=async id=>findMachine(id,{siteMachines:hub.site.machines,addedMachines:await addedMachines()});
  // When each key's last report was accepted (the 20 s floor) and what it said, for the admin list.
  const lastAccepted=new Map(),lastReport=new Map();
  for(const machine of reports.machines()){const r=reports.get(machine);if(r?.agentId)lastReport.set(r.agentId,{at:r.lastSeenAt,agentVersion:r.agentVersion,platform:r.platform});}
@@ -70,7 +70,7 @@ function setupAgent(hub){
  // Revoke every key whose machine is gone or re-created. One sweep at a time.
  let sweeping=null;
  const sweep=()=>sweeping??=(async()=>{try{
-   const list=await devices(),gone=keys.active().map(k=>[k,lapsed(k,findMachine(k.machine,{siteMachines:hub.site.machines,devices:list}))]).filter(([,why])=>why);
+   const list=await addedMachines(),gone=keys.active().map(k=>[k,lapsed(k,findMachine(k.machine,{siteMachines:hub.site.machines,addedMachines:list}))]).filter(([,why])=>why);
    for(const [k,why] of gone)await keys.revoke(k.id,{by:why});return gone.length;}finally{sweeping=null;}})();
  const view=a=>{const r=lastReport.get(a.id);return {...a,lastReportAt:r?.at??null,agentVersion:r?.agentVersion??null,platform:r?.platform??null};};
  const admin={
@@ -165,7 +165,7 @@ function setupAgent(hub){
  // (its agentId; the parts carry none of their own) is one of those keys, so a report sent with a key revoked since is
  // no report at all, and a re-issued key starts at never. While two keys are live (a rotation), either one's counts.
  const trust=(id,{list,live})=>{
-  const m=findMachine(id,{siteMachines:hub.site.machines,devices:list});if(!m||machineRefusal(m))return null;
+  const m=findMachine(id,{siteMachines:hub.site.machines,addedMachines:list});if(!m||machineRefusal(m))return null;
   const bound=live.filter(k=>k.machine===id&&boundTo(k,m));if(!bound.length)return null;
   const stamps=bound.map(k=>Date.parse(k.createdAt??'')).filter(Number.isFinite),born=Date.parse(m.createdAt??'');
   return {m,keys:bound,since:Math.max(stamps.length?Math.min(...stamps):-Infinity,Number.isFinite(born)?born:-Infinity)};
@@ -181,7 +181,7 @@ function setupAgent(hub){
  // when left out).
  async function readers({parts:names=null}={}){
   if(!on())return [];// the integration is off: no agent record is read
-  const list=await devices().catch(()=>[]),out=[];
+  const list=await addedMachines().catch(()=>[]),out=[];
   let live;try{live=keys.active();}catch{return [];}// a key store this hub cannot read trusts nothing
   for(const id of reports.machines().sort()){
    const t=trust(id,{list,live});if(!t)continue;
@@ -234,7 +234,7 @@ function setupAgent(hub){
  // specs.txt for the machine, read only when an agent sent one. Shown whether the integration is on or off: the keys
  // are there either way.
  async function overview(){
-  const list=await devices().catch(()=>[]),out={};
+  const list=await addedMachines().catch(()=>[]),out={};
   let live;try{live=keys.active();}catch{return out;}
   for(const k of live){
    if(Object.hasOwn(out,k.machine))continue;

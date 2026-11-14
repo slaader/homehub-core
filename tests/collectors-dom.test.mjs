@@ -213,7 +213,7 @@ test('SSH keys: an account card says the record came from the agent, and "no new
 });
 
 test('router panel: not configured, waiting, fine with census and hardware, stale, failed',async()=>{
- const lanCidrs=['10.0.0.0/24'],extra={configured:{adapter:null,host:'10.0.0.1',lanCidrs},machine:{id:'router',name:'Router',ip:'10.0.0.1'}};
+ const lanCidrs=['10.0.0.0/24'],extra={configured:{adapter:null,host:'10.0.0.1',lanCidrs},siteMachine:{id:'router',name:'Router',ip:'10.0.0.1'}};
  const obs=(over={})=>({status:'ok',observedAt:iso(30e3),model:'Gateway 7',firmware:'4.3.6',applicationVersion:'9.4',clientCounts:{wired:1,wireless:1,other:0},knownClients:{a:{},b:{},c:{}},
   unifiDevices:[{name:'Gateway',model:'UDR7',state:'ONLINE',firmware:'4.3.6',ip:'10.0.0.1'},{name:'Switch',model:'USW',state:'OFFLINE',firmware:'7.1',ip:'10.0.0.2'}],
   devices:[{mac:'aa:bb:cc:dd:ee:01',ip:'10.0.0.151',name:'Desktop',connection:'Ethernet',presence:'reachable'},{mac:'aa:bb:cc:dd:ee:02',ip:'10.0.0.77',name:'',connection:'Wi-Fi · 5 GHz',presence:'associated'}],...over});
@@ -241,7 +241,7 @@ test('Czech stays the source language: the same pages in Czech; shared helpers',
   text=await mount(()=>systemsView('hardening'),{'/api/systems':{status:200,body:systemsDoc()}});
   for(const s of [/Ochrana strojů/,/nesplněno: 1/,/zapnutý · 12 pravidel/,/Šifrování disku chrání data/,/Portů: 1/])assert.match(text,s);
   text=await mount(()=>systemsView('versions'),{'/api/systems':missing(systemsSetup(validateSite({})))});assert.match(text,/Sběr verzí a ochrany strojů není nastavený/);
-  text=await mount(()=>routerPanel(),{'/api/router':{status:200,body:{...normalizeRouter(null,{}),configured:{adapter:null,host:null,lanCidrs:[]},machine:null}}});assert.match(text,/Router není nastavený/);
+  text=await mount(()=>routerPanel(),{'/api/router':{status:200,body:{...normalizeRouter(null,{}),configured:{adapter:null,host:null,lanCidrs:[]},siteMachine:null}}});assert.match(text,/Router není nastavený/);
   assert.equal(say('zapnutý · 3 pravidel',[{key:'zapnutý · {rules} pravidel',params:{rules:3}}]),'zapnutý · 3 pravidel');
  }finally{i18n.setLang('en');}
  assert.equal(say('zapnutý · 3 pravidel',[{key:'zapnutý · {rules} pravidel',params:{rules:3}}]),'on · 3 rules');

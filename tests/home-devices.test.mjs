@@ -5,7 +5,7 @@ import {Readable} from 'node:stream';
 import os from 'node:os';
 import path from 'node:path';
 import {readStore} from './support/sealed.mjs';
-import {createHomeDevices,deviceId} from '../server/home-devices.mjs';
+import {createHomeDevices,newDeviceId} from '../server/home-devices.mjs';
 import {buildHome as build,validHomeOrder,homeOrder} from '../server/home-data.mjs';
 import {hub,SITE} from './hub-helper.mjs';
 const HOME_MACHINE_IDS=SITE.machines.map(m=>m.id),buildHome=input=>build({site:SITE,...input});
@@ -16,7 +16,7 @@ async function store(t){const dir=await mkdtemp(path.join(os.tmpdir(),'home-devi
 
 test('home devices: ids, validation, secrets kept apart, picture, removal',async t=>{
  const {dir,d}=await store(t);
- assert.equal(deviceId('Mac Studio (obývák)',[]),'mac-studio-obyvak');assert.equal(deviceId('mini',['mini']),'mini-2');assert.equal(deviceId('42',[]),'device');
+ assert.equal(newDeviceId('Mac Studio (obývák)',[]),'mac-studio-obyvak');assert.equal(newDeviceId('mini',['mini']),'mini-2');assert.equal(newDeviceId('42',[]),'device');
  const a=await d.add({name:'Mac Studio 2',hostname:'studio2.example.lan',ip:'10.0.0.30',props:{cpu:'M4 Max',gpu:'40c',ramGb:128},...thermo},'admin');
  assert.equal(a.device.id,'mac-studio-2');assert.equal(a.thermo.pin,PIN);assert.equal(a.thermo.host,'studio2.example.lan');
  assert.equal(JSON.stringify(await d.list()).includes('correct horse'),false,'no password in the tile list');
@@ -52,9 +52,9 @@ test('home devices over HTTP: probe, Thermo login checked before saving, picture
  const probe=await h.post('/api/home/devices/probe',{host:'studio2.local'},h.admin);assert.equal(probe.status,200);assert.equal((await probe.json()).fingerprint,PIN);
  assert.equal((await h.post('/api/home/devices/probe',{host:'down.local'},h.admin)).status,422);
  assert.equal((await h.post('/api/home/devices/probe',{host:'bad host'},h.admin)).status,400);
- const wrong=await h.post('/api/home/devices',{name:'Studio 2',hostname:'studio2.local',...thermo,thermo:{...thermo.thermo,password:'wrong password!!'}},h.admin);
+ const wrong=await h.post('/api/home/devices/add',{name:'Studio 2',hostname:'studio2.local',...thermo,thermo:{...thermo.thermo,password:'wrong password!!'}},h.admin);
  assert.equal(wrong.status,422);assert.match((await wrong.json()).error.message,/Thermo/);assert.equal(added.length,0,'nothing saved after a refused login');
- const ok=await h.post('/api/home/devices',{name:'Studio 2',hostname:'studio2.local',...thermo},h.admin);assert.equal(ok.status,201);
+ const ok=await h.post('/api/home/devices/add',{name:'Studio 2',hostname:'studio2.local',...thermo},h.admin);assert.equal(ok.status,201);
  const dev=await ok.json();assert.equal(dev.id,'studio-2');assert.deepEqual(added,['studio-2']);assert.equal(logins.at(-1).pin,PIN);
  assert.equal(JSON.stringify(dev).includes('correct horse'),false);
  // The picture: JPEG with the page's origin; served to signed-in users only.
@@ -66,10 +66,13 @@ test('home devices over HTTP: probe, Thermo login checked before saving, picture
  const home=await (await fetch(`${h.origin}/api/home`,{headers:h.admin})).json();assert.ok(home.machines.some(m=>m.id==='studio-2'&&m.added&&m.kind==='thermo'));
  const order=await (await fetch(`${h.origin}/api/profile/home-order`,{headers:h.admin})).json();assert.ok(order.known.includes('studio-2'));
  assert.equal((await h.post('/api/profile/home-order',{order:['studio-2','mini']},h.admin)).status,200);
- // API keys never add, remove or upload, whatever their scopes.
- const key=await h.account('agent-home',['read','home:settings','inventory:write']);
- assert.equal((await h.post('/api/home/devices',{name:'X',kind:'other',hostname:'x.local'},key.headers)).status,403);
- assert.equal((await put(JPEG,'image/jpeg',key.headers)).status,403);
- assert.equal((await h.post('/api/home/devices/remove',{id:'studio-2'},h.admin)).status,200);assert.deepEqual(removed,['studio-2']);
+ // API keys never use the add form or upload, whatever their scopes; one removes only with home:write (and the hash).
+ const key=await h.account('agent-home',['read','home:settings','inventory:write']),full=await h.account('agent-full',['*']);
+ for(const headers of [key.headers,full.headers]){
+  const r=await h.post('/api/home/devices/add',{name:'X',kind:'other',hostname:'x.local'},headers);assert.equal(r.status,403);assert.equal((await r.json()).error.code,'SCOPE_REQUIRED');
+  assert.equal((await put(JPEG,'image/jpeg',headers)).status,403);}
+ assert.equal((await h.post('/api/home/devices/remove',{id:'studio-2'},key.headers)).status,403);
+ // The overview removes with the same route as keys and MCP; a person signed in with a password may leave base out.
+ const gone=await h.post('/api/home/devices/remove',{id:'studio-2'},h.admin);assert.equal(gone.status,200);assert.deepEqual(await gone.json(),{ok:true,id:'studio-2',removed:true});assert.deepEqual(removed,['studio-2']);
  assert.equal((await h.post('/api/home/devices/remove',{id:'studio-2'},h.admin)).status,404);
 });

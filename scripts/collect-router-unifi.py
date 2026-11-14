@@ -69,8 +69,8 @@ def load_site(env=os.environ, repo=REPO):
 def site_settings(site, env=os.environ):
     """(gateway host, [networks], UniFi site name) from the environment, then site.json, then defaults."""
     router = site.get('router') if isinstance(site.get('router'), dict) else {}
-    machines = [m for m in site.get('machines') or [] if isinstance(m, dict)] if isinstance(site.get('machines'), list) else []
-    gateway = next((m.get('ip') for m in machines if m.get('role') == 'router' and isinstance(m.get('ip'), str) and m.get('ip')), None)
+    site_machines = [m for m in site.get('machines') or [] if isinstance(m, dict)] if isinstance(site.get('machines'), list) else []
+    gateway = next((m.get('ip') for m in site_machines if m.get('role') == 'router' and isinstance(m.get('ip'), str) and m.get('ip')), None)
     host = env.get('UNIFI_HOST') or (router.get('host') if isinstance(router.get('host'), str) else None) or gateway or '192.168.1.1'
     wanted = [env['UNIFI_LAN']] if env.get('UNIFI_LAN') else [c for c in site.get('lanCidrs') or [] if isinstance(c, str)][:16] if isinstance(site.get('lanCidrs'), list) else []
     networks = []

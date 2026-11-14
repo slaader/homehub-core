@@ -112,7 +112,7 @@ function server({agents,machines}){
   const body=opts.body?JSON.parse(opts.body):null;calls.push({url:String(url),method:opts.method||'GET',body});
   const reply=(status,json)=>({ok:status<300,status,json:async()=>structuredClone(json)});
   if(url==='/api/admin/agents'&&!body)return reply(200,{agents});
-  if(url==='/api/home/machines')return reply(200,{machines});
+  if(url==='/api/home/devices')return reply(200,{machines});
   if(url==='/api/admin/agents'&&body){const agent={id:'1111111111111111',machine:body.machine,name:body.name||`${body.machine} · 2026-11-13`,prefix:TOKEN.slice(0,12),createdAt:iso(0),createdBy:'admin',revokedAt:null,revokedBy:null,lastReportAt:null,agentVersion:null,platform:null};
    agents.push(agent);return reply(201,{token:TOKEN,agent});}
   if(url==='/api/admin/agents/revoke'){const a=agents.find(x=>x.id===body.id);a.revokedAt=iso(0);a.revokedBy='admin';return reply(200,{agent:a});}

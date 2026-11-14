@@ -134,7 +134,7 @@ test('site.json reach: absent or null is port 22, false is never checked, {ports
  refuses({ports:[22],timeout:5},/reach has unknown field\(s\): timeout/);
 });
 
-test('GET /api/home and /api/home/machines carry reachability; online does not change; disabling the integration reads unknown',async t=>{
+test('GET /api/home and /api/home/devices carry reachability; online does not change; disabling the integration reads unknown',async t=>{
  // The fixture's studio answers with a refusal (it is there), every other machine times out.
  const reach=createReachabilityPoller({targets:()=>reachTargets(SITE),connect:async({host})=>{if(host===SITE.machines.find(m=>m.id==='studio').ip)return 'refused';throw new Error('timeout');}});
  const h=await hub(t,{reachability:reach});
@@ -153,7 +153,7 @@ test('GET /api/home and /api/home/machines carry reachability; online does not c
  assert.equal(after.mini.reachability.state,'not-answering');
  assert.equal(after.mini.reachability.port,null);
  assert.match(after.mini.reachability.checkedAt,/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
- const list=await get('/api/home/machines');
+ const list=await get('/api/home/devices');
  for(const m of list.machines.filter(x=>x.source==='site'))assert.deepEqual(m.reachability,after[m.id].reachability,`${m.id} on the machine list`);
  // The integration on the integrations page: disabled, the poller stops and every machine reads unknown.
  const off=await h.post('/api/admin/integrations/toggle',{id:'home.reachability',enabled:false},h.admin);

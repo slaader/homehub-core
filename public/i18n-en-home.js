@@ -335,7 +335,7 @@ export default {
  // server/core/home.mjs: API reference rows
  'Stroje: z konfigurace webu (jen ke čtení) a přidané, s otiskem. MCP machine_list.':'Machines: from the site configuration (read-only) and added ones, with their hash. MCP machine_list.',
  'Založit nebo nahradit stroj {machine, base?}. MCP machine_upsert.':'Create or replace a machine {machine, base?}. MCP machine_upsert.',
- 'Odebrat přidaný stroj {id, base}. MCP machine_remove.':'Remove an added machine {id, base}. MCP machine_remove.',
+ 'Odebrat přidaný stroj {id, base}; base je nepovinné jen po přihlášení heslem. MCP machine_remove.':'Remove an added machine {id, base}; base is optional only with a password sign-in. MCP machine_remove.',
  'Zveřejnit runtime stack stroje {machine, stack|null, base?}. MCP runtime_publish.':'Publish a machine\'s runtime stack {machine, stack|null, base?}. MCP runtime_publish.',
  ':{port} · živě':':{port} · live',
  ':{port} · dřív':':{port} · earlier',

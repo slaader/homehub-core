@@ -64,7 +64,7 @@ test('machine store: create, idempotent repeat, hash-checked replace, refusals',
 
 test('machine store: at most 20 added machines',async t=>{
  const {d}=await store(t,{reserved:[]});
- for(let i=0;i<DEVICE_LIMITS.devices;i++)await d.upsert({id:`box-${i}`,name:`Box ${i}`});
+ for(let i=0;i<DEVICE_LIMITS.added;i++)await d.upsert({id:`box-${i}`,name:`Box ${i}`});
  await rejects(d.upsert({id:'one-more',name:'One more'}),'limit');
  assert.equal((await d.upsert({id:'box-3',name:'Box 3'})).changed,false,'an existing machine can still be repeated');
 });
@@ -257,23 +257,23 @@ test('machine API over HTTP: home:write for keys, a write session for people, si
  const writer=await h.account('agent-home',['home:write']),reader=await h.account('agent-reader',['inventory:write','tickets:write']);
  const legacy={Authorization:'Bearer '+(await (await h.post('/api/admin/keys',{name:'Old writer',permission:'write'},h.admin)).json()).token};
  const get=(url,headers)=>fetch(h.origin+url,{headers});
- assert.equal((await get('/api/home/machines',{})).status,401);
- assert.equal((await get('/api/home/machines',reader.headers)).status,200,'reading needs only read');
+ assert.equal((await get('/api/home/devices',{})).status,401);
+ assert.equal((await get('/api/home/devices',reader.headers)).status,200,'reading needs only read');
  for(const headers of [reader.headers,legacy]){
-  const r=await h.post('/api/home/machines',{machine:pi},headers);assert.equal(r.status,403);assert.equal((await r.json()).error.code,'SCOPE_REQUIRED');
-  assert.equal((await h.post('/api/home/machines/remove',{id:'pi-hole',base:'0'.repeat(64)},headers)).status,403);
+  const r=await h.post('/api/home/devices',{machine:pi},headers);assert.equal(r.status,403);assert.equal((await r.json()).error.code,'SCOPE_REQUIRED');
+  assert.equal((await h.post('/api/home/devices/remove',{id:'pi-hole',base:'0'.repeat(64)},headers)).status,403);
   assert.equal((await h.post('/api/home/runtime',{machine:'mini',stack:STACK},headers)).status,403);}
  // An agent creates, repeats and replaces.
- const created=await h.post('/api/home/machines',{machine:pi},writer.headers);assert.equal(created.status,201);
+ const created=await h.post('/api/home/devices',{machine:pi},writer.headers);assert.equal(created.status,201);
  const made=await created.json();assert.deepEqual([made.ok,made.id,made.created,made.changed,made.by],[true,'pi-hole',true,true,'agent-home']);
- const repeat=await h.post('/api/home/machines',{machine:pi},writer.headers);assert.equal(repeat.status,200);assert.equal((await repeat.json()).changed,false);
- const stale=await h.post('/api/home/machines',{machine:{...pi,name:'Renamed'}},writer.headers);assert.equal(stale.status,409);assert.equal((await stale.json()).error.code,'MACHINE_CONFLICT');
+ const repeat=await h.post('/api/home/devices',{machine:pi},writer.headers);assert.equal(repeat.status,200);assert.equal((await repeat.json()).changed,false);
+ const stale=await h.post('/api/home/devices',{machine:{...pi,name:'Renamed'}},writer.headers);assert.equal(stale.status,409);assert.equal((await stale.json()).error.code,'MACHINE_CONFLICT');
  // A person with a write session edits the same machine in the UI.
- const edited=await h.post('/api/home/machines',{machine:{...pi,name:'Pi-hole (rack)'},base:made.hash},h.admin);assert.equal(edited.status,200);const editedBody=await edited.json();
+ const edited=await h.post('/api/home/devices',{machine:{...pi,name:'Pi-hole (rack)'},base:made.hash},h.admin);assert.equal(edited.status,200);const editedBody=await edited.json();
  // Each refusal has its own code, and details name the field.
  const cases=[[{machine:{...pi,id:'studio'}},403,'MACHINE_READ_ONLY'],[{machine:{...pi,id:'pi-2'}},409,'MACHINE_DUPLICATE'],[{machine:{id:'pi-2',name:'x',ip:'172.16.0.9'}},400,'MACHINE_INVALID',/machine\.ip/],
   [{machine:{id:'pi-2',name:'x',hardware:{cpu:'password: hunter2hunter2'}}},422,'MACHINE_SECRET',/hardware\.cpu/],[{machine:pi,extra:true},400,'MACHINE_INVALID',/expected only/],[{},400,'MACHINE_INVALID']];
- for(const [body,status,code,detail] of cases){const r=await h.post('/api/home/machines',body,writer.headers),e=(await r.json()).error;assert.equal(r.status,status,code);assert.equal(e.code,code);if(detail)assert.match(e.details[0],detail);}
+ for(const [body,status,code,detail] of cases){const r=await h.post('/api/home/devices',body,writer.headers),e=(await r.json()).error;assert.equal(r.status,status,code);assert.equal(e.code,code);if(detail)assert.match(e.details[0],detail);}
  // The overview shows it next to the site's machines, which keep every field they had.
  const home=await (await get('/api/home',reader.headers)).json();
  assert.deepEqual(home.machines.map(m=>m.id),[...SITE_IDS,'pi-hole']);
@@ -290,20 +290,28 @@ test('machine API over HTTP: home:write for keys, a write session for people, si
  assert.equal((await h.post('/api/home/runtime',{machine:'ghost',stack:STACK},writer.headers)).status,404);
  const badStack=await h.post('/api/home/runtime',{machine:'mini',stack:{...STACK,cols:[]}},writer.headers);assert.equal(badStack.status,400);assert.match((await badStack.json()).error.details[0],/stack\.cols/);
  assert.equal((await h.post('/api/home/runtime',{machine:'mini'},writer.headers)).status,400,'stack must be given, null takes it back');
- const listed=await (await get('/api/home/machines?stack=1',reader.headers)).json();
+ const listed=await (await get('/api/home/devices?stack=1',reader.headers)).json();
  assert.equal(listed.machines.find(m=>m.id==='mini').runtime.hash,published.hash);assert.equal(listed.machines.find(m=>m.id==='mini').runtime.stack.blocks.length,4);
- assert.equal((await (await get('/api/home/machines',reader.headers)).json()).machines[0].runtime.stack,undefined);
- // Removal needs the current hash; site machines cannot be removed.
- assert.equal((await h.post('/api/home/machines/remove',{id:'pi-hole'},writer.headers)).status,400);
- assert.equal((await h.post('/api/home/machines/remove',{id:'pi-hole',base:made.hash},writer.headers)).status,409);
- assert.equal((await h.post('/api/home/machines/remove',{id:'studio',base:made.hash},writer.headers)).status,403);
- assert.deepEqual(await (await h.post('/api/home/machines/remove',{id:'pi-hole',base:editedBody.hash},writer.headers)).json(),{ok:true,id:'pi-hole',removed:true});
- assert.equal((await h.post('/api/home/machines/remove',{id:'pi-hole',base:editedBody.hash},writer.headers)).status,404);
+ assert.equal((await (await get('/api/home/devices',reader.headers)).json()).machines[0].runtime.stack,undefined);
+ // Removal needs the current hash; site machines cannot be removed. Only a person signed in with a password may leave
+ // base out, and a base that is sent is checked for everyone.
+ const noBase=await h.post('/api/home/devices/remove',{id:'pi-hole'},writer.headers),noBaseError=(await noBase.json()).error;
+ assert.equal(noBase.status,400);assert.equal(noBaseError.code,'MACHINE_INVALID');assert.match(noBaseError.details[0],/^base /);
+ const staleSession=await h.post('/api/home/devices/remove',{id:'pi-hole',base:made.hash},h.admin);assert.equal(staleSession.status,409);assert.equal((await staleSession.json()).error.code,'MACHINE_CONFLICT');
+ assert.equal((await h.post('/api/home/devices/remove',{id:'pi-hole',base:'nonsense'},h.admin)).status,400);
+ assert.equal((await h.post('/api/home/devices/remove',{id:'pi-hole',extra:1},h.admin)).status,400);
+ const spare=await (await h.post('/api/home/devices',{machine:{id:'spare',name:'Spare'}},writer.headers)).json();assert.equal(spare.created,true);
+ assert.deepEqual(await (await h.post('/api/home/devices/remove',{id:'spare'},h.admin)).json(),{ok:true,id:'spare',removed:true},'a session removes without base');
+ const siteRemove=await h.post('/api/home/devices/remove',{id:'studio'},h.admin);assert.equal(siteRemove.status,403);assert.equal((await siteRemove.json()).error.code,'MACHINE_READ_ONLY');
+ assert.equal((await h.post('/api/home/devices/remove',{id:'pi-hole',base:made.hash},writer.headers)).status,409);
+ assert.equal((await h.post('/api/home/devices/remove',{id:'studio',base:made.hash},writer.headers)).status,403);
+ assert.deepEqual(await (await h.post('/api/home/devices/remove',{id:'pi-hole',base:editedBody.hash},writer.headers)).json(),{ok:true,id:'pi-hole',removed:true});
+ assert.equal((await h.post('/api/home/devices/remove',{id:'pi-hole',base:editedBody.hash},writer.headers)).status,404);
  // Every key write is in the write log with what it touched; refused ones too.
  // Each line is appended on its own once its response is out (server/index.mjs, on 'finish', nothing awaits it), so
  // the lines are on disk at no promised time and in no promised order: wait for all three. The deadline is not a
  // pause, it only bounds how long a line that never comes, or a wrong one, takes to fail.
- const createdLine=e=>e.event==='api-write'&&e.subject==='agent-home'&&e.detail==='/api/home/machines · pi-hole'&&e.status===201;
+ const createdLine=e=>e.event==='api-write'&&e.subject==='agent-home'&&e.detail==='/api/home/devices · pi-hole'&&e.status===201;
  const publishedLine=e=>e.event==='api-write'&&e.subject==='agent-home'&&e.detail==='/api/home/runtime · mini'&&e.status===200;
  const refusedLine=e=>e.event==='api-write'&&e.subject==='agent-reader'&&e.status===403;
  let audit;const deadline=Date.now()+10000;
@@ -314,7 +322,7 @@ test('machine API over HTTP: home:write for keys, a write session for people, si
  // A read-only person cannot write either.
  const guest=await (await h.post('/api/admin/users',{username:'guest'},h.admin)).json();
  const login=await h.post('/api/session',{username:'guest',password:guest.initialPassword});const viewer={Cookie:login.headers.get('set-cookie').split(';')[0]};
- const denied=await h.post('/api/home/machines',{machine:pi},viewer);assert.equal(denied.status,403);assert.equal((await denied.json()).error.code,'READ_ONLY');
+ const denied=await h.post('/api/home/devices',{machine:pi},viewer);assert.equal(denied.status,403);assert.equal((await denied.json()).error.code,'READ_ONLY');
 });
 
 test('MCP: an agent fills an empty hub with machine_upsert and runtime_publish, and cleans up with machine_remove',async t=>{
@@ -375,7 +383,7 @@ test('an existing device is connected to Thermo after its login was checked; key
  const thermoPoller={...quiet,addHost:c=>added.push(c.id),removeHost:id=>removed.push(id)};
  const h=await hub(t,{thermoPoller,checkThermo:async c=>{logins.push(c);if(c.password!=='correct horse battery')throw new Error('denied');return 'ok';}});
  const agent=await h.account('agent-home',['home:write']);
- await h.post('/api/home/machines',{machine:{id:'mac-mini-2',name:'Mac mini 2',hostname:'mini2.example.lan',role:'computer'}},agent.headers);
+ await h.post('/api/home/devices',{machine:{id:'mac-mini-2',name:'Mac mini 2',hostname:'mini2.example.lan',role:'computer'}},agent.headers);
  const thermo={port:49286,username:'homehub',password:'correct horse battery',pin:PIN};
  assert.equal((await h.post('/api/home/devices/thermo',{id:'mac-mini-2',thermo},agent.headers)).status,403,'never with an API key');
  assert.equal((await h.post('/api/home/devices/image/remove',{id:'mac-mini-2'},agent.headers)).status,403);
@@ -392,11 +400,11 @@ test('an existing device is connected to Thermo after its login was checked; key
  assert.deepEqual((await readStore(path.join(h.dir,'home','thermo-hosts.json'))).hosts,[]);
  // A machine removed through the API takes a stored login along, and only then is the poller told.
  await h.post('/api/home/devices/thermo',{id:'mac-mini-2',thermo},h.admin);
- const list=await (await fetch(h.origin+'/api/home/machines',{headers:agent.headers})).json();
- assert.equal((await h.post('/api/home/machines/remove',{id:'mac-mini-2',base:list.machines.find(m=>m.id==='mac-mini-2').hash},agent.headers)).status,200);
+ const list=await (await fetch(h.origin+'/api/home/devices',{headers:agent.headers})).json();
+ assert.equal((await h.post('/api/home/devices/remove',{id:'mac-mini-2',base:list.machines.find(m=>m.id==='mac-mini-2').hash},agent.headers)).status,200);
  assert.deepEqual(removed,['mac-mini-2','mac-mini-2']);
- const plain=await (await h.post('/api/home/machines',{machine:{id:'plain',name:'Plain',thermoId:'mini'}},agent.headers)).json();
- await h.post('/api/home/machines/remove',{id:'plain',base:plain.hash},agent.headers);
+ const plain=await (await h.post('/api/home/devices',{machine:{id:'plain',name:'Plain',thermoId:'mini'}},agent.headers)).json();
+ await h.post('/api/home/devices/remove',{id:'plain',base:plain.hash},agent.headers);
  assert.deepEqual(removed,['mac-mini-2','mac-mini-2'],'a machine that only names a host of the hosts file does not end that host\'s session');
 });
 

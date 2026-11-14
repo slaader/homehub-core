@@ -238,7 +238,7 @@ test('HTTP: a full-access agent holds every scope, also a later one, and still n
  for(const [method,url,body] of [['GET','/api/admin/users'],['GET','/api/admin/roles'],['GET','/api/admin/accounts'],['GET','/api/admin/keys'],['GET','/api/admin/audit'],['GET','/api/app-tokens'],['GET','/api/profile'],['GET','/api/profile/home-order'],
   ['POST','/api/admin/users',{username:'evil'}],['POST','/api/admin/roles',{name:'Evil',scopes:[]}],['POST','/api/admin/accounts',{name:'escalate',scopes:['*']}],['POST','/api/admin/accounts/keys',{accountId:full.account.id}],['POST','/api/admin/users/password',{id:'owner'}],
   ['POST','/api/app-tokens',{name:'x'}],['POST','/api/app-tokens/revoke',{id:'x'}],['POST','/api/session',{username:'admin',password:'administrator-test-password'}],['POST','/api/profile/prefs',{timeZone:null}],['POST','/api/profile/password',{currentPassword:'a',newPassword:'b'}],
-  ['POST','/api/home/devices',{name:'x'}]]){
+  ['POST','/api/home/devices/add',{name:'x'}]]){
   const r=method==='GET'?await fetch(h.origin+url,{headers:full.headers}):await h.post(url,body,full.headers);
   assert.equal(r.status,403,`${method} ${url}`);assert.ok(['ADMIN_REQUIRED','FORBIDDEN','SCOPE_REQUIRED','SESSION_REQUIRED'].includes((await r.json()).error.code),`${method} ${url}`);
  }
@@ -326,6 +326,6 @@ test('newer scopes: Editor, the presets and full access hold home:write and soft
  assert.ok(oldScopes.includes('tickets:write')&&NEWER.every(id=>!oldScopes.includes(id))&&!oldScopes.includes('security:read'));
  assert.ok(oldTools.includes('ticket_create')&&oldTools.includes('machine_list'));
  for(const name of ['machine_upsert','machine_remove','runtime_publish','software_watch_list','software_watch_put'])assert.ok(!oldTools.includes(name),`a legacy key must not see ${name}`);
- const refused=await h.post('/api/home/machines',{machine:{id:'pi',name:'Pi'}},old);
+ const refused=await h.post('/api/home/devices',{machine:{id:'pi',name:'Pi'}},old);
  assert.equal(refused.status,403);assert.equal((await refused.json()).error.code,'SCOPE_REQUIRED');
 });

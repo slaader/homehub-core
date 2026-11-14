@@ -41,9 +41,9 @@ test('a site NAS is edited in place: display values change, identity, role and w
  assert.equal((await stat(file('site-overrides.json'))).mode&0o777,0o600);
  await assert.rejects(access(file('devices.json')),'no shadow device');
  // Agents read the effective values and which were changed; the API still refuses to change the site record.
- const list=await (await fetch(`${h.origin}/api/home/machines`,{headers:h.admin})).json(),listed=list.machines.find(m=>m.id==='nas');
+ const list=await (await fetch(`${h.origin}/api/home/devices`,{headers:h.admin})).json(),listed=list.machines.find(m=>m.id==='nas');
  assert.deepEqual([listed.name,listed.hostname,listed.hardware.ramGb,listed.hardware.pools,listed.readOnly,listed.hash,listed.siteOverride.fields.length],['Storage','storage.example.lan',128,3,true,null,5]);
- const up=await call('/api/home/machines',{machine:{id:'nas',name:'NAS',role:'nas'}});assert.equal(up.status,403);assert.equal(up.body.error.code,'MACHINE_READ_ONLY');
+ const up=await call('/api/home/devices',{machine:{id:'nas',name:'NAS',role:'nas'}});assert.equal(up.status,403);assert.equal(up.body.error.code,'MACHINE_READ_ONLY');
  // Unchanged again: nothing written; then everything back to the site's value drops the entry.
  const same=await call('/api/home/devices/site',{id:'nas',base:nas.siteOverride.hash,machine:saved.body.override.fields});assert.equal(same.body.changed,false);
  const back=await call('/api/home/devices/site',{id:'nas',base:nas.siteOverride.hash,machine:{name:'NAS'}});assert.equal(back.status,200);assert.equal(back.body.override,null);
@@ -67,7 +67,7 @@ test('refusals: stale base, site-controlled fields, bad or secret values, addres
  assert.equal((await call('/api/home/devices/site',{id:'nas',machine:{name:'X'}})).status,400,'base is required');
  assert.equal((await call('/api/home/devices/site',{id:'ghost',base,machine:{name:'X'}})).status,404);
  // An added device is not a site machine: its own editor (machine API) changes it, not this route.
- const added=await call('/api/home/devices',{name:'Box',kind:'other',hostname:'box.example.lan'});assert.equal(added.status,201);
+ const added=await call('/api/home/devices/add',{name:'Box',kind:'other',hostname:'box.example.lan'});assert.equal(added.status,201);
  assert.equal((await call('/api/home/devices/site',{id:added.body.id,base,machine:{name:'X'}})).status,404);
  assert.equal((await call('/api/home/devices/site/reset',{id:added.body.id,base})).status,404);
  // API keys (agents), with every scope there is: none of it.

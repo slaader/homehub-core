@@ -1,5 +1,5 @@
 // Push agent, step 4 (docs/agent.md §7): the overview shows the agent of each machine that holds a key.
-// machines[].agent on GET /api/home, GET /api/home/machines and the MCP tool machine_list; the integration "agent.reports"
+// machines[].agent on GET /api/home, GET /api/home/devices and the MCP tool machine_list; the integration "agent.reports"
 // and what turning it off means; and that a hub without agent keys answers exactly as before (fixture site).
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -103,7 +103,7 @@ test('over HTTP: a key that never reported, a fresh report, then no news by the 
  const fresh=(await h.home('mini')).agent;
  assert.deepEqual(fresh,{lastReportAt:receivedAt,freshness:'fresh',agentVersion:'0.9.0',behind:true,specsDiffer:null});
  assert.deepEqual((await h.get('/api/home')).body.machines.map(m=>[m.id,m.online]),onlineBefore,'online does not follow the agent');
- const listed=(await h.get('/api/home/machines')).body.machines.find(m=>m.id==='mini');assert.deepEqual(listed.agent,fresh);
+ const listed=(await h.get('/api/home/devices')).body.machines.find(m=>m.id==='mini');assert.deepEqual(listed.agent,fresh);
  assert.deepEqual((await h.rpc('machine_list')).machines.find(m=>m.id==='mini').agent,fresh,'machine_list carries it, as it carries reachability');
  // The heartbeat goes quiet first; the os part still holds the machine fresh. Past every part: no news.
  clock.now+=181_000;assert.equal((await h.home('mini')).agent.freshness,'fresh');
@@ -240,8 +240,8 @@ test('a record of another platform than the machine now says is no news, as for 
  const key=await issueAgent(h,DEVICE.id);
  assert.equal((await h.report(key.token,envelope({heartbeat:{schema:1,interval:60}},{platform:'linux'}))).status,200);
  assert.equal((await h.home(DEVICE.id)).agent.freshness,'fresh');
- const listed=(await h.get('/api/home/machines')).body.machines.find(m=>m.id===DEVICE.id);
- assert.equal((await h.post('/api/home/machines',{machine:{...DEVICE,platform:'macos'},base:listed.hash},h.writer.headers)).status,200);
+ const listed=(await h.get('/api/home/devices')).body.machines.find(m=>m.id===DEVICE.id);
+ assert.equal((await h.post('/api/home/devices',{machine:{...DEVICE,platform:'macos'},base:listed.hash},h.writer.headers)).status,200);
  await h.handler.state('agent').sweep();
  const a=(await h.home(DEVICE.id)).agent;
  assert.ok(a,'the key stays: macos may run an agent');
@@ -285,8 +285,8 @@ test('turned off, a key whose machine is gone is still revoked on its report (40
  clock.now=Date.now();
  const key=await issueAgent(h,DEVICE.id);
  assert.equal((await h.post('/api/admin/integrations/toggle',{id:'agent.reports',enabled:false},h.admin)).status,200);
- const listed=(await h.get('/api/home/machines')).body.machines.find(m=>m.id===DEVICE.id);
- assert.equal((await h.post('/api/home/machines/remove',{id:DEVICE.id,base:listed.hash},h.writer.headers)).status,200);
+ const listed=(await h.get('/api/home/devices')).body.machines.find(m=>m.id===DEVICE.id);
+ assert.equal((await h.post('/api/home/devices/remove',{id:DEVICE.id,base:listed.hash},h.writer.headers)).status,200);
  const r=await h.report(key.token,envelope({heartbeat:{schema:1,interval:60}},{platform:'linux'}));
  assert.equal(r.status,409);assert.equal(await errorCode(r),'AGENT_MACHINE_GONE');
  assert.equal(h.handler.state('agent').record(DEVICE.id),null,'nothing stored');
@@ -304,10 +304,10 @@ test('a device added after its id was used: an old record is no report (never), 
  assert.equal((await h.report(key.token,envelope({heartbeat:{schema:1,interval:60}},{platform:'linux'}))).status,200);
  assert.equal((await h.home(DEVICE.id)).agent.freshness,'fresh');
  // Removed and added again under the same id: the key is revoked by the hub, and a new key starts at never.
- const listed=(await h.get('/api/home/machines')).body.machines.find(m=>m.id===DEVICE.id);
- assert.equal((await h.post('/api/home/machines/remove',{id:DEVICE.id,base:listed.hash},h.writer.headers)).status,200);
+ const listed=(await h.get('/api/home/devices')).body.machines.find(m=>m.id===DEVICE.id);
+ assert.equal((await h.post('/api/home/devices/remove',{id:DEVICE.id,base:listed.hash},h.writer.headers)).status,200);
  await new Promise(r=>setTimeout(r,20));
- assert.equal((await h.post('/api/home/machines',{machine:DEVICE},h.writer.headers)).status,201);
+ assert.equal((await h.post('/api/home/devices',{machine:DEVICE},h.writer.headers)).status,201);
  await h.handler.state('agent').sweep();
  assert.equal((await h.home(DEVICE.id)).agent,null,'the old key is revoked');
  await issueAgent(h,DEVICE.id);

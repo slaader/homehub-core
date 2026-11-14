@@ -64,7 +64,7 @@ devices (`server/home-devices.mjs`). Thermo host ids and router device ids are n
   part is refused `platform-mismatch` (the hub never guesses which side is right).
 - A key whose machine later becomes one of these (the site or the device changes its role, probe or platform) is
   revoked by the hub the same way as below, with `revokedBy: "machine-changed"`.
-- **Ids come back; keys do not follow them.** `deviceId` avoids only the ids taken now, so a removed device's id can
+- **Ids come back; keys do not follow them.** `newDeviceId` avoids only the ids taken now, so a removed device's id can
   be given again. A key binds `{machine, machineCreatedAt}` (a device's `createdAt`; `null` for a site machine) and
   works only while the machine exists with that stamp. When the hub sees it gone or re-created (a report, the start,
   a change of `devices.json` or the site), it **revokes** the key itself (`revokedBy: "machine-removed"`, audited);
@@ -665,7 +665,7 @@ of the copy stay; the next install takes them over.
 
 What step 4 settled, beside the row of §7:
 
-- **`machines[].agent`** on `GET /api/home`, `GET /api/home/machines` and the MCP tool `machine_list` (as the
+- **`machines[].agent`** on `GET /api/home`, `GET /api/home/devices` and the MCP tool `machine_list` (as the
   reachability check did; `home_status` is unchanged): `{lastReportAt, freshness, agentVersion, behind, specsDiffer}` for
   a machine that holds a key that is not revoked and is bound to it as it is now (and that would still be given one), else
   `null`

@@ -407,7 +407,7 @@ test('the 20 s floor holds for reports that arrive together: one 200, the rest 4
 test('the audit stays bounded when every part is refused, and when the version flaps',async t=>{
  const {h,clock,report}=await agentHub(t);
  const writer=await h.account('agent-home',['home:write']);
- await h.post('/api/home/machines',{machine:{id:'box',name:'Box',hostname:'box.example.lan',ip:'10.0.0.60',role:'computer',platform:'linux'}},writer.headers);
+ await h.post('/api/home/devices',{machine:{id:'box',name:'Box',hostname:'box.example.lan',ip:'10.0.0.60',role:'computer',platform:'linux'}},writer.headers);
  const box=await issueAgent(h,'box');
  const lines=async()=>(await readFile(path.join(h.dir,'agent-audit.jsonl'),'utf8')).trim().split('\n').map(l=>JSON.parse(l));
  // A platform-mismatched machine: 50 reports, 21 s apart, every part refused. Nothing is stored, so it never

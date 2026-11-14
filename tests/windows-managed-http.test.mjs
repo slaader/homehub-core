@@ -66,14 +66,14 @@ test('HTTP: add a Windows device with a key the hub made; nothing private leaves
  assert.ok(!managed.some(a=>a.startsWith('~')||/[\\/]\.ssh[\\/]|accept-new/.test(a)),'nothing from ~/.ssh, never accept-new');
  const keyscan=runs.find(x=>x.binary==='ssh-keyscan'&&x.args.length).args;assert.ok(!keyscan.includes('-i')&&!keyscan.includes('-l'),'discovery sends no credentials');
  // A form that differs from what was tested is refused, nothing is stored.
- const stale=await call('/api/home/devices',{name:'Office PC',kind:'windows',hostname:'office.example.lan',windows:{draft:r.draft,...r.form,user:'bob'}});
+ const stale=await call('/api/home/devices/add',{name:'Office PC',kind:'windows',hostname:'office.example.lan',windows:{draft:r.draft,...r.form,user:'bob'}});
  assert.deepEqual([stale.status,stale.body.error.code,stale.body.error.reason],[409,'WINDOWS_SETUP_FAILED','stale']);
  assert.equal(stale.body.error.message,WINDOWS_SETUP_ERRORS.stale[1]);
- const junk=await call('/api/home/devices',{name:'Office PC',kind:'windows',hostname:'office.example.lan',windows:{draft:r.draft,...r.form,keyFile:'/etc/passwd'}});assert.equal(junk.status,400,'no other field, no path');
- const saved=await call('/api/home/devices',{name:'Office PC',kind:'windows',hostname:'office.example.lan',windows:{draft:r.draft,...r.form}});
+ const junk=await call('/api/home/devices/add',{name:'Office PC',kind:'windows',hostname:'office.example.lan',windows:{draft:r.draft,...r.form,keyFile:'/etc/passwd'}});assert.equal(junk.status,400,'no other field, no path');
+ const saved=await call('/api/home/devices/add',{name:'Office PC',kind:'windows',hostname:'office.example.lan',windows:{draft:r.draft,...r.form}});
  assert.equal(saved.status,201,JSON.stringify(saved.body));assert.equal(saved.body.platform,'windows');
  const cfg=poller.added.at(-1);assert.equal(cfg.id,'office-pc');assert.equal(cfg.managed.user,'alice');assert.equal(cfg.target,'alice@pc.example.lan');
- assert.equal((await call('/api/home/devices',{name:'Office PC 2',kind:'windows',hostname:'office2.example.lan',windows:{draft:r.draft,...r.form}})).body.error.reason,'draft-missing','a draft saves once');
+ assert.equal((await call('/api/home/devices/add',{name:'Office PC 2',kind:'windows',hostname:'office2.example.lan',windows:{draft:r.draft,...r.form}})).body.error.reason,'draft-missing','a draft saves once');
  // Where things are: the private key in the store only, 0600; the connection without it; devices.json without either.
  const [keyFile]=await files(path.join(ssh,'keys'));assert.ok(keyFile);
  if(process.platform!=='win32')assert.equal((await stat(path.join(ssh,'keys',keyFile))).mode&0o777,0o600);
@@ -85,7 +85,7 @@ test('HTTP: add a Windows device with a key the hub made; nothing private leaves
  const home=await (await fetch(`${h.origin}/api/home`,{headers:h.admin})).json();
  const tile=home.machines.find(m=>m.id==='office-pc');
  assert.deepEqual(tile.telemetry.connection,{mode:'managed',host:'pc.example.lan',port:22,user:'alice',keyFingerprint:r.key.fingerprint,hostKeyFingerprint:cfg.managed.hostKey.fingerprint});
- const list=await (await fetch(`${h.origin}/api/home/machines`,{headers:h.admin})).json();
+ const list=await (await fetch(`${h.origin}/api/home/devices`,{headers:h.admin})).json();
  for(const body of [home,list,saved.body,stale.body])assert.ok(!JSON.stringify(body).includes(pemLine)&&!/PRIVATE KEY|known_hosts|\/home\/ssh/.test(JSON.stringify(body)));
  assert.ok(!JSON.stringify(list).includes(r.key.fingerprint)&&!JSON.stringify(list).includes('pc.example.lan'),'machine_list carries no connection');
  // A refused login: the code and its sentence, not ssh's output.
@@ -122,7 +122,7 @@ test('HTTP: imports are checked and never echoed; encrypted keys are refused, no
 test('HTTP: editing reuses the key and trust; a draft is bound to its device; disconnect and remove delete the hub\'s key; host trust is re-verified explicitly',async t=>{
  const {h,ssh,poller,call,ready}=await managedHub(t);
  const first=await ready();
- assert.equal((await call('/api/home/devices',{name:'Gaming',kind:'windows',hostname:'gaming.example.lan',windows:{draft:first.draft,...first.form}})).status,201);
+ assert.equal((await call('/api/home/devices/add',{name:'Gaming',kind:'windows',hostname:'gaming.example.lan',windows:{draft:first.draft,...first.form}})).status,201);
  const keyBefore=await files(path.join(ssh,'keys')),hostsBefore=await files(path.join(ssh,'known_hosts'));
  // Only the user changes: same key, same verified host key, a new test.
  const edit=(await call('/api/home/devices/windows/draft',{id:'gaming'})).body.draft;
@@ -130,7 +130,7 @@ test('HTTP: editing reuses the key and trust; a draft is bound to its device; di
  assert.equal((await call('/api/home/devices/windows',{id:'gaming',windows:{draft:edit.id,...first.form,user:'bob'}})).body.error.reason,'stale','the form shows another user than the draft was tested with');
  assert.equal((await call('/api/home/devices/windows/draft/test',{draft:edit.id,...first.form,user:'bob'})).status,200);
  // A draft made for this device cannot create another one.
- assert.equal((await call('/api/home/devices',{name:'Other',kind:'windows',hostname:'other.example.lan',windows:{draft:edit.id,...first.form,user:'bob'}})).body.error.reason,'draft-missing');
+ assert.equal((await call('/api/home/devices/add',{name:'Other',kind:'windows',hostname:'other.example.lan',windows:{draft:edit.id,...first.form,user:'bob'}})).body.error.reason,'draft-missing');
  assert.equal((await call('/api/home/devices/windows',{id:'gaming',windows:{draft:edit.id,...first.form,user:'bob'}})).status,200);
  assert.equal(poller.added.at(-1).managed.user,'bob');
  assert.deepEqual(await files(path.join(ssh,'keys')),keyBefore,'the key is kept');
@@ -146,7 +146,7 @@ test('HTTP: editing reuses the key and trust; a draft is bound to its device; di
  assert.ok(poller.removed.includes('gaming'));assert.deepEqual([await files(path.join(ssh,'keys')),await files(path.join(ssh,'known_hosts'))],[[],[]]);
  // Remove: the same.
  const again=await ready();
- assert.equal((await call('/api/home/devices',{name:'Desk',kind:'windows',hostname:'desk.example.lan',windows:{draft:again.draft,...again.form}})).status,201);
+ assert.equal((await call('/api/home/devices/add',{name:'Desk',kind:'windows',hostname:'desk.example.lan',windows:{draft:again.draft,...again.form}})).status,201);
  assert.equal((await files(path.join(ssh,'keys'))).length,1);
  assert.equal((await call('/api/home/devices/remove',{id:'desk'})).status,200);
  // Unlike Disconnect, this route answers before the key files are gone (server/core/home.mjs, forget: the removal is
@@ -167,7 +167,7 @@ test('HTTP: API keys and agents reach none of it; another person\'s draft does n
   assert.equal((await asAgent(url,body)).status,403,url);
  // machine_upsert takes no connection, key or path.
  for(const extra of [{windows:{draft:d.id}},{telemetryProvider:'windows'},{sshKey:'x'},{keyFile:'/etc/passwd'}]){
-  const r=await asAgent('/api/home/machines',{machine:{id:'pc',name:'PC',hostname:'pc.example.lan',...extra}});assert.equal(r.status,400,JSON.stringify(extra));}
+  const r=await asAgent('/api/home/devices',{machine:{id:'pc',name:'PC',hostname:'pc.example.lan',...extra}});assert.equal(r.status,400,JSON.stringify(extra));}
  // Unauthenticated: nothing.
  assert.equal((await fetch(`${h.origin}/api/home/devices/windows/draft`,{method:'POST',headers:{Origin:h.origin,'Content-Type':'application/json'},body:'{}'})).status,401);
  // A signed-in reader (no write access) reaches none of it either; whose draft it is was checked in the draft tests.

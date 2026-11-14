@@ -425,7 +425,7 @@ test('router adapter: site.json names it, a plugin can provide one, a hub with a
  const h=await hub(t);
  assert.equal((await fetch(h.origin+'/api/router')).status,401);
  const empty=await (await fetch(h.origin+'/api/router',{headers:h.admin})).json();
- assert.equal(empty.state,'not-configured');assert.deepEqual(empty.configured,{adapter:null,host:'10.0.0.1',lanCidrs:['10.0.0.0/24']});assert.deepEqual(empty.machine,{id:'router',name:'Router',ip:'10.0.0.1'});
+ assert.equal(empty.state,'not-configured');assert.deepEqual(empty.configured,{adapter:null,host:'10.0.0.1',lanCidrs:['10.0.0.0/24']});assert.deepEqual(empty.siteMachine,{id:'router',name:'Router',ip:'10.0.0.1'});
  assert.equal((await (await fetch(h.origin+'/api/home',{headers:h.admin})).json()).router.status,'not-configured');
  await writeFile(path.join(h.dir,ROUTER_FILE),JSON.stringify(observation({observedAt:new Date().toISOString()})));
  const live=await (await fetch(h.origin+'/api/router',{headers:(await h.account('reader',[])).headers})).json();

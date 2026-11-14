@@ -12,7 +12,7 @@ const {statusOf,hasReadings,installSteps}=await import('../public/home-telemetry
 const {validateDevice,inNetworks,PICTURES,telemetryChoices,choicesFor}=await import('../public/home-add-device.js');
 const {pictureChain,orderedMachines,moveId,sparkLabel}=await import('../public/home-view.js');
 const server=await import('../server/home-devices.mjs');
-const {inCidrs}=await import('../server/site-config.mjs');
+const {inCidrs,MACHINE_ROLES}=await import('../server/site-config.mjs');
 const {TELEMETRY_REPO_URL}=await import('../server/thermo-client.mjs');
 const {TELEMETRY_ADAPTERS}=await import('../server/home-data.mjs');
 const {dictionary}=await import('../public/i18n.js');
@@ -78,7 +78,7 @@ test('the device form refuses what the server would, field by field',()=>{
 test('what the form offers is what the server accepts, and every built-in picture exists',async()=>{
  assert.deepEqual([...PICTURES],[...server.PICTURES]);
  for(const id of PICTURES){const svg=await readFile(new URL(`../public/images/generic/${id}.svg`,import.meta.url),'utf8');assert.match(svg,/^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg" viewBox="0 0 480 320"/);assert.doesNotMatch(svg,/<script|href=|url\(http/i,'a picture is a drawing, nothing else');}
- for(const role of server.MACHINE_ROLES)assert.ok(server.PICTURES.includes(server.defaultPicture(role)),role);
+ for(const role of MACHINE_ROLES)assert.ok(server.PICTURES.includes(server.defaultPicture(role)),role);
  // The view draws without innerHTML and without hex colours of its own: text-safe DOM, colours from tokens.
  for(const file of ['home-view.js','home-telemetry.js','home-add-device.js']){const src=await readFile(new URL(`../public/${file}`,import.meta.url),'utf8');
   assert.doesNotMatch(src,/innerHTML|insertAdjacentHTML|outerHTML/,file);assert.doesNotMatch(src,/['"`]#[0-9a-fA-F]{3,8}['"`]/,`${file}: colours belong in home.css`);}

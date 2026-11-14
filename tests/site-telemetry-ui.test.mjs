@@ -66,7 +66,7 @@ test('the site machine\'s telemetry settings open its site editor at telemetry: 
  const load=all(dialog,n=>n.tagName==='button').find(b=>text(b)==='Načíst cíle z Promethea');assert.ok(load,'the Prometheus form is shown');
  fire(load,'click');await new Promise(r=>setTimeout(r,20));
  assert.deepEqual(posts.filter(p=>p.url!=='/api/home/devices/hub-address')[0],{url:'/api/home/devices/endpoint/draft',body:{provider:'prometheus',id:'nas'}});
- assert.ok(!posts.some(p=>p.url==='/api/home/machines'),'never the machine API');
+ assert.ok(!posts.some(p=>p.url==='/api/home/devices'),'never the machine API');
  dialog.close?.();void saved;void document;
 });
 
@@ -80,5 +80,5 @@ test('the page wires it: a site machine gets Edit machine and its Telemetry sett
  const dialog=await readFile(new URL('../public/home-add-device.js',import.meta.url),'utf8');
  const site=dialog.slice(dialog.indexOf('if(siteMode){\n   const body'),dialog.indexOf("say(t('Ukládám…'));\n  // Connecting"));
  assert.ok(site.length>0);assert.match(site,/\/api\/home\/devices\/site'/);assert.match(site,/\/api\/home\/devices\/telemetry/);assert.match(site,/\/api\/home\/devices\/windows/);
- assert.doesNotMatch(site,/\/api\/home\/machines/);
+ assert.doesNotMatch(site,/post\('\/api\/home\/devices'/,'never the machine API');
 });

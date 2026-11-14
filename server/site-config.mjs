@@ -11,7 +11,8 @@ import os from 'node:os';
 import {repoRoot} from './edition.mjs';
 import {resolvePaths} from './paths.mjs';
 
-const MACHINE_ID=/^[a-z][a-z0-9_-]{1,31}$/;
+// The id of a machine, a site's or an added one (server/home-devices.mjs), and the roles one may have: defined here only.
+export const MACHINE_ID=/^[a-z][a-z0-9_-]{1,31}$/;
 export const MACHINE_ROLES=Object.freeze(['computer','nas','router','other']);
 export const SSH_PROBES=Object.freeze(['mac','nas']);
 // The operating system of a machine, apart from its role (the same list as server/home-devices.mjs → PLATFORMS).
@@ -198,7 +199,8 @@ let cached=null;
 export const site=()=>cached??(cached=loadSite());
 
 // --- derived views ---------------------------------------------------------------------------
-export const machineIds=s=>s.machines.map(m=>m.id);
+// The ids of the site's own machines (the added ones are the home store's: server/home-devices.mjs).
+export const siteMachineIds=s=>s.machines.map(m=>m.id);
 // What the overview tile and the collectors call this machine: thermo = live Thermo telemetry.
 export const machineKind=m=>m.thermoId?'thermo':m.role==='nas'?'nas':m.role==='router'?'router':'other';
 export const thermoMachineIds=s=>s.machines.filter(m=>m.thermoId).map(m=>m.id);

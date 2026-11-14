@@ -2,8 +2,8 @@
 // (position-bound LEGO grid) and chart series. Live numbers come from the compute bridges
 // (services), the Thermo pull clients (cpu/gpu/power/temp/minutes) and router observations;
 // the grid layout below is the static contract agents extend via runtime_publish later.
-import {machineKind,inLan} from './site-config.mjs';
-import {machineFields,machineHash,runtimeHash,pictureUrl,defaultPicture,siteBindable,siteDefaults,siteOverrideHash,PICTURES,MACHINE_ROLES,PLATFORMS,DEVICE_LIMITS,RUNTIME_LAYERS} from './home-devices.mjs';
+import {machineKind,inLan,MACHINE_ROLES} from './site-config.mjs';
+import {machineFields,machineHash,runtimeHash,pictureUrl,defaultPicture,siteBindable,siteDefaults,siteOverrideHash,PICTURES,PLATFORMS,DEVICE_LIMITS,RUNTIME_LAYERS} from './home-devices.mjs';
 import {TELEMETRY_AGENT_NAME,TELEMETRY_REPO_URL,TELEMETRY_STALE_SECONDS} from './thermo-client.mjs';
 import {WINDOWS_PROVIDER,WINDOWS_ADAPTER_NAME,WINDOWS_MIN_INTERVAL_MS} from './windows-telemetry.mjs';
 import {WINRM_PROVIDER,WINRM_NAME,WINRM_PORT} from './winrm-telemetry.mjs';
@@ -54,7 +54,6 @@ export function overriddenSiteDefinition(def,m,o){
 }
 // Per-machine runtime stack (the position-bound grid drawn on a machine page), when the site describes one.
 export const stackLayouts=site=>Object.fromEntries(site.machines.filter(m=>m.stack).map(m=>[m.id,m.stack]));
-export const homeMachineIds=site=>site.machines.map(m=>m.id);
 // A machine from the store (added on the overview, or written by an agent) as a tile definition. image = an
 // uploaded picture served from state; picture = the built-in one behind it (pictureId, or the role's default).
 // source: "ui" or "agent". hash: what machine_upsert / machine_remove expect as base.
@@ -518,7 +517,7 @@ export async function loadMachineDescriptors(dir,ids=[]){
  return out;
 }
 
-// The machines as the machine API lists them (GET /api/home/machines, MCP machine_list): the site's own
+// The machines as the machine API lists them (GET /api/home/devices, MCP machine_list): the site's own
 // (read-only) and the stored ones with their hash. home = a buildHome() payload, for telemetry and the stack.
 // withStack: also return what is published for each machine, in the form runtime_publish takes.
 // siteTelemetry: the effective site bindings; a bound site machine lists the platform its provider reads.
@@ -546,5 +545,5 @@ export function machineList({site,added=[],published={},home=null,withStack=fals
   ...added.map(d=>({...machineFields(d),source:d.source,readOnly:false,hash:machineHash(d),customPicture:d.image===true,
    createdAt:d.createdAt||null,createdBy:d.createdBy||null,updatedAt:d.updatedAt||null,updatedBy:d.updatedBy||null,telemetry:telemetry(d.id),reachability:reach(d.id),agent:agent(d.id),runtime:runtime(d.id)}))];
  return {machines,pictures:PICTURES.map(id=>({id,url:pictureUrl(id)})),roles:[...MACHINE_ROLES],platforms:[...PLATFORMS],runtimeLayers:[...RUNTIME_LAYERS],lanCidrs:[...site.lanCidrs],
-  limits:{machines:DEVICE_LIMITS.devices},telemetry:telemetryMeta()};
+  limits:{machines:DEVICE_LIMITS.added},telemetry:telemetryMeta()};
 }

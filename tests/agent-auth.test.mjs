@@ -147,14 +147,14 @@ test('a reused id: remove a device, add one that gets the same id, the old key g
  const h=await hub(t,{thermoPoller:quiet,agentClock:()=>clock});
  const report=reportTo(h),writer=await h.account('agent-home',['home:write']);
  const pi={id:'pi-hole',name:'Pi-hole',hostname:'pi.example.lan',ip:'10.0.0.53',role:'other',platform:'linux'};
- const made=await (await h.post('/api/home/machines',{machine:pi},writer.headers)).json();
+ const made=await (await h.post('/api/home/devices',{machine:pi},writer.headers)).json();
  const key=await issue(h,'pi-hole');
  const linux=envelope(undefined,{platform:'linux'});
  assert.equal((await report(key.token,linux)).status,200);
  // The device goes and an agent adds one with the same id: a new createdAt.
- assert.equal((await h.post('/api/home/machines/remove',{id:'pi-hole',base:made.hash},writer.headers)).status,200);
+ assert.equal((await h.post('/api/home/devices/remove',{id:'pi-hole',base:made.hash},writer.headers)).status,200);
  await new Promise(r=>setTimeout(r,3));
- assert.equal((await h.post('/api/home/machines',{machine:pi},writer.headers)).status,201);
+ assert.equal((await h.post('/api/home/devices',{machine:pi},writer.headers)).status,201);
  clock+=60_000;
  const gone=await report(key.token,linux);assert.equal(gone.status,409);assert.equal(await code(gone),'AGENT_MACHINE_GONE');
  const after=await report(key.token,linux);assert.equal(after.status,401);assert.equal(await code(after),'AUTH_REQUIRED');
@@ -167,9 +167,9 @@ test('a reused id: remove a device, add one that gets the same id, the old key g
  // A new key for the new device works; without a report, the hub revokes on its own sweep.
  const fresh=await issue(h,'pi-hole');
  assert.equal((await report(fresh.token,linux)).status,200);
- const now=await (await fetch(h.origin+'/api/home/machines',{headers:h.admin})).json();
+ const now=await (await fetch(h.origin+'/api/home/devices',{headers:h.admin})).json();
  const again=now.machines.find(m=>m.id==='pi-hole');
- assert.equal((await h.post('/api/home/machines/remove',{id:'pi-hole',base:again.hash},writer.headers)).status,200);
+ assert.equal((await h.post('/api/home/devices/remove',{id:'pi-hole',base:again.hash},writer.headers)).status,200);
  assert.equal(await h.handler.state('agent').sweep(),1,'the sweep (start, devices.json changed) revokes it');
  clock+=60_000;
  assert.equal((await report(fresh.token,linux)).status,401,'no report needed for the revocation');
@@ -220,7 +220,7 @@ test('a machine whose platform is said must report that one, else every part is 
  let clock=Date.parse('2026-11-13T10:00:00Z');
  const h=await hub(t,{thermoPoller:quiet,agentClock:()=>clock});
  const report=reportTo(h),writer=await h.account('agent-home',['home:write']);
- await h.post('/api/home/machines',{machine:{id:'box',name:'Box',hostname:'box.example.lan',ip:'10.0.0.60',role:'computer',platform:'linux'}},writer.headers);
+ await h.post('/api/home/devices',{machine:{id:'box',name:'Box',hostname:'box.example.lan',ip:'10.0.0.60',role:'computer',platform:'linux'}},writer.headers);
  const key=await issue(h,'box');
  const r=await report(key.token,envelope({heartbeat:{schema:1,interval:60},...systemsParts({name:'box'})}));
  assert.equal(r.status,200);const body=await r.json();
@@ -256,25 +256,25 @@ test('a key whose machine would now be refused at issue is revoked: platform "ot
  const h=await hub(t,{thermoPoller:quiet,agentClock:()=>clock});
  const report=reportTo(h),writer=await h.account('agent-home',['home:write']);
  const box={id:'box',name:'Box',hostname:'box.example.lan',ip:'10.0.0.60',role:'computer',platform:'linux'};
- const made=await (await h.post('/api/home/machines',{machine:box},writer.headers)).json();
- await h.post('/api/home/machines',{machine:{id:'odd',name:'Odd',hostname:'odd.example.lan',ip:'10.0.0.61',role:'computer',platform:'other'}},writer.headers);
+ const made=await (await h.post('/api/home/devices',{machine:box},writer.headers)).json();
+ await h.post('/api/home/devices',{machine:{id:'odd',name:'Odd',hostname:'odd.example.lan',ip:'10.0.0.61',role:'computer',platform:'other'}},writer.headers);
  const odd=await h.post('/api/admin/agents',{machine:'odd'},h.admin);assert.equal(odd.status,400);
  const oddBody=await odd.json();assert.equal(oddBody.error.code,'AGENT_INVALID');assert.match(oddBody.error.message,/platform/);
  const key=await issue(h,'box'),linux=envelope(undefined,{platform:'linux'});
  assert.equal((await report(key.token,linux)).status,200);
  // The device becomes the router: the next report is 409 and the key is dead, revoked as machine-changed.
- const changed=await h.post('/api/home/machines',{machine:{...box,role:'router'},base:made.hash},writer.headers);assert.equal(changed.status,200,await changed.clone().text());
+ const changed=await h.post('/api/home/devices',{machine:{...box,role:'router'},base:made.hash},writer.headers);assert.equal(changed.status,200,await changed.clone().text());
  clock+=60_000;
  const r=await report(key.token,linux);assert.equal(r.status,409);assert.equal(await code(r),'AGENT_MACHINE_GONE');
  assert.equal((await report(key.token,linux)).status,401);
  const listed=(await (await fetch(h.origin+'/api/admin/agents',{headers:h.admin})).json()).agents;
  assert.equal(listed.find(a=>a.id===key.agent.id).revokedBy,'machine-changed');
  // Without a report: the sweep revokes a key whose machine got platform "other".
- const now=(await (await fetch(h.origin+'/api/home/machines',{headers:h.admin})).json()).machines.find(m=>m.id==='box');
- assert.equal((await h.post('/api/home/machines',{machine:{...box,role:'computer'},base:now.hash},writer.headers)).status,200);
+ const now=(await (await fetch(h.origin+'/api/home/devices',{headers:h.admin})).json()).machines.find(m=>m.id==='box');
+ assert.equal((await h.post('/api/home/devices',{machine:{...box,role:'computer'},base:now.hash},writer.headers)).status,200);
  const second=await issue(h,'box');
- const again=(await (await fetch(h.origin+'/api/home/machines',{headers:h.admin})).json()).machines.find(m=>m.id==='box');
- assert.equal((await h.post('/api/home/machines',{machine:{...box,platform:'other'},base:again.hash},writer.headers)).status,200);
+ const again=(await (await fetch(h.origin+'/api/home/devices',{headers:h.admin})).json()).machines.find(m=>m.id==='box');
+ assert.equal((await h.post('/api/home/devices',{machine:{...box,platform:'other'},base:again.hash},writer.headers)).status,200);
  assert.equal(await h.handler.state('agent').sweep(),1);
  clock+=60_000;
  assert.equal((await report(second.token,linux)).status,401);

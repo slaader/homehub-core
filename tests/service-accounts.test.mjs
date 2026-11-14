@@ -9,7 +9,8 @@ import {scopeFor,legacyScopes,validScopes} from '../server/scopes.mjs';
 import {hub,credentials} from './hub-helper.mjs';
 test('scope table: admin and token routes are never reachable with a key, legacy keys keep their old reach',()=>{
  assert.equal(scopeFor('POST','/api/inventory/entries'),'inventory:write');
- assert.equal(scopeFor('POST','/api/tickets'),'tickets:write');assert.equal(scopeFor('PUT','/api/review/blobs/'+'a'.repeat(64)),'review:write');assert.equal(scopeFor('POST','/api/home/devices'),null);
+ assert.equal(scopeFor('POST','/api/tickets'),'tickets:write');assert.equal(scopeFor('PUT','/api/review/blobs/'+'a'.repeat(64)),'review:write');assert.equal(scopeFor('POST','/api/home/devices/add'),null);
+ assert.equal(scopeFor('POST','/api/home/devices'),'home:write');assert.equal(scopeFor('POST','/api/home/devices/remove'),'home:write');assert.equal(scopeFor('GET','/api/home/devices'),'read');
  assert.equal(scopeFor('GET','/api/home'),'read');
  assert.equal(scopeFor('GET','/api/security'),'security:read');
  assert.equal(scopeFor('GET','/api/systems'),'security:read');
@@ -55,7 +56,7 @@ test('HTTP: an inventory agent can update the inventory and nothing else; every 
  assert.equal(ok.status,200);
  const saved=JSON.parse(await readFile(path.join(h.dir,'knowledge.json'),'utf8')).entries.find(e=>e.id==='studio-llama-swap');
  assert.equal(saved.version,'v190');assert.equal(saved.verified_by,'Home Hub API · agent-studio');
- for(const [route,body] of [['/api/home/settings',{intervalSeconds:30}],['/api/tickets',{project:'home-hub',title:'x'}],['/api/review/sets',{id:'R-1'}],['/api/home/devices',{name:'x'}]]){
+ for(const [route,body] of [['/api/home/settings',{intervalSeconds:30}],['/api/tickets',{project:'home-hub',title:'x'}],['/api/review/sets',{id:'R-1'}],['/api/home/devices/add',{name:'x'}]]){
   const r=await h.post(route,body,agent.headers);assert.equal(r.status,403,route);assert.equal((await r.json()).error.code,'SCOPE_REQUIRED');
  }
  assert.equal(bridgeCalls,0,'refused writes never reach a bridge');

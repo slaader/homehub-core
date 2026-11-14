@@ -85,7 +85,7 @@ test('the site NAS connects to an existing Prometheus on its own tile: identity,
  assert.deepEqual([nas.telemetry.provider,nas.telemetry.hostId,nas.telemetryBinding.provider],['prometheus','nas','prometheus']);
  assert.equal(nas.hash,undefined);assert.equal(nas.added,undefined);
  // machine_list: still read-only, no hash, platform from the binding, no connection.
- const list=await get('/api/home/machines'),m=list.machines.find(x=>x.id==='nas');
+ const list=await get('/api/home/devices'),m=list.machines.find(x=>x.id==='nas');
  assert.deepEqual([m.source,m.readOnly,m.hash,m.platform,m.role,m.telemetry.provider],['site',true,null,'linux','nas','prometheus']);
  assert.doesNotMatch(JSON.stringify(list),/10\.0\.0\.90|nas-node/,'agents never see the connection');
  // History is the provider's, not "no source".
@@ -95,8 +95,8 @@ test('the site NAS connects to an existing Prometheus on its own tile: identity,
  assert.ok(prom,'the Prometheus integration is listed');assert.deepEqual(prom.status.items.map(i=>[i.id,i.label]),[['nas','NAS']]);
  assert.ok(prom.status.configuredBy.some(c=>/konfigurace webu/.test(c.name)));
  // The machine API still refuses the site record.
- const up=await call('/api/home/machines',{machine:{id:'nas',name:'NAS',role:'nas'}});assert.equal(up.status,403);assert.equal(up.body.error.code,'MACHINE_READ_ONLY');
- const rm=await call('/api/home/machines/remove',{id:'nas',base:'a'.repeat(64)});assert.equal(rm.status,403);
+ const up=await call('/api/home/devices',{machine:{id:'nas',name:'NAS',role:'nas'}});assert.equal(up.status,403);assert.equal(up.body.error.code,'MACHINE_READ_ONLY');
+ const rm=await call('/api/home/devices/remove',{id:'nas',base:'a'.repeat(64)});assert.equal(rm.status,403);
  assert.notEqual((await call('/api/home/devices/remove',{id:'nas'})).status,200,'no remove of a site machine');
  // Its picture is the owner's override now (tests/site-overrides.test.mjs): with none uploaded, removing one changes nothing.
  const pic=await call('/api/home/devices/image/remove',{id:'nas'});assert.equal(pic.status,200);assert.equal(pic.body.siteOverride,null);

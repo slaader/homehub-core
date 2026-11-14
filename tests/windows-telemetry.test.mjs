@@ -281,24 +281,24 @@ test('HTTP: test, connect in place, add and disconnect; hostile targets and API 
  const agent=await h.account('agent',['read','home:write']);
  assert.equal((await fetch(`${h.origin}/api/home/devices/windows/check`,{method:'POST',headers:{...agent.headers,'Content-Type':'application/json'},body:JSON.stringify({target:'pc'})})).status,403,'API keys never start ssh');
  // A device an agent added as a plain tile is connected in place, after a successful test.
- const made=await fetch(`${h.origin}/api/home/machines`,{method:'POST',headers:{...agent.headers,'Content-Type':'application/json'},body:JSON.stringify({machine:{id:'gaming',name:'Gaming',hostname:'gaming.example.lan'}})});
+ const made=await fetch(`${h.origin}/api/home/devices`,{method:'POST',headers:{...agent.headers,'Content-Type':'application/json'},body:JSON.stringify({machine:{id:'gaming',name:'Gaming',hostname:'gaming.example.lan'}})});
  assert.equal(made.status,201);
  const refused=await h.post('/api/home/devices/windows',{id:'gaming',windows:{target:'refused'}},h.admin);assert.equal(refused.status,422);assert.equal((await refused.json()).error.reason,'denied');
  assert.equal(added.length,0,'nothing stored after a failed test');
  const conn=await h.post('/api/home/devices/windows',{id:'gaming',windows:{target:'pc-windows'}},h.admin);assert.equal(conn.status,200);
  const dev=await conn.json();assert.equal(dev.id,'gaming');assert.equal(dev.platform,'windows');assert.deepEqual(added.at(-1),{id:'gaming',target:'pc-windows'});
  const list=await (await h.post('/api/home/devices/windows/check',{target:'pc-windows'},h.admin)).json();assert.equal(list.ok,true);
- const machines=await (await fetch(`${h.origin}/api/home/machines`,{headers:h.admin})).json();
+ const machines=await (await fetch(`${h.origin}/api/home/devices`,{headers:h.admin})).json();
  const m=machines.machines.find(x=>x.id==='gaming');assert.equal(m.platform,'windows');assert.ok(machines.platforms.includes('windows'));
  assert.equal(JSON.stringify(machines).includes('pc-windows'),false,'machine_list carries no SSH target');
  const page=await (await fetch(`${h.origin}/api/home`,{headers:h.admin})).json();
  const tile=page.machines.find(x=>x.id==='gaming');assert.deepEqual([tile.kind,tile.telemetry.provider,tile.telemetry.state,tile.telemetry.target],['thermo','windows','unreachable','pc-windows']);
  // A Thermo login is refused while Windows is connected; disconnect, then add a Windows device directly.
  assert.equal((await h.post('/api/home/devices/windows',{id:'gaming',windows:null},h.admin)).status,200);assert.deepEqual(removed,['gaming']);
- const created=await h.post('/api/home/devices',{name:'Office PC',kind:'windows',hostname:'office.example.lan',windows:{target:'office'}},h.admin);
+ const created=await h.post('/api/home/devices/add',{name:'Office PC',kind:'windows',hostname:'office.example.lan',windows:{target:'office'}},h.admin);
  assert.equal(created.status,201);assert.equal(checked.at(-1),'office');assert.deepEqual(added.at(-1),{id:'office-pc',target:'office'});
- const failed=await h.post('/api/home/devices',{name:'Locked PC',kind:'windows',hostname:'locked.example.lan',windows:{target:'locked'}},h.admin);
- assert.equal(failed.status,422);assert.equal((await (await fetch(`${h.origin}/api/home/machines`,{headers:h.admin})).json()).machines.some(x=>x.id==='locked-pc'),false);
+ const failed=await h.post('/api/home/devices/add',{name:'Locked PC',kind:'windows',hostname:'locked.example.lan',windows:{target:'locked'}},h.admin);
+ assert.equal(failed.status,422);assert.equal((await (await fetch(`${h.origin}/api/home/devices`,{headers:h.admin})).json()).machines.some(x=>x.id==='locked-pc'),false);
  const rm1=await h.post('/api/home/devices/remove',{id:'office-pc'},h.admin);assert.equal(rm1.status,200);assert.equal(removed.at(-1),'office-pc');
  // The integration lists it like Thermo.
  const ig=await (await fetch(`${h.origin}/api/admin/integrations`,{headers:h.admin})).json();

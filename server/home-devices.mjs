@@ -41,12 +41,12 @@ import {validSshTarget,validManaged,managedLabel} from './windows-telemetry.mjs'
 import {validWinrmRecord,winrmLabel} from './winrm-telemetry.mjs';
 import {validExporterRecord,validLinuxManaged,exporterLabel,linuxSshLabel} from './linux-telemetry.mjs';
 import {validPromRecord,promLabel} from './prometheus-telemetry.mjs';
-import {inCidrs} from './site-config.mjs';
+import {inCidrs,MACHINE_ID,MACHINE_ROLES} from './site-config.mjs';
 import {createPrivatePathGuard} from './windows-ssh.mjs';
 import {secretIn} from './secret-patterns.mjs';
 
-export const DEVICE_ID=/^[a-z][a-z0-9_-]{1,31}$/;
-export const DEVICE_KINDS=Object.freeze(['thermo','windows','winrm','node-exporter','prometheus','linux-ssh','other']);
+// What the overview's Add form can add (its `kind`): how the new one is read. Not the tile kind (site-config → machineKind).
+export const ADD_KINDS=Object.freeze(['thermo','windows','winrm','node-exporter','prometheus','linux-ssh','other']);
 // The agent-less telemetry providers (telemetryProvider of a device) and the system each one reads. Role is not
 // platform: a Linux NAS or a Windows server reads the same way as a desktop.
 //   windows        Windows over SSH (windows-hosts.json, the original one)    winrm      Windows over WinRM HTTPS
@@ -57,7 +57,6 @@ export const PROVIDER_PLATFORM=Object.freeze({windows:'windows',winrm:'windows',
 // The record each provider in telemetry-hosts.json holds (Windows over SSH keeps windows-hosts.json).
 export const FEED_RECORD=Object.freeze({winrm:validWinrmRecord,'node-exporter':validExporterRecord,prometheus:validPromRecord,'linux-ssh':validLinuxManaged});
 export const feedLabel=(provider,r)=>provider==='winrm'?winrmLabel(r):provider==='node-exporter'?exporterLabel(r):provider==='prometheus'?promLabel(r):linuxSshLabel(r);
-export const MACHINE_ROLES=Object.freeze(['computer','nas','router','other']);
 // The operating system, apart from the role: a Windows server and a Windows desktop are both "windows".
 // null = not said. Windows telemetry (SSH + PowerShell) needs "windows" (or null, which it then sets).
 export const PLATFORMS=Object.freeze(['macos','windows','linux','other']);
@@ -70,7 +69,8 @@ export const defaultPicture=role=>({computer:'desktop',nas:'nas',router:'router'
 // router adapter reports it). The site's platform, when it says one, limits the providers to that system's.
 export const siteBindable=m=>Boolean(m&&!m.thermoId&&m.role!=='router');
 export const siteProviderFits=(m,provider)=>siteBindable(m)&&Object.hasOwn(PROVIDER_PLATFORM,provider)&&(!PLATFORMS.includes(m.platform)||m.platform===PROVIDER_PLATFORM[provider]);
-export const DEVICE_LIMITS=Object.freeze({devices:20,image:3*1024*1024});
+// added: how many machines the store holds at most (the site's own do not count).
+export const DEVICE_LIMITS=Object.freeze({added:20,image:3*1024*1024});
 export const RUNTIME_LAYERS=Object.freeze(['input','tool','runtime','engine','hardware']);
 export const RUNTIME_LIMITS=Object.freeze({cols:12,engines:12,blocks:60,models:30});
 const MODEL_STATES=['loaded','loading','idle'];
@@ -97,9 +97,9 @@ export {secretIn};
 const noSecret=(value,where)=>{const why=secretIn(value);if(why)fail('secret',`${where} looks like ${why}`);return value;};
 
 // "Mac Studio 2" → "mac-studio-2"; diacritics dropped, never one of the taken ids.
-export function deviceId(name,taken){
+export function newDeviceId(name,taken){
  const base=(name.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').replace(/^[^a-z]+/,'')||'device').slice(0,28).replace(/-+$/,'')||'device';
- let id=DEVICE_ID.test(base)?base:'device-'+base;id=id.slice(0,28);for(let n=2;taken.includes(id);n++)id=`${base.slice(0,26)}-${n}`;return id;
+ let id=MACHINE_ID.test(base)?base:'device-'+base;id=id.slice(0,28);for(let n=2;taken.includes(id);n++)id=`${base.slice(0,26)}-${n}`;return id;
 }
 
 // A stored device as the current shape. Files written before roles, thermoId, pictures and agents existed
@@ -128,7 +128,7 @@ export const runtimeHash=stack=>sha(stack);
 // platform: absent = keep what the machine has (undefined here), null = not said.
 export function parseMachine(input,{lanCidrs=[],needId=true}={}){
  extraKeys(input,['id','name','hostname','ip','role','hardware','thermoId','picture','platform'],'machine');
- const id=input.id===undefined&&!needId?null:typeof input.id==='string'&&DEVICE_ID.test(input.id)?input.id:fail('invalid','machine.id must be 2-32 characters: a lowercase letter, then letters, digits, _ or -');
+ const id=input.id===undefined&&!needId?null:typeof input.id==='string'&&MACHINE_ID.test(input.id)?input.id:fail('invalid','machine.id must be 2-32 characters: a lowercase letter, then letters, digits, _ or -');
  const name=noSecret(text(input.name,60,{empty:false,where:'machine.name'}),'machine.name');
  const hostname=text(input.hostname,253,{where:'machine.hostname'});if(hostname&&!validHost(hostname))fail('invalid','machine.hostname must be a host name or an IPv4 address');
  const ip=text(input.ip,15,{where:'machine.ip'});
@@ -139,7 +139,7 @@ export function parseMachine(input,{lanCidrs=[],needId=true}={}){
  const number=(v,max,where)=>v===undefined||v===null||v===''?null:typeof v==='number'&&Number.isFinite(v)&&v>0&&v<=max?v:fail('invalid',`${where} must be a number above 0 and at most ${max}, or null`);
  const props={cpu:noSecret(text(h.cpu,60,{where:'machine.hardware.cpu'}),'machine.hardware.cpu'),gpu:noSecret(text(h.gpu,40,{where:'machine.hardware.gpu'}),'machine.hardware.gpu'),
   ramGb:number(h.ramGb,65536,'machine.hardware.ramGb'),diskTotalBytes:number(h.diskTotalBytes,1e16,'machine.hardware.diskTotalBytes')};
- const thermoId=input.thermoId===undefined||input.thermoId===null||input.thermoId===''?null:typeof input.thermoId==='string'&&DEVICE_ID.test(input.thermoId)?input.thermoId:fail('invalid','machine.thermoId must be a host id of the telemetry agent (same form as machine.id), or null');
+ const thermoId=input.thermoId===undefined||input.thermoId===null||input.thermoId===''?null:typeof input.thermoId==='string'&&MACHINE_ID.test(input.thermoId)?input.thermoId:fail('invalid','machine.thermoId must be a host id of the telemetry agent (same form as machine.id), or null');
  const picture=input.picture===undefined||input.picture===null||input.picture===''?null:PICTURES.includes(input.picture)?input.picture:fail('invalid',`machine.picture must be one of ${PICTURES.join(', ')}, or null`);
  const platform=input.platform===undefined?undefined:input.platform===null||input.platform===''?null:PLATFORMS.includes(input.platform)?input.platform:fail('invalid',`machine.platform must be one of ${PLATFORMS.join(', ')}, or null`);
  return {id,name,hostname,ip:ip||null,role,props,thermoId,picture,platform};
@@ -294,7 +294,7 @@ export function createHomeDevices(root,{reserved=[],lanCidrs=[],siteMachines=[],
   if(env.kid==='file'){const m=await readMarker(),kfps=m?.kfps||[];
    if(!m||m.keyFile!==box.keyFile||!kfps.includes(env.kfp))await atomic(markerFile,{schema:2,keyFile:box.keyFile,kfps:[...kfps.filter(k=>k!==env.kfp),env.kfp].slice(-MARKER_KFPS)});}
   await atomic(f,env);};
- const imageFile=id=>DEVICE_ID.test(id)?path.join(images,id+'.jpg'):fail('invalid');
+ const imageFile=id=>MACHINE_ID.test(id)?path.join(images,id+'.jpg'):fail('invalid');
  const sameHost=(a,b)=>a&&b&&a.toLowerCase()===b.toLowerCase();
  // What goes into the file: the legacy "kind" stays in step with thermoId, so an older hub still reads it.
  const stored=d=>({...d,kind:d.thermoId?'thermo':'other'});
@@ -323,7 +323,7 @@ export function createHomeDevices(root,{reserved=[],lanCidrs=[],siteMachines=[],
  // polled nor shown, and its connection is kept on disk until it is disconnected: an edit of site.json never deletes a key.
  const siteById=id=>siteMachines.find(m=>m?.id===id)||null;
  const readSite=async()=>{const f=await readJson(siteFile,()=>({schema:1,bindings:[]}));
-  return (Array.isArray(f?.bindings)?f.bindings:[]).filter(b=>b&&typeof b.id==='string'&&DEVICE_ID.test(b.id)&&TELEMETRY_PROVIDERS.includes(b.provider));};
+  return (Array.isArray(f?.bindings)?f.bindings:[]).filter(b=>b&&typeof b.id==='string'&&MACHINE_ID.test(b.id)&&TELEMETRY_PROVIDERS.includes(b.provider));};
  const effective=b=>siteProviderFits(siteById(b.id),b.provider);
  const bindingOf=b=>({id:b.id,provider:b.provider,platform:PROVIDER_PLATFORM[b.provider],configuredAt:typeof b.configuredAt==='string'?b.configuredAt:null,configuredBy:typeof b.configuredBy==='string'?b.configuredBy:null});
  const saveSite=async(id,next)=>{const all=await readSite();
@@ -338,7 +338,7 @@ export function createHomeDevices(root,{reserved=[],lanCidrs=[],siteMachines=[],
  // Site overrides (site-overrides.json): every stored one that is well formed; one whose machine left site.json is kept
  // on disk (an edit of site.json never deletes what the owner wrote) and neither shown nor counted until it is reset.
  const readOverrides=async()=>{const f=await readJson(overrideFile,()=>({schema:1,overrides:[]}));
-  return (Array.isArray(f?.overrides)?f.overrides:[]).filter(o=>o&&typeof o.id==='string'&&DEVICE_ID.test(o.id)&&plain(o.fields));};
+  return (Array.isArray(f?.overrides)?f.overrides:[]).filter(o=>o&&typeof o.id==='string'&&MACHINE_ID.test(o.id)&&plain(o.fields));};
  const writeOverrides=all=>atomic(overrideFile,{schema:1,overrides:all});
  const overrideView=o=>({fields:{...o.fields,...(o.fields.hardware?{hardware:{...o.fields.hardware}}:{})},image:o.image===true,imageAt:typeof o.imageAt==='string'?o.imageAt:null,
   updatedAt:typeof o.updatedAt==='string'?o.updatedAt:null,updatedBy:typeof o.updatedBy==='string'?o.updatedBy:null,hash:siteOverrideHash(o)});
@@ -424,9 +424,9 @@ export function createHomeDevices(root,{reserved=[],lanCidrs=[],siteMachines=[],
  // kind "windows" = read through SSH + PowerShell (platform is then windows): either windows:{target} (an alias),
  // or no windows field and managed = the checked connection from a set-up draft (the caller's, never the input's).
  // Returns {device, thermo: the host config or null, windows: {id,target,managed?} or null}. The caller checks the login first.
- function parse(input,managed=null,feed=null){
+ function parseAddForm(input,managed=null,feed=null){
   if(!onlyKeys(input,['name','kind','hostname','ip','props','thermo','role','picture','platform','windows']))fail('invalid');
-  const kind=DEVICE_KINDS.includes(input.kind)?input.kind:fail('invalid','kind must be thermo, windows or other');
+  const kind=ADD_KINDS.includes(input.kind)?input.kind:fail('invalid','kind must be thermo, windows or other');
   if(input.props!==undefined&&!onlyKeys(input.props,['cpu','gpu','ramGb','diskTotalBytes']))fail('invalid');
   const m=parseMachine({name:input.name,hostname:input.hostname,ip:input.ip,role:input.role??(kind==='other'?'other':'computer'),picture:input.picture,hardware:input.props,platform:input.platform??null},{lanCidrs,needId:false});
   if(!m.hostname)fail('invalid','hostname is required');
@@ -442,11 +442,11 @@ export function createHomeDevices(root,{reserved=[],lanCidrs=[],siteMachines=[],
    windows:kind==='windows'?(managed?{...managed}:parseWindows(input.windows)):null,feed:feedKind?{provider:kind,record:{...feed.record}}:null};
  }
  const add=(input,by,{managed=null,feed=null}={})=>{
-  const d=parse(input,managed,feed);
+  const d=parseAddForm(input,managed,feed);
   return serial(async()=>{
-   const data=await read();if(data.devices.length>=DEVICE_LIMITS.devices)fail('limit');
+   const data=await read();if(data.devices.length>=DEVICE_LIMITS.added)fail('limit');
    if(data.devices.some(x=>sameHost(x.hostname,d.hostname)))fail('conflict');
-   const id=deviceId(d.name,[...reserved,...data.devices.map(x=>x.id),...(await readSite()).map(b=>b.id)]);
+   const id=newDeviceId(d.name,[...reserved,...data.devices.map(x=>x.id),...(await readSite()).map(b=>b.id)]);
    const device=stored({id,name:d.name,hostname:d.hostname,ip:d.ip,role:d.role,props:d.props,thermoId:d.thermo?id:null,picture:d.picture,source:'ui',image:false,
     ...(d.platform?{platform:d.platform}:{}),...(d.windows?{telemetryProvider:'windows'}:d.feed?{telemetryProvider:d.feed.provider}:{}),createdAt:new Date().toISOString(),createdBy:by});
    let thermo=null;
@@ -473,7 +473,7 @@ export function createHomeDevices(root,{reserved=[],lanCidrs=[],siteMachines=[],
    const now=new Date().toISOString();
    if(!current){
     if(base!==undefined)fail('conflict');
-    if(data.devices.length>=DEVICE_LIMITS.devices)fail('limit');
+    if(data.devices.length>=DEVICE_LIMITS.added)fail('limit');
     const device=stored({...m,platform:m.platform??null,source:source==='agent'?'agent':'ui',image:false,createdAt:now,createdBy:by});
     data.devices.push(device);await atomic(file,data);
     return {device:normalizeDevice(device),hash:machineHash(normalizeDevice(device)),created:true,changed:true};
@@ -613,7 +613,7 @@ export function createHomeDevices(root,{reserved=[],lanCidrs=[],siteMachines=[],
    return {id,source:'site',siteOverride:entry?overrideView(entry):null};}
   device.image=false;delete device.imageAt;await atomic(file,data);return normalizeDevice(device);
  });
- async function image(id){if(!DEVICE_ID.test(id))fail('not-found');try{const fh=await open(imageFile(id),'r');await fh.close();return imageFile(id);}catch{fail('not-found');}}
+ async function image(id){if(!MACHINE_ID.test(id))fail('not-found');try{const fh=await open(imageFile(id),'r');await fh.close();return imageFile(id);}catch{fail('not-found');}}
 
  // Published runtime stacks: {machineId: {stack, publishedAt, publishedBy}}; stack is what parseRuntime returned.
  async function stacks(){return (await readRuntimes()).stacks;}
@@ -621,7 +621,7 @@ export function createHomeDevices(root,{reserved=[],lanCidrs=[],siteMachines=[],
  // stack = null takes the publication back. base (optional): the hash of the publication the caller read.
  // Returns {machine, hash: of what is now published or null, changed}.
  const publishRuntime=(machine,input,{by=null,base,known=[]}={})=>{
-  if(typeof machine!=='string'||!DEVICE_ID.test(machine))fail('invalid','machine must be a machine id');
+  if(typeof machine!=='string'||!MACHINE_ID.test(machine))fail('invalid','machine must be a machine id');
   if(base!==undefined&&(typeof base!=='string'||!/^[a-f0-9]{64}$/.test(base)))fail('invalid','base must be the 64-character hash of the published stack');
   const stack=input===null?null:parseRuntime(input);
   return serial(async()=>{

@@ -42,7 +42,7 @@ test('all write families reject viewer sessions and read keys; only admin sessio
  const read=await (await post('/api/admin/keys',{name:'Reader',permission:'read'},admin)).json();const readHeaders={Authorization:'Bearer '+read.token};
  const write=await (await post('/api/admin/keys',{name:'Writer',permission:'write'},admin)).json();const writeHeaders={Authorization:'Bearer '+write.token};
  for(const headers of [viewer,readHeaders]){
-  for(const route of ['/api/tickets','/api/tickets/update','/api/review/publish','/api/review/sets','/api/home/settings','/api/home/devices','/api/inventory/entry','/api/inventory/entries','/api/services','/api/app-tokens','/api/app-tokens/revoke','/api/admin/users','/api/admin/keys'])assert.equal((await post(route,{},headers)).status,403,route);
+  for(const route of ['/api/tickets','/api/tickets/update','/api/review/publish','/api/review/sets','/api/home/settings','/api/home/devices','/api/home/devices/add','/api/home/devices/remove','/api/inventory/entry','/api/inventory/entries','/api/services','/api/app-tokens','/api/app-tokens/revoke','/api/admin/users','/api/admin/keys'])assert.equal((await post(route,{},headers)).status,403,route);
   assert.equal((await fetch(origin+'/api/inventory',{headers})).status,200);assert.equal((await fetch(origin+'/api/services',{headers})).status,200);assert.equal((await fetch(origin+'/api/me',{headers})).status,200);
   assert.equal((await fetch(origin+'/api/admin/keys',{headers})).status,403);
  }

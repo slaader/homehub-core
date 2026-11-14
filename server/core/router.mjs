@@ -26,14 +26,15 @@ export default {
  routes:[
   // What the router machine page draws: state, census, health, and what to set up when there is none.
   {method:'GET',path:'/api/router',async handler(c){
-    const site=c.hub.site,machine=site.machines.find(m=>m.role==='router')||null;
+    // siteMachine: the site's own entry with the role router. Not one of `devices`, which are the network clients the router saw.
+    const site=c.hub.site,siteMachine=site.machines.find(m=>m.role==='router')||null;
     const router=await readRouterFor(c.hub);
     // disabled = an administrator turned the router feed off; the page says so and shows no census.
     if(router.state==='disabled')return c.json(200,{schemaVersion:1,generatedAt:new Date().toISOString(),...router,provenance:routerProvenance(router),
-     configured:{adapter:site.router?.adapter||null,host:site.router?.host||machine?.ip||null,lanCidrs:[...site.lanCidrs]},machine:machine?{id:machine.id,name:machine.name,ip:machine.ip||null}:null});
+     configured:{adapter:site.router?.adapter||null,host:site.router?.host||siteMachine?.ip||null,lanCidrs:[...site.lanCidrs]},siteMachine:siteMachine?{id:siteMachine.id,name:siteMachine.name,ip:siteMachine.ip||null}:null});
     return c.json(200,{schemaVersion:1,generatedAt:new Date().toISOString(),...router,provenance:routerProvenance(router),
-     configured:{adapter:site.router?.adapter||null,host:site.router?.host||machine?.ip||null,lanCidrs:[...site.lanCidrs]},
-     machine:machine?{id:machine.id,name:machine.name,ip:machine.ip||null}:null});}},
+     configured:{adapter:site.router?.adapter||null,host:site.router?.host||siteMachine?.ip||null,lanCidrs:[...site.lanCidrs]},
+     siteMachine:siteMachine?{id:siteMachine.id,name:siteMachine.name,ip:siteMachine.ip||null}:null});}},
  ],
  integrations:[{id:ROUTER_INTEGRATION,title:'Adaptér routeru',kind:'router',
   // Integrations → Machines: the router's page shows the adapter.

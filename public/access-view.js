@@ -376,7 +376,7 @@ function agentsTab(status){
    el('thead',{},el('tr',{},...[t('Klíč'),t('Vydán'),t('Naposledy hlásil'),t('Stav'),el('span',{class:'ax-vh'},t('Akce'))].map(h=>el('th',{scope:'col'},h)))),
    el('tbody',{},keys.sort((a,b)=>Boolean(a.revokedAt)-Boolean(b.revokedAt)||String(b.createdAt).localeCompare(String(a.createdAt))).map(row)))));
  const list=loader(async()=>{
-  const [keys,listed]=await Promise.all([api('/api/admin/agents'),api('/api/home/machines').catch(()=>({machines:[]}))]);
+  const [keys,listed]=await Promise.all([api('/api/admin/agents'),api('/api/home/devices').catch(()=>({machines:[]}))]);
   machines=Array.isArray(listed.machines)?listed.machines:[];return Array.isArray(keys.agents)?keys.agents:[];},
  keys=>{
   if(!keys.length)return emptyState({icon:'⚿',title:t('Zatím žádný push agent'),body:t('Push agent běží na stroji a sám posílá hubu systém, aktualizace, sledovaný software, SSH klíče a lokální LLM runtimy. Hub se na stroj nepřihlašuje.'),

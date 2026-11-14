@@ -25,6 +25,17 @@ A major release: names on the public surface change, with no alias for the old o
     `app-token-revoked` (were `device-issued`, `device-revoked`). Events recorded by 1.0 are shown under the new names.
   - A custom role can no longer be created with the id `app` (`device` is free again). A role that already has that
     id keeps working.
+- **Breaking: the overview's routes are laid out again**, so that one path means one thing:
+  - `GET /api/home/devices` is the list and `POST /api/home/devices` the hash-checked upsert (scope `home:write`).
+    They replace `GET` and `POST /api/home/machines`, which now answer `404`.
+  - `POST /api/home/devices/add` is the overview's **Add device** form (a person or an app, never an API key). It was
+    `POST /api/home/devices`; a client that still posts the form there gets `400` from the upsert.
+  - `POST /api/home/devices/remove` `{id, base?}` is the one removal and answers `{ok: true, id, removed: true}`
+    (the overview's old route answered `{removed: <id>}`). It replaces `POST /api/home/machines/remove` and needs the
+    scope `home:write`. `base` is required and checked as before; only a person signed in with a password may leave it
+    out. An app token that removed with `{id}` alone must now send `base`.
+- **Breaking:** `GET /api/router` names the site's own router entry `siteMachine` (was `machine`), apart from
+  `devices`, the network clients the router saw.
 
 ### Plugin contract
 

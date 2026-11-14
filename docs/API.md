@@ -133,7 +133,7 @@ file means every integration is on. While one is off its data routes answer **`2
 | `security.systems` | `GET /api/systems` → `{disabled, machines:[], collector:{state:"disabled"}}`; `snapshot.json` is not read |
 | `security.upstream` | `GET /api/systems` answers without the newest releases and with `upstreamDisabled`; `upstream.json` is not read |
 | `security.keys` | `GET /api/security` → `{disabled, machines:[], keys:[]}` |
-| `home.reachability` | No TCP connect to any machine; every `reachability` in `GET /api/home` and `GET /api/home/machines` reads `unknown` (the poller keeps no result) |
+| `home.reachability` | No TCP connect to any machine; every `reachability` in `GET /api/home` and `GET /api/home/devices` reads `unknown` (the poller keeps no result) |
 | `agent.reports` | The push agents' reports are not taken: `POST /api/agent/report` → `409 INTEGRATION_DISABLED` (after the key check: an unknown or revoked key is still `401`), nothing is stored. No agent record is read: `GET /api/systems`, `GET /api/security` and `home.runtimes` answer as on a hub without agents. The keys and what was stored stay; `machines[].agent` keeps saying when each machine was last heard from, and goes `no-news` as the parts age |
 | `updates.check` | No request to GitHub about releases; `GET /api/updates` → `state: "disabled"` with `disabled` and `latest: null`; `POST /api/updates/check` → `409 INTEGRATION_DISABLED` |
 
@@ -329,7 +329,7 @@ read, only the parts received since the earliest live key was issued. A part rec
 another platform than the machine now has. `GET /api/collectors` and Integrations → Machines (the versions,
 protection and SSH key facets) stay the collectors' alone in this release.
 
-**The overview** (`GET /api/home`, `GET /api/home/machines`, the MCP tool `machine_list`) shows each machine's agent in
+**The overview** (`GET /api/home`, `GET /api/home/devices`, the MCP tool `machine_list`) shows each machine's agent in
 `machines[].agent` (Home: the overview), worked out from the same records the readers read; a `heartbeat` counts there
 and nowhere else, and never towards `online`. The integration `agent.reports` (kind `agent`) is the agents' card on
 Administration → Integrations, one item per machine that holds a key (`ok` fresh, `stale` no news, `not-configured` not
@@ -568,18 +568,21 @@ keeps the machine's; `null` clears it. A machine without a platform hashes exact
 `hash` read from an older hub still matches. While Windows telemetry is connected (web UI only), `platform` must stay
 `windows` and `thermoId` must stay `null` (`400 MACHINE_INVALID`). Values that look like a secret (keys, tokens, `password=…`, credentials in a URL) are refused.
 
-- `GET /api/home/machines[?stack=1]` (`read`) → `{"machines":[…],"pictures":[{"id","url"}],"roles","platforms","runtimeLayers","lanCidrs","limits":{"machines":20},"telemetry"}`.
+- `GET /api/home/devices[?stack=1]` (`read`) → `{"machines":[…],"pictures":[{"id","url"}],"roles","platforms","runtimeLayers","lanCidrs","limits":{"machines":20},"telemetry"}`.
   Each machine has the fields above plus `source`, `readOnly`, `hash` (`null` for site machines), `customPicture`,
   `telemetry` and `runtime` = `{"source":"published"|"collected"|"site"|null,"publishedAt","publishedBy","hash"}`
   (with `stack=1` also `stack`, in the form `POST /api/home/runtime` takes). A site machine lists its effective `name`,
   `hostname`, `ip`, `hardware` and `picture` (the owner's override applied, below) and `siteOverride`
   (`{"fields":["name","hardware.ramGb",…],"updatedAt","updatedBy"}`, or `null`); it stays `readOnly` here.
-- `POST /api/home/machines` `{"machine":{…},"base"?}` → `201` created or `200` → `{"ok","id","hash","created","changed","by","machine"}`.
+- `POST /api/home/devices` `{"machine":{…},"base"?}` → `201` created or `200` → `{"ok","id","hash","created","changed","by","machine"}`.
   The whole record is replaced. Like inventory entries: omit `base` to create, pass the `hash` you read to change. Without
   `base`, a machine that already holds exactly these fields is left alone (`changed:false`), so a repeated create is harmless;
   different fields without `base`, or a stale `base`, are `409 MACHINE_CONFLICT`.
-- `POST /api/home/machines/remove` `{"id","base"}` → `{"ok":true,"id","removed":true}`. `base` is required. The uploaded
-  picture, the stored Thermo login and a published runtime stack go with it; metric history stays.
+- `POST /api/home/devices/remove` `{"id","base"?}` → `{"ok":true,"id","removed":true}`. One route for keys, apps and the
+  overview's **Remove device**. `base` (the `hash` read) is required, with one exception: a person signed in with a
+  password may leave it out. A `base` that is sent is always checked (`409 MACHINE_CONFLICT` when stale). The tile, the
+  uploaded picture, the stored Thermo login or Windows connection (with the hub's key and known_hosts for it), any
+  other telemetry connection and a published runtime stack go with it; metric history stays.
 - `POST /api/home/runtime` (≤ 64 kB) `{"machine","stack"|null,"base"?}` → `{"ok","id","hash","changed","published","publishedAt","by"}`.
   Publishes the runtime stack drawn on the machine's page (site machines included). It replaces the stack from the site
   configuration or a collected descriptor, or adds one; `stack:null` takes the publication back. Optional `base` = the
@@ -627,11 +630,13 @@ probes, Thermo and the router adapter keep reading the site's values (a changed 
 What needs a person: uploading a picture and giving the hub a Thermo login. A device's Thermo login is kept in
 `state/home/thermo-hosts.json` (mode 0600, sealed with the hub's key: docs/storage.md → Secrets at rest; opened, the same shape as `private/thermo-hosts.json`) and its uploaded picture in
 `state/home/images/<id>.jpg`. Added machines appear in `GET /api/home` with `added:true` and `kind` derived from
-`thermoId` and `role` (`thermo`, `nas`, `router`, `other`); their ids join `known` in the tile order.
+`thermoId` and `role` (`thermo`, `nas`, `router`, `other`); their ids join `known` in the tile order. These form
+routes refuse with one code, `DEVICE_FAILED` (and `details` naming the field where one was at fault); the machine API
+above has a code per refusal.
 
 - `POST /api/home/devices/probe` `{"host","port"?}` → `{"fingerprint","subject","validTo"}`: a TLS handshake with
   Thermo, nothing sent. `422` when nothing answers.
-- `POST /api/home/devices` `{"name","kind","hostname","ip"?,"role"?,"picture"?,"props"?:{"cpu","gpu","ramGb","diskTotalBytes"},"thermo"?:{"port","username","password","pin"}}`
+- `POST /api/home/devices/add` `{"name","kind","hostname","ip"?,"role"?,"picture"?,"props"?:{"cpu","gpu","ramGb","diskTotalBytes"},"thermo"?:{"port","username","password","pin"}}`
   → `201` the device (its id is made from the name). A `thermo` device first logs in once with the pinned certificate (`pin` = the fingerprint the
   user confirmed); a refused login is `422` and nothing is saved. Then the poller starts pulling it, without a restart.
   `409` for a hostname already added, at most 20 devices.
@@ -641,9 +646,9 @@ What needs a person: uploading a picture and giving the hub a Thermo login. A de
   that is already on the overview (for example one an agent created). The login is tried once with the pinned certificate
   first; then the device is its own telemetry host (`thermoId` = its id). `{"id","thermo":null}` forgets the login.
 - `POST /api/home/devices/image/remove` `{"id"}` → the device, back on its built-in picture.
-- `POST /api/home/devices/remove` `{"id"}` → `{"removed"}`; the tile, its Thermo login or Windows connection (with the hub's key
-  and known_hosts for it) and picture go, the metric history stays. `machine_remove` does the same.
-- `POST /api/home/devices` also takes `"kind":"windows"` (and optional `"platform":"windows"`) with
+- Removing a device is `POST /api/home/devices/remove` of the machine API above (`machine_remove` over MCP); the
+  overview sends the `hash` it read as `base`.
+- `POST /api/home/devices/add` also takes `"kind":"windows"` (and optional `"platform":"windows"`) with
   `"windows":{"draft","host","port","user"}`: an app-managed connection whose set-up draft (below, made for a new device) passed
   its test with exactly this host, port and user; otherwise nothing is saved (`409 WINDOWS_SETUP_FAILED`, `reason` `needs-test`,
   `stale`, …). The older `"windows":{"target"}` (an alias) is still accepted: the SSH connection is tried once first; a failure is
@@ -828,7 +833,7 @@ Four more providers beside Thermo (the agent) and Windows over SSH, in core modu
     remote text).
   - Linux SSH: the SSH draft routes under `/api/home/devices/ssh/…` (`tools`, `draft` with `{"os":"linux","id"?}`, `draft/key`,
     `draft/scan`, `draft/trust`, `draft/test`, `draft/discard`); the user is a POSIX name (`^[A-Za-z_][A-Za-z0-9._-]{0,31}$`).
-- **Saving**: `POST /api/home/devices` with `"kind":"winrm"|"node-exporter"|"prometheus"|"linux-ssh"` and
+- **Saving**: `POST /api/home/devices/add` with `"kind":"winrm"|"node-exporter"|"prometheus"|"linux-ssh"` and
   `"telemetry":{"provider","draft","host","port","scheme"?,"user"?,"auth"?,"job"?,"instance"?}` (no password: it is in the draft);
   `POST /api/home/devices/telemetry` `{"id","telemetry":{…}}` connects an existing device or **switches** it from another
   agent-less provider (Windows SSH included): its id, picture and history stay; the old connection's poller entry, key
@@ -1125,7 +1130,7 @@ An item:
 
 The client census and the router's health from the router adapter (`docs/plugins.md` → router adapter).
 
-→ `{"schemaVersion":1,"generatedAt","state","status","adapter":{"id","title"}|null,"freshness","staleAfterSeconds","observedAt","attemptedAt","error","model","firmware","routerMac","devices":[{"mac","id","ip","name","connection","presence"}],"health":{"status","softwareVersion","hardware":[{"name","model","state","firmware","ip"}],"hardwareDown","clients":{"connected","wired","wireless","other","known"}}|null,"configured":{"adapter","host","lanCidrs"},"machine":{"id","name","ip"}|null,"provenance"}` (`collector` for the included adapter, `plugin` for one a plugin provides)
+→ `{"schemaVersion":1,"generatedAt","state","status","adapter":{"id","title"}|null,"freshness","staleAfterSeconds","observedAt","attemptedAt","error","model","firmware","routerMac","devices":[{"mac","id","ip","name","connection","presence"}],"health":{"status","softwareVersion","hardware":[{"name","model","state","firmware","ip"}],"hardwareDown","clients":{"connected","wired","wireless","other","known"}}|null,"configured":{"adapter","host","lanCidrs"},"siteMachine":{"id","name","ip"}|null,"provenance"}` (`collector` for the included adapter, `plugin` for one a plugin provides)
 
 | `state` | Meaning |
 |---|---|

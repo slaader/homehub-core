@@ -17,7 +17,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {buildSecurity,probesFileOf,SECURITY_PROBES_SCHEMA} from '../server/security-data.mjs';
 import {loadMachineDescriptors} from '../server/home-data.mjs';
-import {site as loadedSite,sshHosts,machineIds} from '../server/site-config.mjs';
+import {site as loadedSite,sshHosts,siteMachineIds} from '../server/site-config.mjs';
 import {collectorRun} from '../server/collector-run.mjs';
 import {resolvePaths} from '../server/paths.mjs';
 
@@ -73,7 +73,7 @@ export async function collectSecurity({site=loadedSite(),hosts=sshHosts(site,m=>
   !forgejo||!git.gitHost?null:forgejoKeys(git,exec).catch(e=>{warn(`Forgejo skipped: ${e.message}`);return null;}),
   router?portOpen(router.ip,22):null,
  ]);
- const descriptors=await loadMachineDescriptors(machinesDir,machineIds(site)).catch(()=>[]);
+ const descriptors=await loadMachineDescriptors(machinesDir,siteMachineIds(site)).catch(()=>[]);
  const probes=Object.fromEntries(probeResults),from=collectedFrom??(await exec('hostname',['-s'])).stdout.trim();
  const extraMachines=router?[{id:router.id,sshOpen:routerSsh,note:routerSsh?'Port 22 je otevřený, ale Home Hub k routeru SSH klíč nemá.':'SSH je na routeru vypnuté (port 22 zavřený).'}]:[];
  const built=buildSecurity({probes,forgejo:forgejoDoc,descriptors,site,now,collectedFrom:from,extraMachines});

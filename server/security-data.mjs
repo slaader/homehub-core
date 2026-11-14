@@ -12,7 +12,7 @@ import {collectorState,staleAfter,COLLECTORS} from './collector-state.mjs';
 import {freshUntil} from './agent-report.mjs';
 import {pickSource,collectorTime} from './systems-data.mjs';
 import {loadMachineDescriptors} from './home-data.mjs';
-import {machineIds} from './site-config.mjs';
+import {siteMachineIds} from './site-config.mjs';
 import {fingerprintOf,parseAuthorizedLine,parseKeygenLine} from './ssh-lines.mjs';
 // The line parsers live in server/ssh-lines.mjs (a leaf module the push agent shares); re-exported here.
 export {fingerprintOf,parseAuthorizedLine,parseKeygenLine};
@@ -373,7 +373,7 @@ export async function loadSecurity(directory,file=process.env.SECURITY_FILE||pat
   if(pickSource(c,{current:a.fresh,time:Date.parse(a.receivedAt),covers:a.root||!cRoot})==='agent')raw[id]={text:a.text,agent:true,receivedAt:a.receivedAt,source:'agent',sourceAt:a.receivedAt,stale:!a.fresh};
   else raw[id]={...C,source:'collector',sourceAt:Number.isFinite(cTime)?new Date(cTime).toISOString():null};
  }
- const descriptors=await loadMachineDescriptors(machinesDir,machineIds(site)).catch(()=>({}));
+ const descriptors=await loadMachineDescriptors(machinesDir,siteMachineIds(site)).catch(()=>({}));
  for(const {id,name} of reporting)if(!descriptors[id]&&!site.machines.some(m=>m.id===id))descriptors[id]={id,name:name||id};
  const built=buildSecurity({probes:raw,forgejo:collected?.forgejo??null,extraMachines:Array.isArray(collected?.extraMachines)?collected.extraMachines:[],descriptors,
   collectedFrom:typeof collected?.collectedFrom==='string'?collected.collectedFrom:'',now,site});

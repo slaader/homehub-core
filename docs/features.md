@@ -25,7 +25,7 @@ own order, by dragging or with the arrow keys on a focused tile.
   and the chip. The stack comes from `site.json` or from an agent.
 - **Machine API and MCP tools** (scope `home:write`): `machine_list`, `machine_upsert` (hash-checked,
   idempotent by id, the address checked against `lanCidrs`, secret-looking values refused), `machine_remove`
-  and `runtime_publish`. Over HTTP: `GET` / `POST /api/home/machines`, `POST /api/home/machines/remove`,
+  and `runtime_publish`. Over HTTP: `GET` / `POST /api/home/devices`, `POST /api/home/devices/remove`,
   `POST /api/home/runtime`.
 - **Passwords never travel through the API.** An agent can name a machine's telemetry host; a person connects
   its login in Edit device → Telemetry.

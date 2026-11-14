@@ -69,8 +69,8 @@ test('limits: two keys per machine, 100 that are not revoked; a newer agents.jso
 });
 
 test('the machine a key binds: site machines without a stamp, devices with their createdAt; router and NAS refused',()=>{
- const devices=[{id:'pi-hole',role:'other',createdAt:'2026-11-01T00:00:00.000Z'},{id:'gw',role:'router',createdAt:'2026-11-01T00:00:00.000Z'}];
- const at=id=>findMachine(id,{siteMachines:SITE.machines,devices});
+ const added=[{id:'pi-hole',role:'other',createdAt:'2026-11-01T00:00:00.000Z'},{id:'gw',role:'router',createdAt:'2026-11-01T00:00:00.000Z'}];
+ const at=id=>findMachine(id,{siteMachines:SITE.machines,addedMachines:added});
  assert.deepEqual(at('studio'),{id:'studio',createdAt:null,site:true,role:'computer',platform:null,probe:'mac'});
  assert.equal(at('pi-hole').createdAt,'2026-11-01T00:00:00.000Z');
  assert.deepEqual(['studio','pi-hole','nas','router','gw','ghost','../x'].map(id=>machineRefusal(at(id))),[null,null,'nas','router','router','unknown','unknown']);

@@ -687,14 +687,14 @@ function deviceDialog({machine=null,meta,focus,onSaved}){
   const pic=picture.value(),viaFeed=wantFeed(),x=chosen?parts[chosen]:null;
   if(adding){
    say(wantThermo()?t('Přihlašuji se do Thermo a ukládám…'):viaFeed?t('Ukládám spojení…'):t('Ukládám…'));
-   const device=await post('/api/home/devices',{name:name.value.trim(),kind:wantThermo()?'thermo':viaFeed?chosen:'other',hostname:host.value.trim(),...(ip.value.trim()?{ip:ip.value.trim()}:{}),role:role.value,picture:pic.picture,props:hardware(),
+   const created=await post('/api/home/devices/add',{name:name.value.trim(),kind:wantThermo()?'thermo':viaFeed?chosen:'other',hostname:host.value.trim(),...(ip.value.trim()?{ip:ip.value.trim()}:{}),role:role.value,picture:pic.picture,props:hardware(),
     ...(platform.value?{platform:platform.value}:{}),...(wantThermo()?{thermo:x.body()}:{}),...(viaFeed?chosen==='windows'?{windows:x.body()}:{telemetry:x.body()}:{})});
    parts.thermo?.clear();if(viaFeed)x.saved();
    // The device exists from here on: a failed picture upload must not ask to add it again.
-   try{if(pic.own)await upload(device.id);}finally{onSaved?.(device);}
+   try{if(pic.own)await upload(created.id);}finally{onSaved?.(created);}
    return;
   }
-  // A site machine: the owner's override (never /api/home/machines, never site.json), its own picture, then the connection.
+  // A site machine: the owner's override (never the machine API, never site.json), its own picture, then the connection.
   if(siteMode){
    const body=form0.body({name,hostname:host,ip,cpu,gpu,ramGb:ram,diskGb:disk},touched,pic);
    try{
@@ -707,7 +707,7 @@ function deviceDialog({machine=null,meta,focus,onSaved}){
   }
   say(t('Ukládám…'));
   // Connecting an agent-less provider makes the platform the one it reads; the server checks the same.
-  const saved=await post('/api/home/machines',{machine:{id:machine.id,name:name.value.trim(),hostname:host.value.trim(),ip:ip.value.trim()||null,role:role.value,hardware:hardware(),thermoId:feed?null:machine.telemetry?.thermoId??null,picture:pic.picture,
+  const saved=await post('/api/home/devices',{machine:{id:machine.id,name:name.value.trim(),hostname:host.value.trim(),ip:ip.value.trim()||null,role:role.value,hardware:hardware(),thermoId:feed?null:machine.telemetry?.thermoId??null,picture:pic.picture,
    platform:viaFeed?FEED_PLATFORM[chosen]:feed?FEED_PLATFORM[feed]:platform.value||null},...(hash?{base:hash}:{})});
   hash=saved.hash;
   try{
@@ -806,4 +806,4 @@ export function confirmDialog({title,body,confirm,danger=false,action}){
 // Removing an added device (its page → Remove device). Machines from the site configuration cannot be removed.
 export const removeDevice=machine=>confirmDialog({title:t('Odebrat {name}?',{name:machine.name}),danger:true,confirm:t('Odebrat zařízení'),
  body:t('Zmizí z přehledu i se svým obrázkem, uloženým přihlášením k telemetrii a zveřejněným runtime stackem. Historie metrik zůstane na disku.'),
- action:()=>post('/api/home/machines/remove',{id:machine.id,base:machine.hash})});
+ action:()=>post('/api/home/devices/remove',{id:machine.id,base:machine.hash})});

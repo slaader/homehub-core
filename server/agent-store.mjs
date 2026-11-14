@@ -34,12 +34,13 @@ const nameOk=s=>typeof s==='string'&&s.trim().length>0&&s.length<=80&&!/[\u0000-
 
 // --- the machine a key is for ---------------------------------------------------------------------------------------
 // One id of the overview's machine namespace, as a key sees it: {id, createdAt, site, role, platform, probe}.
-// siteMachines = site.json → machines; devices = the added devices (server/home-devices.mjs → list()).
-export function findMachine(id,{siteMachines=[],devices=[]}={}){
+// siteMachines = site.json → machines; addedMachines = the ones added on the overview or by an agent
+// (server/home-devices.mjs → list()). A site id wins: the store never holds one.
+export function findMachine(id,{siteMachines=[],addedMachines=[]}={}){
  if(typeof id!=='string'||!MACHINE_ID.test(id))return null;
  const s=siteMachines.find(m=>m?.id===id);
  if(s)return {id,createdAt:null,site:true,role:s.role??null,platform:s.platform??null,probe:s.ssh?.probe??null};
- const d=devices.find(x=>x?.id===id);
+ const d=addedMachines.find(x=>x?.id===id);
  if(d)return {id,createdAt:typeof d.createdAt==='string'?d.createdAt:null,site:false,role:d.role??null,platform:d.platform??null,probe:null};
  return null;
 }

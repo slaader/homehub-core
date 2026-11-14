@@ -752,17 +752,17 @@ test('readers: a revoked key, a reused device id, a changed platform and a machi
  assert.deepEqual(await agentIds(),[],'revoked: no longer trusted');
  // An added device: a report, then the device goes and one with the same id comes; a new key, no report yet.
  const pi={id:'pi-hole',name:'Pi-hole',hostname:'pi.example.lan',ip:'10.0.0.53',role:'other'};
- let made=await (await h.post('/api/home/machines',{machine:pi},writer.headers)).json();
+ let made=await (await h.post('/api/home/devices',{machine:pi},writer.headers)).json();
  const k1=await issueAgent(h,'pi-hole');await new Promise(r=>setTimeout(r,3));clock=Date.now();
  assert.equal((await report(k1.token,envelope(systemsParts({name:'pi'})))).status,200);
  assert.deepEqual(await agentIds(),['pi-hole']);
  // The platform is set to linux: the stored macos record is not read, though the key stays.
- const listed=async()=>(await (await fetch(h.origin+'/api/home/machines',{headers:h.admin})).json()).machines.find(m=>m.id==='pi-hole');
- made=await (await h.post('/api/home/machines',{machine:{...pi,platform:'linux'},base:(await listed()).hash},writer.headers)).json();
+ const listed=async()=>(await (await fetch(h.origin+'/api/home/devices',{headers:h.admin})).json()).machines.find(m=>m.id==='pi-hole');
+ made=await (await h.post('/api/home/devices',{machine:{...pi,platform:'linux'},base:(await listed()).hash},writer.headers)).json();
  assert.deepEqual(await agentIds(),[],'a record of another platform than the machine now says');
- assert.equal((await h.post('/api/home/machines/remove',{id:'pi-hole',base:(await listed()).hash},writer.headers)).status,200);
+ assert.equal((await h.post('/api/home/devices/remove',{id:'pi-hole',base:(await listed()).hash},writer.headers)).status,200);
  await new Promise(r=>setTimeout(r,3));
- assert.equal((await h.post('/api/home/machines',{machine:pi},writer.headers)).status,201);
+ assert.equal((await h.post('/api/home/devices',{machine:pi},writer.headers)).status,201);
  await issueAgent(h,'pi-hole');// the sweep revokes the old key
  assert.deepEqual(await agentIds(),[],'parts received before the device was created belong to the earlier machine');
 });

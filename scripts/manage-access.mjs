@@ -19,8 +19,8 @@
 // --label NAME (or HOME_HUB_LAUNCHD_LABEL) names the launchd job to check, when the hub runs as one.
 // Secrets (a generated password, a key) go only into the --output file (0600, must not exist), never to the terminal.
 // An agent key's file is what the agent's installer reads (--key-file): {"schema": 1, "agent": {id, machine, name,
-// prefix, createdAt}, "token": "hha_…"}. Its machine is one of the site configuration (site.json, found as the server
-// finds it) or a device added on the overview (<state>/home/devices.json); the router, the NAS and a machine whose
+// prefix, createdAt}, "token": "hha_…"}. Its machine is one from site.json (found as the server finds it) or one added
+// on the overview (<state>/home/devices.json); the router, the NAS and a machine whose
 // platform is "other" are refused. agents.json is the one file a running hub reads again when it changes, so
 // revoke-agent-key takes effect at once even while the hub runs.
 import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import {spawnSync} from 'node:child_process';
@@ -68,10 +68,10 @@ else if(command==='create-account'){
  result={...await store.issueAccountKey({accountId:account.id},by),account};
 }
 else if(command==='create-agent-key'){
- // The machine namespace of the overview: the site's machines and the added devices, with the stamp the key binds.
+ // The machine namespace of the overview: the site's machines and the ones added on the overview, with the stamp the key binds.
  // devices.json as the server reads it (server/home-devices.mjs): schema 1, or the command stops.
- let devices=[];try{const d=JSON.parse(fs.readFileSync(path.join(state,'home','devices.json'),'utf8'));if(d?.schema!==1||!Array.isArray(d.devices))throw new Error('Invalid devices file (home/devices.json)');devices=d.devices;}catch(e){if(e.code!=='ENOENT')throw e;}
- const machine=findMachine(option('machine'),{siteMachines:loadedSite().machines,devices}),why=machineRefusal(machine);
+ let added=[];try{const d=JSON.parse(fs.readFileSync(path.join(state,'home','devices.json'),'utf8'));if(d?.schema!==1||!Array.isArray(d.devices))throw new Error('Invalid devices file (home/devices.json)');added=d.devices;}catch(e){if(e.code!=='ENOENT')throw e;}
+ const machine=findMachine(option('machine'),{siteMachines:loadedSite().machines,addedMachines:added}),why=machineRefusal(machine);
  if(why)throw new Error(why==='unknown'?`No machine of the overview has the id ${JSON.stringify(option('machine')??'')}.`:why==='router'?'The router is reported by the router adapter, not by an agent.'
   :why==='nas'?'The NAS stays agent-less (ssh.probe "nas").':'A machine whose platform is "other" cannot run an agent: set its platform to macos, linux or windows, or leave it unset.');
  const {token,agent}=await createAgentStore(state).issue(machine,{name:option('name'),...by});
