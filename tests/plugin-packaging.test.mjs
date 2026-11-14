@@ -22,12 +22,15 @@ const fixtures=fileURLToPath(new URL('./fixtures/plugins/',import.meta.url));
 // Outside the checkout: os.tmpdir() is never under the core tree.
 const temp=async(t,prefix='hub-pkg-')=>{const dir=realpathSync(await mkdtemp(path.join(os.tmpdir(),prefix)));t.after(()=>rm(dir,{recursive:true,force:true}));return dir;};
 // A plugin directory <dir>/<id>/ with index.mjs and, when manifest is not null, plugin.json.
-async function plugin(dir,id,{manifest={id,version:'1.0.0',core:'>=1.0.0 <2.0.0'},code=`export default {id:'${id}',title:'${id}'};`,files={}}={}){
+async function plugin(dir,id,{manifest={id,version:'1.0.0',core:THIS_MAJOR},code=`export default {id:'${id}',title:'${id}'};`,files={}}={}){
  await mkdir(path.join(dir,id),{recursive:true});await writeFile(path.join(dir,id,'index.mjs'),code);
  if(manifest!==null)await writeFile(path.join(dir,id,'plugin.json'),typeof manifest==='string'?manifest:JSON.stringify(manifest));
  for(const [name,body] of Object.entries(files)){await mkdir(path.dirname(path.join(dir,id,name)),{recursive:true});await writeFile(path.join(dir,id,name),body);}
 }
 const quiet={warn:()=>{}};
+// The range a plugin written for this core states: all of its major. Worked out from the running version, so these
+// tests hold across the release that raises the major (scripts/release.mjs runs them on the bumped package.json).
+const MAJOR=Number(CORE_VERSION.split('.')[0]),THIS_MAJOR=`>=${MAJOR}.0.0 <${MAJOR+1}.0.0`;
 
 test('the plugin API and the testing export are what plugins import by name, and resolve to this core',async()=>{
  const named=await import('home-hub/plugin-api');
@@ -46,7 +49,7 @@ test('the plugin API and the testing export are what plugins import by name, and
 test('the demo plugin: plugin.json gives its version; it imports core by name; the manifest and the start-up line name the version',async t=>{
  const plugins=await loadPlugins(fixtures,quiet);
  assert.deepEqual(plugins.map(p=>[p.id,p.version,p.source]),[['demo','1.0.0','fixtures']]);
- assert.deepEqual({...plugins[0].plugin,config:{...plugins[0].plugin.config}},{id:'demo',version:'1.0.0',title:'Demo notes',core:'>=1.0.0 <2.0.0',requires:{},dataEpoch:null,config:{required:[]},hostAgents:[],source:'fixtures',sourceDirectory:path.dirname(path.resolve(fixtures))});
+ assert.deepEqual({...plugins[0].plugin,config:{...plugins[0].plugin.config}},{id:'demo',version:'1.0.0',title:'Demo notes',core:'>=1.0.0 <3.0.0',requires:{},dataEpoch:null,config:{required:[]},hostAgents:[],source:'fixtures',sourceDirectory:path.dirname(path.resolve(fixtures))});
  const h=await hub(t,{plugins});
  const about=await (await fetch(h.origin+'/api/demo/about',{headers:h.admin})).json();
  assert.deepEqual([about.plugin,about.core,about.provenance.kind],['1.0.0',CORE_VERSION,'plugin']);
@@ -72,7 +75,7 @@ test('plugin.json: what is refused at start-up, naming the plugin and the field'
   const dir=await temp(t);await plugin(dir,'p-one',{manifest,files});for(const [id,m] of extra)await plugin(dir,id,{manifest:m});
   await assert.rejects(loadPlugins(dir,quiet),pattern);
  };
- const ok={id:'p-one',version:'1.0.0',core:'>=1.0.0 <2.0.0'};
+ const ok={id:'p-one',version:'1.0.0',core:THIS_MAJOR};
  await refused('{not json',/plugin "p-one": plugin\.json: not valid JSON/);
  await refused({...ok,colour:'red'},/plugin "p-one": plugin\.json: unknown field\(s\): colour/);
  await refused({...ok,id:'p-two'},/id is "p-two"; it must equal the directory name "p-one"/);
@@ -125,9 +128,9 @@ test('several plugin directories; an id is unique across them; instance.json nam
 test('a plugin source: package.json next to plugins/ gives the version and core range of plugins that state none',async t=>{
  const src=await temp(t),dir=path.join(src,'plugins');
  await plugin(dir,'p-one',{manifest:{id:'p-one'}});await plugin(dir,'p-two',{manifest:{id:'p-two',version:'2.1.0',core:'*'}});
- await writeFile(path.join(src,'package.json'),JSON.stringify({name:'home-hub-household',version:'1.4.0',private:true,type:'module',homeHub:{core:'>=1.0.0 <2.0.0'}}));
- assert.deepEqual({...pluginSource(dir)},{name:'home-hub-household',version:'1.4.0',core:'>=1.0.0 <2.0.0',directory:src});
- assert.deepEqual((await loadPlugins(dir,quiet)).map(p=>[p.id,p.version,p.plugin.core,p.source]),[['p-one','1.4.0','>=1.0.0 <2.0.0','home-hub-household'],['p-two','2.1.0','*','home-hub-household']]);
+ await writeFile(path.join(src,'package.json'),JSON.stringify({name:'home-hub-household',version:'1.4.0',private:true,type:'module',homeHub:{core:THIS_MAJOR}}));
+ assert.deepEqual({...pluginSource(dir)},{name:'home-hub-household',version:'1.4.0',core:THIS_MAJOR,directory:src});
+ assert.deepEqual((await loadPlugins(dir,quiet)).map(p=>[p.id,p.version,p.plugin.core,p.source]),[['p-one','1.4.0',THIS_MAJOR,'home-hub-household'],['p-two','2.1.0','*','home-hub-household']]);
  await writeFile(path.join(src,'package.json'),JSON.stringify({name:'x',homeHub:{core:'one'}}));
  assert.throws(()=>pluginSource(dir),/homeHub\.core is not a version range/);
  assert.equal(pluginSource(path.join(repoRoot,'local','plugins')),null,'local/ has no package of its own');
@@ -135,7 +138,7 @@ test('a plugin source: package.json next to plugins/ gives the version and core 
 
 test('a plugin outside the core tree imports core by name through one link, and gets this core\'s own modules',async t=>{
  const src=await temp(t),dir=path.join(src,'plugins');
- await plugin(dir,'ext',{manifest:{id:'ext',version:'1.0.0',core:'^1.0.0'},code:`import {provenance,CORE_VERSION} from 'home-hub/plugin-api';
+ await plugin(dir,'ext',{manifest:{id:'ext',version:'1.0.0',core:`^${MAJOR}.0.0`},code:`import {provenance,CORE_VERSION} from 'home-hub/plugin-api';
 export const seen={provenance,CORE_VERSION};
 export default {id:'ext',title:'External',routes:[{method:'GET',path:'/api/ext',handler:({json})=>json(200,{core:CORE_VERSION})}]};`});
  assert.equal(coreSeenFrom(dir),null,'no link yet');
@@ -173,7 +176,7 @@ test('the test runner runs a plugin source: its plugins and tests, its fixture s
   files:{'tests/ext.test.mjs':`import test from 'node:test';import assert from 'node:assert/strict';
 import {hub,STARTUP_PLUGINS} from 'home-hub/testing';
 test('the source plugin is loaded on the fixture site',async t=>{assert.deepEqual(STARTUP_PLUGINS.map(p=>p.id),['ext']);const h=await hub(t,{plugins:STARTUP_PLUGINS});assert.equal(h.handler.hub.state('ext').site,'Fixture house');});`}});
- await writeFile(path.join(src,'package.json'),JSON.stringify({name:'home-hub-example',version:'1.0.0',private:true,type:'module',homeHub:{core:'>=1.0.0 <2.0.0'}}));
+ await writeFile(path.join(src,'package.json'),JSON.stringify({name:'home-hub-example',version:'1.0.0',private:true,type:'module',homeHub:{core:THIS_MAJOR}}));
  await mkdir(path.join(src,'tests','fixtures'),{recursive:true});await writeFile(path.join(src,'tests','fixtures','site.json'),JSON.stringify({siteName:'Fixture house'}));
  linkCore({plugins:[dir],env:{}});
  // A runner of its own, not a child of this one (NODE_TEST_CONTEXT would make it report to us instead of printing).

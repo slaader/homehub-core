@@ -68,10 +68,14 @@ A major release: names on the public surface change, with no alias for the old o
 
 ### Plugin contract
 
-- **Breaking:** `principal.authKind` is `app` for a native app's token (was `device`).
+- **Breaking:** `principal.authKind` is `app` for a native app's token (was `device`), and a route handler's context
+  carries `appToken` (was `device`).
 - **Breaking:** the extension point `machines.facets` is `devices.facets`, and an integration's field `machines` is
   `devices`. `hub.site.machines` is `hub.site.devices`; a page's context carries `device` (was `machine`).
-- **Breaking:** `home-hub/testing` exports `deviceKind` and `systemDevices` (were `machineKind`, `systemMachines`).
+- **Breaking:** `home-hub/testing` exports `deviceKind` and `systemDevices` (were `machineKind`, `systemMachines`);
+  `buildSystems`, `buildGraph` and `liveState` take `devices` (was `machines`) and answer with `device` and `devices`.
+- **Breaking:** a provenance source counts `unit: "devices"` (was `"machines"`), and a `runtimes.requests` item
+  names `device` and `clientDevice` (were `machine`, `clientMachine`).
 - **Breaking:** a host agent's `config` module gets `{site, device}` (was `{site, machine}`).
 - **Breaking:** `createKnowledgeEditor` and `validateKnowledge` work on the `schema: 2` inventory document (kind and
   field `device`). The editor reads a `schema: 1` file forward; `validateKnowledge` refuses a `schema: 1` document.
@@ -112,8 +116,8 @@ A major release: names on the public surface change, with no alias for the old o
   checkout of their own schedule; one left on 1.x does not read a 2.0 `site.json`.
 - **The push agents keep reporting**: the report format and the keys are unchanged. A key file downloaded from 1.x
   (`agent.machine`) is still accepted by the 2.0 installers; the hub now writes `agent.device`.
-- **Plugins** must name the core range they support (`plugin.json → core`) and move to the new names before the hub
-  starts with them.
+- **Plugins** must name a core range that holds 2.x (`plugin.json → core`) and move to the new names before the hub
+  starts with them. `docs/plugins.md` → Upgrading a plugin from 1.x lists every name, old and new.
 - A browser keeps its inventory map layout: one saved by 1.x loads with its column and card order.
 
 ## 1.0.0

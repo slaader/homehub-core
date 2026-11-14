@@ -105,7 +105,7 @@ local/plugins/notes/
   "id": "notes",
   "version": "1.0.0",
   "title": "Notes",
-  "core": ">=1.0.0 <2.0.0",
+  "core": ">=2.0.0 <3.0.0",
   "requires": {"compute": ">=1.0.0"},
   "dataEpoch": 1,
   "config": {"required": ["hosts"]},
@@ -119,7 +119,7 @@ local/plugins/notes/
 | `id` | Equals the directory name and `index.mjs`'s `id` |
 | `version` | The plugin's semver. Optional when its source's `package.json` has a `version`: the plugin then has the source's |
 | `title` | Optional; for people |
-| `core` | The Home Hub versions it supports: comparators joined by spaces (`>=1.0.0 <2.0.0`), `^1.2.0`, `~1.2.0`, `1.x`, `*`, and `a \|\| b` for either (`server/semver.mjs`). Optional when the source's `package.json` has `homeHub.core` |
+| `core` | The Home Hub versions it supports: comparators joined by spaces (`>=2.0.0 <3.0.0`), `^2.1.0`, `~2.1.0`, `2.x`, `*`, and `a \|\| b` for either (`server/semver.mjs`). Optional when the source's `package.json` has `homeHub.core` |
 | `requires` | Other plugins it needs, each with a range. Use it instead of importing another plugin silently |
 | `dataEpoch` | A positive integer you raise whenever the plugin's own stored format changes |
 | `config.required` | Keys of `site.json → plugins.<id>` it cannot work without; a missing one stops the start, by name. Checking the values stays the plugin's job, in `setup` |
@@ -129,7 +129,7 @@ An unknown field, a wrong value, a core range this core is outside of, an unmet 
 setting stops the start with the plugin's name (`node server/index.mjs --check` runs every one of these checks and
 exits, opening nothing). A plugin **without** `plugin.json` still loads in 1.x, with one warning line (an
 "unversioned plugin"); 2.0 will require it. The start-up line names every plugin with its version
-(`Home Hub 1.2.0 (… 9 plugin(s): compute 1.0.0, …)`), and so do `GET /api/ui/manifest → modules[]` and the footer's
+(`Home Hub 2.0.0 (… 9 plugin(s): compute 1.0.0, …)`), and so do `GET /api/ui/manifest → modules[]` and the footer's
 tooltip.
 
 ### Importing core
@@ -143,8 +143,8 @@ import {hub, createHandler, hashPassword} from 'home-hub/testing'; // tests
 
 | Export | What it has |
 |---|---|
-| `home-hub/plugin-api` (`server/plugin-api.mjs`) | `tx`, `sentences` (text to translate), `worstState` (integrations), `provenance`, `authoredProvenance`, `collectorSource`, `toolError` (MCP refusals), `byteRange` (Range requests), `readRouter`, `mergeRouter` (the router census), `createKnowledgeEditor`, `entryHash`, `validateKnowledge` (the inventory file), `satisfies`, `validRange`, `compareVersions`, `parseVersion` (semver), `site`, `loadSite` (the site configuration, for a plugin's scripts), `resolvePaths` (where data and secrets are), `CORE_VERSION` |
-| `home-hub/testing` (`tests/plugin-testing.mjs`) | `createHandler`, `buildRegistry`, `STARTUP_PLUGINS`, the `hub(t, options)` helper with `credentials` and `knowledge`, `hashPassword`, `createAuth`, `createAccessStore`, `SCOPES`, `scopeFor`, `legacyScopes`, `site`, `loadSite`, `validateSite`, `deviceKind`, `sshHosts`, the front-end test hook `BROWSER_PATHS_HOOK`, `CORE_FIXTURES`; and what a household's tests check their data against: `readEdition`, `homeDefinitions`, `stackLayouts`, `systemDevices`, `buildSystems`, `parseSystemsProbe`, `liveState`, `placements`, `buildGraph`, `cleanRequest`, `READ_PATHS`, `EVENT_PATH`, `walkKnowledge`, `findKnowledge`, `loadKnowledge`, `validStore`, `storeNames`, `softwareWatchPath` |
+| `home-hub/plugin-api` (`server/plugin-api.mjs`) | `tx`, `sentences` (text to translate), `worstState` (integrations), `provenance`, `authoredProvenance`, `collectorSource`, `toolError` (MCP refusals), `byteRange` (Range requests), `readRouter`, `mergeRouter` (the router census), `createKnowledgeEditor`, `entryHash`, `validateKnowledge` (the inventory file), `satisfies`, `validRange`, `compareVersions`, `parseVersion` (semver), `site`, `loadSite` (the site configuration, for a plugin's scripts), `resolvePaths` (where data and secrets are), `installedAgent` (what an installed host agent is), `CORE_VERSION` |
+| `home-hub/testing` (`tests/plugin-testing.mjs`) | `createHandler`, `buildRegistry`, `STARTUP_PLUGINS`, the `hub(t, options)` helper with `credentials`, `knowledge` and `SITE` (the fixture site the core tests run on), `hashPassword`, `createAuth`, `createAccessStore`, `SCOPES`, `scopeFor`, `legacyScopes`, `site`, `loadSite`, `validateSite`, `deviceKind`, `sshHosts`, the front-end test hook `BROWSER_PATHS_HOOK`, `CORE_FIXTURES`; and what a household's tests check their data against: `readEdition`, `homeDefinitions`, `stackLayouts`, `systemDevices`, `buildSystems`, `parseSystemsProbe`, `liveState`, `placements`, `buildGraph`, `cleanRequest`, `READ_PATHS`, `EVENT_PATH`, `walkKnowledge`, `findKnowledge`, `loadKnowledge`, `validStore`, `storeNames`, `softwareWatchPath` |
 
 These two files **are** the server-side plugin contract and fall under semver; anything not exported there is
 internal and may change in any release. The browser side is unchanged: page modules import `/views.js`, `/ui.js`,
@@ -287,7 +287,7 @@ A handler gets one context object:
 | `params` | The match of a `match` route, else `null` |
 | `input` | The parsed JSON body of a POST |
 | `principal` | Who is calling: `{id, username, role, permission, authKind, scopes}` (`session`, `app` or `api-key`). `scopes` is what the caller holds: a person's role, a key's account, everything for an app token. `role` is `admin` for an administrator (the owner included), else the role id; `roleId` is the exact role |
-| `canWrite`, `canAdmin`, `signedIn`, `device` | Shortcuts |
+| `canWrite`, `canAdmin`, `signedIn`, `appToken` | Shortcuts. `appToken` is the id of the app token the request came with, `null` for every other credential |
 | `json(status, data)`, `error(status, code, message)` | Replies |
 | `state` | What this module's `setup` returned |
 | `hub` | The hub: `site`, `directory` (data), `stateDirectory`, `db`, `auth`, `accessStore`, `registry`, `options`, `state(id)`, `collect(name)`, `provided(name)`, `integrationEnabled(id)`, `integrationDisabled(id)`, `onIntegrationChange(fn)`, `integrationSecret(id, key)` (see Integrations), `pluginData(id)`: the plugin's own data directory, `<data>/plugins/<id>/` (0700, made on first use; `docs/storage.md` → Where everything is). Keep files there, never in the plugin's code directory |
@@ -296,7 +296,7 @@ A handler gets one context object:
 The pipeline does the common checks before your handler runs, in this order: the credential, admin-only path
 prefixes, the API key's scope, the `Origin` and `Content-Type` of a browser POST, sign-in, write permission, the
 scope of a signed-in person's role, the body size limit, JSON parsing. A route's `scope` therefore holds for
-everyone: a key, a person (through their role) and a device.
+everyone: a key, a person (through their role) and a native app.
 
 | Route field | Default | Meaning |
 |---|---|---|
@@ -610,6 +610,41 @@ For the deprecated in-tree `local/`, `npm test` in the core checkout runs them a
 `exact` is `true` on the release tag of `version`, `false` on any other git checkout (`label` is then
 `1.1.0+dev (4172c37)`), and `null` where there is no git checkout to tell.
 Under the test runner, front-end modules can be imported in Node with the same URL-style imports.
+
+## Upgrading a plugin from 1.x
+
+Home Hub 2.0 calls a device what 1.x called a machine, and an app token what 1.x called a device token. No old name
+is kept as an alias, so a plugin written for 1.x changes these before 2.0 starts with it. `CHANGELOG.md` → 2.0.0 has
+the HTTP routes, fields and error codes a plugin's page or script may call; this is the plugin contract.
+
+| Where | 1.x | 2.0 |
+|---|---|---|
+| `plugin.json → core` (or the source's `homeHub.core`) | a range that ends below 2.0.0, such as `>=1.0.0 <2.0.0` | one that holds 2.x, such as `>=2.0.0 <3.0.0`. A plugin outside its range stops the start |
+| `site.json` | `machines[]`, `runtimes[].machine` | `devices[]`, `runtimes[].device`. A file with `machines` is refused, by name. `plugins.<id>.agents.<agent>.<device id>` keeps its shape |
+| The site object (`hub.site`, `site()`, `loadSite()`) | `site.machines` | `site.devices` |
+| Extension point | `machines.facets`: `(machines) => report`, a report's `machines: {[id]: entry}` | `devices.facets`: `(devices) => report`, a report's `devices: {[id]: entry}` |
+| Integration field | `machines: (state, hub) => [{machine, item}]` | `devices: (state, hub) => [{device, item}]` |
+| `runtimes.requests` items | `machine`, `clientMachine` | `device`, `clientDevice` |
+| Provenance (`provenance`, `collectorSource`) | `unit: 'machines'` | `unit: 'devices'` (an unknown unit is dropped) |
+| Route handler context | `c.device` (set for a device token) | `c.appToken` |
+| `principal` | `authKind: 'device'`, `username: 'Native device'` | `authKind: 'app'`, `username: 'Native app'` |
+| Page context (`(context) => Node`) | `context.machine` | `context.device` |
+| A host agent's `config` module | `({site, machine}) => object` | `({site, device}) => object` |
+| `home-hub/testing` | `machineKind`, `systemMachines`; `buildSystems({machines})`, `buildGraph(live, list, requests, {machines})`, `liveState(merged, machines)` | `deviceKind`, `systemDevices`; `buildSystems({devices})`, `buildGraph(live, list, requests, {devices})`, `liveState(merged, devices)`. What they return says `device` and `devices` too (`cleanRequest`: `device`, `clientDevice`), and `knowledge()` is a `schema: 2` document |
+| The inventory document (`createKnowledgeEditor`, `validateKnowledge`, `walkKnowledge`, `findKnowledge`, an `inventory.writer`) | `schema: 1`; entry kind `machine`, entry field `machine` | `schema: 2`; kind `device`, field `device`. `validateKnowledge` refuses `schema: 1`; the editor and `loadKnowledge` read a 1.x file forward. `entryHash` covers the fields, so a placed entry's hash is new |
+| MCP tools named in `mcpInstructions`, prompts and docs | `machine_list`, `machine_upsert`, `machine_remove`; the argument `machine` | `device_list`, `device_upsert`, `device_remove`; the argument `device` (also in `runtime_publish`, `inventory_search`, `runtime_endpoint_upsert`) |
+| Routes a plugin's page or script calls | `/api/home/machines`, `/api/home/machines/remove`, `/api/admin/machines`, `/api/devices/tokens` | `/api/home/devices`, `/api/home/devices/remove`, `/api/admin/devices`, `/api/app-tokens`; the answers say `devices` and `device` |
+| Error codes | `MACHINE_…`, `AGENT_MACHINE_GONE`, `DEVICE_LIMIT` (tokens) | `DEVICE_…`, `AGENT_DEVICE_GONE`, `APP_TOKEN_LIMIT` (`DEVICE_LIMIT` now means the overview's 20 added devices) |
+| Links into core pages | `#integrations/machine/<id>` | `#integrations/device/<id>` (`#host-<id>` is unchanged) |
+| Commands and environment | `--machine`, `MACHINES_DIR`, `data/machines/` | `--device`, `DEVICES_DIR`, `data/devices/` |
+| Core's translatable texts (`tx` keys a plugin reuses from core) | the placeholder `{machine}` | `{device}` |
+
+Unchanged: `home.snapshots`, `home.services` and `home.runtimes` (keyed by device id, as before), `router.adapter`
+(its `devices[]` are the router's network clients, a different thing and the reason for the rename),
+`git-lfs.providers`, the scopes, the Czech source strings, and `/views.js`, `/ui.js` and `/i18n.js`. What a plugin
+stores for itself (`hub.pluginData(id)`) is its own: core migrates only core's files (`docs/storage.md` → State
+written by 1.x), so a plugin that wrote `machine` into its files reads them forward itself and raises its
+`dataEpoch`.
 
 ## Keeping household details out of core
 

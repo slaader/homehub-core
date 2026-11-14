@@ -295,7 +295,7 @@ reader**, between the collector's record C and the agent's record A, in this ord
 3. **Time.** Otherwise the newer wins, a tie to the agent. A's time is `receivedAt` (the hub's clock). C's time is
    the earlier of its new per-device `probedAt` (the collecting host's clock when that probe came back; a failed
    probe leaves it as it was; older records use the earlier of the file's `collectedAt` and the record's own `HOST`
-   time) and the collector file's modification time as the hub reads it (the hub device's clock), so a collector
+   time) and the collector file's modification time as the hub reads it (the hub's own clock), so a collector
    clock that runs ahead cannot win. A collector record that never carried a probe (`collect-systems.mjs`' placeholder
    for a device it has never reached: no `probedAt`, no `HOST` time) has no time, so any agent record beats it.
 

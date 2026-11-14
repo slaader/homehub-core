@@ -1,7 +1,7 @@
 {
- "$comment": "The demo plugin's static facts: read before index.mjs runs (docs/plugins.md → plugin.json).",
+ "$comment": "The demo plugin's static facts: read before index.mjs runs (docs/plugins.md → plugin.json). It uses nothing 2.0 renamed, so its range spans both majors.",
  "id": "demo",
  "version": "1.0.0",
  "title": "Demo notes",
- "core": ">=1.0.0 <2.0.0"
+ "core": ">=1.0.0 <3.0.0"
 }

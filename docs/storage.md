@@ -190,4 +190,4 @@ first read (retried every ten minutes while no key can be made).
 - Not sealed (yet): the SSH private keys in `state/home/ssh/` and `private/backup-jobs/` (OpenSSH reads them as
   files), `private/integrations.json` and `private/git-lfs-tokens.json`. They rely on the file permissions below.
 
-Home-device state files use owner-only permissions: POSIX mode 0600 under a 0700 directory; on Windows, an explicit DACL permits only the Home Hub account and SYSTEM. New files are protected before the atomic rename, including `telemetry-hosts.json` passwords and tokens.
+The files in `state/home/` use owner-only permissions: POSIX mode 0600 under a 0700 directory; on Windows, an explicit DACL permits only the Home Hub account and SYSTEM. New files are protected before the atomic rename, including `telemetry-hosts.json` passwords and tokens.

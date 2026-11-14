@@ -299,6 +299,8 @@ const AGENT_FIELDS=['id','title','entry','service','health','config'];
 const RELATIVE=/^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$/;
 const relative=v=>typeof v==='string'&&RELATIVE.test(v)&&!v.split('/').some(s=>s==='..'||s==='.'||s==='');
 const CONFIG_KEY=/^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
+// The range a plugin written for this core would state: all of its major (">=2.0.0 <3.0.0").
+const exampleRange=()=>{const major=Number(CORE_VERSION.split('.')[0])||0;return `>=${major}.0.0 <${major+1}.0.0`;};
 /** <directory>/<name>/plugin.json, normalized and frozen, or null when the plugin has none. Throws naming the field. */
 export function readPluginManifest(directory,name,{source=pluginSource(directory)}={}){
  const dir=path.join(directory,name),file=path.join(dir,MANIFEST_FILE);
@@ -312,7 +314,7 @@ export function readPluginManifest(directory,name,{source=pluginSource(directory
  const version=raw.version??source?.version??no('version is missing (and the plugin source has no package.json version)');
  if(raw.title!==undefined&&(typeof raw.title!=='string'||!raw.title.trim()||raw.title.length>80||/[\u0000-\u001f]/.test(raw.title)))no('title must be a text of 1 to 80 characters');
  if(raw.core!==undefined&&!validRange(raw.core))no(`core is not a version range: ${JSON.stringify(raw.core)}`);
- const core=raw.core??source?.core??no('core is missing: the range of Home Hub versions this plugin supports, such as ">=1.0.0 <2.0.0"');
+ const core=raw.core??source?.core??no(`core is missing: the range of Home Hub versions this plugin supports, such as "${exampleRange()}"`);
  const requires={};
  if(raw.requires!==undefined){
   if(!plain(raw.requires))no('requires must be an object: {"<plugin id>": "<range>"}');

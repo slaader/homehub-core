@@ -120,7 +120,7 @@ export function inventoryFacet(devices,entries){
 
 // ---- Git LFS -------------------------------------------------------------------------------------------------
 export function gitLfsFacet(devices,{connections=[],entries=null,off=false}){
- // The inventory names devices its own way; a placement's device is the hub device with the same id (sameId).
+ // The inventory names devices its own way; a placement's device is the overview's device with the same id (sameId).
  const out={},add=(inv,line)=>{const m=devices.find(x=>x.id===inv)||devices.find(x=>sameId(x.id,inv));if(m)(out[m.id]??={state:'ok',lines:[]}).lines.push(line);};
  for(const c of connections){
   const p=entries?placementFor(c.web,entries):null;if(!p)continue;
