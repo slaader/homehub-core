@@ -7,8 +7,10 @@
 // instructions are assembled from the modules' mcpInstructions, so a plugin describes its own tools.
 import {entryHash,entryInput} from '../scripts/knowledge-edit.mjs';
 import {toolError} from './tool-error.mjs';
-import {TICKET_ID,TICKET_TYPES,TICKET_STATUSES,TICKET_PRIORITIES,RELEASE_STATUSES,PROJECT_TYPES} from './tickets-store.mjs';
+import {TICKET_ID,TICKET_TYPES,TICKET_STATUSES,TICKET_PRIORITIES,RELEASE_STATUSES,PROJECT_TYPES,TICKET_ATTACHMENTS} from './tickets-store.mjs';
+import {cleanName} from './ticket-files.mjs';
 import {readFile} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
 import {REVIEW_ID,REVIEW_KINDS,LIMITS as REVIEW_LIMITS} from './review-store.mjs';
 import {SCOPES} from './scopes.mjs';
 import {renamedKey} from './state-forward.mjs';
@@ -49,6 +51,9 @@ export const MCP_TOOLS=Object.freeze([
    entry:{type:'object',description:'The complete entry (id, kind, name, device, address, version, depends_on, notes, …).'},
    base:{type:'string',pattern:'^[a-f0-9]{64}$',description:'Hash from inventory_get. Required when the entry already exists.'}},required:['entry'],additionalProperties:false},
   annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false}},
+ {name:'projects_list',scope:'read',title:'Tickets: list projects',
+  description:'List project ids, ticket prefixes, names, descriptions, types and revs without loading tickets or releases. Use this to find a project or its rev for project_save; use tickets_list for tickets and releases.',
+  inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,openWorldHint:false}},
  {name:'tickets_list',scope:'read',title:'Tickets: list',
   description:'List tickets with field filters, plus every project and release (releases carry per-status ticket counts over all their tickets). Sorted by status, then priority, then latest change; total is the number of matches before limit. Tickets come without comment text, history or attachments (comments and attachments are counts); use ticket_get for the full record and its rev, and ticket_search to look for words in comments too.',
   inputSchema:{type:'object',properties:{
@@ -90,6 +95,10 @@ export const MCP_TOOLS=Object.freeze([
   description:'Read a file attached to a ticket (ids come from ticket_get → attachments). Images up to 5 MB come back as an image, plain-text files up to 256 kB as text; anything else returns only its metadata and download path. In a ticket description or comment, ![name] points at the attachment with that name.',
   inputSchema:{type:'object',properties:{id:{type:'string',pattern:TICKET_ID.source,description:'Ticket id, e.g. APP-12.'},attachment:{type:'string',pattern:'^[0-9a-f-]{36}$'}},required:['id','attachment'],additionalProperties:false},
   annotations:{readOnlyHint:true,openWorldHint:false}},
+ {name:'ticket_attachment_put',scope:'tickets:write',title:'Tickets: attach a small file',
+  description:'Attach up to 32 KiB of file bytes, encoded as canonical base64, to an existing ticket. The server detects the type from bytes; no server-local paths or remote URLs. If these bytes are already attached, returns the existing ticket without duplication (even if the file name differs). Returns the full saved ticket; use its stored attachment name. For larger files stream PUT /api/tickets/<ID>/attachments?name=<name> (up to 100 MiB), or use scripts/ticket-push.mjs. Never generate base64 for a large file in conversation.',
+  inputSchema:{type:'object',properties:{id:{type:'string',pattern:TICKET_ID.source},name:{type:'string',minLength:1,maxLength:120},data:{type:'string',minLength:4,maxLength:43692,description:'Canonical padded base64 for 1..32768 file bytes.'}},required:['id','name','data'],additionalProperties:false},
+  annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:true,openWorldHint:false}},
  {name:'search',scope:'read',title:'Home Hub: full-text search',
   description:'Full-text search across tickets (id, title, description, comments, attachment names, labels, refs, people) and review sets (title, description, round notes, item and variant texts, decisions and comments). Plain words, never query syntax: every word must match as a prefix; case and diacritics are ignored (resume finds Résumé). Best match first, a title hit above a body hit; matched words are wrapped in \\u0001…\\u0002 in title and snippet. Use ticket_get or review_get for the full record, and ticket_search to narrow tickets by status, assignee, label or release.',
   inputSchema:{type:'object',properties:{query:{type:'string',minLength:1,maxLength:200,description:'Up to 12 words.'},kind:{type:'string',enum:['ticket','review'],description:'Only tickets or only review sets.'},project:{type:'string',maxLength:40,description:'Project id.'},limit:{type:'integer',minimum:1,maximum:100,description:'Maximum results (default 20).'}},required:['query'],additionalProperties:false},
@@ -202,12 +211,28 @@ export function createMcp({version='2',ctx,tools:extraTools=[],instructions=[]})
    const data=await tickets(t=>t.list({...args,...(query!==undefined?{q:query}:{}),limit}));
    return {...data,releases:data.releases.map(({createdBy,createdAt,...r})=>r)};
   },
+  projects_list:()=>tickets(t=>t.projects()).then(projects=>({projects})),
   ticket_get:args=>{if(Object.keys(args).some(k=>k!=='id'))throw new ToolError('Invalid ticket request.');return tickets(t=>t.get(args.id));},
   ticket_create:(args,principal)=>tickets(t=>t.create(args,principal.username)),
   ticket_update:(args,principal)=>tickets(t=>t.update(args,principal.username)),
   ticket_comment:(args,principal)=>tickets(t=>t.comment(args,principal.username)),
   release_save:(args,principal)=>tickets(t=>t.saveRelease(args,principal.username)),
   project_save:(args,principal)=>tickets(t=>t.saveProject(args,principal.username)),
+  async ticket_attachment_put({id,name,data},principal){
+   if(typeof name!=='string'||!name.trim()||name.length>120||typeof data!=='string'||!data.length||data.length>43692)throw new ToolError('Use a file name and canonical base64 for 1-32768 bytes; stream larger files with PUT /api/tickets/<ID>/attachments?name=<name>.');
+   const bytes=Buffer.from(data,'base64');
+   if(!bytes.length||bytes.length>32768||bytes.toString('base64')!==data)throw new ToolError('data must be canonical padded base64 for 1-32768 bytes.');
+   if(!ctx.ticketFiles)throw new ToolError('Attachments are not available on this Home Hub.');
+   return tickets(async t=>{
+    const ticket=await t.get(id),own=cleanName(name);
+    // A retry still succeeds when the ticket is full. Hashing here avoids an unnecessary blob write.
+    const sha=createHash('sha256').update(bytes).digest('hex');
+    if(ticket.attachments.some(a=>a.sha256===sha))return ticket;
+    if(ticket.attachments.length>=TICKET_ATTACHMENTS)throw new Error('limit');
+    const file=await ctx.ticketFiles.put([bytes],{name:own,declaredLength:bytes.length});
+    return t.attach(id,file,principal.username,{deduplicate:true});
+   });
+  },
   async ticket_attachment_get({id,attachment,...rest}){
    if(Object.keys(rest).length)throw new ToolError('Invalid attachment request.');
    const a=await tickets(t=>t.attachment(id,attachment));if(!ctx.ticketFiles)throw new ToolError('Attachments are not available on this Home Hub.');
@@ -240,7 +265,7 @@ export function createMcp({version='2',ctx,tools:extraTools=[],instructions=[]})
  const TICKET_ERRORS={invalid:'Invalid ticket request: check the field values, that the project exists and that the release exists in that project.',
   'not-found':'No such ticket or release. Use tickets_list to find the right id.',
   conflict:'It changed since you read it (or already exists). Read it again (ticket_get / tickets_list), then reapply your change with the new rev.',limit:'A ticket limit was reached; nothing was changed.'};
- async function tickets(fn){if(!ctx.tickets)throw new ToolError('Tickets are not available on this Home Hub.');try{return await fn(ctx.tickets);}catch(e){if(TICKET_ERRORS[e.message])throw new ToolError(TICKET_ERRORS[e.message]);throw new ToolError('Tickets are not available right now; nothing was changed.');}}
+ async function tickets(fn){if(!ctx.tickets)throw new ToolError('Tickets are not available on this Home Hub.');try{return await fn(ctx.tickets);}catch(e){if(TICKET_ERRORS[e.message])throw new ToolError(TICKET_ERRORS[e.message]);throw new ToolError('Tickets are not available right now. Read the target before retrying a write; a previous attempt may have succeeded.');}}
  const REVIEW_ERRORS={invalid:'Invalid review request: check the fields, that the project exists, that the tickets belong to it, that each media type matches its item kind and that files look like their type.',
   'missing-blob':'A referenced file is not uploaded yet. Upload it with scripts/review-push.mjs (or PUT /api/review/blobs/<sha256>), or pass small HTML inline.',
   'not-found':'No such review set or round. Use review_list to find it.',conflict:'The set is archived or changed; read it again with review_get.',limit:'A review limit was reached; nothing was changed.','too-large':'An inline HTML mockup is too large (upload it as a file instead), or a .glb model is over 128 MiB.'};

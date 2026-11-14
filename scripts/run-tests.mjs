@@ -42,7 +42,8 @@ function run(label,files,env,cwd=root){
   console.log(`\n=== ${label}: ${files.length} file(s) ===`);
   // A throwaway key for sealed files (server/secret-box.mjs): no test reaches the Keychain or private/secret.key.
   // No instance directory from the shell (server/paths.mjs): a test says where its files are, or gets this checkout's defaults.
-  const child=spawn(process.execPath,['--import',hook,'--test',...flags,...files],{cwd,env:{...process.env,HOME_HUB_HOME:'',HOME_HUB_CONFIG_DIR:'',HOME_HUB_PRIVATE_DIR:'',HOME_HUB_SECRET_KEY:randomBytes(32).toString('hex'),HOME_HUB_SECRET_KEY_FILE:path.join(os.tmpdir(),`home-hub-tests-${process.pid}`,'secret.key'),...env},stdio:['ignore','pipe','inherit']});
+  const inherited={...process.env};for(const key of Object.keys(inherited))if(/^HOME_HUB_TICKET_(EMBEDDING_|SEARCH_)/.test(key))delete inherited[key];
+  const child=spawn(process.execPath,['--import',hook,'--test',...flags,...files],{cwd,env:{...inherited,HOME_HUB_HOME:'',HOME_HUB_CONFIG_DIR:'',HOME_HUB_PRIVATE_DIR:'',HOME_HUB_SECRET_KEY:randomBytes(32).toString('hex'),HOME_HUB_SECRET_KEY_FILE:path.join(os.tmpdir(),`home-hub-tests-${process.pid}`,'secret.key'),...env},stdio:['ignore','pipe','inherit']});
   // The reporter's own totals ("ℹ tests 12"), picked out of the stream line by line.
   const counts={};let rest='';
   child.stdout.on('data',d=>{process.stdout.write(d);const lines=(rest+d).split('\n');rest=lines.pop();for(const line of lines){const m=/^. (tests|pass|fail|skipped) (\d+)$/.exec(line);if(m)counts[m[1]]=Number(m[2]);}});

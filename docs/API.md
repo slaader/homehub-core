@@ -957,13 +957,52 @@ Attachments (stored in `state/tickets/attachments/<sha256>`, at most 20 per tick
 - `GET /api/tickets/<ID>` lists `attachments: [{id, name, type, size, sha256, by, at}]`; the list view has `attachments: <count>`.
 - In a `description` or a comment, `![name]` points at the ticket's attachment of that name (not `![alt](url)`, which stays text). The web UI shows it as a chip that opens the file; a name the ticket has no file for stays as written, and one whose file was removed is shown struck through. The API stores and returns the text as it is: read the file itself with the id from `attachments`.
 
-MCP tools (service-account key): `tickets_list`, `ticket_search`, `ticket_get`, `ticket_attachment_get` (`read`; images up to 5 MB come back as an image, text up to 256 kB as text); `ticket_create`, `ticket_update`, `ticket_comment`, `release_save`, `project_save` (`tickets:write`).
+MCP tools (service-account key): `projects_list`, `tickets_list`, `ticket_search`, `ticket_get`, `ticket_attachment_get` (`read`; images up to 5 MB come back as an image, text up to 256 kB as text); `ticket_create`, `ticket_update`, `ticket_comment`, `release_save`, `project_save`, `ticket_attachment_put` (`tickets:write`).
+
+- `projects_list {}` returns `{projects:[...]}` with ids, keys, names, descriptions, types and revs, without loading tickets or releases. Use it for project discovery and revision checks; use `ticket_get` directly for a known ticket id. Reuse revs returned by successful creates/updates instead of fetching the same record again.
+- `ticket_attachment_put {id, name, data}` accepts canonical padded base64 for 1–32,768 bytes. It detects the content type from the bytes and returns the full saved ticket. Identical file bytes already attached to that ticket return the existing record, even if the supplied name differs; retries also work after a name collision or when the ticket is full. New content still uses the ordinary 20-file limit. The MCP request limit remains 64 KiB; this tool never reads server-local paths or remote URLs.
+- For local files up to 100 MiB, `node scripts/ticket-push.mjs APP-12 file [file ...]` streams the raw HTTP upload with `HOME_HUB_URL` (HTTPS origin; loopback HTTP for tests) and `HOME_HUB_TOKEN` (a service-account key with `tickets:write`) from the environment. It skips content already attached and checks the ticket after a lost response, without automatically replaying a write. Concurrent independent uploader processes can still attach the same file twice through the raw HTTP endpoint. Names come from the saved metadata. Credentials are never printed and redirects are refused.
+- Creation and comments are not idempotent: after an uncertain response, read/search before retrying. An unexpected ticket error does not promise that a prior write failed.
+
+`node scripts/benchmark-tickets.mjs [ticket-count] [samples]` reports median and p95 store-operation times using a temporary synthetic tracker (default 1,000 tickets, 30 samples; at most 5,000 tickets). It does not contact a server or use credentials; it removes its temporary data afterwards. These timings exclude authentication, network and agent/tool-discovery latency.
 
 The web UI (`#projects`, `#projects/<id>`, `#items`, `#items/<ID>`, `#releases`) is in the reader's language (English unless the site sets `defaultLanguage`), with dates in the site's time zone. An empty tracker shows how to start: create a project, or copy the prompt for a coding agent (`project_save`, then `ticket_create`, scope `tickets:write`) with the MCP connection snippet. Keys on the lists: `/` filter, `n` new item, `j` / `k` move, `Enter` open, `v` table or board; on an item `c` focuses the comment box. A new item takes files while it is written (button, drop, or paste with Cmd/Ctrl+V; a paste into the description leaves the file's chip at the caret) and uploads them once the item exists; an item's page lists its files under the description as tiles and opens one in a viewer (picture, audio or video player, text; anything else is a download).
 
 An agent that should file tickets needs `tickets:write`: a custom selection, the Editor preset or full access (see Access → service accounts).
 
 Projects carry `type`: `app`, `game`, `other` or `null` (`POST /api/tickets/projects` and MCP `project_save` accept it).
+
+
+### Hybrid ticket search
+
+`GET /api/tickets/search/hybrid?query=words&mode=hybrid` and MCP `ticket_hybrid_search`
+require normal `read` access. Existing ticket search is unchanged. Required `query` is 1–200
+characters with a letter or digit. Optional `project`, `status`, `type`, `priority`, `release`,
+`assignee`, `label` use ticket-list filters; `limit` is 1–100 (default 20). `mode` is `text`,
+`hybrid` (default), or `semantic`; `minScore` is a finite cosine threshold from 0 to 1.
+Unknown fields are refused. Results cite ticket/project, source, attachment id/name/type when
+applicable, snippets and match kind. Semantic scores and fused ranking scores differ.
+
+`GET /api/tickets/search/status` and MCP `ticket_search_status` take no arguments. They expose
+readiness, embedding progress and extraction coverage: indexed, unsupported, oversized,
+invalid UTF-8 and missing files. A stale canonical revision returns `state: indexing` with
+no hits until background extraction catches up. Semantic-only never silently becomes text.
+Attachment metadata is indexed ahead of body contents. Text content is supported only for `text/plain`,
+strictly decoded in full without NULs, up to 256 KiB, with overlapping Unicode-safe chunks.
+No OCR, archives, arbitrary paths or URL fetching is supported.
+
+Accepted file content is indexed completely or omitted with an explicit coverage reason; capacity
+limits never silently truncate it. Capacity omissions report degraded coverage while retaining
+usable ticket/metadata search. The default derived-index ceiling is 200,000 chunks; the semantic
+cache holds up to 20,000 distinct content vectors. Changes update only affected ticket documents
+and reuse extraction by immutable SHA-256. Bounded failures retry with backoff and a recovery
+cooldown. Concurrent identical questions share their embedding request.
+
+Text mode uses all-word prefix matching; hybrid mode also admits semantic matches above the
+configured cosine floor and fuses their ranks. An unrelated common word alone cannot make a
+long question a lexical match. Hybrid search explicitly reports its actual mode and semantic
+readiness when embeddings are unavailable or warming; semantic-only never downgrades.
+See [optional provider configuration](configuration.md).
 
 ### Review
 

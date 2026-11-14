@@ -51,6 +51,9 @@ function wrap(db,file){
  const st={
   meta:q('SELECT doc FROM meta WHERE kind=?'),putMeta:q('INSERT INTO meta(kind,doc) VALUES(?,?) ON CONFLICT(kind) DO UPDATE SET doc=excluded.doc'),
   rows:q('SELECT coll,id,doc FROM docs WHERE kind=? ORDER BY rowid'),
+  row:q('SELECT doc FROM docs WHERE kind=? AND coll=? AND id=?'),
+  coll:q('SELECT id,doc FROM docs WHERE kind=? AND coll=? ORDER BY rowid'),
+  count:q('SELECT count(*) n FROM docs WHERE kind=? AND coll=?'),
   put:q('INSERT INTO docs(kind,coll,id,doc) VALUES(?,?,?,?) ON CONFLICT(kind,coll,id) DO UPDATE SET doc=excluded.doc'),
   del:q('DELETE FROM docs WHERE kind=? AND coll=? AND id=?'),
   unindex:q('DELETE FROM search WHERE kind=? AND id=?'),index:q('INSERT INTO search(kind,id,project,updated,title,body) VALUES(?,?,?,?,?,?)'),
@@ -72,18 +75,19 @@ function wrap(db,file){
    const colls={};for(const r of st.rows.all(kind))(colls[r.coll]??=[]).push([r.id,JSON.parse(r.doc)]);
    const data=join(JSON.parse(m.doc),colls);return data;
   }
-  function save(data,{full=false}={}){
+  function save(data,{full=false,selection=null,previous=snapshot,inTransaction=false}={}){
    const {meta,colls}=split(data),next=new Map();
-   for(const [coll,rows] of Object.entries(colls))for(const [id,doc] of rows)next.set(stamp(coll,id),{coll,id,doc,json:JSON.stringify(doc)});
-   tx(()=>{
+   for(const [coll,rows] of Object.entries(colls))if(!selection||Object.hasOwn(selection,coll))for(const [id,doc] of rows)next.set(stamp(coll,id),{coll,id,doc,json:JSON.stringify(doc)});
+   const apply=()=>{
     st.putMeta.run(kind,JSON.stringify(meta));
-    for(const [key,r] of next)if(full||snapshot?.get(key)!==r.json){
+    for(const [key,r] of next)if(full||previous?.get(key)!==r.json){
      st.put.run(kind,r.coll,r.id,r.json);const e=search(r.coll,r.doc);
      if(e){st.unindex.run(e.kind,e.id);st.index.run(e.kind,e.id,e.project??null,e.updated??null,e.title??'',e.body??'');}
     }
-    if(snapshot)for(const key of snapshot.keys())if(!next.has(key)){const [coll,id]=key.split('\u0000');st.del.run(kind,coll,id);}
-   });
-   snapshot=new Map([...next].map(([k,r])=>[k,r.json]));
+    if(previous)for(const key of previous.keys())if(!next.has(key)){const [coll,id]=key.split('\u0000');st.del.run(kind,coll,id);}
+   };
+   if(inTransaction)apply();else tx(apply);
+   snapshot=selection?null:new Map([...next].map(([k,r])=>[k,r.json]));
   }
   function reindex(data){
    const {colls}=split(data);
@@ -108,7 +112,23 @@ function wrap(db,file){
   }
   const ensure=()=>ready??=init().catch(e=>{ready=null;throw e;});
   const store={
-   async read(){await ensure();const data=load();snapshot=new Map();const {colls}=split(data);for(const [coll,rows] of Object.entries(colls))for(const [id,doc] of rows)snapshot.set(stamp(coll,id),JSON.stringify(doc));return data;},
+   async read({forWrite=true}={}){await ensure();const data=load();if(forWrite){snapshot=new Map();const {colls}=split(data);for(const [coll,rows] of Object.entries(colls))for(const [id,doc] of rows)snapshot.set(stamp(coll,id),JSON.stringify(doc));}return data;},
+   // Indexed reads do not load unrelated documents or replace a writer's snapshot.
+   async get(coll,id){await ensure();const row=st.row.get(kind,coll,id);return row?JSON.parse(row.doc):null;},
+   async list(coll){await ensure();return st.coll.all(kind,coll).map(r=>JSON.parse(r.doc));},
+   // Selected read-modify-write in one synchronous transaction. null selects a whole subcollection;
+   // an id array selects only those rows. Other rows are never loaded, rewritten or removed.
+   async change(selection,fn){
+    await ensure();return tx(()=>{
+     const colls={},previous=new Map();
+     for(const [coll,ids] of Object.entries(selection)){
+      const rows=ids===null?st.coll.all(kind,coll):[...new Set(ids)].flatMap(id=>{const r=st.row.get(kind,coll,id);return r?[{id,...r}]:[];});
+      colls[coll]=rows.map(r=>{previous.set(stamp(coll,r.id),r.doc);return [r.id,JSON.parse(r.doc)];});
+     }
+     const data=join(JSON.parse(st.meta.get(kind).doc),colls),result=fn(data,coll=>st.count.get(kind,coll).n);
+     save(data,{selection,previous,inTransaction:true});return result;
+    });
+   },
    // The caller serialises writes (one queue per store), so read → change → write cannot interleave.
    async write(data){await ensure();save(data);},
    async reindex(){await ensure();reindex(load());},
@@ -131,7 +151,7 @@ function wrap(db,file){
  const KINDS=['ticket','review'];
  // max: the largest limit a caller may ask for. HTTP and MCP callers get 100; a store that filters the hits
  // further (tickets-store search) passes its own ceiling.
- function search({q,kind,project,limit=20}={},{max=100}={}){
+ function search({q,kind,project,limit=20}={},{max=100,snippets=true,ids=null}={}){
   if(typeof q!=='string'||q.length>200)throw new Error('invalid');
   if(kind!==undefined&&kind!==''&&!KINDS.includes(kind)||project!==undefined&&project!==''&&!/^[a-z][a-z0-9-]{1,39}$/.test(project))throw new Error('invalid');
   limit=Number(limit);if(!Number.isInteger(limit)||limit<1||limit>max)throw new Error('invalid');
@@ -140,8 +160,9 @@ function wrap(db,file){
   const match=words.map(w=>`"${w}"*`).join(' ');
   const where=['search MATCH ?'],args=[match];
   if(kind){where.push('kind=?');args.push(kind);}if(project){where.push('project=?');args.push(project);}
+  if(ids){if(!ids.length)return {q,total:0,results:[]};where.push(`id IN (${ids.map(()=>'?').join(',')})`);args.push(...ids);}
   // A query that is an id (APP-12, R-3) puts that very record first; everything else is ranked by relevance.
-  const rows=db.prepare(`SELECT kind,id,project,updated,highlight(search,4,char(1),char(2)) title,snippet(search,5,char(1),char(2),'…',14) snippet,bm25(search,0,0,0,0,4,1) score
+  const rows=db.prepare(`SELECT kind,id,project,updated,${snippets?"highlight(search,4,char(1),char(2)) title,snippet(search,5,char(1),char(2),'…',14) snippet":"title,NULL snippet"},bm25(search,0,0,0,0,4,1) score
    FROM search WHERE ${where.join(' AND ')} ORDER BY (id=?) DESC, score LIMIT ?`).all(...args,q.trim().toUpperCase(),limit);
   // \u0001…\u0002 mark the matches; the UI renders them as <mark> through text nodes, never as HTML.
   return {q,total:rows.length,results:rows.map(r=>({kind:r.kind,id:r.id,project:r.project,updatedAt:r.updated,title:r.title,snippet:r.snippet,score:Number((-r.score).toPrecision(4))}))};

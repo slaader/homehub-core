@@ -1,6 +1,7 @@
 // Core module "tracker": projects, releases, tickets with attachments, and the full-text search over
 // tickets and review sets. Projects are created in the UI (or seeded once from site.json → tracker.projects).
 import path from 'node:path';
+import {createTicketSearchService} from '../ticket-search-service.mjs';
 import {createReadStream} from 'node:fs';
 import {pipeline} from 'node:stream/promises';
 import {createTicketStore,ticketAuthors,TICKET_ID,TICKET_TYPES,TICKET_PRIORITIES,TICKET_ATTACHMENTS} from '../tickets-store.mjs';
@@ -66,8 +67,8 @@ const SEARCH_ARGS=['query','project','status','type','priority','release','assig
 export default {
  id:'tracker',title:'Project Tracker',
  mcpInstructions:[
-  'Tracker: tickets_list shows projects, releases and tickets by field filters. ticket_search finds tickets by words, comments included; search looks through tickets and review sets together. ticket_get returns one ticket with its rev, comments and attachments (ticket_attachment_get reads one).',
-  {scope:'tickets:write',text:'With tickets:write: ticket_create, ticket_update (pass the rev from ticket_get), ticket_comment, and release_save and project_save (omit rev to create, pass it to change).'},
+  'Tracker: projects_list finds projects; tickets_list filters tickets/releases. ticket_search searches words; ticket_hybrid_search adds file text and semantics (ticket_search_status: coverage). search includes reviews. Known id: ticket_get; ticket_attachment_get reads files.',
+  {scope:'tickets:write',text:'With tickets:write: project_save then ticket_create. ticket_update uses the returned rev; ticket_comment appends. release_save/project_save: omit rev to create. ticket_attachment_put: up to 32 KiB; larger files use HTTP.'},
  ],
  assets:['tracker-view.js','tracker-md.js','tracker-attach.js','search-view.js','tickets.css','i18n-en-tracker.js'],
  nav:[
@@ -78,8 +79,10 @@ export default {
  ],
  setup(hub){
   const dir=path.join(hub.stateDirectory,'tickets');
-  return {tickets:createTicketStore(dir,{db:hub.db,seedProjects:hub.site.tracker.projects}),ticketFiles:createTicketFiles(dir)};
+  const tickets=createTicketStore(dir,{db:hub.db,seedProjects:hub.site.tracker.projects}),ticketFiles=createTicketFiles(dir);
+  return {tickets,ticketFiles,ticketSearch:createTicketSearchService(dir,{tickets,ticketFiles,...hub.options.ticketSearch})};
  },
+ pollers:[{id:'ticket-search',start:state=>state.ticketSearch.start(),stop:state=>state.ticketSearch.close()}],
  routes:[
   // Ticket attachments: the raw file in one request (at most 100 MiB); the name comes in the query.
   {method:'PUT',match:/^\/api\/tickets\/([A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,5})\/attachments$/,scope:'tickets:write',raw:true,contentType:'application/octet-stream',error:ticketsError,
@@ -101,6 +104,8 @@ export default {
   // Full-text search inside tickets with the list's field filters (status, assignee, label, release, …).
   {method:'GET',path:'/api/tickets/search',error:ticketsError,handler:async c=>c.json(200,await c.state.tickets.search(c.query))},
   {method:'GET',path:'/api/tickets/people',error:ticketsError,handler:async c=>c.json(200,{people:await people(c)})},
+  {method:'GET',path:'/api/tickets/search/hybrid',error:ticketsError,handler:async c=>c.json(200,await c.state.ticketSearch.search({...c.query,...(c.query.minScore===undefined?{}:{minScore:c.query.minScore.trim()===''?NaN:Number(c.query.minScore)})}))},
+  {method:'GET',path:'/api/tickets/search/status',error:ticketsError,handler:c=>{if(Object.keys(c.query).length)throw new Error('invalid');return c.json(200,c.state.ticketSearch.status());}},
   // An attachment: images, plain text, audio and video inline, everything else as a download; always sandboxed and
   // nosniff. One byte range per request (a player seeks with them); anything else in Range is a 416.
   {method:'GET',match:/^\/api\/tickets\/([A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,5})\/attachments\/([0-9a-f-]{36})$/,error:ticketsError,async handler({params,url,req,res,state,error}){
@@ -119,6 +124,10 @@ export default {
     return json(200,{...found,results:await describeHits(found.results,c),indexed:hub.db.searchStats()});}},
  ],
  mcpTools:[
+  {name:'ticket_search_status',scope:'read',description:'Ticket search readiness, semantic availability and attachment content coverage.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,openWorldHint:false},run(args,{state}){if(Object.keys(args).length)throw toolError('Invalid ticket search status request.');return state.ticketSearch.status();}},
+  {name:'ticket_hybrid_search',scope:'read',description:'Search ticket text and attachment metadata and complete bounded UTF-8 text. Modes text, hybrid, semantic; returns source citations and explicit readiness/coverage.',
+   inputSchema:{type:'object',properties:{query:{type:'string',minLength:1,maxLength:200},project:{type:'string'},status:{type:'string'},type:{type:'string'},priority:{type:'string'},release:{type:'string'},assignee:{type:'string'},label:{type:'string'},limit:{type:'integer',minimum:1,maximum:100},mode:{enum:['text','hybrid','semantic']},minScore:{type:'number',minimum:0,maximum:1}},required:['query'],additionalProperties:false},annotations:{readOnlyHint:true,openWorldHint:false},
+   async run(args,{state}){try{if(args.limit!==undefined&&!Number.isInteger(args.limit))throw new Error('invalid');return await state.ticketSearch.search(args);}catch(e){throw toolError(e.message==='invalid'?'Invalid ticket hybrid search request.':'Ticket search unavailable.');}}},
   {name:'ticket_search',scope:'read',title:'Tickets: full-text search with filters',
    description:'Find tickets by words in their title, description, comments, attachment names, labels, refs or people, narrowed by the same field filters as tickets_list. Plain words, never query syntax: every word must match as a prefix, and case and diacritics are ignored. Best match first. Each ticket comes as in tickets_list plus snippet, the matching text with the matched words wrapped in \\u0001…\\u0002. Use tickets_list when you only filter by fields, and search to look in review sets too.',
    inputSchema:{type:'object',properties:{
@@ -141,6 +150,8 @@ export default {
  // Rows for the API reference (Users and API); the first card of the same title already lists the basic routes.
  apiDocs:[
   {title:'Project Tracker',routes:[
+   ['GET','/api/tickets/search/hybrid?query=&mode=hybrid','read','Hybrid ticket and attachment text search with citations and coverage.'],
+   ['GET','/api/tickets/search/status','read','Ticket search readiness and attachment extraction coverage.'],
    ['GET','/api/tickets/search?q=&status=&assignee=&label=&release=','read','Fulltext v ticketech (i komentáře) se stejnými filtry jako seznam.'],
    ['GET','/api/tickets/people','read','Jména pro pole Řeší: účty, servisní účty a lidé z ticketů.'],
    ['PUT','/api/tickets/<ID>/attachments?name=','tickets:write','Příloha ticketu: soubor jako application/octet-stream, nejvýš 100 MB.'],

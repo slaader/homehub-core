@@ -62,30 +62,51 @@ export function cleanName(raw){
 }
 
 export function createTicketFiles(root){
- const dir=path.join(root,'attachments');let used=null,swept=null;
+ const dir=path.join(root,'attachments');let used=null,loading=null,swept=null,reserved=0,queue=Promise.resolve();
+ const serial=fn=>{const run=queue.then(fn);queue=run.catch(()=>{});return run;};
  // What an upload leaves behind when the process ends under it (.upload-<uuid>) is removed before this process
  // makes a temp file of its own: once, on the first upload. Nothing else ever would, and it counts in the total.
  const sweep=()=>swept??=(async()=>{let names=[];try{names=await readdir(dir);}catch{}
   for(const n of names)if(n.startsWith('.upload-'))await rm(path.join(dir,n),{force:true}).catch(()=>{});})();
  const file=sha=>SHA.test(sha)?path.join(dir,sha):fail('not-found');
- async function usage(){if(used!==null)return used;let total=0,names=[];try{names=await readdir(dir);}catch(e){if(e.code!=='ENOENT')throw e;}
-  for(const n of names)try{total+=(await stat(path.join(dir,n))).size;}catch{}return used=total;}
+ async function usage(){if(used!==null)return used;return loading??=(async()=>{
+  let total=0,names=[];try{names=await readdir(dir);}catch(e){if(e.code!=='ENOENT')throw e;}
+  for(const n of names)try{total+=(await stat(path.join(dir,n))).size;}catch{}return used=total;
+ })().catch(e=>{loading=null;throw e;});}
  // body: async iterable of Buffers. Returns {sha256,size,type,name}.
  async function put(body,{name,declaredLength}){
   if(Number.isFinite(declaredLength)&&declaredLength>FILE_LIMITS.file)fail('too-large');
-  await mkdir(dir,{recursive:true,mode:0o700});await sweep();
-  const temp=path.join(dir,'.upload-'+randomUUID()),hash=createHash('sha256'),fh=await open(temp,'wx',0o600);let size=0,head=Buffer.alloc(0);
+  await mkdir(dir,{recursive:true,mode:0o700});await sweep();await usage();
+  const temp=path.join(dir,'.upload-'+randomUUID()),hash=createHash('sha256'),fh=await open(temp,'wx',0o600);let size=0,head=Buffer.alloc(0),held=0,closed=false;
   try{
-   for await(const chunk of body){size+=chunk.length;if(size>FILE_LIMITS.file)fail('too-large');if((await usage())+size>FILE_LIMITS.total)fail('limit');
-    if(head.length<4096)head=Buffer.concat([head,chunk.subarray(0,4096-head.length)]);hash.update(chunk);await fh.write(chunk);}
-  }catch(e){await fh.close();await rm(temp,{force:true});throw e;}
-  await fh.close();
-  if(!size){await rm(temp,{force:true});fail('invalid');}
-  const sha256=hash.digest('hex'),clean=cleanName(name);
-  try{await stat(file(sha256));await rm(temp,{force:true});}catch{await rename(temp,file(sha256));used+=size;}
-  return {sha256,size,type:sniff(head,clean),name:clean};
+   for await(const chunk of body){
+    size+=chunk.length;if(size>FILE_LIMITS.file)fail('too-large');if(used+reserved+chunk.length>FILE_LIMITS.total)fail('limit');
+    reserved+=chunk.length;held+=chunk.length;
+    if(head.length<4096)head=Buffer.concat([head,chunk.subarray(0,4096-head.length)]);hash.update(chunk);
+    for(let offset=0;offset<chunk.length;){const {bytesWritten}=await fh.write(chunk,offset,chunk.length-offset);if(!bytesWritten)throw new Error('write-failed');offset+=bytesWritten;}
+   }
+   await fh.close();closed=true;if(!size)fail('invalid');
+   const sha256=hash.digest('hex'),clean=cleanName(name);
+   await serial(async()=>{
+    let exists=false;try{await stat(file(sha256));exists=true;}catch(e){if(e.code!=='ENOENT')throw e;}
+    if(exists)await rm(temp,{force:true});else{await rename(temp,file(sha256));used+=size;}
+    reserved-=held;held=0;
+   });
+   return {sha256,size,type:sniff(head,clean),name:clean};
+  }finally{
+   reserved-=held;if(!closed)await fh.close().catch(()=>{});await rm(temp,{force:true});
+  }
  }
- async function remove(sha){try{const s=await stat(file(sha));await rm(file(sha),{force:true});if(used!==null)used-=s.size;}catch(e){if(e.code!=='ENOENT')throw e;}}
+ async function remove(sha){return serial(async()=>{try{await usage();const s=await stat(file(sha));await rm(file(sha),{force:true});used-=s.size;}catch(e){if(e.code!=='ENOENT')throw e;}});}
  async function read(sha){const p=file(sha);try{return {path:p,size:(await stat(p)).size};}catch{fail('not-found');}}
- return {put,remove,read};
+ async function readText(sha,maxBytes=256*1024){
+  const fh=await open(file(sha),'r');
+  try{const size=(await fh.stat()).size;if(size>maxBytes)return {state:'oversize'};
+   const bytes=Buffer.alloc(size+1);let offset=0;
+   while(offset<bytes.length){const {bytesRead}=await fh.read(bytes,offset,bytes.length-offset,null);if(!bytesRead)break;offset+=bytesRead;}
+   if(offset>maxBytes)return {state:'oversize'};
+   try{const text=new TextDecoder('utf-8',{fatal:true}).decode(bytes.subarray(0,offset));return text.includes('\0')?{state:'invalid'}:{state:'indexed',text};}catch{return {state:'invalid'};}
+  }finally{await fh.close();}
+ }
+ return {put,remove,read,readText};
 }

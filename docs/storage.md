@@ -204,3 +204,9 @@ first read (retried every ten minutes while no key can be made).
 `private/integrations.json` (write-only plugin integration settings) is also sealed with the same key sources, with its own authenticated purpose. Its decrypted document is schema 2; plaintext schema 1 is atomically sealed on readiness before requests or pollers run. Unlike telemetry logins, a locked, corrupt or newer integration store stops startup and is never reset automatically. Restore the original key/file before restarting. Backups of the encrypted file must retain the key separately; an archive containing both the ciphertext and `private/secret.key` must itself remain private.
 
 The files in `state/home/` use owner-only permissions: POSIX mode 0600 under a 0700 directory; on Windows, an explicit DACL permits only the Home Hub account and SYSTEM. New files are protected before the atomic rename, including `telemetry-hosts.json` passwords and tokens.
+
+Ticket hybrid search stores a disposable derived SQLite cache under `<state>/tickets/search/`.
+Schema 1 is covered by data epoch 3; canonical tickets and attachment blobs are unchanged.
+An older 2.0.1 store without a cache opens normally and builds it asynchronously. Newer cache
+schemas are refused. Use the pre-update archive for rollback across data epochs. Search caches
+contain ticket and attachment text and require the same private storage protection as tickets.

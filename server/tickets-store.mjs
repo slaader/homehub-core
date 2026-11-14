@@ -48,33 +48,9 @@ export const ticketSearch=(coll,t)=>coll!=='tickets'?null:{kind:'ticket',id:t.id
 export const ticketAuthors=t=>({created:[[t.reporter,t.createdAt]],
  changes:[...(t.history||[]).filter(h=>h.field!=='created').map(h=>[h.by,h.at]),...(t.comments||[]).map(c=>[c.by,c.at])]});
 
-export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seedProjects=[]}={}){
- let queue=Promise.resolve();
- const store=db.collection('tickets',{empty:()=>empty(seedProjects),legacy:path.join(root,'tickets.json'),searchKinds:['ticket'],search:ticketSearch,
-  valid:d=>d?.schema===1&&Array.isArray(d.projects)&&Array.isArray(d.releases)&&Array.isArray(d.tickets),
-  split:({projects,releases,tickets,...meta})=>({meta,colls:{projects:rows(projects,p=>p.id),releases:rows(releases,r=>r.project+'/'+r.version),tickets:rows(tickets,t=>t.id)}}),
-  join:(meta,c)=>({...meta,projects:docs(c.projects),releases:docs(c.releases),tickets:docs(c.tickets)})});
- const read=()=>store.read();
- // Serialised read-modify-write; fn mutates the document and returns the reply. A throw writes nothing.
- function write(fn){
-  const run=queue.then(async()=>{
-   const data=await read(),now=new Date().toISOString(),result=fn(data,now);
-   data.revision++;data.updatedAt=now;await store.write(data);
-   return result;
-  });queue=run.catch(()=>{});return run;
- }
- const projectOf=(data,id)=>data.projects.find(p=>p.id===id)||fail('invalid');
- function releaseOf(data,project,version){
-  if(version===null)return null;
-  if(typeof version!=='string'||!VERSION.test(version))fail('invalid');
-  return data.releases.find(r=>r.project===project&&r.version===version)?.version||fail('invalid');
- }
- const ticketOf=(data,id)=>(typeof id==='string'&&TICKET_ID.test(id)&&data.tickets.find(t=>t.id===id))||fail('not-found');
-
- // Read side ---------------------------------------------------------------------------------
- const FILTERS=['project','status','type','priority','release','assignee','label','q','limit'];
+const FILTERS=['project','status','type','priority','release','assignee','label','q','limit'];
  // Validates the field filters shared by list() and search(); returns the cleaned filter and a ticket predicate.
- function ticketFilter(filter,keys=FILTERS){
+export function ticketFilter(filter,keys=FILTERS){
   if(!onlyKeys(filter,keys))fail('invalid');
   const f=Object.fromEntries(Object.entries(filter).filter(([,v])=>v!==undefined&&v!==''));
   for(const [k,v] of Object.entries(f))if(typeof v!=='string'&&(k!=='limit'||typeof v!=='number'))fail('invalid');
@@ -87,21 +63,46 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
    &&(!f.assignee||(f.assignee==='none'?t.assignee===null:t.assignee===f.assignee))&&(!f.label||t.labels.includes(f.label));
   return {f,match};
  }
+
+export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seedProjects=[]}={}){
+ let queue=Promise.resolve(),searchRevision=0;const searchListeners=new Set();
+ const store=db.collection('tickets',{empty:()=>empty(seedProjects),legacy:path.join(root,'tickets.json'),searchKinds:['ticket'],search:ticketSearch,
+  valid:d=>d?.schema===1&&Array.isArray(d.projects)&&Array.isArray(d.releases)&&Array.isArray(d.tickets),
+  split:({projects,releases,tickets,...meta})=>({meta,colls:{projects:rows(projects,p=>p.id),releases:rows(releases,r=>r.project+'/'+r.version),tickets:rows(tickets,t=>t.id)}}),
+  join:(meta,c)=>({...meta,projects:docs(c.projects),releases:docs(c.releases),tickets:docs(c.tickets)})});
+ // Serialised read-modify-write; fn mutates the document and returns the reply. A throw writes nothing.
+ function write(fn,selection={projects:null,releases:null,tickets:null}){
+  const run=queue.then(()=>store.change(selection,(data,count)=>{
+    const now=new Date().toISOString(),result=fn(data,now,count);data.revision++;data.updatedAt=now;return result;
+   })).then(result=>{searchRevision++;for(const listener of searchListeners)try{listener();}catch{}return result;});queue=run.catch(()=>{});return run;
+ }
+ const projectOf=(data,id)=>data.projects.find(p=>p.id===id)||fail('invalid');
+ function releaseOf(data,project,version){
+  if(version===null)return null;
+  if(typeof version!=='string'||!VERSION.test(version))fail('invalid');
+  return data.releases.find(r=>r.project===project&&r.version===version)?.version||fail('invalid');
+ }
+ const ticketOf=(data,id)=>(typeof id==='string'&&TICKET_ID.test(id)&&data.tickets.find(t=>t.id===id))||fail('not-found');
+
+ // Read side ---------------------------------------------------------------------------------
+
  // authors: true adds `authors` = {created, changes, seeded} over the projects, releases and tickets of the
  // project filter (not the other filters): who made and changed them, and how many projects the site seeded.
  async function list(filter={},{authors=false}={}){
   const {f,match}=ticketFilter(filter);
   if(f.q&&f.q.length>100)fail('invalid');
-  const data=await read();
+  const data=await store.read({forWrite:false});
   const q=f.q?f.q.toLowerCase():null,limit=f.limit===undefined?null:Number(f.limit);
   if(limit!==null&&!(Number.isInteger(limit)&&limit>0&&limit<=LIMITS.tickets))fail('invalid');
   let tickets=data.tickets.filter(t=>match(t)&&(!q||[t.id,t.title,t.description,...t.labels].join('\n').toLowerCase().includes(q)));
   tickets.sort((a,b)=>TICKET_STATUSES.indexOf(a.status)-TICKET_STATUSES.indexOf(b.status)||TICKET_PRIORITIES.indexOf(b.priority)-TICKET_PRIORITIES.indexOf(a.priority)||b.updatedAt.localeCompare(a.updatedAt));
   const total=tickets.length;if(limit)tickets=tickets.slice(0,limit);
   // Release progress is counted over all tickets, not just the filtered ones.
+  const progress=new Map(),emptyCounts=()=>Object.fromEntries(TICKET_STATUSES.map(s=>[s,0]));
+  for(const t of data.tickets)if(t.release!==null){const key=t.project+'/'+t.release,counts=progress.get(key)||emptyCounts();counts[t.status]++;progress.set(key,counts);}
   const releases=data.releases.filter(r=>!f.project||r.project===f.project).map(r=>{
-   const mine=data.tickets.filter(t=>t.project===r.project&&t.release===r.version),counts=Object.fromEntries(TICKET_STATUSES.map(s=>[s,mine.filter(t=>t.status===s).length]));
-   return {...r,counts,total:mine.length};}).sort((a,b)=>a.project.localeCompare(b.project)||compareVersions(a.version,b.version));
+   const counts=progress.get(r.project+'/'+r.version)||emptyCounts();
+   return {...r,counts,total:Object.values(counts).reduce((a,b)=>a+b,0)};}).sort((a,b)=>a.project.localeCompare(b.project)||compareVersions(a.version,b.version));
   const out={updatedAt:data.updatedAt,projects:data.projects.map(publicProject),releases,total,tickets:tickets.map(summary)};
   if(!authors)return out;
   const facts={created:[],changes:[],seeded:0},mine=x=>!f.project||(x.project??x.id)===f.project;
@@ -111,7 +112,11 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
   for(const t of data.tickets.filter(mine)){const a=ticketAuthors(t);facts.created.push(...a.created);facts.changes.push(...a.changes);}
   return {...out,authors:facts};
  }
- async function get(id){const data=await read(),t=ticketOf(data,id);return {...t,attachments:t.attachments||[]};}
+ async function projects(){return (await store.list('projects')).map(publicProject);}
+ async function get(id){
+  if(typeof id!=='string'||!TICKET_ID.test(id))fail('not-found');
+  const t=await store.get('tickets',id);if(!t)fail('not-found');return {...t,attachments:t.attachments||[]};
+ }
  // Full-text search over tickets (title, description, comments, attachment names, labels, refs, people) with the
  // same field filters as list(). Plain words, every word a prefix match; best match first. Each hit is the list
  // summary plus `snippet` (matched words wrapped in \u0001…\u0002) and `score`.
@@ -119,15 +124,18 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
   const {f,match}=ticketFilter(filter);
   if(typeof f.q!=='string'||f.q.length>200||!/[\p{L}\p{N}_]/u.test(f.q))fail('invalid');
   const limit=f.limit===undefined?20:Number(f.limit);if(!(Number.isInteger(limit)&&limit>0&&limit<=100))fail('invalid');
-  const data=await read(),byId=new Map(data.tickets.map(t=>[t.id,t]));
-  const hits=db.search({q:f.q,kind:'ticket',...(f.project?{project:f.project}:{}),limit:LIMITS.tickets},{max:LIMITS.tickets}).results
+  const data=await store.read({forWrite:false}),byId=new Map(data.tickets.map(t=>[t.id,t]));
+  const query={q:f.q,kind:'ticket',...(f.project?{project:f.project}:{})};
+  // Rank and filter all hits, but build expensive body snippets only for the returned page.
+  const hits=db.search({...query,limit:LIMITS.tickets},{max:LIMITS.tickets,snippets:false}).results
    .map(r=>({r,t:byId.get(r.id)})).filter(x=>x.t&&match(x.t));
-  return {q:f.q,total:hits.length,tickets:hits.slice(0,limit).map(({r,t})=>({...summary(t),snippet:r.snippet,score:r.score}))};
+  const page=hits.slice(0,limit),snippets=new Map(db.search({...query,limit},{ids:page.map(x=>x.t.id)}).results.map(r=>[r.id,r.snippet]));
+  return {q:f.q,total:hits.length,tickets:page.map(({r,t})=>({...summary(t),snippet:snippets.get(t.id),score:r.score}))};
  }
  // The names tickets know: assignees (with how many tickets they hold, and how many of those are active),
  // reporters and comment authors. The assignee field suggests them.
  async function people(){
-  const data=await read(),seen=new Map();
+  const data=await store.read({forWrite:false}),seen=new Map();
   const of=name=>{if(typeof name!=='string'||!name)return null;if(!seen.has(name))seen.set(name,{name,assigned:0,active:0});return seen.get(name);};
   for(const t of data.tickets){
    const a=of(t.assignee);if(a){a.assigned++;if(!CLOSED.includes(t.status))a.active++;}
@@ -140,16 +148,18 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
  // ticket (a text points at a file as ![name]): a name the ticket already has, in any case, gets -2, -3, …
  // before its extension.
  async function attachment(id,attachmentId){const t=await get(id);return t.attachments.find(a=>a.id===attachmentId)||fail('not-found');}
- async function attach(id,file,by){
+ async function attach(id,file,by,{deduplicate=false}={}){
   if(!plain(file)||typeof file.sha256!=='string'||!/^[a-f0-9]{64}$/.test(file.sha256)||!Number.isSafeInteger(file.size)||typeof file.type!=='string')fail('invalid');
   const name=text(file.name,120);
   return write((data,now)=>{
-   const t=ticketOf(data,id);t.attachments=t.attachments||[];if(t.attachments.length>=LIMITS.attachments)fail('limit');
+   const t=ticketOf(data,id);t.attachments=t.attachments||[];
+   if(deduplicate&&t.attachments.some(a=>a.sha256===file.sha256))return {...t};
+   if(t.attachments.length>=LIMITS.attachments)fail('limit');
    const used=new Set(t.attachments.map(a=>a.name.toLowerCase())),dot=name.lastIndexOf('.'),ext=dot>0&&name.length-dot<=12?name.slice(dot):'',stem=ext?name.slice(0,dot):name;
    let own=name;for(let i=2;used.has(own.toLowerCase());i++)own=`${stem.slice(0,120-ext.length-String(i).length-1)}-${i}${ext}`;
    t.attachments.push({id:randomUUID(),name:own,type:file.type,size:file.size,sha256:file.sha256,by,at:now});
    t.history.push({at:now,by,field:'attachment',from:null,to:own});t.history=t.history.slice(-LIMITS.history);t.updatedAt=now;return {...t};
-  });
+  },{tickets:typeof id==='string'?[id]:[]});
  }
  // Returns the ticket and whether any ticket still references the removed file.
  async function detach(input,by){
@@ -179,14 +189,14 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
  }
  async function create(input,by){
   if(!writeInput(input,['project',...TICKET_FIELDS])||typeof input.project!=='string'||!('title'in input))fail('invalid');
-  return write((data,now)=>{
-   const project=projectOf(data,input.project);if(data.tickets.length>=LIMITS.tickets)fail('limit');
+  return write((data,now,count)=>{
+   const project=projectOf(data,input.project);if(count('tickets')>=LIMITS.tickets)fail('limit');
    const f=fields(input,project.id,data),id=`${project.key}-${project.next}`;project.next++;
    const ticket={id,project:project.id,title:f.title,description:f.description??'',type:f.type??'task',status:f.status??'open',priority:f.priority??'normal',
     release:f.release??null,assignee:f.assignee??null,labels:f.labels??[],refs:f.refs??[],reporter:by,createdAt:now,updatedAt:now,
     closedAt:CLOSED.includes(f.status)?now:null,rev:1,comments:[],attachments:[],history:[{at:now,by,field:'created',from:null,to:f.status??'open'}]};
    data.tickets.push(ticket);return ticket;
-  });
+  },{projects:null,releases:null,tickets:[]});
  }
  async function update(input,by){
   if(!writeInput(input,['id','rev',...TICKET_FIELDS])||!validRev(input.rev)||!TICKET_FIELDS.some(k=>k in input))fail('invalid');
@@ -198,7 +208,7 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
    for(const k of changed)t.history.push({at:now,by,field:k,from:['title','description'].includes(k)?null:t[k],to:['title','description'].includes(k)?null:f[k]});
    if('status'in f&&f.status!==t.status)t.closedAt=CLOSED.includes(f.status)?now:null;
    Object.assign(t,f);t.history=t.history.slice(-LIMITS.history);t.updatedAt=now;t.rev++;return t;
-  });
+  },{releases:null,tickets:typeof input.id==='string'?[input.id]:[]});
  }
  async function comment(input,by){
   if(!writeInput(input,['id','text'])||!('text'in input))fail('invalid');
@@ -206,7 +216,7 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
   return write((data,now)=>{
    const t=ticketOf(data,input.id);if(t.comments.length>=LIMITS.comments)fail('limit');
    t.comments.push({id:randomUUID(),at:now,by,text:body});t.updatedAt=now;return t;
-  });
+  },{tickets:typeof input.id==='string'?[input.id]:[]});
  }
  // Create a release (no rev) or change one (rev required). Released → releasedAt defaults to today.
  async function saveRelease(input,by){
@@ -224,7 +234,7 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
    if(r.status==='released'&&!r.releasedAt)r.releasedAt=now.slice(0,10);
    if(r.status==='planned')r.releasedAt=null;
    r.updatedAt=now;r.rev++;if(!old)data.releases.push(r);return r;
-  });
+  },{projects:null,releases:null});
  }
  // Create a project (no rev; id and key are permanent) or change its name/description/type (rev required).
  async function saveProject(input,by){
@@ -245,7 +255,7 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
    if(data.projects.some(p=>p.key===input.key))fail('conflict');
    if(data.projects.length>=LIMITS.projects)fail('limit');
    const p={id:input.id,key:input.key,name,description:description??'',type:type??null,createdAt:now,createdBy:by,updatedAt:now,rev:1,next:1};data.projects.push(p);return publicProject(p);
-  });
+  },{projects:null});
  }
- return {list,get,search,people,create,update,comment,saveRelease,saveProject,attach,detach,attachment};
+ return {searchSnapshot:async()=>({revision:searchRevision,tickets:await store.list('tickets')}),searchRevision:()=>searchRevision,onSearchChange:fn=>{searchListeners.add(fn);return ()=>searchListeners.delete(fn);},validateSearchFilters:filter=>ticketFilter(filter),list,projects,get,search,people,create,update,comment,saveRelease,saveProject,attach,detach,attachment};
 }
