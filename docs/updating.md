@@ -83,7 +83,7 @@ hub's own `/healthz` on its local port, not the reverse proxy in front of it.
 | 2 | Checks that the hub is running the installed version and that the health address answers. | stops |
 | 3 | `git fetch --tags`; resolves the target. Refuses a lower version, a tag whose `package.json` says another version, a checkout with changed tracked files, a release that was rolled back here before (`--force` tries again), and, when the installed checkout has `config/release-signers`, a tag without a good signature (`--allow-unsigned`). | stops |
 | 4 | Checks out the target in a scratch worktree (`<home>/staging/`, else the temp directory), with every plugin source beside it. From those files: each plugin's `core` range must include the target version, each `requires` must be met, the Node version must fit, and the data epoch is compared. | stops, naming the plugin |
-| 5 | In the scratch worktree: the target's `npm test`, the plugin sources' tests against the target core, then `node server/index.mjs --check` with **this instance's** secrets and plugins, and its site file (a staged copy when configuration changes). The worktree is removed. | stops; nothing was touched |
+| 5 | In the scratch worktree: the target's `npm test`, each plugin source's tests separately with its own fixture site against the target core, then `node server/index.mjs --check` with **this instance's** secrets and plugins, and its site file (a staged copy when configuration changes). The worktree is removed. | stops; nothing was touched |
 | 6 | Writes the journal, stops the service, waits for its process to exit. | starts it again |
 | 7 | Archives `config/` (an instance directory), `data/`, the state directory and `private/` into `pre-<from>-to-<to>-<time>.tgz` (0600) and lists it back. The hub is stopped, so the SQLite file is closed and consistent. A backup job's `staging/` mirror and `*.tgz` files are left out. A site being replaced is also saved separately, even outside these directories. | starts the old version |
 | 8 | `git checkout --detach <tag>` in each source that changes. Atomically install any replacement site configuration checked in step 5. | rolls back |
@@ -124,7 +124,8 @@ service from restarting. Include both of these options in the same preflight/app
 
 `--add-plugin-source` is repeatable. It needs an existing instance with an explicit `sources.plugins` list, no
 `HOME_HUB_PLUGINS_DIR` override, and an explicit target tag for each added source. Preflight stages all existing and
-added sources together, checks their core ranges and dependencies, and runs their tests against target core. The
+added sources together and checks their core ranges and dependencies. It runs each source's tests independently
+with that source's fixture, then checks all target sources together with the staged real site. The
 source list is appended only after stop/archive. The original `instance.json` is saved as a 0600
 `<archive>.instance.json` sidecar and journalled before replacement, then restored before an old-code restart on
 failure or rollback. A changed manifest during preflight is refused. The inactive checkout remains on disk after

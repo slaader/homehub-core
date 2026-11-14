@@ -23,6 +23,7 @@ const {parseArgs,main}=await import('../scripts/update.mjs');
 const RUNNER=`import {existsSync} from 'node:fs';import path from 'node:path';import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 if(process.env.HOME_HUB_HOME||process.env.STATE_DIR){console.log('the instance leaked into the tests');process.exit(1);}
+if(process.argv.filter(a=>a==='--plugins').length>1){console.error('each plugin source requires its own fixture; unrelated sources cannot share it');process.exit(1);}
 if(existsSync(path.join(root,'FAIL_TESTS'))){console.log('not ok 1 - a test of this release');console.log('core     tests 1  pass 0  fail 1');process.exit(1);}
 console.log(process.argv.includes('--plugins')?'household tests 2  pass 2  fail 0':'core     tests 3  pass 3  fail 0');
 `;
@@ -553,8 +554,12 @@ test('an inactive plugin source joins only at the update switch; preflight and r
  const plan=await preflight(inst,w.request,w.ctx);
  assert.equal(readFileSync(w.file,'utf8'),w.original);assert.deepEqual(w.svc.calls,[]);
  assert.deepEqual(plan.to.expect.plugins.map(p=>p.id),['p-one','p-public']);
- const tested=w.svc.execs.find(e=>e.args.includes('--plugins'));
- assert.ok(tested.args.some(a=>a.endsWith('/household')));assert.ok(tested.args.some(a=>a.endsWith('/public-plugins')),'the sources are tested together against target core');
+ const tested=w.svc.execs.filter(e=>e.args.includes('--plugins'));
+ assert.equal(tested.length,2,'each source gets a test run using its own fixture');
+ assert.deepEqual(tested.map(e=>path.basename(e.args[e.args.indexOf('--plugins')+1])),['household','public-plugins']);
+ for(const call of tested){assert.equal(call.args.filter(a=>a==='--plugins').length,1);assert.equal(call.args.includes('--site'),false,'the real site is never supplied to plugin tests');}
+ const check=w.svc.execs.find(e=>e.args.includes('--check'));
+ assert.deepEqual(check.env.HOME_HUB_PLUGINS_DIR.split(path.delimiter).map(p=>path.basename(path.dirname(p))),['household','public-plugins'],'startup still checks all target sources together');
  const {journal}=await apply(inst,w.request,w.ctx);
  assert.equal(journal.instance.status,'applied');assert.equal(readFileSync(journal.instance.backup,'utf8'),w.original);
  assert.equal(statSync(journal.instance.backup).mode&0o777,0o600);

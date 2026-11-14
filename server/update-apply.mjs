@@ -543,7 +543,10 @@ export async function preflight(inst,request,ctx,{forApply=false}={}){
    const summary=r=>lastLines(r.stdout,8).split('\n').filter(l=>/^\S+\s+tests \d+/.test(l)).map(l=>l.replace(/\s+/g,' ')).join('; ');
    lines.push(`tests (core): ${summary(runStep(ctx,'npm test of the target',ctx.node,[runner,...(copied&&inst.paths.siteConfig&&existsSync(inst.paths.siteConfig)?['--site',inst.paths.siteConfig]:[])],{cwd:stagedCore,env}))||'passed'}`);
    const tested=live.filter(s=>s.kind==='plugins'&&s.plugins.includes('plugins')&&hasTests(s,place(s)));
-   if(tested.length)lines.push(`tests (plugins): ${summary(runStep(ctx,'the plugin tests against the target core',ctx.node,[runner,...tested.flatMap(s=>['--plugins',place(s)])],{cwd:stagedCore,env}))||'passed'}`);
+   // Each source owns its fixture site. Passing multiple sources makes the runner load unrelated plugins with
+   // each source's fixture, which can neither configure them nor authorize use of the live site's settings.
+   // Keep these test runs separate; the --check below still validates every target source together on the real site.
+   if(tested.length)for(const source of tested)lines.push(`tests (plugins): ${summary(runStep(ctx,`the ${source.id} plugin tests against the target core`,ctx.node,[runner,'--plugins',place(source)],{cwd:stagedCore,env}))||'passed'}`);
    else if(live.length>1)lines.push('tests (plugins): the plugin sources have no tests');
   }
   // 7. would it start, with this instance's site and these plugins
