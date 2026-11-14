@@ -31,7 +31,7 @@ const actor=principal=>({by:principal.username,source:principal.authKind==='api-
 
 // One code per refusal (the message is in the source language; details name the field).
 const ERRORS={
- invalid:[400,'RUNTIME_ENDPOINT_INVALID','Neplatný endpoint: zkontroluj stroj, druh a adresu (jen počátek URL, loopback nebo adresa v síti webu).'],
+ invalid:[400,'RUNTIME_ENDPOINT_INVALID','Neplatný endpoint: zkontroluj zařízení, druh a adresu (jen počátek URL, loopback nebo adresa v síti webu).'],
  'not-found':[404,'RUNTIME_ENDPOINT_NOT_FOUND','Takový endpoint není.'],
  'read-only':[403,'RUNTIME_ENDPOINT_READ_ONLY','Tenhle endpoint je z konfigurace webu (site.json) a přes API se nemění.'],
  conflict:[409,'RUNTIME_ENDPOINT_CONFLICT','Tuhle adresu už čte jiný endpoint.'],

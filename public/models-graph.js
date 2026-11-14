@@ -70,7 +70,7 @@ export function describeNode(n){
  else if(n.column!=='client')parts.push(t(n.state==='running'?'běží':n.state==='stopped'?'zastavený':'stav neznámý'));
  if(n.active)parts.push(n.active>1?t('generuje ×{n}',{n:n.active}):t('generuje'));
  if(n.queued)parts.push(tp(n.queued,'{n} ve frontě|{n} ve frontě|{n} ve frontě'));
- if(n.sub)parts.push(n.sub==='loopback'?t('loopback: tento stroj nebo SSH tunel'):n.sub);
+ if(n.sub)parts.push(n.sub==='loopback'?t('loopback: toto zařízení nebo SSH tunel'):n.sub);
  parts.push(tp(n.requests,'{n} požadavek|{n} požadavky|{n} požadavků'),t('{n} tokenů',{n:fmt(n.tokens)}));
  if(n.recent)parts.push(t('{n} za posledních 15 min',{n:n.recent}));
  if(n.lastAt)parts.push(t('naposledy {at}',{at:when(n.lastAt)}));
@@ -78,7 +78,7 @@ export function describeNode(n){
 }
 export function describeEdge(e,graph){
  const name=id=>graph.nodes.find(n=>n.id===id)?.label||id;
- return [`${name(e.from)} → ${name(e.to)}`,e.cross?t('mezi stroji'):null,tp(e.requests,'{n} požadavek|{n} požadavky|{n} požadavků'),t('{n} tokenů',{n:fmt(e.tokens)}),
+ return [`${name(e.from)} → ${name(e.to)}`,e.cross?t('mezi zařízeními'):null,tp(e.requests,'{n} požadavek|{n} požadavky|{n} požadavků'),t('{n} tokenů',{n:fmt(e.tokens)}),
   e.recent?t('{n} za posledních 15 min',{n:e.recent}):t('teď bez provozu'),e.lastAt?t('naposledy {at}',{at:when(e.lastAt)}):null].filter(Boolean).join(' · ');
 }
 
@@ -111,7 +111,7 @@ export function wiringDiagram({onSelect}={}){
   for(const col of COLUMNS)ctx.fillText(t(COLUMN_TITLE[col]).toUpperCase(),geo.x[col],HEAD/2);
   geo.bands.forEach((b,i)=>{if(i%2===0){ctx.fillStyle=rgba(c.raised,1);ctx.globalAlpha=.55;ctx.fillRect(0,b.y,W,b.h);ctx.globalAlpha=1;}
    ctx.strokeStyle=c.border;ctx.beginPath();ctx.moveTo(0,b.y+.5);ctx.lineTo(W,b.y+.5);ctx.stroke();
-   ctx.font=`600 11px ${c.sans}`;ctx.fillStyle=c.dim;ctx.fillText(b.lane.id==='unknown'?t('Stroj neznámý'):(b.lane.name||b.lane.id),12,b.y+LANE_TOP/2+1);});
+   ctx.font=`600 11px ${c.sans}`;ctx.fillStyle=c.dim;ctx.fillText(b.lane.id==='unknown'?t('Zařízení neznámé'):(b.lane.name||b.lane.id),12,b.y+LANE_TOP/2+1);});
   // Lines: width from requests in the range, faint when idle.
   const max=Math.max(1,graph.maxRequests||0);
   for(const e of geo.edges){

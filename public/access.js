@@ -30,7 +30,7 @@ export function setupScreen({retry}={}){
    el('h1',{},t('Dokonči nastavení')),
    el('p',{class:'hh-dim'},t('Tenhle Home Hub běží, ale ještě nemá vlastníka: účet, kterým se přihlásíš a který spravuje všechno ostatní.')),
    el('ol',{},
-    el('li',{},t('Otevři terminál na stroji, kde Home Hub běží, ve složce s jeho kódem.')),
+    el('li',{},t('Otevři terminál na zařízení, kde Home Hub běží, ve složce s jeho kódem.')),
     el('li',{},t('Spusť příkaz níže. Zeptá se na jméno a heslo; heslo uloží jen jako otisk.')),
     el('li',{},t('Vrať se sem a přihlas se. Restart není potřeba.'))),
    copyBlock(t('Příkaz'),SETUP_COMMAND),

@@ -112,7 +112,7 @@ export function gitLfsPage({me}={}){
   if(o.disabled){put(top,disabledNotice(o.disabled));put(conns);put(sums);controls.hidden=true;put(table);put(pager);put(bulk);return;}
   controls.hidden=false;
   put(top,...(o.git&&!o.git.ok?[notInstalled({dependency:'git',installUrl:'https://git-scm.com/downloads',optional:false,title:t('Na serveru hubu chybí git'),
-   body:t('Hub čte repozitáře gitem (částečný mirror bez velkých souborů). Nic neinstaluje: nainstaluj git na stroji, kde hub běží, a restartuj ho.')})]:[]));
+   body:t('Hub čte repozitáře gitem (částečný mirror bez velkých souborů). Nic neinstaluje: nainstaluj git na zařízení, kde hub běží, a restartuj ho.')})]:[]));
   if(!o.connections.length){
    put(conns,emptyState({icon:'archive',title:t('Žádné připojení ke git hostu'),
     body:t('Připoj GitHub, GitHub Enterprise, Gitea nebo Forgejo tokenem jen pro čtení. Hub naskenuje vybrané repozitáře a ukáže, kde se který LFS soubor používá.'),
@@ -133,8 +133,8 @@ export function gitLfsPage({me}={}){
  function placementLine(pl){
   if(!pl?.service)return null;
   // An administrator follows the device to its page under Integrations → Devices.
-  const m=x=>{const name=el('strong',{},x.deviceName||x.device||t('neznámý stroj'));
-   return x.device&&me?.role==='admin'?el('a',{href:`#integrations/device/${encodeURIComponent(x.device)}`,title:t('Integrace stroje')},name):name;};
+  const m=x=>{const name=el('strong',{},x.deviceName||x.device||t('neznámé zařízení'));
+   return x.device&&me?.role==='admin'?el('a',{href:`#integrations/device/${encodeURIComponent(x.device)}`,title:t('Integrace zařízení')},name):name;};
   return el('p',{class:'gl-conn-place'},t('Běží na'),' ',m(pl.service),
    pl.storage?[' · ',t('LFS soubory leží na'),' ',m(pl.storage),el('span',{class:'gl-hint'},' (',pl.storage.name,')')]:[' · ',t('LFS soubory u hostu')],
    el('span',{class:'gl-hint'},' · ',t('podle inventáře')));
@@ -235,7 +235,7 @@ export function gitLfsPage({me}={}){
   const commitLink=c=>c?el('span',{},i.repoUrl?el('a',{href:`${i.repoUrl}/commit/${c.sha}`,target:'_blank',rel:'noopener noreferrer',class:'gl-mono'},short(c.sha)):el('span',{class:'gl-mono'},short(c.sha)),' · ',when(c.at)):'—';
   const dl=(k,v)=>[el('dt',{},k),el('dd',{},v)];
   // The LFS store is per host (Forgejo and Gitea have one [lfs] storage per instance), so it comes from the connection.
-  const pl=state.overview?.connections?.find(c=>c.id===i.connection)?.placement,mn=x=>x.deviceName||x.device||t('neznámý stroj');
+  const pl=state.overview?.connections?.find(c=>c.id===i.connection)?.placement,mn=x=>x.deviceName||x.device||t('neznámé zařízení');
   const place=pl?.storage?`${mn(pl.storage)} · ${pl.storage.name}`:pl?.service?`${mn(pl.service)} · ${t('u hostu')}`:null;
   const d=el('dialog',{class:'gl-dialog','aria-labelledby':'gl-detail-title'},
    el('div',{class:'gl-dialog-head'},el('div',{},el('h2',{id:'gl-detail-title'},(i.currentPaths[0]||i.paths[0]||t('LFS objekt')).split('/').pop()),el('p',{class:'gl-hint gl-mono'},i.repo)),

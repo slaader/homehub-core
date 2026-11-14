@@ -97,7 +97,7 @@ export function validateDevice(v,{lanCidrs=[],needHost=true,thermo=false,windows
 export function windowsErrors(v,{os='windows'}={}){
  const e={},host=String(v.whost||'').trim(),port=String(v.wport??'').trim(),user=String(v.wuser||'').trim();
  if(os==='linux'){
-  if(!host)e.whost=t('Vyplň host: jméno nebo IP adresu stroje.');else if(!validHostName(host))e.whost=t('Hostname smí obsahovat jen písmena, číslice, tečky a pomlčky.');
+  if(!host)e.whost=t('Vyplň host: jméno nebo IP adresu zařízení.');else if(!validHostName(host))e.whost=t('Hostname smí obsahovat jen písmena, číslice, tečky a pomlčky.');
   if(!validPort(Number(port))||!/^\d+$/.test(port))e.wport=t('Port je číslo 1–65535.');
   if(!user)e.wuser=t('Vyplň uživatele na Linuxu.');else if(!validUnixUser(user))e.wuser=t('Jméno účtu Linuxu: písmeno nebo podtržítko, pak písmena, číslice, tečka, podtržítko a pomlčka; nejvýš 32 znaků.');
   return e;
@@ -171,12 +171,12 @@ function picturePart({device,role,site=false}){
  file.addEventListener('change',async()=>{const f=file.files?.[0];if(!f)return;failed.textContent='';try{await crop.load(f);info.textContent=crop.info();}catch(e){failed.textContent=e.message;}});
  const kept=hadOwn?el('div',{class:'had-kept'},el('img',{src:device.image,alt:''}),el('span',{},t('Teď se používá tenhle nahraný obrázek. Vyber jiný soubor, nebo přepni na vestavěný obrázek.'))):null;
  const sitePic=site?device?.siteDefaults?.image||device?.siteDefaults?.picture||null:null;
- const fromSite=site?el('div',{class:'had-kept'},sitePic?el('img',{src:sitePic,alt:''}):null,el('span',{},t('Obrázek, který stroji dává konfigurace webu (local/site.json).'))):null;
+ const fromSite=site?el('div',{class:'had-kept'},sitePic?el('img',{src:sitePic,alt:''}):null,el('span',{},t('Obrázek zařízení z konfigurace webu (local/site.json).'))):null;
  const own=el('div',{class:'had-own'},kept,el('div',{class:'had-row'},file,info),crop.node,failed,
   el('small',{class:'had-hint'},t('Táhni rámeček, roh mění velikost (nebo šipky, Shift+šipky). Na dlaždici bude přesně to, co je v rámečku (3:2).')));
  const sync=()=>{grid.hidden=mode!=='builtin';own.hidden=mode!=='own';if(fromSite)fromSite.hidden=mode!=='site';if(mode==='builtin')drawGrid();};
  const modes=el('div',{class:'had-choices',role:'radiogroup','aria-label':t('Druh obrázku')},
-  site?choice('had-picture-mode','site',mode==='site',t('Z konfigurace webu'),t('výchozí obrázek stroje'),()=>{mode='site';sync();}):null,
+  site?choice('had-picture-mode','site',mode==='site',t('Z konfigurace webu'),t('výchozí obrázek zařízení'),()=>{mode='site';sync();}):null,
   choice('had-picture-mode','builtin',mode==='builtin',t('Vestavěný obrázek'),t('jeden z deseti obecných'),()=>{mode='builtin';sync();}),
   choice('had-picture-mode','own',mode==='own',t('Vlastní obrázek'),t('fotka nebo render, oříznutý na 3:2'),()=>{mode='own';sync();}));
  sync();
@@ -244,7 +244,7 @@ function windowsPart({host,deviceId=null,current=null,onFacts=()=>{},os='windows
  let draft=null,saved=false,followHost=!managed,testedSig=null,trustSig=null,scanned=null,busy=false;
  const whost=input({maxlength:'253',placeholder:'pc.example.lan',value:managed?.host||host()||''}),wport=input({type:'number',min:'1',max:'65535',inputmode:'numeric',value:String(managed?.port??22)}),
   wuser=input({maxlength:linux?'32':'128',placeholder:'alice',value:managed?.user||'',autocapitalize:'off'});
- const fields={whost:field(t('Host'),whost,t('obvykle adresa stroje výše')),wport:field(t('Port SSH'),wport),wuser:linux?field(t('Uživatel na Linuxu'),wuser,t('účet, pod kterým se Home Hub přihlásí; běžný, bez sudo'))
+ const fields={whost:field(t('Host'),whost,t('obvykle adresa zařízení výše')),wport:field(t('Port SSH'),wport),wuser:linux?field(t('Uživatel na Linuxu'),wuser,t('účet, pod kterým se Home Hub přihlásí; běžný, bez sudo'))
   :field(t('Uživatel ve Windows'),wuser,t('účet, pod kterým se Home Hub přihlásí; nejlépe běžný, bez práv správce'))};
  const message=el('small',{class:'had-err',role:'alert'}),tools=el('p',{class:'had-note',role:'status'});
  const keyBox=el('div',{class:'had-stack'}),windowsBox=el('div',{class:'had-stack'}),trustBox=el('div',{class:'had-stack'}),out=el('div',{class:'had-probe',hidden:''});
@@ -281,7 +281,7 @@ function windowsPart({host,deviceId=null,current=null,onFacts=()=>{},os='windows
   await ensureDraft();const r=await post(base+'/draft/scan',{draft:draft.id,...v});draft=r.draft;scanned=r.draft.hostKeys||[];trustSig=null;testedSig=null;confirm.checked=false;})},t('Načíst klíč hostitele'));
  const trust=el('button',{type:'button',class:'ui-button primary',onclick:()=>run(trust,t('Ukládám…'),async()=>{
   const picked=trustBox.querySelector('.had-fp-pick input:checked')?.value||scanned?.[0]?.fingerprint;
-  if(!confirm.checked)throw new Error(linux?t('Nejdřív porovnej otisk s tím na stroji a potvrď, že sedí.'):t('Nejdřív porovnej otisk s tím na Windows a potvrď, že sedí.'));
+  if(!confirm.checked)throw new Error(linux?t('Nejdřív porovnej otisk s tím na zařízení a potvrď, že sedí.'):t('Nejdřív porovnej otisk s tím na Windows a potvrď, že sedí.'));
   const r=await post(base+'/draft/trust',{draft:draft.id,fingerprint:picked});draft=r.draft;trustSig=`${hostPort().host.toLowerCase()}|${hostPort().port}`;testedSig=null;})},t('Důvěřovat tomuhle klíči'));
  // Step 5: one run of the collector with exactly what the form shows.
  const test=el('button',{type:'button',class:'ui-button primary',onclick:()=>run(test,t('Zkouším spojení…'),async()=>{
@@ -299,7 +299,7 @@ function windowsPart({host,deviceId=null,current=null,onFacts=()=>{},os='windows
   const user=wuser.value.trim(),key=draft?.key;
   if(linux)return drawLinux(user,key);
   keyBox.replaceChildren(el('div',{class:'had-row'},generate,showImport),importBox,
-   key?copyable(t('Veřejný klíč'),key.publicKey,t('{type} · otisk {fp}{reused}',{type:key.type,fp:key.fingerprint,reused:key.reused?' · '+t('klíč, se kterým se stroj čte teď'):''})):el('small',{class:'had-hint'},t('Klíč patří jen tomuhle spojení. Soukromou část drží server Home Hubu; tady uvidíš jen veřejnou.')));
+   key?copyable(t('Veřejný klíč'),key.publicKey,t('{type} · otisk {fp}{reused}',{type:key.type,fp:key.fingerprint,reused:key.reused?' · '+t('klíč, se kterým se zařízení čte teď'):''})):el('small',{class:'had-hint'},t('Klíč patří jen tomuhle spojení. Soukromou část drží server Home Hubu; tady uvidíš jen veřejnou.')));
   generate.textContent=key?t('Vytvořit jiný klíč'):t('Vytvořit nový klíč');
   let authorize=null;
   if(key&&validWindowsUser(user)){try{authorize=copyable(t('Autorizace klíče (PowerShell jako správce)'),authorizeScript(user,key.publicKey,{allowAdministrator:allowAdministrator.checked}),
@@ -317,14 +317,14 @@ function windowsPart({host,deviceId=null,current=null,onFacts=()=>{},os='windows
    keys.length?el('div',{class:'had-stack'},
     el('div',{class:'had-dim'},t('Windows ukázal tyhle klíče hostitele (SHA-256):')),
     el('div',{class:'had-choices',role:'radiogroup','aria-label':t('Klíče hostitele')},keys.map((k,i)=>el('label',{class:'had-choice had-fp-pick'},el('input',{type:'radio',name:'had-hostkey',value:k.fingerprint,checked:i===0?'':null}),el('span',{},el('b',{},k.type),el('code',{class:'had-fp'},k.fingerprint))))),
-    copyable(t('Otisky na Windows (PowerShell)'),FINGERPRINT_SCRIPT,t('Spusť na Windows a porovnej otisk stejného typu. Neshoduje se? Nepotvrzuj: mezi tebou a strojem může být jiný stroj.')),
+    copyable(t('Otisky na Windows (PowerShell)'),FINGERPRINT_SCRIPT,t('Spusť na Windows a porovnej otisk stejného typu. Neshoduje se? Nepotvrzuj: mezi tebou a zařízením může být jiné zařízení.')),
     el('label',{class:'had-check'},confirm,t('Otisk sedí s tím, co ukázal Windows.')),el('div',{class:'had-row'},trust)):null);
   test.disabled=busy||!key||!nowTrusted;
  }
  // Linux: the key goes into the account's own ~/.ssh/authorized_keys; nothing else on the device changes.
  function drawLinux(user,key){
   keyBox.replaceChildren(el('div',{class:'had-row'},generate,showImport),importBox,
-   key?copyable(t('Veřejný klíč'),key.publicKey,t('{type} · otisk {fp}{reused}',{type:key.type,fp:key.fingerprint,reused:key.reused?' · '+t('klíč, se kterým se stroj čte teď'):''})):el('small',{class:'had-hint'},t('Klíč patří jen tomuhle spojení. Soukromou část drží server Home Hubu; tady uvidíš jen veřejnou.')));
+   key?copyable(t('Veřejný klíč'),key.publicKey,t('{type} · otisk {fp}{reused}',{type:key.type,fp:key.fingerprint,reused:key.reused?' · '+t('klíč, se kterým se zařízení čte teď'):''})):el('small',{class:'had-hint'},t('Klíč patří jen tomuhle spojení. Soukromou část drží server Home Hubu; tady uvidíš jen veřejnou.')));
   generate.textContent=key?t('Vytvořit jiný klíč'):t('Vytvořit nový klíč');
   let authorize=null;if(key){try{authorize=copyable(t('Autorizace klíče (shell na Linuxu, jako ten účet)'),linuxAuthorizeScript(key.publicKey),t('Přidá klíč jednou do ~/.ssh/authorized_keys účtu, pod kterým příkaz spustíš. Bez sudo; nic jiného se nemění.'));}catch{authorize=null;}}
   replacePresent(windowsBox,authorize||el('small',{class:'had-hint'},t('Až bude klíč, objeví se tu příkaz, který ho na Linuxu povolí.')),
@@ -333,10 +333,10 @@ function windowsPart({host,deviceId=null,current=null,onFacts=()=>{},os='windows
   replacePresent(trustBox,el('div',{class:'had-row'},fetchKeys),
    nowTrusted?el('div',{class:'had-dim'},t('Ověřený klíč hostitele: {type} {fp}',{type:draft.trusted.type,fp:draft.trusted.fingerprint})):null,
    keys.length?el('div',{class:'had-stack'},
-    el('div',{class:'had-dim'},t('Stroj ukázal tyhle klíče hostitele (SHA-256):')),
+    el('div',{class:'had-dim'},t('Zařízení ukázalo tyhle klíče hostitele (SHA-256):')),
     el('div',{class:'had-choices',role:'radiogroup','aria-label':t('Klíče hostitele')},keys.map((k,i)=>el('label',{class:'had-choice had-fp-pick'},el('input',{type:'radio',name:'had-hostkey',value:k.fingerprint,checked:i===0?'':null}),el('span',{},el('b',{},k.type),el('code',{class:'had-fp'},k.fingerprint))))),
-    copyable(t('Otisky na Linuxu (shell)'),LINUX_FINGERPRINT_SCRIPT,t('Spusť na stroji a porovnej otisk stejného typu. Neshoduje se? Nepotvrzuj: mezi tebou a strojem může být jiný stroj.')),
-    el('label',{class:'had-check'},confirm,t('Otisk sedí s tím, co ukázal stroj.')),el('div',{class:'had-row'},trust)):null);
+    copyable(t('Otisky na Linuxu (shell)'),LINUX_FINGERPRINT_SCRIPT,t('Spusť na zařízení a porovnej otisk stejného typu. Neshoduje se? Nepotvrzuj: mezi tebou a zařízením může být jiné zařízení.')),
+    el('label',{class:'had-check'},confirm,t('Otisk sedí s tím, co ukázalo zařízení.')),el('div',{class:'had-row'},trust)):null);
   test.disabled=busy||!key||!nowTrusted;
  }
  const hostChanged=()=>{scanned=null;testedSig=null;confirm.checked=false;out.hidden=true;draw();};
@@ -352,17 +352,17 @@ function windowsPart({host,deviceId=null,current=null,onFacts=()=>{},os='windows
    tools.classList.toggle('had-err',!r.ok);}catch{asked=false;}};
  const section=(title,...body)=>el('div',{class:'had-step'},el('h4',{},title),...body);
  return {node:el('fieldset',{class:'had-thermo'},el('legend',{},linux?t('Linux přes SSH'):t('Windows přes SSH')),
-   el('p',{class:'had-note'},linux?t('Home Hub se k Linuxu připojuje ze svého serveru vlastním klíčem SSH a spustí jen pevný skript, který čte /proc, /sys a df. Žádné sudo, žádný agent ani Python; na stroji se nic nemění. Na serveru potřebuje jen klientské nástroje OpenSSH.')
+   el('p',{class:'had-note'},linux?t('Home Hub se k Linuxu připojuje ze svého serveru vlastním klíčem SSH a spustí jen pevný skript, který čte /proc, /sys a df. Žádné sudo, žádný agent ani Python; na zařízení se nic nemění. Na serveru potřebuje jen klientské nástroje OpenSSH.')
     :t('Home Hub se k Windows připojuje ze svého serveru vlastním klíčem SSH, takže nezáleží na tom, na jakém systému běží ani z jakého prohlížeče ho otevíráš. Na serveru potřebuje jen klientské nástroje OpenSSH (ssh a ssh-keyscan). Na Windows spustí jen pevný skript, který čte čítače výkonu a inventář.')),
    tools,
-   alias?el('p',{class:'had-note'},t('Teď se stroj čte přes starší SSH alias {alias} z konfigurace účtu, pod kterým běží Home Hub. Funguje dál, dokud ho tu nenahradíš spojením, které spravuje Home Hub sám; alias ani soubory v ~/.ssh se nemění.',{alias})):null,
+   alias?el('p',{class:'had-note'},t('Teď se zařízení čte přes starší SSH alias {alias} z konfigurace účtu, pod kterým běží Home Hub. Funguje dál, dokud ho tu nenahradíš spojením, které spravuje Home Hub sám; alias ani soubory v ~/.ssh se nemění.',{alias})):null,
    section(t('1 · Kam se připojit'),el('div',{class:'had-grid'},fields.whost.node,fields.wport.node,fields.wuser.node)),
    section(t('2 · Klíč Home Hubu'),keyBox),
    section(linux?t('3 · Na Linuxu'):t('3 · Na Windows'),windowsBox),
-   section(t('4 · Klíč hostitele'),el('small',{class:'had-hint'},linux?t('Home Hub načte klíč, kterým se stroj prokazuje (bez přihlášení). Porovnej jeho otisk s tím na stroji a potvrď ho; neznámý ani změněný klíč Home Hub nikdy nepřijme sám.')
+   section(t('4 · Klíč hostitele'),el('small',{class:'had-hint'},linux?t('Home Hub načte klíč, kterým se zařízení prokazuje (bez přihlášení). Porovnej jeho otisk s tím na zařízení a potvrď ho; neznámý ani změněný klíč Home Hub nikdy nepřijme sám.')
     :t('Home Hub načte klíč, kterým se Windows prokazuje (bez přihlášení). Porovnej jeho otisk s tím na Windows a potvrď ho; neznámý ani změněný klíč Home Hub nikdy nepřijme sám.')),trustBox),
    section(t('5 · Vyzkoušet'),el('div',{class:'had-row'},test,message),out,
-    el('small',{class:'had-hint'},linux?t('GPU a příkon se přes /proc nečtou, zůstanou prázdné. Teploty jen ty, které stroj hlásí v /sys/class/hwmon.'):t('Teploty, ventilátory a příkon Windows nehlásí, takže zůstanou prázdné.')))),
+    el('small',{class:'had-hint'},linux?t('GPU a příkon se přes /proc nečtou, zůstanou prázdné. Teploty jen ty, které zařízení hlásí v /sys/class/hwmon.'):t('Teploty, ventilátory a příkon Windows nehlásí, takže zůstanou prázdné.')))),
   // Editing a managed connection: its key and verified host key are shown (and reused) from the start.
   fields,shown:()=>{void askTools();if(deviceId&&managed&&!draft&&!busy){busy=true;ensureDraft().then(()=>{say('');},failed).finally(()=>{busy=false;draw();});}},
   // The device's address changed above: the SSH host follows it until it is edited here.
@@ -387,7 +387,7 @@ function linuxFacts(r){
   r.volumes?.length?el('li',{},t('Svazky: {list}',{list:r.volumes.map(v=>`${v.name} ${Math.round((v.total||0)/GB)} GB`).join(' · ')})):el('li',{},t('Žádný místní svazek.')),
   r.disks?.length?el('li',{},t('Disky: {list}',{list:r.disks.join(', ')})):null,
   r.interfaces?.length?el('li',{},t('Síť: {list}',{list:r.interfaces.join(', ')})):null,
-  el('li',{},r.temps?t('Teploty: {n} čidel{cpu}',{n:r.temps,cpu:r.cpuTemp!=null?` · CPU ${r.cpuTemp} °C`:''}):t('Teploty stroj nehlásí.')),
+  el('li',{},r.temps?t('Teploty: {n} čidel{cpu}',{n:r.temps,cpu:r.cpuTemp!=null?` · CPU ${r.cpuTemp} °C`:''}):t('Zařízení teploty nehlásí.')),
   el('li',{},t('GPU a příkon: tenhle zdroj je neměří.')));
 }
 // What a Windows test found (over SSH or WinRM).
@@ -413,7 +413,7 @@ const ENDPOINT={
  'node-exporter':{legend:'Linux přes Node Exporter',port:9100,schemes:['http','https'],auth:['none','basic'],
   note:'Home Hub čte /metrics Prometheus Node Exporteru přímo, jedno čtení za interval; Prometheus server není potřeba. Bez TLS jen v místní síti a bez přihlašovacích údajů; s HTTPS volitelně Basic.'},
  prometheus:{legend:'Linux z Promethea',port:9090,schemes:['http','https'],auth:['none','basic','bearer'],
-  note:'Home Hub se ptá API existujícího Promethea (port 9090, ne Node Exporter na 9100) jen ke čtení na metriky Node Exporteru jednoho cíle: přesně jeden job a instance, které Prometheus sám nabídne. Nikdy nečte /metrics Promethea, nic v něm nemění a nesčítá víc strojů.'}};
+  note:'Home Hub se ptá API existujícího Promethea (port 9090, ne Node Exporter na 9100) jen ke čtení na metriky Node Exporteru jednoho cíle: přesně jeden job a instance, které Prometheus sám nabídne. Nikdy nečte /metrics Promethea, nic v něm nemění a nesčítá víc zařízení.'}};
 export const endpointSignature=v=>[String(v.ehost||'').trim().toLowerCase(),String(v.eport||'').trim(),v.escheme||'',v.eauth||'',String(v.euser||'').trim(),v.ejob||'',v.einstance||''].join('|');
 export function endpointErrors(v,{provider}){
  const e={},spec=ENDPOINT[provider],host=String(v.ehost||'').trim(),port=String(v.eport??'').trim(),user=String(v.euser||'').trim();
@@ -435,7 +435,7 @@ function endpointPart({provider,host,deviceId=null,current=null,onFacts=()=>{}})
  const eauth=el('select',{},spec.auth.map(x=>el('option',{value:x,selected:(mine?.auth||(provider==='winrm'?'basic':'none'))===x?'':null},({none:t('bez přihlášení'),basic:t('Basic (uživatel a heslo)'),bearer:t('Bearer token')})[x])));
  const euser=input({maxlength:'64',placeholder:provider==='winrm'?'homehub':'',value:mine?.user||'',autocapitalize:'off'});
  const epassword=input({type:'password',maxlength:'4096',autocomplete:'new-password'});
- const fields={ehost:field(t('Host'),ehost,provider==='prometheus'?t('server s Prometheem, ne sledovaný stroj'):t('obvykle adresa stroje výše')),eport:field(t('Port'),eport),escheme:field(t('Schéma'),escheme),
+ const fields={ehost:field(t('Host'),ehost,provider==='prometheus'?t('server s Prometheem, ne sledované zařízení'):t('obvykle adresa zařízení výše')),eport:field(t('Port'),eport),escheme:field(t('Schéma'),escheme),
   eauth:field(t('Přihlášení ke zdroji'),eauth),euser:field(provider==='winrm'?t('Místní účet Windows'):t('Uživatel'),euser),
   epassword:field(t('Heslo nebo token'),epassword,t('posílá se jen na server Home Hubu a už se nikde neukáže'))};
  const message=el('small',{class:'had-err',role:'alert'}),certBox=el('div',{class:'had-stack'}),targetBox=el('div',{class:'had-stack'}),out=el('div',{class:'had-probe',hidden:''});
@@ -452,7 +452,7 @@ function endpointPart({provider,host,deviceId=null,current=null,onFacts=()=>{}})
   const c=conn();if(!validHostName(c.host)||!validPort(c.port))throw new Error(t('Nejdřív vyplň host a port.'));
   await ensureDraft();const r=await post('/api/home/devices/endpoint/draft/probe',{draft:draft.id,host:c.host,port:c.port});draft=r.draft;cert=r.draft.certificate;confirm.checked=false;testedSig=null;})},t('Načíst certifikát'));
  const trustAs=mode=>run(mode==='ca'?trustCa:trustPin,t('Ukládám…'),async()=>{
-  if(mode==='pin'&&!confirm.checked)throw new Error(t('Nejdřív porovnej otisk s tím na stroji a potvrď, že sedí.'));
+  if(mode==='pin'&&!confirm.checked)throw new Error(t('Nejdřív porovnej otisk s tím na zařízení a potvrď, že sedí.'));
   const r=await post('/api/home/devices/endpoint/draft/trust',{draft:draft.id,mode,...(mode==='pin'?{fingerprint:cert.fingerprint}:{})});draft=r.draft;testedSig=null;});
  const trustCa=el('button',{type:'button',class:'ui-button',onclick:()=>trustAs('ca')},t('Důvěřovat autoritě (ověří i jméno)'));
  const trustPin=el('button',{type:'button',class:'ui-button primary',onclick:()=>trustAs('pin')},t('Připnout tenhle certifikát'));
@@ -462,7 +462,7 @@ function endpointPart({provider,host,deviceId=null,current=null,onFacts=()=>{}})
   await ensureDraft();const r=await post('/api/home/devices/endpoint/draft/discover',{draft:draft.id,...conn()});draft=r.draft;targets=r.targets;testedSig=null;epassword.value='';passwordDirty=false;})},t('Načíst cíle z Promethea'));
  const test=el('button',{type:'button',class:'ui-button primary',onclick:()=>run(test,t('Zkouším spojení…'),async()=>{
   const x=v(),e=endpointErrors(x,{provider});const first=Object.keys(e)[0];if(first){fields[first]?.set(e[first]);throw new Error(t('Zkontroluj označená pole.'));}
-  if(provider==='prometheus'&&!picked())throw new Error(t('Nejdřív načti cíle a vyber stroj.'));
+  if(provider==='prometheus'&&!picked())throw new Error(t('Nejdřív načti cíle a vyber zařízení.'));
   await ensureDraft();out.hidden=true;out.replaceChildren();
   const r=await post('/api/home/devices/endpoint/draft/test',{draft:draft.id,...conn(),...(provider==='prometheus'?{job:picked().job,instance:picked().instance}:{})});
   draft=r.draft;testedSig=endpointSignature(x);epassword.value='';passwordDirty=false;
@@ -484,7 +484,7 @@ function endpointPart({provider,host,deviceId=null,current=null,onFacts=()=>{}})
     el('div',{class:'had-dim'},[c.subject?`CN ${c.subject}`:null,c.issuer?t('vydal {who}',{who:c.issuer}):null,c.validTo?t('platí do {when}',{when:c.validTo}):null].filter(Boolean).join(' · ')),
     el('div',{class:'had-dim'},c.caVerified?t('Ověřený autoritou, kterou zná Home Hub, a platný pro tohle jméno.'):c.hostnameOk?t('Neověřený žádnou známou autoritou (třeba vlastní nebo samopodepsaný).'):t('Jméno hostitele v certifikátu nesedí, nebo ho neověřila známá autorita.')),
     provider==='winrm'?copyable(t('Otisk na Windows (PowerShell)'),WINRM_FINGERPRINT_SCRIPT,t('Porovnej s otiskem výše. Neshoduje se? Nepotvrzuj.')):null,
-    el('label',{class:'had-check'},confirm,t('Otisk sedí s tím, co ukazuje stroj.')),
+    el('label',{class:'had-check'},confirm,t('Otisk sedí s tím, co ukazuje zařízení.')),
     el('div',{class:'had-row'},c.caVerified?trustCa:null,trustPin)):null);
   if(provider==='prometheus'){
    const pick=picked(),list=targets||(matches?draft?.targets:null)||null;if(list)targets=list;
@@ -494,7 +494,7 @@ function endpointPart({provider,host,deviceId=null,current=null,onFacts=()=>{}})
     targets?.length?el('div',{class:'had-choices',role:'radiogroup','aria-label':t('Cíle node_exporter')},targets.map(x=>el('label',{class:'had-choice'},
      el('input',{type:'radio',name:'had-target',value:`${x.job}\u0000${x.instance}`,disabled:x.eligible?null:'',checked:pick&&pick.job===x.job&&pick.instance===x.instance||!pick&&mine&&mine.job===x.job&&mine.instance===x.instance?'':null,onchange:()=>{testedSig=null;draw();}}),
      el('span',{},el('b',{},`${x.instance}`),el('small',{},[t('job {job}',{job:x.job}),x.nodename,x.up===true?t('cíl běží'):x.up===false?t('cíl neodpovídá (up = 0)'):null,
-      x.lastSampleAt?t('poslední vzorek {when}',{when:new Date(x.lastSampleAt).toLocaleTimeString()}):null,x.eligible?null:t('víc strojů pod jedním cílem: nejde vybrat')].filter(Boolean).join(' · '))))))
+      x.lastSampleAt?t('poslední vzorek {when}',{when:new Date(x.lastSampleAt).toLocaleTimeString()}):null,x.eligible?null:t('víc zařízení pod jedním cílem: nejde vybrat')].filter(Boolean).join(' · '))))))
      :targets?el('p',{class:'had-note'},t('Prometheus nenabízí žádný cíl s metrikami Node Exporteru.')):null);
   }
   test.disabled=busy||tls&&!trustOk();
@@ -517,8 +517,8 @@ function endpointPart({provider,host,deviceId=null,current=null,onFacts=()=>{}})
    el('details',{class:'had-guide'},el('summary',{},t('Firewall')),copyable(t('Jen ze serveru Home Hubu'),nodeExporterFirewall({hub:hubAddr||undefined}))),
    el('details',{class:'had-guide'},el('summary',{},t('HTTPS a Basic (volitelné)')),copyable(t('Web config Node Exporteru'),nodeExporterTls({host:ehost.value.trim()||undefined}))))
   :el('div',{class:'had-stack'},
-   el('p',{class:'had-note'},t('Potřebuješ Prometheus, který už sbírá Node Exporter toho stroje. Home Hub Prometheus neinstaluje ani nekonfiguruje a používá jen jeho API pro dotazy.')),
-   el('details',{class:'had-guide'},el('summary',{},t('Stroj v Prometheu ještě není?')),copyable(t('Cíl pro scrape_configs'),prometheusScrape({host:host()||undefined}),t('Node Exporter na stroji nainstaluj podle volby Linux (Node Exporter).'))),
+   el('p',{class:'had-note'},t('Potřebuješ Prometheus, který už sbírá Node Exporter toho zařízení. Home Hub Prometheus neinstaluje ani nekonfiguruje a používá jen jeho API pro dotazy.')),
+   el('details',{class:'had-guide'},el('summary',{},t('Zařízení v Prometheu ještě není?')),copyable(t('Cíl pro scrape_configs'),prometheusScrape({host:host()||undefined}),t('Node Exporter na zařízení nainstaluj podle volby Linux (Node Exporter).'))),
    el('details',{class:'had-guide'},el('summary',{},t('Prometheus v Dockeru')),copyable(t('Docker'),PROMETHEUS_DOCKER))));}
  // The hub's own address in the site's networks fills the firewall lines; without one they keep the placeholder.
  let hubAddr=null;
@@ -529,14 +529,14 @@ function endpointPart({provider,host,deviceId=null,current=null,onFacts=()=>{}})
  const section=(title,...body)=>el('div',{class:'had-step'},el('h4',{},title),...body);
  return {node:el('fieldset',{class:'had-thermo'},el('legend',{},t(spec.legend)),el('p',{class:'had-note'},t(spec.note)),
    section(t('1 · Kam se připojit'),el('div',{class:'had-grid'},fields.ehost.node,fields.eport.node,provider==='winrm'?null:fields.escheme.node,fields.eauth.node,fields.euser.node,fields.epassword.node)),
-   section(provider==='winrm'?t('2 · Na Windows'):t('2 · Na stroji'),guide),
+   section(provider==='winrm'?t('2 · Na Windows'):t('2 · Na zařízení'),guide),
    section(t('3 · Certifikát'),el('small',{class:'had-hint'},t('Jen pro HTTPS. Home Hub načte certifikát bez odeslání čehokoli dalšího; přihlašovací údaje pošle, až když certifikát potvrdíš.')),certBox),
-   provider==='prometheus'?section(t('4 · Stroj v Prometheu'),targetBox):null,
+   provider==='prometheus'?section(t('4 · Zařízení v Prometheu'),targetBox):null,
    section(provider==='prometheus'?t('5 · Vyzkoušet'):t('4 · Vyzkoušet'),el('div',{class:'had-row'},test,message),out)),
   fields,shown:()=>{},hostChanged:()=>{if(followHost){ehost.value=host()||'';cert=null;targets=null;reset();drawGuide();}},reset,setProbe:x=>{if(x)say(x);},value:()=>({}),
   errors:()=>{const x=v(),e=endpointErrors(x,{provider});if(Object.keys(e).length)return e;
    if(x.escheme==='https'&&!trustOk())return {endpointTest:t('Nejdřív načti a potvrď certifikát.')};
-   if(provider==='prometheus'&&!picked()&&!(mine&&draft))return {endpointTest:t('Nejdřív načti cíle a vyber stroj.')};
+   if(provider==='prometheus'&&!picked()&&!(mine&&draft))return {endpointTest:t('Nejdřív načti cíle a vyber zařízení.')};
    if(!draft?.tested||testedSig!==endpointSignature(x)||passwordDirty)return {endpointTest:t('Nejdřív vyzkoušej spojení s tímhle nastavením.')};return {};},
   body:()=>{const c=conn();delete c.password;const pk=picked();return {provider,draft:draft?.id,...c,...(provider==='prometheus'&&pk?{job:pk.job,instance:pk.instance}:{})};},
   saved:()=>{saved=true;},
@@ -602,7 +602,7 @@ function deviceDialog({device=null,meta,focus,onSaved}){
  // A site device: what each field holds now, what the site says, and whether the owner's override sets it.
  const form0=siteMode?siteForm(device):null;
  const siteHint=key=>form0?.overridden(key)?t('Upraveno; konfigurace webu: {value}',{value:form0.defaultText(key)}):null;
- const fields={name:field(t('Název'),name,siteHint('name')),hostname:field(t('Hostname nebo IP'),host,siteMode?siteHint('hostname')||t('jen k zobrazení; sondy a čtení dál používají adresu z konfigurace webu'):adding?null:t('kde je stroj v síti k zastižení')),
+ const fields={name:field(t('Název'),name,siteHint('name')),hostname:field(t('Hostname nebo IP'),host,siteMode?siteHint('hostname')||t('jen k zobrazení; sondy a čtení dál používají adresu z konfigurace webu'):adding?null:t('kde je zařízení v síti k zastižení')),
   ip:field(t('IP adresa'),ip,siteHint('ip')||(lan.length?t('v síti {networks}',{networks:lan.join(', ')}):t('když výše je jméno'))),role:field(t('Role'),role),
   platform:field(t('Systém'),platform,feed?t('čte se přes {name}; jiný systém až po odpojení telemetrie',{name:nameOf(feed)}):null),
   cpu:field(t('CPU'),cpu,siteHint('cpu')),gpu:field(t('GPU'),gpu,siteHint('gpu')),ramGb:field(t('RAM (GB)'),ram,siteHint('ramGb')),diskGb:field(t('Disk (GB)'),disk,siteHint('diskGb'))};
@@ -622,7 +622,7 @@ function deviceDialog({device=null,meta,focus,onSaved}){
  const sync=()=>{
   if(chosen&&(!feed||retarget)){const x=part(chosen);holder.replaceChildren(x.node);if(Object.hasOwn(FEED_PLATFORM,chosen)){platform.value=FEED_PLATFORM[chosen];x.shown?.();}}else holder.replaceChildren();
   switchNote.hidden=!(feed&&retarget&&chosen&&chosen!==feed);
-  switchNote.textContent=switchNote.hidden?'':t('Uložením se {old} odpojí a jeho klíč nebo heslo se smaže; historie metrik zůstane. Na stroji se nic nemění.',{old:nameOf(feed)});
+  switchNote.textContent=switchNote.hidden?'':t('Uložením se {old} odpojí a jeho klíč nebo heslo se smaže; historie metrik zůstane. Na zařízení se nic nemění.',{old:nameOf(feed)});
  };
  platform.addEventListener('change',()=>{drawChoices();sync();});
  const disconnect=el('button',{type:'button',class:'ui-button hv-danger',onclick:async()=>{
@@ -631,7 +631,7 @@ function deviceDialog({device=null,meta,focus,onSaved}){
   dialog.close();onSaved?.();}},t('Odpojit telemetrii'));
  const disconnectFeed=el('button',{type:'button',class:'ui-button hv-danger',onclick:async()=>{
   const body=viaWindows?t('Home Hub zapomene spojení SSH tohoto zařízení i jeho klíč a přestane z něj číst. Na Windows se nic nemění: veřejný klíč Home Hubu tam z authorized_keys odeber sám, pokud chceš. Historie metrik zůstane na disku.')
-   :t('Home Hub zapomene spojení {name} tohoto zařízení i jeho klíč nebo heslo a přestane z něj číst. Na stroji se nic nemění. Historie metrik zůstane na disku.',{name:nameOf(feed)});
+   :t('Home Hub zapomene spojení {name} tohoto zařízení i jeho klíč nebo heslo a přestane z něj číst. Na zařízení se nic nemění. Historie metrik zůstane na disku.',{name:nameOf(feed)});
   if(!await confirmDialog({title:t('Odpojit telemetrii?'),body,confirm:t('Odpojit'),danger:true,
    action:()=>viaWindows?post('/api/home/devices/windows',{id:device.id,windows:null}):post('/api/home/devices/telemetry',{id:device.id,telemetry:null})}))return;
   dialog.close();onSaved?.();}},t('Odpojit telemetrii'));
@@ -648,14 +648,14 @@ function deviceDialog({device=null,meta,focus,onSaved}){
  const siteTelemetryNote=siteMode&&!siteTelemetry?el('section',{class:'had-sec',id:'had-telemetry'},el('h3',{},telTitle),
   el('p',{class:'had-note'},device.role==='router'?t('Router hlásí adaptér routeru (Administrace → Integrace), ne telemetrie hostitele; tady se nepřipojuje. Úprava názvu nebo adresy na jeho čtení nic nemění.')
    :device.telemetry?.thermoId||device.kind==='thermo'?t('Živá čísla čte agent Thermo podle konfigurace webu (thermoId) a přihlášení v souborech webu; tady se nemění. Úprava názvu nebo adresy na čtení nic nemění.')
-   :t('Telemetrii tohoto stroje určuje konfigurace webu; tady se nemění.'))):null;
+   :t('Telemetrii tohoto zařízení určuje konfigurace webu; tady se nemění.'))):null;
  const telemetry=siteTelemetryNote||(feed
   ?el('section',{class:'had-sec',id:'had-telemetry'},el('h3',{},telTitle),el('p',{class:'had-note'},describe(currentConn)),
    el('div',{class:'had-row'},change,disconnectFeed),choices,switchNote,holder)
   :connected
   ?el('section',{class:'had-sec'},el('h3',{},telTitle),el('p',{class:'had-note'},t('Zařízení je připojené k {name}. Jiné heslo nebo certifikát: odpoj a připoj znovu.',{name:agent})),el('div',{class:'had-row'},disconnect))
   :el('section',{class:'had-sec',id:'had-telemetry'},el('h3',{},telTitle),
-   el('p',{class:'had-note'},siteMode?t('Vyber systém stroje a zdroj bez agenta: Linux (třeba NAS) přes Node Exporter, Prometheus, který už máš, nebo SSH; Windows přes SSH nebo WinRM. Thermo (agent pro macOS) se stroji z konfigurace webu nastavuje v konfiguraci webu (thermoId), ne tady.')
+   el('p',{class:'had-note'},siteMode?t('Vyber systém zařízení a zdroj bez agenta: Linux (třeba NAS) přes Node Exporter, Prometheus, který už máš, nebo SSH; Windows přes SSH nebo WinRM. Thermo (agent pro macOS) se u zařízení z konfigurace webu nastavuje v konfiguraci webu (thermoId), ne tady.')
     :offered.length?t('Volitelné. Vyber zdroj živých čísel podle systému výše: agenta Thermo pro macOS, čítače Windows přes SSH nebo WinRM, nebo Linux přes Node Exporter, Prometheus či SSH. Nastavení spojení najdeš níže.')
     :t('Tenhle Home Hub zatím neumí připojit žádného telemetrického agenta. Zařízení bude mít dlaždici bez živých čísel.')),
    offered.length?choices:null,holder));
@@ -731,11 +731,11 @@ function deviceDialog({device=null,meta,focus,onSaved}){
   el('div',{class:'had-foot'},status,el('div',{class:'had-actions'},el('button',{type:'button',class:'ui-button',onclick:()=>dialog.close()},t('Zrušit')),save)));
  // Back to the site's values: the override and the uploaded picture go (the telemetry connection stays as it is).
  async function resetToSite(){
-  if(!await confirmDialog({title:t('Obnovit výchozí z konfigurace webu?'),body:t('Název, adresa, hardware a obrázek stroje {name} budou zase podle konfigurace webu (local/site.json); nahraný obrázek se smaže. Telemetrie, služby a historie zůstanou.',{name:device.name}),
+  if(!await confirmDialog({title:t('Obnovit výchozí z konfigurace webu?'),body:t('Název, adresa, hardware a obrázek zařízení {name} budou zase podle konfigurace webu (local/site.json); nahraný obrázek se smaže. Telemetrie, služby a historie zůstanou.',{name:device.name}),
    confirm:t('Obnovit výchozí'),action:()=>post('/api/home/devices/site/reset',{id:device.id,base:device.siteOverride?.hash})}))return;
   dialog.close();onSaved?.();
  }
- const title=el('h2',{id:'had-title'},adding?t('Přidat zařízení'):siteMode?(focus==='telemetry'||focus==='site'?t('Nastavení telemetrie'):t('Upravit stroj')):t('Upravit zařízení'));
+ const title=el('h2',{id:'had-title'},adding?t('Přidat zařízení'):siteMode?(focus==='telemetry'||focus==='site'?t('Nastavení telemetrie'):t('Upravit zařízení')):t('Upravit zařízení'));
  const dialog=el('dialog',{class:'had','aria-labelledby':'had-title'},
   el('div',{class:'had-head'},el('div',{},title,el('p',{class:'had-dim'},adding?t('Zařízení se objeví jako další dlaždice v přehledu.'):siteMode?t('{name} · id {id} · z konfigurace webu',{name:device.name,id:device.id}):t('{name} · id {id}',{name:device.name,id:device.id}))),
    el('button',{type:'button',class:'had-close','aria-label':t('Zavřít'),onclick:()=>dialog.close()},'×')),form);
@@ -780,7 +780,7 @@ function siteIdentity(m,fields,choosable,{siteTelemetry,onReset}){
  const changed=Boolean(m.siteOverride?.fields?.length||m.siteOverride?.image);
  const rows=[['Id',m.id],[t('Role'),t(role)],[t('Systém'),m.platform&&!choosable?t(system||m.platform):null]].filter(([,v])=>v);
  return el('section',{class:'had-sec had-site'},el('h3',{},t('2 · Co to je')),
-  el('p',{class:'had-note'},t('Stroj je z konfigurace webu (local/site.json). Název, adresa, hardware a obrázek, které tu změníš, Home Hub uloží jako tvoje úpravy nad hodnotami z konfigurace webu; soubor se nepřepíše. Id, role, systém a napojení (SSH, Thermo, sondy služeb, adaptér routeru) zůstávají podle konfigurace webu a sondy dál používají její adresy. Stroj tu nejde odebrat.')),
+  el('p',{class:'had-note'},t('Zařízení je z konfigurace webu (local/site.json). Název, adresa, hardware a obrázek, které tu změníš, Home Hub uloží jako tvoje úpravy nad hodnotami z konfigurace webu; soubor se nepřepíše. Id, role, systém a napojení (SSH, Thermo, sondy služeb, adaptér routeru) zůstávají podle konfigurace webu a sondy dál používají její adresy. Zařízení tu nejde odebrat.')),
   el('div',{class:'had-grid two'},fields.name.node,fields.hostname.node,fields.ip.node,siteTelemetry&&choosable?fields.platform.node:null),
   el('div',{class:'had-grid four'},fields.cpu.node,fields.gpu.node,fields.ramGb.node,fields.diskGb.node),
   el('dl',{class:'had-readonly'},rows.map(([k,v])=>el('div',{},el('dt',{},k),el('dd',{},String(v))))),

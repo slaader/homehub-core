@@ -37,10 +37,10 @@ export function createPalette({pages=()=>[],actions=()=>[],devices=()=>[],canSea
  function sections(query){
   const q=query.trim(),out=[];
   const pageItems=matchItems(pages().map(p=>({...p,sub:p.group||null,iconNode:navIcon(p),run:()=>go(`#${p.hash}`)})),q);
-  const deviceItems=matchItems(devices().map(m=>({label:m.name||m.id,group:t('Stroje'),sub:m.id,icon:'cpu',run:()=>go('#host-'+m.id)})),q);
+  const deviceItems=matchItems(devices().map(m=>({label:m.name||m.id,group:t('Seznam zařízení'),sub:m.id,icon:'cpu',run:()=>go('#host-'+m.id)})),q);
   const actionItems=matchItems(actions(),q);
   if(pageItems.length)out.push({title:t('Stránky'),items:pageItems});
-  if(q&&deviceItems.length)out.push({title:t('Stroje'),items:deviceItems.slice(0,8)});
+  if(q&&deviceItems.length)out.push({title:t('Seznam zařízení'),items:deviceItems.slice(0,8)});
   if(actionItems.length)out.push({title:t('Akce'),items:actionItems});
   if(q&&canSearch()){
    const hits=resultsFor===q?results.map(r=>({label:r.title,title:marked(r.title),sub:[KIND[r.kind]||r.kind,r.project].filter(Boolean).join(' · '),icon:r.kind==='review'?'eye':'list',run:()=>go(resultHref(r))})):[];

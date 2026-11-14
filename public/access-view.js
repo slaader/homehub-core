@@ -242,7 +242,7 @@ function accountsTab(status){
   const ack=el('input',{type:'checkbox',name:'ack'});
   const warning=el('div',{class:'ax-warning',role:'alert'},el('strong',{},t('Plný přístup: rozmysli si to')),
    el('p',{},t('Klíč smí všechno, co umí kterákoli role: měnit inventář a tickety, ovládat služby a spouštět akce, číst bezpečnostní přehledy. Platí to i pro oprávnění, která teprve přidá nějaký plugin.')),
-   el('p',{},t('Nikdy se nedostane ke správě uživatelů, rolí, klíčů a tokenů aplikací ani k tvému účtu. Dej ho jen agentovi, kterému věříš, na stroji, který máš pod kontrolou.')),
+   el('p',{},t('Nikdy se nedostane ke správě uživatelů, rolí, klíčů a tokenů aplikací ani k tvému účtu. Dej ho jen agentovi, kterému věříš, na zařízení, které máš pod kontrolou.')),
    el('label',{class:'ax-check'},ack,el('span',{},t('Rozumím, chci plný přístup.'))));
   const detail=el('div',{class:'ax-preset-detail'});
   const cards=el('div',{class:'ax-preset-grid',role:'radiogroup','aria-label':t('Předvolba oprávnění')},[...presets,custom].map(p=>{
@@ -335,7 +335,7 @@ function keysTab(status){
 // device of the overview, at most two per device (one to rotate). The token appears once, in the one-time dialog, as
 // the key file the installer takes (--key-file); it is never kept here, never put in a URL and never logged.
 // Who revoked a key, when the hub did it itself.
-const REVOKED_BY={'device-removed':'hub: stroj byl odebrán','device-changed':'hub: stroj už agenta nepřijímá','local administration':'místní správa'};
+const REVOKED_BY={'device-removed':'hub: zařízení bylo odebráno','device-changed':'hub: zařízení už agenta nepřijímá','local administration':'místní správa'};
 // What agent keys can be issued for, as far as the page can tell (the server checks again: the NAS is refused there).
 export const agentDevices=list=>(Array.isArray(list)?list:[]).filter(m=>m&&m.role!=='router'&&m.platform!=='other');
 // The file create-agent-key --output writes, which the installer reads (scripts/host-agent/core.mjs → readKeyFile).
@@ -345,21 +345,21 @@ function agentsTab(status){
  const nameOf=id=>devices.find(m=>m.id===id)?.name||id;
  async function issue(preset){
   const offered=agentDevices(devices);
-  if(!offered.length){status(t('V přehledu není stroj, kterému jde vydat klíč agenta.'),true);return;}
+  if(!offered.length){status(t('V přehledu není zařízení, kterému jde vydat klíč agenta.'),true);return;}
   const select=el('select',{name:'device',required:''},offered.map(m=>el('option',{value:m.id,selected:m.id===preset?'':null},`${m.name} · ${m.id}`)));
   const name=el('input',{name:'name',maxlength:'80',autocomplete:'off',placeholder:t('Nepovinné')});
   let r=await formDialog({title:t('Nový klíč agenta'),label:t('Vydat klíč'),
-   lead:t('Klíč patří jednomu stroji a smí jen posílat hlášení tohohle stroje. Nic nečte a nemá žádné oprávnění. Stroj může mít dva klíče, aby šel klíč vyměnit.'),
-   body:[field(t('Stroj'),select),field(t('Název klíče'),name,t('Bez názvu dostane id stroje a datum.'))],
+   lead:t('Klíč patří jednomu zařízení a smí jen posílat hlášení tohohle zařízení. Nic nečte a nemá žádné oprávnění. Zařízení může mít dva klíče, aby šel klíč vyměnit.'),
+   body:[field(t('Zařízení'),select),field(t('Název klíče'),name,t('Bez názvu dostane id zařízení a datum.'))],
    submit:()=>api('/api/admin/agents',{device:select.value,...(name.value.trim()?{name:name.value.trim()}:{})})});
   if(!r)return;
   const device=nameOf(r.agent.device),file=agentKeyFile(r);r=null;
   status(t('Klíč agenta pro {device} je vydaný.',{device}));list.reload();
   secretDialog({title:t('Klíč agenta pro {device}',{device}),value:file,
-   caption:t('Ulož tenhle obsah do souboru agent-key.json, který čteš jen ty, a předej ho instalátoru na stroji: node scripts/install-host-agent.mjs --core --hub <adresa hubu> --key-file <cesta k souboru>. Uložený je jen otisk, znovu ho nezobrazím.')});
+   caption:t('Ulož tenhle obsah do souboru agent-key.json, který čteš jen ty, a předej ho instalátoru na zařízení: node scripts/install-host-agent.mjs --core --hub <adresa hubu> --key-file <cesta k souboru>. Uložený je jen otisk, znovu ho nezobrazím.')});
  }
  async function revoke(k){
-  if(!await confirmDialog(t('Odvolat klíč „{name}“?',{name:k.name}),t('Agent s tímhle klíčem dostane při dalším hlášení 401. Když stroj nemá jiný klíč, hub jeho hlášení přestane číst. Nejde to vrátit.'),t('Odvolat')))return;
+  if(!await confirmDialog(t('Odvolat klíč „{name}“?',{name:k.name}),t('Agent s tímhle klíčem dostane při dalším hlášení 401. Když zařízení nemá jiný klíč, hub jeho hlášení přestane číst. Nejde to vrátit.'),t('Odvolat')))return;
   try{await api('/api/admin/agents/revoke',{id:k.id});status(t('Klíč „{name}“ odvolán.',{name:k.name}));list.reload();}catch(err){status(err.message,true);}
  }
  const row=k=>el('tr',{class:k.revokedAt?'off':''},
@@ -379,12 +379,12 @@ function agentsTab(status){
   const [keys,listed]=await Promise.all([api('/api/admin/agents'),api('/api/home/devices').catch(()=>({devices:[]}))]);
   devices=Array.isArray(listed.devices)?listed.devices:[];return Array.isArray(keys.agents)?keys.agents:[];},
  keys=>{
-  if(!keys.length)return emptyState({icon:'⚿',title:t('Zatím žádný push agent'),body:t('Push agent běží na stroji a sám posílá hubu systém, aktualizace, sledovaný software, SSH klíče a lokální LLM runtimy. Hub se na stroj nepřihlašuje.'),
-   steps:[t('Vydej klíč pro stroj. Uvidíš ho jen jednou, jako obsah souboru s klíčem.'),t('Na stroji spusť instalátor s tímhle souborem (node scripts/install-host-agent.mjs --core).'),t('Stroj pak v přehledu ukáže, kdy se agent naposledy ozval.')],
+  if(!keys.length)return emptyState({icon:'⚿',title:t('Zatím žádný push agent'),body:t('Push agent běží na zařízení a sám posílá hubu systém, aktualizace, sledovaný software, SSH klíče a lokální LLM runtimy. Hub se na zařízení nepřihlašuje.'),
+   steps:[t('Vydej klíč pro zařízení. Uvidíš ho jen jednou, jako obsah souboru s klíčem.'),t('Na zařízení spusť instalátor s tímhle souborem (node scripts/install-host-agent.mjs --core).'),t('Zařízení pak v přehledu ukáže, kdy se agent naposledy ozval.')],
    actions:[{label:t('+ Nový klíč agenta'),onclick:()=>issue().catch(err=>status(err.message,true)),primary:true}]});
   const ids=[...new Set(keys.map(k=>k.device))].sort((a,b)=>String(nameOf(a)).localeCompare(String(nameOf(b))));
   return el('div',{class:'ax-stack'},ids.map(id=>group(id,keys.filter(k=>k.device===id))));});
- return el('div',{class:'ax-stack'},sectionHead(t('Push agenti'),t('Klíče agentů, kteří ze strojů posílají hlášení. Klíč patří jednomu stroji a nic jiného neotevře. Odvolaný klíč přestane fungovat hned.'),
+ return el('div',{class:'ax-stack'},sectionHead(t('Push agenti'),t('Klíče agentů, kteří ze zařízení posílají hlášení. Klíč patří jednomu zařízení a nic jiného neotevře. Odvolaný klíč přestane fungovat hned.'),
   button(t('+ Nový klíč agenta'),()=>issue().catch(err=>status(err.message,true)),'primary')),list.host);
 }
 
@@ -400,7 +400,7 @@ function appsTab(status){
    el('div',{class:'ax-row-actions'},button(t('Odebrat'),()=>revoke(a),'small danger'))))):
   emptyState({icon:'key',title:t('Žádná aplikace není přihlášená'),body:t('Nativní aplikace se přihlásí jménem a heslem a nechá si vystavit vlastní token. Tady ho pak uvidíš a můžeš odebrat.'),
    steps:[t('V aplikaci zadej adresu tohoto Home Hubu a přihlas se.'),t('Aplikace si uloží token do klíčenky telefonu; heslo si nepamatuje.'),t('Ztracený telefon tady odebereš jedním klepnutím.')]}));
- return el('div',{class:'ax-stack'},sectionHead(t('Přihlášení aplikací'),null),el('p',{class:'ax-note'},...rich(t('Nativní aplikace s dlouhodobým tokenem {token}. Token smí všechno jako Admin kromě správy uživatelů, rolí a klíčů a platí, dokud ho neodebereš.'),{token:el('code',{},'hh_…')}),' ',t('Stroje (počítače, NAS, server) jsou v Integracích → Stroje.')),list.host);
+ return el('div',{class:'ax-stack'},sectionHead(t('Přihlášení aplikací'),null),el('p',{class:'ax-note'},...rich(t('Nativní aplikace s dlouhodobým tokenem {token}. Token smí všechno jako Admin kromě správy uživatelů, rolí a klíčů a platí, dokud ho neodebereš.'),{token:el('code',{},'hh_…')}),' ',t('Zařízení (počítače, NAS, server) jsou v Integracích → Seznam zařízení.')),list.host);
 }
 
 // ---- audit ------------------------------------------------------------------------------------
@@ -451,7 +451,7 @@ function auditTab(){
 const WHO={security:['security:read','warn'],key:['klíč servisního účtu','warn'],public:['bez přihlášení','dim'],read:['čtení','good'],write:['zápis','warn'],admin:['admin heslem','bad'],adminRole:['admin / token aplikace','bad'],password:['přihlášení heslem','warn']};
 const ROUTES=[
  ['Účet',[['GET','/api/me','read','Kdo jsem a co smím: role, scopes, canWrite, canAdmin.'],['POST','/api/session','public','Přihlášení {username,password} → cookie homehub.'],['POST','/api/logout','read','Odhlášení.']]],
- ['Domov',[['GET','/api/home','read','Dlaždice strojů: Thermo, služby, router.'],['GET','/api/home/history?device=<id>&range=30m|7d|30d|6m','read','Řady pro grafy.'],
+ ['Domov',[['GET','/api/home','read','Dlaždice zařízení: Thermo, služby, router.'],['GET','/api/home/history?device=<id>&range=30m|7d|30d|6m','read','Řady pro grafy.'],
   ['POST','/api/home/refresh','read','Načíst Thermo hned (omezeno na 1× za 5 s).'],['POST','/api/home/settings','home:settings','Interval čtení Thermo {intervalSeconds: 15|30|60}.']]],
  ['Bezpečnost',[['GET','/api/security','security','Inventář SSH klíčů (snímek z collect-security).']]],
  ['Inventář',[['GET','/api/inventory','read','Celý inventář (knowledge.json) s hashi záznamů.'],['GET','/api/inventory/export','read','Stažení inventáře jako soubor.'],['GET','/api/services','read','Běžící služby (záznamy kind=runtime).'],

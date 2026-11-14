@@ -99,7 +99,7 @@ test('the page: device cards and one device, in English, with set-up links where
  const {devicesSection,devicePage,countsLine}=await import('../public/devices-view.js');
  const doc=buildDevices(M,normalizeReports([
   {id:'telemetry',title:'Telemetrie',icon:'pulse',order:10,page:'overview',devices:{mini:{state:'ok',summary:'Čte {provider}.',summaryT:[{key:'Čte {provider}.',params:{provider:'Thermo'}}],details:[{label:'Zdroj',value:'Thermo'}]}}},
-  {id:'backups',title:'Zálohy',icon:'archive',order:20,page:'backup-jobs',howTo:'Žádná úloha záloh na tenhle stroj neukládá ani ho nezálohuje. Založ ji na stránce Zálohování.',devices:{}}]));
+  {id:'backups',title:'Zálohy',icon:'archive',order:20,page:'backup-jobs',howTo:'Žádná úloha záloh na tohle zařízení neukládá ani ho nezálohuje. Založ ji na stránce Zálohování.',devices:{}}]));
  const list=devicesSection(doc,{onAdd:()=>{}}),one=devicePage(doc,'mini'),txt=n=>n.textContent;
  const CZECH=/[ěščřžýáíéůúťďňĚŠČŘŽÝÁÍÉŮÚ]/;
  assert.ok(txt(list).includes('Devices'));assert.ok(txt(list).includes('Add device'));assert.equal(CZECH.test(txt(list)),false,txt(list));
@@ -128,7 +128,7 @@ test('an integration that names its devices shows on those devices only, in the 
  const doc=buildDevices([...M,{id:'nas',name:'NAS'}],normalizeReports(integrationReport(integration,status,[{device:'mini',item:'mini'},{device:'win',item:'win'}])));
  const by=id=>doc.devices.find(m=>m.id===id).facets;
  assert.equal(by('mini')[0].state,'ok');assert.equal(by('mini')[0].how.by,'integration');assert.equal(by('mini')[0].id,'int-demo-bridge');
- assert.equal(by('win')[0].state,'not-configured');assert.match(by('win')[0].prompt,/„Mosty“ pro stroj „PC“.*Spusť most\./);
+ assert.equal(by('win')[0].state,'not-configured');assert.match(by('win')[0].prompt,/„Mosty“ pro zařízení „PC“.*Spusť most\./);
  assert.deepEqual(by('nas'),[],'a device the integration does not name does not get it');
  const off=buildDevices(M,normalizeReports(integrationReport(integration,{state:'disabled',items:status.items},['mini'])));
  assert.equal(off.devices[0].facets[0].state,'off','turned off by an administrator');

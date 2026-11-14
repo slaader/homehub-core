@@ -126,6 +126,6 @@ export default {
    return toolView(await state.read({range:args?.range||'24h'}),{graph:args?.graph===true});
   }}],
  apiDocs:[{title:'LLM a difúze',routes:[
-  ['GET','/api/models?range=24h|7d|30d','read','Modely na všech strojích: přehled, tabulka modelů, klienti, schéma zapojení. MCP models_overview.'],
-  ['GET','/api/models/history?range=24h|7d|30d','read','Požadavky, tokeny a tok/s v čase podle modelu, stroje, klienta a druhu.']]}],
+  ['GET','/api/models?range=24h|7d|30d','read','Modely na všech zařízeních: přehled, tabulka modelů, klienti, schéma zapojení. MCP models_overview.'],
+  ['GET','/api/models/history?range=24h|7d|30d','read','Požadavky, tokeny a tok/s v čase podle modelu, zařízení, klienta a druhu.']]}],
 };

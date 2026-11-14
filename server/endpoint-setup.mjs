@@ -26,15 +26,15 @@ export const ENDPOINT_SETUP_ERRORS=Object.freeze({
  'draft-missing':[404,'Tohle nastavení spojení vypršelo nebo bylo zavřené. Začni znovu.'],
  busy:[409,'Na tomhle nastavení právě běží jiný krok. Počkej, až doběhne.'],
  'needs-probe':[409,'Nejdřív načti certifikát pro tenhle host a port.'],
- 'needs-trust':[409,'Nejdřív porovnej otisk certifikátu s tím na stroji a potvrď ho.'],
+ 'needs-trust':[409,'Nejdřív porovnej otisk certifikátu s tím na zařízení a potvrď ho.'],
  'needs-test':[409,'Nejdřív vyzkoušej spojení s tímhle nastavením.'],
  'needs-password':[409,'Zadej heslo účtu.'],
  stale:[409,'Host, port, schéma nebo uživatel se od zkoušky změnil. Vyzkoušej spojení znovu.'],
  'trust-mismatch':[409,'Tenhle otisk endpoint při posledním načtení neukázal. Načti certifikát znovu.'],
  'ca-unverified':[409,'Certifikát pro tohle jméno neověřila žádná autorita, které Home Hub věří. Porovnej otisk a připni ho, nebo zadej jméno z certifikátu.'],
  'plain-credentials':[422,'Přihlašovací údaje Home Hub posílá jen přes ověřené HTTPS. Pro HTTP nech uživatele i heslo prázdné.'],
- 'needs-targets':[409,'Nejdřív načti cíle z Promethea a vyber stroj.'],
- 'target-unknown':[409,'Tenhle cíl Prometheus při posledním načtení nenabídl (nebo je pod ním víc strojů). Načti cíle znovu a vyber jeden.'],
+ 'needs-targets':[409,'Nejdřív načti cíle z Promethea a vyber zařízení.'],
+ 'target-unknown':[409,'Tenhle cíl Prometheus při posledním načtení nenabídl (nebo je pod ním víc zařízení). Načti cíle znovu a vyber jeden.'],
  limit:[409,'Rozpracovaných nastavení spojení je moc. Zavři ostatní dialogy, nebo to zkus za půl hodiny.']});
 export const ENDPOINT_LIMITS=Object.freeze({ttlMs:30*60000,perOwner:3,total:16,testFreshMs:15*60000});
 const DEFAULT_PORT={[WINRM_PROVIDER]:WINRM_PORT,[NODE_EXPORTER_PROVIDER]:NODE_EXPORTER_PORT,[PROMETHEUS_PROVIDER]:PROMETHEUS_PORT};

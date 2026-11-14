@@ -187,7 +187,7 @@ export async function readLlamaSwap(get,{now=Date.now()}={}){
  return {version:str(version?.version,40),models:loadedFirst(models),
   stats:stats(stat('tokeny/s',speed?tps(speed):null),stat('požadavky',num(totals?.total_requests)!==null?short(totals.total_requests):null),
    stat('tokeny ven',num(totals?.total_output_tokens)!==null?short(totals.total_output_tokens):null),
-   stat('paměť stroje',memory(metric(samples,'llamaswap_memory_used_bytes'),metric(samples,'llamaswap_memory_total_bytes')))),
+   stat('paměť zařízení',memory(metric(samples,'llamaswap_memory_used_bytes'),metric(samples,'llamaswap_memory_total_bytes')))),
   ...(flight?activityOf(models.reduce((n,m)=>n+(m.active||0),0),models.reduce((n,m)=>n+(m.queued||0),0)):{})};
 }
 // The in-flight requests that ask for one llama-swap model, by its id or one of its aliases: {n, since}.

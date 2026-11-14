@@ -35,7 +35,7 @@ export function versionBlock(e){
  return el('div',{class:'inv-versions'},
   el('div',{class:'inv-ver-head'},el('span',{class:'eyebrow'},t('VERZE · SYSTÉMY')),el('a',{href:`#versions/${device}`},t('Verze a aktualizace →'))),
   el('ul',{},os?item(os.name||t('Systém'),{...os,upstreamStale:false}):null,rows.map(r=>item(r.name,r))),
-  el('small',{class:'inv-ver-src'},t('Stroje {devices} · vydání {releases}',{devices:when(systems.collectedAt),releases:when(systems.upstreamCheckedAt)})));
+  el('small',{class:'inv-ver-src'},t('Zařízení {devices} · vydání {releases}',{devices:when(systems.collectedAt),releases:when(systems.upstreamCheckedAt)})));
 }
 
 // --- the dialog ------------------------------------------------------------------------------
@@ -70,7 +70,7 @@ function detail(doc,e,pick){
   status,
   versionBlock(e),
   e.notes?el('p',{class:'muted inv-detail-notes'},linkify(e.notes)):'',
-  el('dl',{class:'inv-dl'},row(t('Druh'),`${kindName(e.kind)}${e.type?` · ${e.type}`:''}`),row('ID',e.id,true),e.kind!=='network'&&e.kind!=='external'&&(e.kind!=='device'||e.device)?row(t('Stroj'),e.kind==='device'?placeName(e.device):place(e)):[],row(t('Adresa'),e.address,true,e.kind==='runtime'||e.kind==='device'),row(t('Verze (zapsaná)'),e.version,false,false),row(t('Konfigurace'),e.config,true,e.kind!=='external'),row(t('Data'),e.data,true,false),row(t('Spravuje'),e.managed_by,true,false),row(t('Jak se přihlásit'),e.login,false,false)),
+  el('dl',{class:'inv-dl'},row(t('Druh'),`${kindName(e.kind)}${e.type?` · ${e.type}`:''}`),row('ID',e.id,true),e.kind!=='network'&&e.kind!=='external'&&(e.kind!=='device'||e.device)?row(t('Zařízení'),e.kind==='device'?placeName(e.device):place(e)):[],row(t('Adresa'),e.address,true,e.kind==='runtime'||e.kind==='device'),row(t('Verze (zapsaná)'),e.version,false,false),row(t('Konfigurace'),e.config,true,e.kind!=='external'),row(t('Data'),e.data,true,false),row(t('Spravuje'),e.managed_by,true,false),row(t('Jak se přihlásit'),e.login,false,false)),
   e.models?.length?[el('h3',{},t('Modely · {n}',{n:e.models.length})),el('ul',{class:'inv-list mono'},e.models.map(m=>el('li',{},m)))]:'',
   e.skills?.length?[el('h3',{},t('Skilly · {n}',{n:e.skills.length})),el('ul',{class:'inv-list mono'},e.skills.map(m=>el('li',{},m)))]:'',
   el('h3',{},t('Tajemství · kde jsou uložená')),
@@ -98,14 +98,14 @@ const ISSUE={
  'name-required':'Název je povinný.',
  category:'Tahle kategorie neexistuje.',
  'secret-what':'Napiš, co to je.',
- 'secret-store':'Neznámé úložiště „{store}“. Vyber ze seznamu, nebo použij tvar jako keychain:<stroj>.',
+ 'secret-store':'Neznámé úložiště „{store}“. Vyber ze seznamu, nebo použij tvar jako keychain:<zařízení>.',
  'secret-check':'Tenhle příkaz by tajemství vypsal ({why}). Použij takový, který jen ověří, že existuje.',
  'secret-value':'Vypadá to jako hodnota tajemství ({why}). Zapiš, kde je uložené, ne hodnotu.',
  'dep-kind':'Vyber druh závislosti.',
  'dep-self':'Záznam nemůže záviset sám na sobě.',
  'dep-missing':'Záznam „{target}“ neexistuje.',
- 'device-required':'Vyber stroj, na kterém běží.',
- 'device-missing':'Stroj „{device}“ neexistuje.',
+ 'device-required':'Vyber zařízení, na kterém běží.',
+ 'device-missing':'Zařízení „{device}“ neexistuje.',
  'gap-address':'Služba bez adresy se počítá jako mezera.',
  'gap-store':'Nezapsané místo se počítá jako mezera.',
 };
@@ -116,7 +116,7 @@ export const issueText=i=>ISSUE[i.code]?t(ISSUE[i.code],{...i,why:WHY[i.why]?t(W
 
 // --- the form --------------------------------------------------------------------------------
 const TEXT=[['name','Název'],['type','Typ'],['category','Kategorie na mapě'],['address','Adresa'],['version','Verze'],['managed_by','Spravuje'],['login','Jak se přihlásit'],['config','Konfigurace'],['data','Data'],['notes','Poznámky']];
-const LABEL={...Object.fromEntries(TEXT),device:'Stroj',secrets:'Tajemství',depends_on:'Závisí na',id:'ID',kind:'Druh'};
+const LABEL={...Object.fromEntries(TEXT),device:'Zařízení',secrets:'Tajemství',depends_on:'Závisí na',id:'ID',kind:'Druh'};
 const LONG=new Set(['config','data','login','notes']);
 const HINT={address:'host:port, URL nebo IP adresa',config:'Cesta ke konfiguraci, ne její obsah',login:'Slovy, jak se přihlásit. Nikdy heslo ani token.',managed_by:'launchd, systemd, kontejner, cron…'};
 const norm=v=>typeof v==='string'?v.trim():'';
@@ -160,12 +160,12 @@ export function showEditor(entry,{isNew=false,prefill=null,theirs=null,note=''}=
  const deviceSelect=select('inv-f-device',[['',t('— žádný —')],...devices.map(m=>[m.id,`${m.name} (${m.id})`]),...(start.device&&!devices.some(m=>m.id===start.device)?[[start.device,start.device]]:[])],start.device);
  const category=select('inv-f-category',[['',''],...CATS.map(([v,l])=>[v,t(l)])],start.category||'');
  const paintKind=()=>{const k=kind();category.children[0].textContent=t('Výchozí pro druh ({category})',{category:t(CAT_LABEL[DEFAULT_CAT[k]]||OTHER)});
-  wraps.device.hidden=!PLACED_KINDS.includes(k);wraps.device.children[0].childNodes[0].textContent=k==='device'?t('Běží na stroji (nepovinné)'):t('Stroj');};
+  wraps.device.hidden=!PLACED_KINDS.includes(k);wraps.device.children[0].childNodes[0].textContent=k==='device'?t('Běží na zařízení (nepovinné)'):t('Zařízení');};
  const basics=el('div',{class:'inv-fields'},
   field('name',t('Název'),text('name')),
   isNew?field('kind',t('Druh'),kindSelect):null,
   isNew?field('id','ID',idInput,{hint:t('Malá písmena, číslice a pomlčky. Už se nikdy nezmění.')}):null,
-  field('device',t('Stroj'),deviceSelect),
+  field('device',t('Zařízení'),deviceSelect),
   field('type',t('Typ'),text('type')),field('category',t('Kategorie na mapě'),category),
   field('address',t('Adresa'),text('address'),{hint:t(HINT.address)}),field('version',t('Verze'),text('version')),
   field('managed_by',t('Spravuje'),text('managed_by'),{hint:t(HINT.managed_by)}),field('login',t('Jak se přihlásit'),text('login'),{hint:t(HINT.login)}),
@@ -285,7 +285,7 @@ export function showEditor(entry,{isNew=false,prefill=null,theirs=null,note=''}=
   basics,
   el('h3',{},t('Tajemství · kde jsou uložená')),secretRows,el('datalist',{id:'inv-stores'},storeSuggestions(doc.entries).map(v=>el('option',{value:v}))),
   el('button',{type:'button',class:'inv-btn small',onclick:()=>addSecret().querySelector('input').focus()},t('+ Přidat tajemství')),
-  el('h3',{},t('Závisí na')),el('p',{class:'muted inv-hint'},t('Co tenhle záznam potřebuje. Stroj, na kterém běží, sem nepatří: ten říká pole Stroj.')),depRows,
+  el('h3',{},t('Závisí na')),el('p',{class:'muted inv-hint'},t('Co tenhle záznam potřebuje. Zařízení, na kterém běží, sem nepatří: to říká pole Zařízení.')),depRows,
   el('datalist',{id:'inv-entries'},doc.entries.filter(e=>e.id!==entry.id).map(e=>el('option',{value:e.id},`${e.name} · ${kindName(e.kind)}`))),
   el('button',{type:'button',class:'inv-btn small',onclick:()=>addDep().querySelector('input').focus()},t('+ Přidat závislost')),
   summary,status,actions);

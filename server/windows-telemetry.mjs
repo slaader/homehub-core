@@ -186,12 +186,12 @@ export function classifySsh({code,stderr='',error=null}){
 // None of them assumes which system the hub runs on.
 export const WINDOWS_ERRORS=Object.freeze({
  'host-key-unknown':'Klíč hostitele Windows není pro tohle spojení ověřený. V Upravit zařízení → Telemetrie načti klíč hostitele, porovnej jeho otisk s tím, který ukáže Windows, a potvrď ho. Home Hub neznámý klíč nikdy nepřijme sám.',
- 'host-key-changed':'Klíč hostitele Windows se liší od ověřeného. Windows mohl být přeinstalovaný, ale může jít i o podvržený stroj. Porovnej nový otisk na Windows a ověř ho znovu v Upravit zařízení → Telemetrie; do té doby se Home Hub nepřipojí.',
+ 'host-key-changed':'Klíč hostitele Windows se liší od ověřeného. Windows mohl být přeinstalovaný, ale může jít i o podvržené zařízení. Porovnej nový otisk na Windows a ověř ho znovu v Upravit zařízení → Telemetrie; do té doby se Home Hub nepřipojí.',
  denied:'Windows nepřijal klíč Home Hubu. Zkontroluj uživatele Windows a to, že příkaz pro autorizaci klíče proběhl pro tenhle účet (u správce jde klíč do administrators_authorized_keys).',
  unresolved:'Jméno hostitele se ze serveru s Home Hubem nedá přeložit. Zadej IP adresu nebo jméno, které zná tvoje DNS.',
  refused:'Windows odmítl spojení na port SSH. Běží služba OpenSSH Server (sshd), poslouchá na tomhle portu a pouští ji firewall?',
- timeout:'Spojení vypršelo. Stroj může spát nebo být mimo síť, nebo port SSH blokuje firewall.',
- unreachable:'Stroj není v síti k zastižení. To neznamená, že je vypnutý.',
+ timeout:'Spojení vypršelo. Zařízení může spát nebo být mimo síť, nebo port SSH blokuje firewall.',
+ unreachable:'Zařízení není v síti k zastižení. To neznamená, že je vypnuté.',
  'ssh-config':'Klient SSH na serveru s Home Hubem odmítl nastavení nebo práva souborů. U spojení spravovaného Home Hubem jde o práva jeho úložiště klíčů; u staršího spojení přes alias o konfiguraci SSH účtu, pod kterým Home Hub běží.',
  ssh:'SSH spojení selhalo z neznámého důvodu. Vyzkoušej spojení znovu; když to trvá, zkontroluj na Windows službu OpenSSH Server.',
  'no-ssh':'Na serveru s Home Hubem chybí klientské nástroje OpenSSH (ssh a ssh-keyscan). Nainstaluj OpenSSH Client: ve Windows volitelná funkce OpenSSH Client, v Linuxu balíček openssh-client (nebo openssh); macOS je má.',
@@ -201,7 +201,7 @@ export const WINDOWS_ERRORS=Object.freeze({
  'key-permissions':'Klient SSH odmítl soukromý klíč kvůli jeho právům. Home Hub ukládá klíče čitelné jen pro sebe; zkontroluj, že se práva adresáře se stavem nezměnila (třeba obnovou zálohy).',
  'no-powershell':'Přihlášení prošlo, ale Windows nespustil powershell.exe. Je výchozí shell OpenSSH cmd.exe nebo PowerShell?',
  powershell:'Přihlášení prošlo, ale skript PowerShellu neskončil správně. Zkus to znovu; když to trvá, je možná omezené spouštění PowerShellu.',
- 'bad-output':'Windows odpověděl, ale ne očekávanými daty. Je cíl opravdu stroj s Windows?',
+ 'bad-output':'Windows odpověděl, ale ne očekávanými daty. Je cíl opravdu zařízení s Windows?',
  'no-counters':'Windows odpověděl, ale nevrátil čítače výkonu. Standardní účet přidej do skupiny Performance Monitor Users.',
  'too-large':'Odpověď z Windows byla nečekaně velká a byla zahozena.',
  spawn:'Klienta SSH nejde na serveru s Home Hubem spustit.',busy:'Právě běží jiné zkoušky spojení. Zkus to za chvíli.',unavailable:'Telemetrie Windows teď neodpovídá.'});

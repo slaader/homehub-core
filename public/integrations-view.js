@@ -13,7 +13,7 @@ import {openAddDevice} from './home-add-device.js';
 import {updateDetails} from './updates-view.js';
 
 // ---- words -------------------------------------------------------------------------------------
-const KIND={telemetry:'Telemetrie','llm-runtimes':'Lokální LLM runtimy',router:'Router',collector:'Kolektory',upstream:'Kontrola vydání',storage:'Úložiště',bridge:'Mosty na jiné stroje',agent:'Push agenti',other:'Ostatní'};
+const KIND={telemetry:'Telemetrie','llm-runtimes':'Lokální LLM runtimy',router:'Router',collector:'Kolektory',upstream:'Kontrola vydání',storage:'Úložiště',bridge:'Mosty na jiná zařízení',agent:'Push agenti',other:'Ostatní'};
 const KIND_ICON={telemetry:'pulse','llm-runtimes':'cpu',router:'globe',collector:'list',upstream:'versions',storage:'archive',bridge:'plug',agent:'bolt',other:'puzzle'};
 const STATE={ok:['v pořádku','good'],stale:['zastaralé','warn'],error:['chyba','bad'],off:['vypnuto','plain'],'not-configured':['nenastaveno','info'],disabled:['vypnuto administrátorem','']};
 const SOURCE={'site.json':'site.json',env:'env',ui:'UI',file:'soubor',plugin:'plugin'};
@@ -171,7 +171,7 @@ export function integrationsView({me}={}){
   lead:t('Odkud Home Hub bere data, jestli to funguje a kde je to nastavené. Vypnutou integraci hub nečte a stránky místo starých dat řeknou, že je vypnutá. Zapnout ji jde zase bez restartu.'),
   actions:[{label:t('Obnovit'),onclick:()=>draw()}]});
  let doc=null,devices=null;
- const addDevice=()=>openAddDevice({meta:devices?.telemetry,onSaved:()=>{toast.good(t('Stroj je přidaný.'));draw();}});
+ const addDevice=()=>openAddDevice({meta:devices?.telemetry,onSaved:()=>{toast.good(t('Zařízení je přidané.'));draw();}});
  const paint=()=>{
   const rows=doc.integrations;let stats=counts(rows);
   // A card redraws itself after a change (focus stays where it was); only the counts follow.
@@ -179,7 +179,7 @@ export function integrationsView({me}={}){
   const groups=doc.kinds.filter(k=>rows.some(r=>r.kind===k)).map(k=>el('section',{class:'ig-group','aria-labelledby':`ig-k-${k}`},
    el('h2',{id:`ig-k-${k}`},icon(KIND_ICON[k]||'puzzle'),kindLabel(k)),
    el('div',{class:'ig-grid'},rows.filter(r=>r.kind===k).map(r=>card(r,{onchange})))));
-  body.replaceChildren(stats,devices?devicesSection(devices,{onAdd:me?.canWrite?addDevice:null}):el('p',{class:'ig-dim'},t('Stroje se nepodařilo načíst.')),
+  body.replaceChildren(stats,devices?devicesSection(devices,{onAdd:me?.canWrite?addDevice:null}):el('p',{class:'ig-dim'},t('Seznam zařízení se nepodařilo načíst.')),
    ...(rows.length?groups:[emptyState({icon:'plug',title:t('Žádné integrace'),body:t('Žádný načtený modul nehlásí integraci.')})]),
    plugins(doc));
  };
@@ -192,9 +192,9 @@ export function integrationsView({me}={}){
  return el('div',{class:'ig-page'},head,body);
 }
 function deviceView(id){
- const body=el('div',{class:'ig-body'},loadingState(t('Načítám stroj…')));
+ const body=el('div',{class:'ig-body'},loadingState(t('Načítám zařízení…')));
  api('/api/admin/devices').then(doc=>body.replaceChildren(devicePage(doc,id)))
-  .catch(e=>body.replaceChildren(errorState({title:t('Stroj se nepodařilo načíst'),body:e.message,retry:()=>{body.replaceWith(deviceView(id));}})));
+  .catch(e=>body.replaceChildren(errorState({title:t('Zařízení se nepodařilo načíst'),body:e.message,retry:()=>{body.replaceWith(deviceView(id));}})));
  return body;
 }
 export const integrationsPage=({me}={})=>integrationsView({me});

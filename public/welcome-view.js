@@ -29,30 +29,30 @@ function describe(step,me){
     steps(t('Otevři Uživatelé a API → Servisní účty a založ účet, třeba agent-laptop, s oprávněními, která potřebuje.'),t('Vydej mu klíč. Celý se ukáže jen jednou.'),t('Vlož úryvek níž do agenta a místo hhk_… dej ten klíč.')),
     mcpConnect(),
     actions(pageAllowed('access',me)?{label:t('Otevřít Uživatelé a API'),href:'#access',primary:true}:null)]};
-  case 'devices':return {title:t('Přidej své stroje'),
-   line:step.done?tp(d.count,'{n} stroj v přehledu.|{n} stroje v přehledu.|{n} strojů v přehledu.'):t('Přehled je zatím prázdný.'),
-   body:()=>[el('p',{},t('Stroje se berou z konfigurace webu (local/site.json). Jednotlivé zařízení jde přidat i rovnou v Přehledu.')),
-    steps(rich(t('Zkopíruj {from} do {to} a vyplň název, síť a stroje.'),{from:code('config/site.example.json'),to:code('local/site.json')}),t('Restartuj Home Hub.'),t('Nebo v Přehledu použij tlačítko Přidat zařízení.')),
-    copyBlock(t('Zadání pro agenta'),t('Nastav tenhle Home Hub. Přečti docs/getting-started.md, docs/plugins.md a config/site.example.json. Zeptej se mě na název webu, síť (CIDR), časové pásmo a stroje (název, hostname, IP, role). Zapiš local/site.json, ověř ho spuštěním npm test a řekni mi, jak Home Hub restartovat. Žádná hesla ani tokeny do souboru nepatří.')),
+  case 'devices':return {title:t('Přidej svá zařízení'),
+   line:step.done?tp(d.count,'{n} zařízení v přehledu.|{n} zařízení v přehledu.|{n} zařízení v přehledu.'):t('Přehled je zatím prázdný.'),
+   body:()=>[el('p',{},t('Zařízení se berou z konfigurace webu (local/site.json). Jednotlivé zařízení jde přidat i rovnou v Přehledu.')),
+    steps(rich(t('Zkopíruj {from} do {to} a vyplň název, síť a zařízení.'),{from:code('config/site.example.json'),to:code('local/site.json')}),t('Restartuj Home Hub.'),t('Nebo v Přehledu použij tlačítko Přidat zařízení.')),
+    copyBlock(t('Zadání pro agenta'),t('Nastav tenhle Home Hub. Přečti docs/getting-started.md, docs/plugins.md a config/site.example.json. Zeptej se mě na název webu, síť (CIDR), časové pásmo a zařízení (název, hostname, IP, role). Zapiš local/site.json, ověř ho spuštěním npm test a řekni mi, jak Home Hub restartovat. Žádná hesla ani tokeny do souboru nepatří.')),
     actions({label:t('Otevřít Přehled'),href:'#overview',primary:true})]};
   case 'telemetry':return {title:t('Nainstaluj telemetrického agenta'),
-   line:step.done?tp(d.count,'{n} stroj posílá živá čísla.|{n} stroje posílají živá čísla.|{n} strojů posílá živá čísla.'):t('Bez něj dlaždice ukazují jen statické údaje z konfigurace.'),
-   body:()=>[el('p',{},t('{name} je malá aplikace na stroji, která Home Hubu dává živé vytížení CPU a GPU, příkon, teplotu a paměť. Všechno ostatní funguje i bez ní.',{name:TELEMETRY_AGENT_NAME})),
-    steps(t('Nainstaluj {name} na stroj a zapni v něm vzdálený přístup.',{name:TELEMETRY_AGENT_NAME}),t('V Přehledu zvol Přidat zařízení, zadej adresu stroje a přihlášení agenta a potvrď otisk jeho certifikátu.'),t('Stroj z konfigurace webu propojíš polem thermoId.')),
+   line:step.done?tp(d.count,'{n} zařízení posílá živá čísla.|{n} zařízení posílají živá čísla.|{n} zařízení posílá živá čísla.'):t('Bez něj dlaždice ukazují jen statické údaje z konfigurace.'),
+   body:()=>[el('p',{},t('{name} je malá aplikace na zařízení, která Home Hubu dává živé vytížení CPU a GPU, příkon, teplotu a paměť. Všechno ostatní funguje i bez ní.',{name:TELEMETRY_AGENT_NAME})),
+    steps(t('Nainstaluj {name} na zařízení a zapni v něm vzdálený přístup.',{name:TELEMETRY_AGENT_NAME}),t('V Přehledu zvol Přidat zařízení, zadej adresu zařízení a přihlášení agenta a potvrď otisk jeho certifikátu.'),t('Zařízení z konfigurace webu propojíš polem thermoId.')),
     actions({label:t('Jak nainstalovat {name}',{name:TELEMETRY_AGENT_NAME}),href:TELEMETRY_AGENT_URL,primary:true},{label:t('Otevřít Přehled'),href:'#overview'})]};
   case 'inventory':return {title:t('Naplň inventář'),
    line:step.done?tp(d.count,'{n} záznam v inventáři.|{n} záznamy v inventáři.|{n} záznamů v inventáři.'):t('Inventář je zatím prázdný.'),
-   body:()=>[el('p',{},t('Inventář říká, co kde běží a co na čem závisí: stroje, běhová prostředí, nástroje, úložiště. Tajemství se do něj nezapisují, jen místo, kde jsou uložená. Nejlíp ho naplní agent, který na strojích pracuje.')),
-    copyBlock(t('Zadání pro agenta'),t('Jsi připojený k Home Hubu přes MCP. Projdi tenhle stroj a zapiš do inventáře, co na něm běží: nástrojem inventory_search zjisti, co už tam je, a nástrojem inventory_update přidej nebo oprav záznamy (stroj, běhová prostředí, nástroje, úložiště, porty, závislosti). U každého uveď, jak jsi ho ověřil. Nikdy nezapisuj hesla ani tokeny, jen kde jsou uložené. Když si nejsi jistý, zeptej se mě.')),
+   body:()=>[el('p',{},t('Inventář říká, co kde běží a co na čem závisí: zařízení, běhová prostředí, nástroje, úložiště. Tajemství se do něj nezapisují, jen místo, kde jsou uložená. Nejlíp ho naplní agent, který na zařízeních pracuje.')),
+    copyBlock(t('Zadání pro agenta'),t('Jsi připojený k Home Hubu přes MCP. Projdi tohle zařízení a zapiš do inventáře, co na něm běží: nástrojem inventory_search zjisti, co už tam je, a nástrojem inventory_update přidej nebo oprav záznamy (zařízení, běhová prostředí, nástroje, úložiště, porty, závislosti). U každého uveď, jak jsi ho ověřil. Nikdy nezapisuj hesla ani tokeny, jen kde jsou uložené. Když si nejsi jistý, zeptej se mě.')),
     actions({label:t('Otevřít mapu inventáře'),href:'#inventory-map',primary:true})]};
   case 'collectors':{
    const names={systems:t('verze systémů a softwaru'),security:t('SSH klíče'),router:t('klienti routeru')};
    const marks=Object.entries(names).filter(([id])=>d[id]!==undefined).map(([id,name])=>statusPill(name,d[id]?'good':''));
    return {title:t('Nastav kolektory'),
     line:step.done===null?t('Stav kolektorů vidí jen správce.'):step.done?t('Aspoň jeden kolektor už dodal data.'):t('Kolektory zatím nic nedodaly.'),
-    body:()=>[el('p',{},t('Kolektory jsou skripty, které se na stroje dívají přes SSH a nic na nich nemění. Dodávají verze systémů a softwaru, inventář SSH klíčů a seznam klientů routeru. Spouštěj je z plánovače, třeba jednou za hodinu.')),
+    body:()=>[el('p',{},t('Kolektory jsou skripty, které se na zařízení dívají přes SSH a nic na nich nemění. Dodávají verze systémů a softwaru, inventář SSH klíčů a seznam klientů routeru. Spouštěj je z plánovače, třeba jednou za hodinu.')),
      marks.length?el('p',{class:'ui-actions'},marks):null,
-     steps(rich(t('{cmd} čte verze a ochranu strojů (stroje s polem ssh v konfiguraci webu).'),{cmd:code('node scripts/collect-systems.mjs')}),rich(t('{cmd} čte inventář SSH klíčů.'),{cmd:code('node scripts/collect-security.mjs')}),rich(t('{cmd} čte klienty UniFi routeru.'),{cmd:code('python3 scripts/collect-router-unifi.py')})),
+     steps(rich(t('{cmd} čte verze a ochranu zařízení (zařízení s polem ssh v konfiguraci webu).'),{cmd:code('node scripts/collect-systems.mjs')}),rich(t('{cmd} čte inventář SSH klíčů.'),{cmd:code('node scripts/collect-security.mjs')}),rich(t('{cmd} čte klienty UniFi routeru.'),{cmd:code('python3 scripts/collect-router-unifi.py')})),
      actions(pageAllowed('versions',me)?{label:t('Verze a aktualizace'),href:'#versions'}:null,pageAllowed('security',me)?{label:t('SSH klíče'),href:'#security'}:null)]};}
   default:return {title:step.id,line:'',body:()=>[]};
  }
@@ -108,7 +108,7 @@ export function welcomeView(me,site){
  load(false);
  return el('div',{class:'wl'},
   pageHeader({eyebrow:'Home Hub',title:site?.name?t('Vítej v {site}',{site:site.name}):t('Vítej v Home Hubu'),
-   lead:t('Pár kroků, než tu bude co vidět: připoj agenta, přidej stroje a nech naplnit inventář. Každý krok se odškrtne sám, jakmile je hotový.')}),
+   lead:t('Pár kroků, než tu bude co vidět: připoj agenta, přidej zařízení a nech naplnit inventář. Každý krok se odškrtne sám, jakmile je hotový.')}),
   slot);
 }
 // Page entry for the shell (app.js): every page module exports (context) => Node, and the server's UI

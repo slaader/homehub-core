@@ -82,7 +82,7 @@ const sessionFeed=handler=>deviceForm(async c=>c.principal?.authKind==='session'
 // signed in with a password and write access. Not an API key, not a native app token; agents keep device_upsert,
 // which refuses site devices. Refusals carry the device API's codes (DEVICE_INVALID, DEVICE_CONFLICT, …).
 const siteEdit=handler=>deviceApi(async c=>c.principal?.authKind==='session'&&c.canWrite?handler(c)
- :c.error(403,'SESSION_REQUIRED','Stroj z konfigurace webu upravuje jen účet se zápisem, přihlášený heslem.'));
+ :c.error(403,'SESSION_REQUIRED','Zařízení z konfigurace webu upravuje jen účet se zápisem, přihlášený heslem.'));
 // {draft, host, port, user} of a managed connection the form saves.
 const managedInput=w=>{only(w,['draft','host','port','user']);return w;};
 const stamped=(record,principal)=>({...record,configuredAt:new Date().toISOString(),configuredBy:principal.username});
@@ -103,13 +103,13 @@ async function telemetryTarget(state,id,{provider=null,principal=null}={}){
 // The device API (GET/POST /api/home/devices, POST /api/home/devices/remove, POST /api/home/runtime) and its MCP tools. One code per
 // refusal, so a client can tell them apart whatever language the message is in; details name the field.
 const DEVICE_ERRORS={
- invalid:[400,'DEVICE_INVALID','Neplatný požadavek: zkontroluj pole stroje.'],
+ invalid:[400,'DEVICE_INVALID','Neplatný požadavek: zkontroluj pole zařízení.'],
  secret:[422,'DEVICE_SECRET','Některé pole vypadá jako tajemství (heslo, token, klíč). Zapiš, kde je uložené, ne jeho hodnotu.'],
- 'not-found':[404,'DEVICE_NOT_FOUND','Takový stroj v přehledu není.'],
- conflict:[409,'DEVICE_CONFLICT','Stroj se mezitím změnil, nebo už existuje. Načti ho znovu a změnu zopakuj s aktuálním otiskem.'],
+ 'not-found':[404,'DEVICE_NOT_FOUND','Takové zařízení v přehledu není.'],
+ conflict:[409,'DEVICE_CONFLICT','Zařízení se mezitím změnilo, nebo už existuje. Načti ho znovu a změnu zopakuj s aktuálním otiskem.'],
  duplicate:[409,'DEVICE_DUPLICATE','Zařízení s tímhle hostname už v přehledu je.'],
  limit:[409,'DEVICE_LIMIT','Přidat jde nejvýš 20 zařízení.'],
- 'read-only':[403,'DEVICE_READ_ONLY','Tenhle stroj je z konfigurace webu (site.json) a přes API se nemění.']};
+ 'read-only':[403,'DEVICE_READ_ONLY','Tohle zařízení je z konfigurace webu (site.json) a přes API se nemění.']};
 const deviceApi=handler=>async c=>{try{return await handler(c);}catch(e){
  const known=DEVICE_ERRORS[e.message];
  if(!known){if(e?.reason==='secrets-locked')return lockedFailure(c,e);throw e;}
@@ -188,17 +188,17 @@ async function thermoStatus(state,hub,{enabled=true}={}){
   ...(fromUi.length?[{source:'ui',name:'Přehled → Přidat zařízení'}]:[]),
   ...(hub.site.devices.some(m=>m.thermoId)?[{source:'site.json',name:'devices[].thermoId'}]:[])];
  const ok=items.filter(i=>i.state==='ok').length,newest=items.map(i=>i.lastSuccessAt).filter(Boolean).sort().at(-1)||null;
- if(!items.length)return {state:'not-configured',summary:'Žádný stroj nemá přihlášení k Thermo.',configuredBy,items};
- return {state:worstState(items.map(i=>i.state)),summary:tx('Thermo čte {ok} z {total} strojů.',{ok,total:items.length}),lastSuccessAt:newest,
+ if(!items.length)return {state:'not-configured',summary:'Žádné zařízení nemá přihlášení k Thermo.',configuredBy,items};
+ return {state:worstState(items.map(i=>i.state)),summary:tx('Thermo čte {ok} z {total} zařízení.',{ok,total:items.length}),lastSuccessAt:newest,
   lastError:items.find(i=>i.lastError)?.lastError||null,configuredBy,items};
 }
 const thermoIntegration={id:THERMO_INTEGRATION,title:'Telemetrie Thermo',kind:'telemetry',
- description:'Živé CPU, GPU, paměť, příkon, teploty a disky strojů z aplikace Thermo. Vypnutá: hub zavře spojení, nic nečte a přehled ukáže stroje bez telemetrie.',
+ description:'Živé CPU, GPU, paměť, příkon, teploty a disky zařízení z aplikace Thermo. Vypnutá: hub zavře spojení, nic nečte a přehled ukáže zařízení bez telemetrie.',
  howTo:'Na přehledu přidej zařízení s Thermo (Přidat zařízení), nebo zapiš hostitele do souboru private/thermo-hosts.json.',page:'overview',docs:'docs/plugins.md → Site configuration (thermoId)',
  status:thermoStatus,
  // A pull now (at most one every 5 s), then the state it left.
  async test(state,hub){await state.thermoPoller.refresh?.().catch(()=>false);return thermoStatus(state,hub);},
- settings:{schema:[{key:'intervalSeconds',label:'Interval čtení',type:'select',options:[{value:15,label:'15 s'},{value:30,label:'30 s'},{value:60,label:'60 s'}],help:'Jak často hub čte Thermo na strojích.'}],
+ settings:{schema:[{key:'intervalSeconds',label:'Interval čtení',type:'select',options:[{value:15,label:'15 s'},{value:30,label:'30 s'},{value:60,label:'60 s'}],help:'Jak často hub čte Thermo na zařízeních.'}],
   read:state=>({intervalSeconds:state.thermoPoller.interval?.().intervalSeconds??null}),
   async write(state,hub,values){if(values.intervalSeconds!==undefined)await state.thermoPoller.setIntervalMs(values.intervalSeconds*1000);}}};
 
@@ -239,14 +239,14 @@ async function feedStatus(state,hub,provider,{enabled=true}={}){
  });
  // A site device connected on its tile counts as set up there (its identity stays in site.json; the binding is the hub's).
  const configuredBy=[...(configured.some(c=>!fromSite.has(c.id))?[{source:'ui',name:provider===WINDOWS_PROVIDER?'Přehled → Přidat zařízení → Windows':tx('Přehled → Přidat zařízení → {name}',{name:FEEDS[provider].name})}]:[]),
-  ...(configured.some(c=>fromSite.has(c.id))?[{source:'ui',name:'Přehled → stroj z konfigurace webu → Telemetrie'}]:[])];
- if(!items.length)return {state:'not-configured',summary:provider===WINDOWS_PROVIDER?'Žádný stroj s Windows není připojený.':tx('Přes {name} není připojený žádný stroj.',{name:FEEDS[provider].name}),configuredBy,items};
+  ...(configured.some(c=>fromSite.has(c.id))?[{source:'ui',name:'Přehled → zařízení z konfigurace webu → Telemetrie'}]:[])];
+ if(!items.length)return {state:'not-configured',summary:provider===WINDOWS_PROVIDER?'Žádné zařízení s Windows není připojené.':tx('Přes {name} není připojené žádné zařízení.',{name:FEEDS[provider].name}),configuredBy,items};
  const ok=items.filter(i=>i.state==='ok').length,newest=items.map(i=>i.lastSuccessAt).filter(Boolean).sort().at(-1)||null;
- return {state:worstState(items.map(i=>i.state)),summary:provider===WINDOWS_PROVIDER?tx('Windows se čte z {ok} z {total} strojů.',{ok,total:items.length}):tx('{name} se čte z {ok} z {total} strojů.',{name:FEEDS[provider].name,ok,total:items.length}),lastSuccessAt:newest,
+ return {state:worstState(items.map(i=>i.state)),summary:provider===WINDOWS_PROVIDER?tx('Windows se čte z {ok} z {total} zařízení.',{ok,total:items.length}):tx('{name} se čte z {ok} z {total} zařízení.',{name:FEEDS[provider].name,ok,total:items.length}),lastSuccessAt:newest,
   lastError:items.find(i=>i.lastError)?.lastError||null,configuredBy,items};
 }
 const windowsIntegration={id:WINDOWS_INTEGRATION,title:'Telemetrie Windows (SSH)',kind:'telemetry',
- description:'CPU a jádra, GPU, paměť, disky a síť strojů s Windows, čtené přes SSH klíčem a pevným skriptem PowerShellu, který jen čte. Na Windows se nic neinstaluje. Vypnutá: hub se nepřipojuje a stroje s Windows jsou bez živých čísel.',
+ description:'CPU a jádra, GPU, paměť, disky a síť zařízení s Windows, čtené přes SSH klíčem a pevným skriptem PowerShellu, který jen čte. Na Windows se nic neinstaluje. Vypnutá: hub se nepřipojuje a zařízení s Windows jsou bez živých čísel.',
  howTo:'Na přehledu přidej zařízení (nebo uprav existující), zvol systém Windows a telemetrii Windows (SSH) a postupuj podle návodu v dialogu.',page:'overview',docs:'docs/API.md → Windows telemetry',
  status:windowsStatus,
  async test(state,hub){await state.windowsPoller.refresh?.().catch(()=>false);return windowsStatus(state,hub);}};
@@ -256,19 +256,19 @@ export const REACH_INTEGRATION='home.reachability';
 async function reachStatus(state,hub,{enabled=true}={}){
  const targets=reachTargets(hub.site);
  if(!enabled)return {state:'disabled',summary:'Nekontroluje se.'};
- if(!targets.length)return {state:'not-configured',summary:'Žádný stroj v konfiguraci nemá adresu ke kontrole.',configuredBy:[{source:'site.json',name:'devices[].reach'}],items:[]};
+ if(!targets.length)return {state:'not-configured',summary:'Žádné zařízení v konfiguraci nemá adresu ke kontrole.',configuredBy:[{source:'site.json',name:'devices[].reach'}],items:[]};
  const results=state.reachability.status(),now=Date.now();
  const reading=t=>reachabilityOf(results[t.id]??null,now);
  const items=targets.map(t=>{const r=reading(t),label=hub.site.devices.find(m=>m.id===t.id)?.name||t.id;
   if(r.state==='unknown')return {id:t.id,label,state:'stale',summary:'Zatím nic nezkontrolováno.'};
   return {id:t.id,label,state:'ok',summary:r.state==='answering'?tx('Odpovídá na portu {port}.',{port:r.port}):'Neodpovídá na kontrolované porty.'};});
  const answering=targets.filter(t=>reading(t).state==='answering').length;
- return {state:worstState(items.map(i=>i.state)),summary:tx('Na síti odpovídá {ok} z {total} strojů.',{ok:answering,total:targets.length}),
+ return {state:worstState(items.map(i=>i.state)),summary:tx('Na síti odpovídá {ok} z {total} zařízení.',{ok:answering,total:targets.length}),
   configuredBy:[{source:'site.json',name:'devices[].reach'}],items};
 }
-const reachIntegration={id:REACH_INTEGRATION,title:'Dosah strojů (TCP)',kind:'other',
- description:'Zda stroje ze site.json odpovídají na síti: hub se na jejich porty (ve výchozím stavu 22) připojí TCP a zapíše, jestli některý odpověděl. Je to jiný údaj než „online“, ten se tím nemění. Vypnutá: hub se na stroje nepřipojuje a jejich dosah je neznámý.',
- howTo:'Nic nastavovat není potřeba. Stroj, který se kontrolovat nemá, označ v site.json jako "reach": false; porty změníš v "reach": {"ports": [22]}.',page:'overview',docs:'docs/API.md → Home: the overview',
+const reachIntegration={id:REACH_INTEGRATION,title:'Dosah zařízení (TCP)',kind:'other',
+ description:'Zda zařízení ze site.json odpovídají na síti: hub se na jejich porty (ve výchozím stavu 22) připojí TCP a zapíše, jestli některý odpověděl. Je to jiný údaj než „online“, ten se tím nemění. Vypnutá: hub se na zařízení nepřipojuje a jejich dosah je neznámý.',
+ howTo:'Nic nastavovat není potřeba. Zařízení, které se kontrolovat nemá, označ v site.json jako "reach": false; porty změníš v "reach": {"ports": [22]}.',page:'overview',docs:'docs/API.md → Home: the overview',
  status:reachStatus,
  async test(state,hub){await state.reachability.poll().catch(()=>false);return reachStatus(state,hub);}};
 
@@ -279,7 +279,7 @@ const feedIntegration=(provider,title,description,howTo)=>({id:FEEDS[provider].i
 const FEED_INTEGRATIONS=[
  feedIntegration(WINRM_PROVIDER,'Telemetrie Windows (WinRM)','Stejné čítače Windows jako přes SSH, čtené pevnými dotazy WMI přes WinRM HTTPS s ověřováním Basic místním účtem, až po ověření certifikátu. Vypnutá: hub se nepřipojuje.','Na přehledu uprav zařízení s Windows, zvol Windows (WinRM) a postupuj podle návodu v dialogu.'),
  feedIntegration(NODE_EXPORTER_PROVIDER,'Telemetrie Linuxu (Node Exporter)','CPU a jádra, paměť, svazky, disky, síť a teploty Linuxu z /metrics Prometheus Node Exporteru, bez Prometheus serveru. Vypnutá: hub nic nečte.','Na přehledu přidej nebo uprav zařízení, zvol systém Linux a Linux (Node Exporter).'),
- feedIntegration(PROMETHEUS_PROVIDER,'Telemetrie Linuxu (Prometheus)','Metriky Linuxu jednoho cíle node_exporter z existujícího Prometheu přes jeho API jen ke čtení. Vypnutá: hub se Promethea neptá.','Na přehledu přidej nebo uprav zařízení, zvol systém Linux a Linux (Prometheus), načti cíle a vyber stroj.'),
+ feedIntegration(PROMETHEUS_PROVIDER,'Telemetrie Linuxu (Prometheus)','Metriky Linuxu jednoho cíle node_exporter z existujícího Prometheu přes jeho API jen ke čtení. Vypnutá: hub se Promethea neptá.','Na přehledu přidej nebo uprav zařízení, zvol systém Linux a Linux (Prometheus), načti cíle a vyber zařízení.'),
  feedIntegration(LINUX_SSH_PROVIDER,'Telemetrie Linuxu (SSH)','CPU, paměť, svazky, disky, síť a teploty Linuxu přes SSH klíčem Home Hubu a pevný skript, který jen čte /proc a /sys. Vypnutá: hub se nepřipojuje.','Na přehledu přidej nebo uprav zařízení, zvol systém Linux a Linux (SSH).')];
 
 // The record a draft yields for saving: Linux SSH from the SSH drafts (os linux), the others from the endpoint drafts.
@@ -372,10 +372,10 @@ export default {
  assets:['home-view.js','home-charts.js','home-add-device.js','home-order.js','home-drag.js','home-telemetry.js','home-agent.js','windows-setup.js','telemetry-setup.js','home.css','vendor/echarts.esm.min.mjs',...PICTURES.map(id=>`images/generic/${id}.svg`)],
  nav:[{groupKey:'Domov',hash:'overview',labelKey:'Přehled',view:'home-view.js#homePage',order:10}],
  apiDocs:[{title:'Domov',routes:[
-  ['GET','/api/home/devices','read','Stroje: z konfigurace webu (jen ke čtení) a přidané, s otiskem. MCP device_list.'],
-  ['POST','/api/home/devices','home:write','Založit nebo nahradit stroj {device, base?}. MCP device_upsert.'],
-  ['POST','/api/home/devices/remove','home:write','Odebrat přidaný stroj {id, base}; osobě nebo aplikaci se zápisem stačí id. MCP device_remove.'],
-  ['POST','/api/home/runtime','home:write','Zveřejnit runtime stack stroje {device, stack|null, base?}. MCP runtime_publish.']]}],
+  ['GET','/api/home/devices','read','Zařízení: z konfigurace webu (jen ke čtení) a přidaná, s otiskem. MCP device_list.'],
+  ['POST','/api/home/devices','home:write','Založit nebo nahradit zařízení {device, base?}. MCP device_upsert.'],
+  ['POST','/api/home/devices/remove','home:write','Odebrat přidané zařízení {id, base}; osobě nebo aplikaci se zápisem stačí id. MCP device_remove.'],
+  ['POST','/api/home/runtime','home:write','Zveřejnit runtime stack zařízení {device, stack|null, base?}. MCP runtime_publish.']]}],
  setup(hub){
   const {site,directory,stateDirectory,options}=hub;
   const ids=siteDeviceIds(site);
@@ -648,13 +648,13 @@ export default {
   // Back to a built-in picture: the uploaded one is deleted. A site device (password sign-in only) goes back to its override's or the site's.
   {method:'POST',path:'/api/home/devices/image/remove',scope:null,error:homeError,handler:deviceForm(async({input,json,error,state,principal})=>{
     if(!input||typeof input!=='object'||Object.keys(input).some(k=>k!=='id')||typeof input.id!=='string'||!DEVICE_ID.test(input.id))throw new Error('invalid');
-    if(state.homeDevices.isSiteDevice(input.id)&&principal.authKind!=='session')return error(403,'SESSION_REQUIRED','Stroj z konfigurace webu upravuje jen účet se zápisem, přihlášený heslem.');
+    if(state.homeDevices.isSiteDevice(input.id)&&principal.authKind!=='session')return error(403,'SESSION_REQUIRED','Zařízení z konfigurace webu upravuje jen účet se zápisem, přihlášený heslem.');
     return json(200,await state.homeDevices.removeImage(input.id,{by:principal.username}));})},
   // An added device's tile picture: one JPEG cropped in the browser (at most 3 MiB). Password sign-in only.
   {method:'PUT',match:/^\/api\/home\/devices\/([a-z][a-z0-9_-]{1,31})\/image$/,scope:null,raw:true,contentType:'image/jpeg',denied:'Zařízení přidává jen účet se zápisem, přihlášený heslem.',error:homeError,
    async handler({req,params,json,error,state,principal}){
     // A site device's own picture: password sign-in only, like the rest of its edit.
-    if(state.homeDevices.isSiteDevice(params[1])&&principal.authKind!=='session'){req.resume();return error(403,'SESSION_REQUIRED','Stroj z konfigurace webu upravuje jen účet se zápisem, přihlášený heslem.');}
+    if(state.homeDevices.isSiteDevice(params[1])&&principal.authKind!=='session'){req.resume();return error(403,'SESSION_REQUIRED','Zařízení z konfigurace webu upravuje jen účet se zápisem, přihlášený heslem.');}
     try{return json(200,await state.homeDevices.putImage(params[1],req,Number(req.headers['content-length']),{by:principal.username}));}
     catch(e){req.resume();return error(({invalid:400,'not-found':404,'too-large':413})[e.message]||503,'DEVICE_FAILED',({invalid:'Obrázek musí být JPEG.','not-found':'Zařízení neexistuje.','too-large':'Obrázek je větší než 3 MB.'})[e.message]||'Obrázek nejde uložit.');}}},
   // The picture the owner uploaded for a device of the site configuration (its override). Not under /images/home/, where

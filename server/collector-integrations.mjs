@@ -22,7 +22,7 @@ const LAUNCHD_NOTE='Vypnutí jen skryje data v Home Hubu a hub přestane číst 
 const every=s=>s>=3600?`${Math.round(s/3600)} h`:`${Math.round(s/60)} min`;
 // collector-state.mjs → integration state: "waiting" (configured, never ran) counts as stale.
 const STATE={'not-configured':'not-configured',waiting:'stale',stale:'stale',ok:'ok'};
-const SUMMARY={'not-configured':'Nastavení neříká, které stroje číst.',waiting:'Je nastavený, ale ještě neproběhl.',stale:'Snímek je starší, než dovoluje interval: úloha neběžela, kdy měla.',ok:'Snímek je čerstvý.'};
+const SUMMARY={'not-configured':'Nastavení neříká, která zařízení číst.',waiting:'Je nastavený, ale ještě neproběhl.',stale:'Snímek je starší, než dovoluje interval: úloha neběžela, kdy měla.',ok:'Snímek je čerstvý.'};
 // How the snapshot says its job was started, as one item row.
 function scheduleItem(run,intervalSeconds,collectedAt){
  const summary=!run?tx('Plán neznámý (snímek to neříká) · má běžet každých {every}',{every:every(intervalSeconds)})
@@ -75,8 +75,8 @@ async function keysStatus(state,hub,{enabled=true}={}){
 
 export const collectorIntegrations=[
  {id:SYSTEMS_INTEGRATION,title:'Sběr verzí a ochrany (collect-systems)',kind:'collector',page:'versions',docs:'docs/API.md → Collectors',
-  description:`Verze systémů a softwaru, aktualizace a ochrana strojů ze snímku, který zapisuje ${COLLECTORS.systems.script}. ${LAUNCHD_NOTE}`,
-  howTo:'V local/site.json dej strojům ssh.alias a ssh.probe, spusť node scripts/collect-systems.mjs a naplánuj ho (sh scripts/systems/install-launchd.sh).',
+  description:`Verze systémů a softwaru, aktualizace a ochrana zařízení ze snímku, který zapisuje ${COLLECTORS.systems.script}. ${LAUNCHD_NOTE}`,
+  howTo:'V local/site.json dej zařízením ssh.alias a ssh.probe, spusť node scripts/collect-systems.mjs a naplánuj ho (sh scripts/systems/install-launchd.sh).',
   status:systemsStatus},
  {id:UPSTREAM_INTEGRATION,title:'Kontrola vydání (check-upstream)',kind:'upstream',page:'versions',docs:'docs/API.md → Software watch list',
   description:`Nejnovější vydání sledovaného softwaru (GitHub, PyPI, npm, Homebrew) ze souboru, který zapisuje ${COLLECTORS.upstream.script}. Token pro GitHub čte ten skript; tady je vidět, co vidí proces hubu. ${LAUNCHD_NOTE}`,
@@ -84,6 +84,6 @@ export const collectorIntegrations=[
   status:upstreamStatus},
  {id:KEYS_INTEGRATION,title:'Inventář SSH klíčů (collect-security)',kind:'collector',page:'security',docs:'docs/API.md → Collectors',
   description:`Kde leží privátní SSH klíče a kam se s nimi dá přihlásit, ze snímku, který zapisuje ${COLLECTORS.security.script}. ${LAUNCHD_NOTE}`,
-  howTo:'V local/site.json dej strojům ssh.alias, spusť node scripts/collect-security.mjs a naplánuj ho (install-launchd.sh --with-security).',
+  howTo:'V local/site.json dej zařízením ssh.alias, spusť node scripts/collect-security.mjs a naplánuj ho (install-launchd.sh --with-security).',
   status:keysStatus},
 ];

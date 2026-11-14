@@ -14,7 +14,7 @@ import {emptyState} from './ui.js';
 import {place,hasGap,matcher,typeTag,isExample,index} from './inventory-data.js';
 import {showCreate,linkify} from './inventory-entry.js';
 
-export const SERVICES_PROMPT=()=>t('Projdi moje stroje a zapiš do inventáře Home Hubu každou běžící službu (MCP server „home-hub“, scope inventory:write).\n1. Zavolej inventory_describe: zjistíš schéma, druhy a pravidla.\n2. Před každým zápisem zavolej inventory_search, ať nezaložíš nic dvakrát. Stroj, na kterém služba běží, musí mít vlastní záznam druhu device; když chybí, založ ho jako první.\n3. Každou službu ulož přes inventory_update (nebo víc naráz přes inventory_bulk_upsert, nejdřív s dryRun) jako záznam s kind „runtime“: id, name, device, address (host:port nebo URL), version, managed_by a depends_on.\n4. U přihlašovacích údajů zapiš jen to, kde jsou uložené (store a název položky), nikdy jejich hodnotu.\nNakonec vypiš, co se ti nepodařilo ověřit.');
+export const SERVICES_PROMPT=()=>t('Projdi moje zařízení a zapiš do inventáře Home Hubu každou běžící službu (MCP server „home-hub“, scope inventory:write).\n1. Zavolej inventory_describe: zjistíš schéma, druhy a pravidla.\n2. Před každým zápisem zavolej inventory_search, ať nezaložíš nic dvakrát. Zařízení, na kterém služba běží, musí mít vlastní záznam druhu device; když chybí, založ ho jako první.\n3. Každou službu ulož přes inventory_update (nebo víc naráz přes inventory_bulk_upsert, nejdřív s dryRun) jako záznam s kind „runtime“: id, name, device, address (host:port nebo URL), version, managed_by a depends_on.\n4. U přihlašovacích údajů zapiš jen to, kde jsou uložené (store a název položky), nikdy jejich hodnotu.\nNakonec vypiš, co se ti nepodařilo ověřit.');
 
 // Services grouped by where they run, in the order the entries have in the file.
 export function serviceGroups(doc){
@@ -30,7 +30,7 @@ export function serviceRows(doc){
  return doc.entries.filter(e=>e.kind==='runtime').map(e=>({entry:e,id:e.id,name:text(e.name)||e.id,type:typeTag(e),place:text(place(e)),address:text(e.address),version:text(e.version),
   usedBy:(usedBy.get(e.id)||[]).map(named),needs:(e.depends_on||[]).map(named),verified:text(e.verified_at),verifiedBy:text(e.verified_by),gap:hasGap(e)}));
 }
-const COLUMNS=[['name','Služba'],['address','Adresa'],['place','Stroj'],['usedBy','Závisí na ní'],['needs','Potřebuje'],['verified','Ověřeno']];
+const COLUMNS=[['name','Služba'],['address','Adresa'],['place','Zařízení'],['usedBy','Závisí na ní'],['needs','Potřebuje'],['verified','Ověřeno']];
 const KEY={name:r=>r.name.toLowerCase(),address:r=>r.address.toLowerCase(),place:r=>r.place.toLowerCase(),usedBy:r=>r.usedBy.length,needs:r=>r.needs.length,verified:r=>r.verified};
 // Sorted copy. Empty values go last in either direction; ties go by device, then by name.
 export function sortServices(rows,key='place',dir='asc'){
@@ -42,7 +42,7 @@ export function sortServices(rows,key='place',dir='asc'){
 }
 const emptyServices=()=>emptyState({icon:'◎',title:t('Zatím tu nejsou žádné služby'),
  body:t('Katalog služeb je pohled na inventář: každý záznam druhu „runtime“ je služba. V inventáři zatím žádný takový není.'),
- steps:[t('Služba je cokoli, co běží a má adresu: server, démon, aplikace s portem.'),t('Založ záznam s druhem „runtime“ a strojem, na kterém běží. Stroj musí mít vlastní záznam druhu „device“.'),t('Doplň adresu, verzi, kdo ji spouští a na čem závisí. Objeví se tady i v mapě.')],
+ steps:[t('Služba je cokoli, co běží a má adresu: server, démon, aplikace s portem.'),t('Založ záznam s druhem „runtime“ a zařízením, na kterém běží. Zařízení musí mít vlastní záznam druhu „device“.'),t('Doplň adresu, verzi, kdo ji spouští a na čem závisí. Objeví se tady i v mapě.')],
  agentPrompt:SERVICES_PROMPT(),mcpSnippet:true,
  actions:[canWrite()?{label:t('Přidat službu'),onclick:()=>showCreate({kind:'runtime'}),primary:true}:null]});
 
@@ -79,7 +79,7 @@ export function servicesView({doc,filters,sort,query,onOpen,onChange=()=>{}}){
    cell(t('Služba'),'inv-td-name cat-service',el('span',{class:'inv-swatch','aria-hidden':'true'}),el('button',{type:'button',class:'inv-rowbtn',onclick:ev=>{ev.stopPropagation();onOpen(r.id);}},r.name),isExample(r.entry)?el('span',{class:'inv-badge amber'},t('Ukázka')):null,
     el('small',{},[r.type,r.version].filter(Boolean).join(' · '))),
    cell(t('Adresa'),'mono inv-td-addr',r.address?el('span',{class:'inv-addr',title:r.address},linkify(r.address)):el('span',{class:'amber-text'},t('Adresa není zapsaná'))),
-   cell(t('Stroj'),'',r.place||'—'),
+   cell(t('Zařízení'),'',r.place||'—'),
    cell(t('Závisí na ní'),'inv-td-rel',related(r.usedBy,t('nic zapsaného'))),
    cell(t('Potřebuje'),'inv-td-rel',related(r.needs,'—')),
    cell(t('Ověřeno'),'mono',r.verified||'—',r.verifiedBy?el('small',{title:r.verifiedBy},r.verifiedBy):null))));
@@ -89,7 +89,7 @@ export function servicesView({doc,filters,sort,query,onOpen,onChange=()=>{}}){
  draw();
  return {node:el('div',{class:'inv-table-view inv-services-view'},
    el('div',{class:'inv-chips inv-table-filters'},placeSelect,gaps,clear,el('span',{class:'inv-chip-gap'}),count),
-   el('div',{class:'inv-table-wrap'},el('table',{class:'inv-table inv-services'},el('caption',{class:'inv-sr'},t('Služby: adresa, stroj, co na nich závisí a kdy byly ověřené')),el('thead',{},head),body)),empty),
+   el('div',{class:'inv-table-wrap'},el('table',{class:'inv-table inv-services'},el('caption',{class:'inv-sr'},t('Služby: adresa, zařízení, co na nich závisí a kdy byly ověřené')),el('thead',{},head),body)),empty),
   redraw:draw};
 }
 // #services was a page of its own. The address still works: it opens the inventory page in this view.

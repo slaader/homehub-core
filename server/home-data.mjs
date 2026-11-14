@@ -477,7 +477,7 @@ export function homeHistoryQuery(input,added=[],site={devices:[]},bindings=[]){
  const device=input?.device,range=input?.range??'30m';
  if(![...site.devices,...added].some(h=>h.id===device)||!Object.hasOwn(homeRanges,String(range)))throw new Error('invalid');
  if(!site.devices.some(m=>m.id===device&&m.thermoId)&&!bindings.some(b=>b.id===device&&site.devices.some(m=>m.id===device))
-  &&!added.some(d=>d.id===device&&(d.thermoId||d.kind==='thermo'||isFeed(d.telemetryProvider))))return {device,range,points:[],complete:false,source:'žádný zdroj',reason:'Stroj nemá připojenou telemetrii.'};
+  &&!added.some(d=>d.id===device&&(d.thermoId||d.kind==='thermo'||isFeed(d.telemetryProvider))))return {device,range,points:[],complete:false,source:'žádný zdroj',reason:'Zařízení nemá připojenou telemetrii.'};
  return {device,range};
 }
 

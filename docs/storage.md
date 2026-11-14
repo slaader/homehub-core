@@ -97,7 +97,7 @@ store from a literal 1.0.0 file.
 | `state/runtimes-config.json` | `schema: 1`, `endpoints[].machine` | `schema: 2`, `endpoints[].device` | when the endpoints are first read |
 | `state/runtimes/<id>/requests-YYYY-MM.jsonl` | lines with `machine`, `clientMachine` | `device`, `clientDevice` | when a device's history is first read |
 | `data/systems/snapshot.json` | `schemaVersion: 1`, `machines` | `schemaVersion: 2`, `devices` | when first read, keeping the file's time; else by the collector's next run |
-| `data/security/ssh-keys.json` | `schemaVersion: 1`; `machines` and `machine` in every copy, access target, route, other key and unknown authorized key; `{machine}` in the findings' stored templates | `schemaVersion: 2`; `devices`, `device`, `{device}` | the same |
+| `data/security/ssh-keys.json` | `schemaVersion: 1`; `machines` and `machine` in every copy, access target, route, other key and unknown authorized key; `{machine}` and the Czech word "stroj" in the findings' stored templates and texts | `schemaVersion: 2`; `devices`, `device`, `{device}`, "zařízení" (`V1_TEXT` in `server/state-forward.mjs`) | the same |
 | `data/security/probes.json` | `schemaVersion: 1`, `extraMachines` | `schemaVersion: 2`, `extraDevices` | the same |
 | `data/machines/` | the descriptor directory | `data/devices/` | renamed at start, while `data/devices/` does not exist. A directory named by `DEVICES_DIR` is used as it is |
 | `data/knowledge.json` | `schema: 1`; kind `machine`, field `machine` | `schema: 2`; kind `device`, field `device` | when first read. A placed entry's hash changes with its field |

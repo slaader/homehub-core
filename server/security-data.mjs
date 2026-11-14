@@ -14,7 +14,7 @@ import {pickSource,collectorTime} from './systems-data.mjs';
 import {loadDeviceDescriptors} from './home-data.mjs';
 import {siteDeviceIds} from './site-config.mjs';
 import {fingerprintOf,parseAuthorizedLine,parseKeygenLine} from './ssh-lines.mjs';
-import {forwardKeys,forwardTemplate,writeJson,devicesDirectory} from './state-forward.mjs';
+import {forwardKeys,forwardTemplate,forwardText,writeJson,devicesDirectory} from './state-forward.mjs';
 // The line parsers live in server/ssh-lines.mjs (a leaf module the push agent shares); re-exported here.
 export {fingerprintOf,parseAuthorizedLine,parseKeygenLine};
 
@@ -291,11 +291,11 @@ export function buildSecurity({probes:rawProbes={},forgejo=null,extraDevices=[],
   else if(strength==='legacy')findings.push(finding('info',tx('{key}: starší typ klíče ({type})',{key:label,type:kind}),'RSA pod 3072 bitů se pro nové klíče nedoporučuje. Při příští výměně použij ed25519.',k.id));
  }
  if(rootKeys.length)findings.push(finding('warn',tx('Klíče bez passphrase, které otevírají účet se sudo bez hesla, tedy root: {n}',{n:rootKeys.length},`${rootKeys.length} klíčů bez passphrase otevírá účet se sudo bez hesla, tedy root`),
-  tx('Kdo získá soubor klíče, je root na cílovém stroji. Jde o záměr pro agenty, ochranu dělají jen from= a AllowUsers. {keys}',{keys:rootKeys.join(' · ')})));
+  tx('Kdo získá soubor klíče, je root na cílovém zařízení. Jde o záměr pro agenty, ochranu dělají jen from= a AllowUsers. {keys}',{keys:rootKeys.join(' · ')})));
  for(const u of unknownAuthorized)findings.push(finding(['nopasswd','root'].includes(accountOf(u.device,u.user)?.sudo.level)?'warn':'info',
   tx('Na {device} ({user}) je povolený cizí klíč „{key}“',{device:mName(u.device),user:u.user,key:(u.comment||u.fingerprint).slice(0,48)}),
-  sentences('Jeho privátní část není na žádném z prověřených strojů (jiné zařízení nebo zapomenutý klíč).',u.from.length?tx('Jen z {from}.',{from:u.from.join(', ')}):'Bez omezení adresy.',u.restricted?'Omezený příkaz.':null)));
- for(const u of forgejoUnknown)findings.push(finding('warn',tx(u.kind==='forgejo'?'Forgejo: cizí klíč „{title}“ (účet {name})':'Forgejo: cizí klíč „{title}“ (repozitář {name})',{title:u.title,name:u.kind==='forgejo'?u.account:u.repo}),'Privátní část není na žádném z prověřených strojů.'));
+  sentences('Jeho privátní část není na žádném z prověřených zařízení (neprověřené zařízení nebo zapomenutý klíč).',u.from.length?tx('Jen z {from}.',{from:u.from.join(', ')}):'Bez omezení adresy.',u.restricted?'Omezený příkaz.':null)));
+ for(const u of forgejoUnknown)findings.push(finding('warn',tx(u.kind==='forgejo'?'Forgejo: cizí klíč „{title}“ (účet {name})':'Forgejo: cizí klíč „{title}“ (repozitář {name})',{title:u.title,name:u.kind==='forgejo'?u.account:u.repo}),'Privátní část není na žádném z prověřených zařízení.'));
  for(const m of devices){
   if(!m.reachable||!m.ssh)continue;
   if(m.ssh.passwordAuth)findings.push(finding('warn',tx('{device}: SSH přijímá i heslo',{device:m.name}),m.ssh.allowUsers.length?tx('Omezeno přes AllowUsers na {users}.',{users:m.ssh.allowUsers.join(', ')}):'Bez omezení adres (AllowUsers).'));
@@ -306,7 +306,7 @@ export function buildSecurity({probes:rawProbes={},forgejo=null,extraDevices=[],
   }
   const present=new Set(m.accounts.map(a=>a.user));
   const stale=(m.ssh.accessGroup||[]).filter(u=>!u.startsWith('%')&&u!=='*'&&!present.has(u));
-  if(stale.length)findings.push(finding('info',tx('{device}: Remote Login povoluje neexistující účty',{device:m.name}),tx('com.apple.access_ssh obsahuje {users}, kteří na stroji nejsou.',{users:stale.join(', ')})));
+  if(stale.length)findings.push(finding('info',tx('{device}: Remote Login povoluje neexistující účty',{device:m.name}),tx('com.apple.access_ssh obsahuje {users}, kteří na zařízení nejsou.',{users:stale.join(', ')})));
  }
  for(const o of otherKeys)if(o.backup)findings.push(finding('info',tx('{device}: záloha klíče {label}',{device:mName(o.device),label:[o.label]}),o.path));
  const level={high:0,warn:1,info:2};findings.sort((a,b)=>level[a.level]-level[b.level]);
@@ -354,8 +354,9 @@ const each=(list,f)=>Array.isArray(list)?list.map(x=>plain(x)?f(x):x):list;
 const over=(o,fields)=>{const out={...o};for(const [k,f] of Object.entries(fields))if(Object.hasOwn(out,k))out[k]=f(out[k]);return out;};
 const forwardOne=o=>forwardKeys(o,'device');
 const forwardTarget=o=>over(forwardOne(o),{target:t=>plain(t)?forwardOne(t):t});
-// The stored templates of a finding (titleT, detailT: [{key, params}]): the placeholder and its parameter.
-const forwardTexts=o=>Object.fromEntries(Object.entries(o).map(([k,v])=>[k,k.endsWith('T')?each(v,p=>over(p,{key:forwardTemplate,params:x=>forwardKeys(x,'device')})):v]));
+// The stored templates of a finding (titleT, detailT: [{key, params}]): the placeholder, its parameter and the wording;
+// the rendered title and detail: the wording.
+const forwardTexts=o=>Object.fromEntries(Object.entries(o).map(([k,v])=>[k,k.endsWith('T')?each(v,p=>over(p,{key:forwardTemplate,params:x=>forwardKeys(x,'device')})):k==='title'||k==='detail'?forwardText(v):v]));
 /** probes.json as 1.x wrote it → this schema; anything else as it is. */
 export const forwardProbes=doc=>plain(doc)&&doc.schemaVersion===1?{...forwardKeys(doc,'extraDevices'),schemaVersion:SECURITY_PROBES_SCHEMA}:doc;
 /**

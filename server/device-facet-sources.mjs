@@ -16,22 +16,22 @@ const ids=list=>new Set(list.map(m=>m.id));
 // missing. Czech source templates ({id}, {name}, {hostname} are filled per device in server/device-facets.mjs);
 // English is in public/i18n-en-devices.js. Exported so a test can check that every one has a translation.
 export const HOW={
- telemetry:{by:'source',text:'Home Hub data čte sám: z Thermo (macOS), node_exporter nebo Promethea (Linux), WinRM nebo SSH (Windows a Linux). Na stroji musí běžet zdroj; připojení nastavíš na stránce stroje v Přehledu.'},
- backups:{by:'hub',text:'Home Hub zálohuje sám: rsync přes SSH s vlastním klíčem, plán, uchovávání a kontrola místa. Na cílovém stroji stačí účet s SSH, rsync a řádek do authorized_keys z průvodce.'},
- versions:{by:'collector',text:'Kolektor scripts/collect-systems.mjs běží na stroji hubu (launchd, každých 6 h), přihlásí se přes SSH a jen čte. Stroj musí být v local/site.json s ssh.alias a ssh.probe (mac nebo nas).'},
+ telemetry:{by:'source',text:'Home Hub data čte sám: z Thermo (macOS), node_exporter nebo Promethea (Linux), WinRM nebo SSH (Windows a Linux). Na zařízení musí běžet zdroj; připojení nastavíš na stránce zařízení v Přehledu.'},
+ backups:{by:'hub',text:'Home Hub zálohuje sám: rsync přes SSH s vlastním klíčem, plán, uchovávání a kontrola místa. Na cílovém zařízení stačí účet s SSH, rsync a řádek do authorized_keys z průvodce.'},
+ versions:{by:'collector',text:'Kolektor scripts/collect-systems.mjs běží na zařízení hubu (launchd, každých 6 h), přihlásí se přes SSH a jen čte. Zařízení musí být v local/site.json s ssh.alias a ssh.probe (mac nebo nas).'},
  protection:{by:'collector',text:'Stejný kolektor jako verze (collect-systems): firewall, šifrování disku, SSH heslem, otevřené porty. Jen čte.'},
- keys:{by:'collector',text:'Kolektor scripts/collect-security.mjs běží na stroji hubu jednou denně a přes SSH přečte otisky klíčů a authorized_keys. Soukromé klíče nikdy neopustí stroj.'},
+ keys:{by:'collector',text:'Kolektor scripts/collect-security.mjs běží na zařízení hubu jednou denně a přes SSH přečte otisky klíčů a authorized_keys. Soukromé klíče nikdy neopustí zařízení.'},
  inventory:{by:'agent',text:'Inventář sám nic nezjišťuje: zapíše ho agent přes MCP (inventory_update) nebo ty na mapě inventáře.'},
  runtimes:{by:'hub',text:'Home Hub runtimy čte sám přes jejich HTTP API (jen GET). Adresu zapíše agent přes MCP (runtime_endpoint_upsert) nebo local/site.json → runtimes.'},
  gitLfs:{by:'hub',text:'Home Hub čte git host přes jeho API a git; kde běží a kde leží LFS soubory, ví z inventáře.'},
 };
 export const PROMPTS={
- telemetry:'Připrav stroj „{name}“ ({hostname}) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo stroj přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce stroje.',
- backups:'Připrav stroj „{name}“ ({hostname}) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na stroji neměň.',
- versions:'Zapoj stroj „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje {id} nastav ssh: {alias, probe: "mac"} (macOS) nebo "nas" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.',
- keys:'Zapoj stroj „{name}“ ({hostname}, id {id}) do inventáře SSH klíčů Home Hubu. Na stroji, kde běží Home Hub: ověř, že se ssh alias stroje z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na stroji nic neměň.',
- inventory:'Zapiš stroj „{name}“ (id {id}, {hostname}) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind device, id {id}) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.',
- runtimes:'Zjisti, jestli na stroji „{name}“ ({hostname}) běží lokální LLM runtimy (llama-swap, Ollama, LM Studio, llama.cpp, vLLM, oMLX, mlx-serve) a na jakých portech. Připoj se k Home Hubu přes MCP klíčem se scopes read a home:write a každý zapiš přes runtime_endpoint_upsert (device {id}, adresa http://<IP v LAN>:<port>). Na stroji nic neměň.',
+ telemetry:'Připrav zařízení „{name}“ ({hostname}) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo zařízení přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce zařízení.',
+ backups:'Připrav zařízení „{name}“ ({hostname}) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na zařízení neměň.',
+ versions:'Zapoj zařízení „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na zařízení, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na zařízení přihlásí klíčem bez hesla, a v local/site.json u zařízení {id} nastav ssh: {alias, probe: "mac"} (macOS) nebo "nas" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li zařízení v hubu jen přidané, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném zařízení nic neinstaluj ani neměň.',
+ keys:'Zapoj zařízení „{name}“ ({hostname}, id {id}) do inventáře SSH klíčů Home Hubu. Na zařízení, kde běží Home Hub: ověř, že se ssh alias zařízení z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na zařízení nic neměň.',
+ inventory:'Zapiš zařízení „{name}“ (id {id}, {hostname}) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš zařízení (kind device, id {id}) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.',
+ runtimes:'Zjisti, jestli na zařízení „{name}“ ({hostname}) běží lokální LLM runtimy (llama-swap, Ollama, LM Studio, llama.cpp, vLLM, oMLX, mlx-serve) a na jakých portech. Připoj se k Home Hubu přes MCP klíčem se scopes read a home:write a každý zapiš přes runtime_endpoint_upsert (device {id}, adresa http://<IP v LAN>:<port>). Na zařízení nic neměň.',
 };
 
 // ---- telemetry (home) -----------------------------------------------------------------------------------
@@ -46,17 +46,17 @@ export function telemetryFacet(devices,{enabled=()=>true,thermoIntegration='home
   if(integration&&!enabled(integration)){out[m.id]={state:'off',summary:tx('{provider} je vypnutý v Integracích.',{provider:name}),href};continue;}
   const state=TELEMETRY_STATE[tl.state]||(name?'error':'not-configured');
   if(state==='not-applicable'){out[m.id]={state,summary:'Router čte adaptér routeru, ne telemetrie.',href};continue;}
-  if(state==='not-configured'){out[m.id]={state,summary:'Telemetrie není připojená. Připoj ji na stránce stroje v Přehledu.',href};continue;}
+  if(state==='not-configured'){out[m.id]={state,summary:'Telemetrie není připojená. Připoj ji na stránce zařízení v Přehledu.',href};continue;}
   const age=Number.isFinite(tl.ageSeconds)?tl.ageSeconds:null;
   out[m.id]={state,href,
-   summary:state==='ok'?tx('Čte {provider}.',{provider:name}):state==='stale'?tx('{provider}: data jsou zastaralá.',{provider:name}):tx('{provider}: stroj neodpovídá.',{provider:name}),
+   summary:state==='ok'?tx('Čte {provider}.',{provider:name}):state==='stale'?tx('{provider}: data jsou zastaralá.',{provider:name}):tx('{provider}: zařízení neodpovídá.',{provider:name}),
    details:[{label:'Zdroj',value:name},
     ...(tl.target?[{label:'Cíl',value:tl.target}]:[]),
     ...(age!==null?[{label:'Poslední vzorek',value:tx('před {n} s',{n:Math.round(age)})}]:[]),
     ...(tl.detail?[{label:'Chyba čtení',value:tl.detail}]:[])]};
  }
  return {id:'telemetry',title:'Telemetrie',icon:'pulse',order:10,page:'overview',
-  howTo:'Telemetrie není připojená. Připoj ji na stránce stroje v Přehledu.',how:HOW.telemetry,prompt:PROMPTS.telemetry,devices:out};
+  howTo:'Telemetrie není připojená. Připoj ji na stránce zařízení v Přehledu.',how:HOW.telemetry,prompt:PROMPTS.telemetry,devices:out};
 }
 
 // ---- LLM runtimes (runtimes; the overview's merged reports, plugin bridges included) ----------------------
@@ -81,7 +81,7 @@ export function securityFacets(devices,{site,systems,security,on={systems:true,k
  for(const m of devices){
   if(probed.has(m.id)){
    const row=systems?.devices?.find(x=>x.id===m.id);
-   if(!row){versions[m.id]=protection[m.id]={state:'stale',summary:'Kolektor verzí stroj ještě nepřečetl.'};}
+   if(!row){versions[m.id]=protection[m.id]={state:'stale',summary:'Kolektor verzí toto zařízení ještě nepřečetl.'};}
    else if(!row.reachable){versions[m.id]=protection[m.id]={state:'error',summary:'Při posledním běhu kolektoru nebyl dosažitelný.',...(row.error?{details:[{label:'Chyba čtení',value:String(row.error)}]}:{})};}
    else{
     const s=row.summary||{},os=s.osUpdate||0,sw=s.softwareUpdates||0,apps=s.appUpdates||0,n=os+sw+apps,c=s.checks||{};
@@ -94,16 +94,16 @@ export function securityFacets(devices,{site,systems,security,on={systems:true,k
   if(keyed.has(m.id)){
    const row=security?.devices?.find(x=>x.id===m.id);
    const stale=row?.collectedAt&&collectorState('security',{configured:true,collectedAt:row.collectedAt,now}).state==='stale';
-   keys[m.id]=!row?{state:'stale',summary:'Kolektor SSH klíčů stroj ještě nepřečetl.'}
+   keys[m.id]=!row?{state:'stale',summary:'Kolektor SSH klíčů toto zařízení ještě nepřečetl.'}
     :!row.reachable?{state:'error',summary:'Při posledním běhu kolektoru nebyl dosažitelný.'}
     :{state:stale?'stale':'ok',summary:tx('Účtů: {n}.',{n:Array.isArray(row.accounts)?row.accounts.length:0})};
   }
  }
- const notProbed='Kolektor čte jen stroje, které mají v local/site.json ssh.probe (a běží na nich agent kolektoru).';
+ const notProbed='Kolektor čte jen zařízení, která mají v local/site.json ssh.probe (a běží na nich agent kolektoru).';
  return [
   {id:'versions',title:'Verze a aktualizace',icon:'versions',order:30,page:'versions',off:!on.systems,howTo:notProbed,how:HOW.versions,prompt:PROMPTS.versions,devices:versions},
-  {id:'protection',title:'Ochrana stroje',icon:'shield',order:35,page:'hardening',off:!on.systems,howTo:notProbed,how:HOW.protection,prompt:PROMPTS.versions,devices:protection},
-  {id:'ssh-keys',title:'SSH klíče',icon:'key',order:40,page:'security',off:!on.keys,howTo:'Kolektor SSH klíčů čte jen stroje, které mají v local/site.json ssh (a keys není false).',how:HOW.keys,prompt:PROMPTS.keys,devices:keys}];
+  {id:'protection',title:'Ochrana tohoto zařízení',icon:'shield',order:35,page:'hardening',off:!on.systems,howTo:notProbed,how:HOW.protection,prompt:PROMPTS.versions,devices:protection},
+  {id:'ssh-keys',title:'SSH klíče',icon:'key',order:40,page:'security',off:!on.keys,howTo:'Kolektor SSH klíčů čte jen zařízení, která mají v local/site.json ssh (a keys není false).',how:HOW.keys,prompt:PROMPTS.keys,devices:keys}];
 }
 
 // ---- inventory -----------------------------------------------------------------------------------------------
@@ -115,7 +115,7 @@ export function inventoryFacet(devices,entries){
   out[m.id]={state:'ok',summary:tx('V inventáři · {n} záznamů běží na něm.',{n:on}),href:'#inventory-map'};
  }
  return {id:'inventory',title:'Inventář',icon:'list',order:50,page:'inventory-map',how:HOW.inventory,prompt:PROMPTS.inventory,
-  howTo:'Stroj v inventáři není. Zapíše ho agent (MCP inventory_update) nebo ho přidáš na mapě inventáře.',devices:out};
+  howTo:'Zařízení v inventáři není. Zapíše ho agent (MCP inventory_update) nebo ho přidáš na mapě inventáře.',devices:out};
 }
 
 // ---- Git LFS -------------------------------------------------------------------------------------------------

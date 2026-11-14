@@ -214,7 +214,7 @@
   {
    "level": "warn",
    "title": "1 klíčů bez passphrase otevírá účet se sudo bez hesla, tedy root",
-   "detail": "Kdo získá soubor klíče, je root na cílovém stroji. Jde o záměr pro agenty, ochranu dělají jen from= a AllowUsers. id_a (studio->nas) (Mac Studio) → NAS (admin)",
+   "detail": "Kdo získá soubor klíče, je root na cílovém zařízení. Jde o záměr pro agenty, ochranu dělají jen from= a AllowUsers. id_a (studio->nas) (Mac Studio) → NAS (admin)",
    "titleT": [
     {
      "key": "Klíče bez passphrase, které otevírají účet se sudo bez hesla, tedy root: {n}",
@@ -225,7 +225,7 @@
    ],
    "detailT": [
     {
-     "key": "Kdo získá soubor klíče, je root na cílovém stroji. Jde o záměr pro agenty, ochranu dělají jen from= a AllowUsers. {keys}",
+     "key": "Kdo získá soubor klíče, je root na cílovém zařízení. Jde o záměr pro agenty, ochranu dělají jen from= a AllowUsers. {keys}",
      "params": {
       "keys": "id_a (studio->nas) (Mac Studio) → NAS (admin)"
      }
@@ -235,7 +235,7 @@
   {
    "level": "warn",
    "title": "Na NAS (admin) je povolený cizí klíč „phone“",
-   "detail": "Jeho privátní část není na žádném z prověřených strojů (jiné zařízení nebo zapomenutý klíč). Bez omezení adresy.",
+   "detail": "Jeho privátní část není na žádném z prověřených zařízení (neprověřené zařízení nebo zapomenutý klíč). Bez omezení adresy.",
    "titleT": [
     {
      "key": "Na {device} ({user}) je povolený cizí klíč „{key}“",
@@ -248,7 +248,7 @@
    ],
    "detailT": [
     {
-     "key": "Jeho privátní část není na žádném z prověřených strojů (jiné zařízení nebo zapomenutý klíč).",
+     "key": "Jeho privátní část není na žádném z prověřených zařízení (neprověřené zařízení nebo zapomenutý klíč).",
      "params": {}
     },
     {

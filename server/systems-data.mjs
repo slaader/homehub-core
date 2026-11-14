@@ -226,7 +226,7 @@ function softwareRows(registry,devices,upstream){
   // A rule the probe refused (unknown kind, or a cmd rule with arguments beyond a version flag).
   const refused=(recs||[]).find(r=>r.kind==='unsupported');
   const st=refused?{status:'unknown',latest:null,note:refused.detail==='unsupported-args'?'Pravidlo cmd smí programu předat jen přepínač verze (--version, -version, -v, -V, version).':'Tenhle druh pravidla sonda nezná.'}
-   :host.complete||recs?versionStatus({installed:inst.version,build:inst.build,scheme:item.scheme,upstream:res,up}):{status:'unknown',latest:null,note:'Stroj nebyl prozkoumán.'};
+   :host.complete||recs?versionStatus({installed:inst.version,build:inst.build,scheme:item.scheme,upstream:res,up}):{status:'unknown',latest:null,note:'Zařízení nebylo prozkoumáno.'};
   const run=own(host.running,item.id);
   rows.push({id:item.id,name:item.name,category:item.category,device,installed:inst.version,raw:inst.raw,build:inst.build||null,path:inst.path,others:inst.others||[],
    source:sourceOf(det,(recs||[]).find(r=>r.kind===det.kind)),latest:st.latest,latestUrl:res?.url||null,publishedAt:res?.publishedAt||null,upstreamType:up?.type||null,

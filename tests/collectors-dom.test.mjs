@@ -239,8 +239,8 @@ test('Czech stays the source language: the same pages in Czech; shared helpers',
   let text=await mount(()=>systemsView('versions'),{'/api/systems':{status:200,body:systemsDoc()}});
   for(const s of [/Verze a aktualizace/,/aktualizace na 24\.22\.2/,/Jen zastaralé/,/Sledovaný software/,/každých 6 h/,/Zkontrolováno/])assert.match(text,s);
   text=await mount(()=>systemsView('hardening'),{'/api/systems':{status:200,body:systemsDoc()}});
-  for(const s of [/Ochrana strojů/,/nesplněno: 1/,/zapnutý · 12 pravidel/,/Šifrování disku chrání data/,/Portů: 1/])assert.match(text,s);
-  text=await mount(()=>systemsView('versions'),{'/api/systems':missing(systemsSetup(validateSite({})))});assert.match(text,/Sběr verzí a ochrany strojů není nastavený/);
+  for(const s of [/Ochrana zařízení/,/nesplněno: 1/,/zapnutý · 12 pravidel/,/Šifrování disku chrání data/,/Portů: 1/])assert.match(text,s);
+  text=await mount(()=>systemsView('versions'),{'/api/systems':missing(systemsSetup(validateSite({})))});assert.match(text,/Sběr verzí a ochrany zařízení není nastavený/);
   text=await mount(()=>routerPanel(),{'/api/router':{status:200,body:{...normalizeRouter(null,{}),configured:{adapter:null,host:null,lanCidrs:[]},siteDevice:null}}});assert.match(text,/Router není nastavený/);
   assert.equal(say('zapnutý · 3 pravidel',[{key:'zapnutý · {rules} pravidel',params:{rules:3}}]),'zapnutý · 3 pravidel');
  }finally{i18n.setLang('en');}

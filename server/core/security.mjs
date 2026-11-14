@@ -72,7 +72,7 @@ export default {
  nav:[
   {groupKey:'Inventář',hash:'versions',labelKey:'Verze a aktualizace',view:'systems-view.js#systemsPage',admin:true,scope:'security:read',order:21},
   {groupKey:'Bezpečnost',hash:'security',labelKey:'SSH klíče',view:'security-view.js#securityPage',admin:true,scope:'security:read',order:30},
-  {groupKey:'Bezpečnost',hash:'hardening',labelKey:'Ochrana strojů',view:'systems-view.js#systemsPage',admin:true,scope:'security:read',order:31},
+  {groupKey:'Bezpečnost',hash:'hardening',labelKey:'Ochrana zařízení',view:'systems-view.js#systemsPage',admin:true,scope:'security:read',order:31},
  ],
  // options.softwareWatchFile: another list file (tests); otherwise SOFTWARE_WATCH_FILE or local/software-watch.json.
  setup:hub=>({watch:createWatchStore({file:hub.options.softwareWatchFile||watchPath(),devices:()=>watchDevices(hub.site).map(m=>m.id)})}),
@@ -158,7 +158,7 @@ export default {
    on.keys?loadSecurity(hub.directory).catch(()=>null):null]);
   return securityFacets(devices,{site:hub.site,systems,security,on});}},
  apiDocs:[{title:'Bezpečnost',routes:[
-  ['GET','/api/systems','security','Verze systémů a softwaru, kandidáti na aktualizaci a ochrana strojů (snímek z collect-systems).'],
+  ['GET','/api/systems','security','Verze systémů a softwaru, kandidáti na aktualizaci a ochrana zařízení (snímek z collect-systems).'],
   ['GET','/api/collectors','security','Stav kolektorů (verze, upstream, SSH klíče, router) bez jejich dat; odpoví vždy 200.'],
   ['GET','/api/software-watch','software:write','Seznam sledovaného softwaru s otiskem každé položky.'],
   ['POST','/api/software-watch','software:write','{item, base?} přidá nebo nahradí položku, {remove, base} ji smaže, {categories} přidá kategorie.']]}],

@@ -301,7 +301,7 @@ const AGENT_ITEM={fresh:'ok','no-news':'stale',never:'not-configured'};
 async function agentStatus(state,hub){
  const devices=await state.overview(),ids=Object.keys(devices).sort(),at=state.clock();
  const configuredBy=[{source:'ui',name:'Uživatelé a API → Push agenti'}];
- if(!ids.length)return {state:'not-configured',summary:'Žádný stroj zatím nemá klíč agenta.',configuredBy,items:[]};
+ if(!ids.length)return {state:'not-configured',summary:'Žádné zařízení zatím nemá klíč agenta.',configuredBy,items:[]};
  const items=ids.map(id=>{const a=agentFor(devices[id],{now:at,hubVersion:hub.version?.version??null});
   return {id,label:devices[id].name||id,state:AGENT_ITEM[a.freshness],lastSuccessAt:a.lastReportAt,
    summary:a.freshness==='never'?'Klíč je vydaný, agent se zatím neozval.':a.freshness==='no-news'?tx('Žádné zprávy. Agent {version} se odmlčel.',{version:a.agentVersion||'?'})
@@ -311,8 +311,8 @@ async function agentStatus(state,hub){
   lastSuccessAt:items.map(i=>i.lastSuccessAt).filter(Boolean).sort().at(-1)||null,configuredBy,items};
 }
 const agentIntegration={id:AGENT_INTEGRATION,title:'Push agenti',kind:'agent',
- description:'Co stroje samy posílají: systém a aktualizace, sledovaný software, SSH klíče a lokální LLM runtimy, každý svým klíčem agenta. Vypnutá: hub hlášení odmítá (409, nic neuloží) a stránky čtou jen kolektory; klíče a uložená hlášení zůstanou.',
- howTo:'Vydej klíč stroji v Uživatelé a API → Push agenti a na stroji spusť instalátor: node scripts/install-host-agent.mjs --core --hub <adresa hubu> --key-file <soubor s klíčem>.',
+ description:'Co zařízení sama posílají: systém a aktualizace, sledovaný software, SSH klíče a lokální LLM runtimy, každý svým klíčem agenta. Vypnutá: hub hlášení odmítá (409, nic neuloží) a stránky čtou jen kolektory; klíče a uložená hlášení zůstanou.',
+ howTo:'Vydej zařízení klíč v Uživatelé a API → Push agenti a na zařízení spusť instalátor: node scripts/install-host-agent.mjs --core --hub <adresa hubu> --key-file <soubor s klíčem>.',
  page:'access/agents',docs:'docs/agent.md; docs/API.md → Push agent',
  provides:['home.runtimes'],
  devices:async state=>Object.keys(await state.overview()).map(id=>({device:id,item:id})),

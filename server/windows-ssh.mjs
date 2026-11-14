@@ -203,8 +203,8 @@ export const WINDOWS_SETUP_ERRORS=Object.freeze({
  'key-mismatch':[422,'Části klíče k sobě nepatří (poškozený soubor?). Vytvoř tady nový klíč.']});
 // The same refusals for a Linux draft, where two of them name the other system.
 export const LINUX_SETUP_ERRORS=Object.freeze({...WINDOWS_SETUP_ERRORS,
- 'needs-trust':[409,'Nejdřív porovnej otisk klíče hostitele s tím na stroji a potvrď ho.'],
- 'trust-mismatch':[409,'Tenhle otisk stroj při posledním načtení neukázal. Načti klíč hostitele znovu.']});
+ 'needs-trust':[409,'Nejdřív porovnej otisk klíče hostitele s tím na zařízení a potvrď ho.'],
+ 'trust-mismatch':[409,'Zařízení tenhle otisk při posledním načtení neukázalo. Načti klíč hostitele znovu.']});
 export const DRAFT_LIMITS=Object.freeze({ttlMs:30*60000,perOwner:3,total:16,testFreshMs:15*60000});
 // saved(): async {keys:Set, conns:Set} of the stored connections (the device store's windowsSecrets()).
 // check(record): what a test runs (default: collect once through the store, then checkResult).

@@ -24,7 +24,7 @@ export async function api(url,body){
 
 // ---- words and numbers -----------------------------------------------------------------------------
 // What a field of the wizard is called, for an error that names it (target.path, sources[1].host, …).
-const FIELDS={name:'název úlohy',host:'stroj',port:'port SSH',user:'uživatel',path:'cesta',kind:'odkud',schedule:'plán',time:'čas',days:'dny v týdnu',mode:'plán',
+const FIELDS={name:'název úlohy',host:'zařízení',port:'port SSH',user:'uživatel',path:'cesta',kind:'odkud',schedule:'plán',time:'čas',days:'dny v týdnu',mode:'plán',
  retention:'uchování',keepLast:'ponechat posledních',keepDays:'ponechat mladší než',excludes:'vynechat',timeoutMinutes:'nejdelší běh',enabled:'spouštět podle plánu',target:'cíl',sources:'zdroje'};
 export function fieldName(f){
  const m=/^([a-zA-Z]+)(?:\[(\d+)\])?(?:\.([a-zA-Z]+))?$/.exec(f||'');if(!m)return f;
@@ -90,8 +90,8 @@ function listView(me){
   let data;try{data=await api('/api/backup-jobs');}catch(e){body.replaceChildren(errorState({title:t('Zálohy se nepodařilo načíst'),body:e.message,retry:()=>load()}));return;}
   const parts=[];
   if(data.disabled)parts.push(disabledNotice(data.disabled,{compact:true,body:t('Plánovač teď nic nespouští a zálohu nejde spustit ručně. Úlohy i snímky zůstaly.')}));
-  if(!data.jobs.length)parts.push(emptyState({icon:'archive',title:t('Zatím žádná záloha'),body:t('Home Hub umí sám zálohovat přes SSH a rsync na NAS nebo jiný stroj: každý běh je samostatný snímek, nezměněné soubory se jen odkazují.'),
-   steps:[t('Připrav na cílovém stroji uživatele a adresář pro zálohy.'),t('Průvodce vytvoří klíč a ukáže řádek do authorized_keys.'),t('Ověř spojení, vyber, co zálohovat, a nastav plán.')],
+  if(!data.jobs.length)parts.push(emptyState({icon:'archive',title:t('Zatím žádná záloha'),body:t('Home Hub umí sám zálohovat přes SSH a rsync na NAS nebo jiné zařízení: každý běh je samostatný snímek, nezměněné soubory se jen odkazují.'),
+   steps:[t('Připrav na cílovém zařízení uživatele a adresář pro zálohy.'),t('Průvodce vytvoří klíč a ukáže řádek do authorized_keys.'),t('Ověř spojení, vyber, co zálohovat, a nastav plán.')],
    actions:admin?[{label:t('Nová záloha'),href:'#backup-jobs/new',primary:true}]:[]}),...(admin?[]:[el('p',{class:'bk-note'},t('Zálohy nastavuje administrátor přihlášený heslem.'))]));
   else parts.push(el('div',{class:'bk-table-wrap'},el('table',{class:'bk-table'},
    el('thead',{},el('tr',{},...[t('Úloha'),t('Stav'),t('Kam'),t('Poslední běh'),t('Příští běh'),t('Velikost'),t('Snímky'),''].map(h=>el('th',{scope:'col'},h)))),
@@ -109,7 +109,7 @@ function listView(me){
  }
  load();
  return el('div',{class:'bk-page'},pageHeader({eyebrow:t('Domov'),title:t('Zálohování'),
-  lead:t('Zálohy, které Home Hub spouští sám: rsync přes SSH na cílový stroj, jeden procházitelný snímek na běh. Časy jsou v časovém pásmu {zone}.',{zone:zoneName()}),
+  lead:t('Zálohy, které Home Hub spouští sám: rsync přes SSH na cílové zařízení, jeden procházitelný snímek na běh. Časy jsou v časovém pásmu {zone}.',{zone:zoneName()}),
   actions:admin?[{label:t('Nová záloha'),href:'#backup-jobs/new',primary:true}]:[]}),body);
 }
 

@@ -69,6 +69,11 @@ A major release: names on the public surface change, with no alias for the old o
   `health.clientCounts` (was `health.clients`); `health.hardware` (gateway, switches, access points) is unchanged.
   `GET /api/home → router.clients` and a router tile's `quad.clients` were already counts and stay as they are.
   The UniFi collector writes `clients` and `hardware` (were `devices` and `unifiDevices`), `schemaVersion: 2`.
+- **Breaking: the Czech UI says "zařízení" instead of "stroj"** for a device, in every form and with the words that
+  agree with it. The dictionary keys are the Czech source strings, so about 380 keys changed (for example `Upravit stroj`
+  is `Upravit zařízení`, `Stroje` is `Seznam zařízení`): a plugin's dictionary that translated core keys must follow,
+  or those strings show in Czech. The English texts are unchanged. A 1.x key inventory's findings are read in the new
+  wording.
 
 ### Plugin contract
 

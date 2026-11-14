@@ -47,7 +47,7 @@ function stats(doc,gaps,onGaps){
   for(const e of doc.entries)for(const s of e.secrets||[])s.store==='unknown'?unknown++:located++;
   const tile=([n,label],i)=>{const warn=i>=5&&n,inner=[el('b',{},n),el('span',{},t(label))];
     return warn?el('button',{type:'button',class:'inv-stat amber',title:t('Ukázat záznamy s mezerami'),onclick:onGaps},inner):el('div',{class:'inv-stat'},inner);};
-  return el('div',{class:'inv-stats'},[[count('device'),'Stroje'],[count('runtime'),'Služby'],[count('tool'),'Nástroje'],[count('model-store'),'Úložiště modelů'],[located,'Tajemství dohledaná'],[unknown,'Tajemství nezapsaná'],[gaps.length,'Mezery celkem']].map(tile));
+  return el('div',{class:'inv-stats'},[[count('device'),'Zapsaná zařízení'],[count('runtime'),'Služby'],[count('tool'),'Nástroje'],[count('model-store'),'Úložiště modelů'],[located,'Tajemství dohledaná'],[unknown,'Tajemství nezapsaná'],[gaps.length,'Mezery celkem']].map(tile));
 }
 
 // Secret items: each Keychain item or variable listed in a secret store becomes its own map card, kept in
@@ -377,12 +377,12 @@ function map(src,signal,ui={query:()=>'',onHits:()=>{}}){
       chip(t('Všechny vazby'),layout.lines==='all',()=>{layout.lines=layout.lines==='all'?'chain':'all';save();}));
     const custom=!!saved().cols||Object.values(saved().order).some(a=>a.length);
     const cols=(m,label)=>el('button',{type:'button',class:layout.columns===m?'active':'','aria-pressed':String(layout.columns===m),onclick:()=>{layout.columns=m;save();}},label);
-    arrange.replaceChildren(el('span',{class:'inv-chip-title'},t('Sloupce')),el('div',{class:'inv-mode inv-cols',role:'group','aria-label':t('Sloupce')},cols('device',t('Podle stroje')),cols('category',t('Podle kategorie'))),
+    arrange.replaceChildren(el('span',{class:'inv-chip-title'},t('Sloupce')),el('div',{class:'inv-mode inv-cols',role:'group','aria-label':t('Sloupce')},cols('device',t('Podle zařízení')),cols('category',t('Podle kategorie'))),
       el('span',{class:'inv-chip-gap'}),
       chip(t('Posouvat celý sloupec'),layout.together,()=>{layout.together=!layout.together;save();}),
       el('button',{type:'button',class:'inv-chip',...(custom?{}:{disabled:''}),onclick:()=>{saved().cols=null;saved().order={};save();}},t('Výchozí pořadí')),
       chip(t('Volnější rozestupy'),layout.spacing==='roomy',()=>{layout.spacing=layout.spacing==='roomy'?'compact':'roomy';save();}),
-      el('small',{class:'muted'},[layout.together?t('Tažením karty nahoru nebo dolů změníš pořadí ve sloupci; tažením do strany posuneš celý sloupec.'):t('Tažením karty nahoru nebo dolů změníš pořadí ve sloupci.'),layout.columns==='category'?t('Každá karta říká, na kterém stroji běží.'):t('Každý stroj má svůj sloupec.'),t('Uloženo v tomto prohlížeči.')].join(' ')));
+      el('small',{class:'muted'},[layout.together?t('Tažením karty nahoru nebo dolů změníš pořadí ve sloupci; tažením do strany posuneš celý sloupec.'):t('Tažením karty nahoru nebo dolů změníš pořadí ve sloupci.'),layout.columns==='category'?t('Každá karta říká, na kterém zařízení běží.'):t('Každé zařízení má svůj sloupec.'),t('Uloženo v tomto prohlížeči.')].join(' ')));
     // Mini legend: what the colours and the line patterns mean, and which way the arrows point.
     const key=(mark,label)=>el('span',{class:'inv-key'},mark,label);
     legend.replaceChildren(
@@ -409,7 +409,7 @@ function map(src,signal,ui={query:()=>'',onHits:()=>{}}){
 }
 
 // The prompt a person hands to their coding agent to fill an empty inventory over MCP.
-export const INVENTORY_PROMPT=()=>t('Zmapuj moje stroje a služby a zapiš je do inventáře Home Hubu přes MCP (server „home-hub“, scope inventory:write).\n1. Zavolej inventory_describe: zjistíš schéma, druhy záznamů, místa, úložiště tajemství a pravidla kontroly.\n2. Projdi stroje, ke kterým máš přístup, a zjisti, co na nich běží: služby s portem, plánované úlohy, nástroje, úložiště modelů a vnější služby, na kterých závisí.\n3. U každé věci nejdřív zavolej inventory_search, ať nezaložíš nic dvakrát. Pak ji ulož přes inventory_update (u existujícího záznamu předej jako base otisk z inventory_get), nebo víc záznamů naráz přes inventory_bulk_upsert (nejdřív s dryRun: true). Každý záznam má mít kind, device, address, version a depends_on.\n4. Nejdřív stroje (kind device) a síť, potom to, co na nich běží.\n5. U hesel, tokenů a klíčů zapiš jen to, kde jsou uložené (store a název položky), nikdy jejich hodnotu.\nNakonec vypiš, co se ti nepodařilo ověřit.');
+export const INVENTORY_PROMPT=()=>t('Zmapuj moje zařízení a služby a zapiš je do inventáře Home Hubu přes MCP (server „home-hub“, scope inventory:write).\n1. Zavolej inventory_describe: zjistíš schéma, druhy záznamů, místa, úložiště tajemství a pravidla kontroly.\n2. Projdi zařízení, ke kterým máš přístup, a zjisti, co na nich běží: služby s portem, plánované úlohy, nástroje, úložiště modelů a vnější služby, na kterých závisí.\n3. U každé věci nejdřív zavolej inventory_search, ať nezaložíš nic dvakrát. Pak ji ulož přes inventory_update (u existujícího záznamu předej jako base otisk z inventory_get), nebo víc záznamů naráz přes inventory_bulk_upsert (nejdřív s dryRun: true). Každý záznam má mít kind, device, address, version a depends_on.\n4. Nejdřív zařízení (kind device) a síť, potom to, co na nich běží.\n5. U hesel, tokenů a klíčů zapiš jen to, kde jsou uložené (store a název položky), nikdy jejich hodnotu.\nNakonec vypiš, co se ti nepodařilo ověřit.');
 
 // What the page shows while the inventory has no entries: what the map is, what to record and how.
 function emptyInventory(){
@@ -417,9 +417,9 @@ function emptyInventory(){
   const seed=async()=>{status.textContent=t('Zakládám ukázkové záznamy…');
     try{const r=await seedTemplate();if(r.ok)return announce();status.textContent=[t(r.message),...(r.details||[])].join(' ');}catch{status.textContent=t('Home Hub není dosažitelný. Zkus to znovu.');}};
   return el('div',{class:'inv-empty-wrap'},emptyState({icon:'◈',title:t('Mapa inventáře je zatím prázdná'),
-    body:t('Mapa je jedno místo, kde je zapsané, co doma běží: stroje, služby a nástroje na nich, vnější služby, co na čem závisí a kde je uložené každé tajemství. Nikdy jeho hodnota, jen místo, kde ho najdeš. Zapisovat může člověk i agent a každou změnu zkontroluje stejná kontrola.'),
-    steps:[t('Zapiš stroje (druh device) a síťové prvky (network).'),
-      t('Ke každému stroji přidej, co na něm běží: služby (runtime) s adresou a verzí, nástroje (tool), úložiště modelů.'),
+    body:t('Mapa je jedno místo, kde je zapsané, co doma běží: zařízení, služby a nástroje na nich, vnější služby, co na čem závisí a kde je uložené každé tajemství. Nikdy jeho hodnota, jen místo, kde ho najdeš. Zapisovat může člověk i agent a každou změnu zkontroluje stejná kontrola.'),
+    steps:[t('Zapiš zařízení (druh device) a síťové prvky (network).'),
+      t('Ke každému zařízení přidej, co na něm běží: služby (runtime) s adresou a verzí, nástroje (tool), úložiště modelů.'),
       t('Propoj je závislostmi (depends_on) a u přihlašovacích údajů zapiš, kde jsou uložené.'),
       t('Nejrychleji to udělá agent: v Uživatelé a API založ servisní účet se scope inventory:write, připoj ho přes MCP a dej mu zadání níže.')],
     agentPrompt:INVENTORY_PROMPT(),mcpSnippet:true,
@@ -473,7 +473,7 @@ export function inventoryView(me,sub=null){
     const setView=v=>{if(layout.view===v)return;const l=layoutLoad();l.view=layout.view=v;layoutSave(l);mount();};
     const tab=(v,label)=>el('button',{type:'button','data-view':v,onclick:()=>setView(v)},label);
     const tabs=el('div',{class:'inv-mode inv-tabs',role:'group','aria-label':t('Zobrazení')},tab('map',t('Mapa')),tab('table',t('Tabulka')),tab('services',t('Služby')));
-    const search=el('input',{type:'search',class:'inv-search',placeholder:t('Hledat název, adresu, stroj, druh…'),'aria-label':t('Hledat v inventáři'),
+    const search=el('input',{type:'search',class:'inv-search',placeholder:t('Hledat název, adresu, zařízení, druh…'),'aria-label':t('Hledat v inventáři'),
       oninput:()=>{state.query=search.value;redraw?.();},onkeydown:ev=>{if(ev.key==='Enter'){ev.preventDefault();api?.pickFirst();}else if(ev.key==='Escape'&&search.value){search.value='';state.query='';redraw?.();}}});
     search.value=state.query;
     const examples=doc.entries.filter(isExample),note=el('span',{role:'status'});

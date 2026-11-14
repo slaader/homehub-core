@@ -100,7 +100,7 @@ function macGauges(m){
  const memTone=pressureLevel(q.memPressure)||(usedPct!=null&&usedPct>=90?'hot':'');
  const memSub={text:gmem!=null?`GPU ${Math.round(gmem/GiB)} GB`:total?t('z {gb} GB',{gb:Math.round(total/GiB)}):'',
   title:gmem!=null?t('GPU drží {gb} GB (alokováno, např. načtený model){active}. Celkem RAM {total} GB.',{gb:Math.round(gmem/GiB),active:gactive!=null?t(', z toho právě aktivně {gb} GB',{gb:Math.round(gactive/GiB)}):'',total:total?Math.round(total/GiB):'?'})
-   :familyOf(m)==='windows'?t('Operační paměť Windows. Paměť GPU (VRAM) je zvlášť, na stránce stroje.'):familyOf(m)==='linux'?t('Operační paměť Linuxu (bez MemAvailable; mezipaměť ZFS ARC se počítá jako použitá).'):t('Thermo na tomto Macu zatím neposílá paměť GPU (build < 97).')};
+   :familyOf(m)==='windows'?t('Operační paměť Windows. Paměť GPU (VRAM) je zvlášť, na stránce zařízení.'):familyOf(m)==='linux'?t('Operační paměť Linuxu (bez MemAvailable; mezipaměť ZFS ARC se počítá jako použitá).'):t('Thermo na tomto Macu zatím neposílá paměť GPU (build < 97).')};
  const temp=q.temp!=null?Math.round(q.temp):null;
  const stat=(label,value,tone='')=>el('span',{class:tone},el('span',{class:'hv-k'},label),el('b',{},value));
  return el('div',{class:`hv-metrics${m.telemetry?.state==='stale'?' stale':''}`},
@@ -298,14 +298,14 @@ const stamp=iso=>{const ms=Date.parse(iso);return Number.isFinite(ms)?new Intl.D
 function stackSource(m){
  const s=m.stack;if(!s)return null;
  if(s.source==='published')return t('zveřejnil {who} · {when}',{who:s.publishedBy||'API',when:stamp(s.publishedAt)});
- if(s.source==='collected')return t('sebráno ze stroje · {when}',{when:stamp(m.collectedAt)});
+ if(s.source==='collected')return t('sebráno ze zařízení · {when}',{when:stamp(m.collectedAt)});
  return t('z konfigurace webu');
 }
 function stackSection(m){
  if(m.stack)return section(t('Runtime stack'),stackSource(m),stackGrid(m));
  return section(t('Runtime stack'),null,emptyState({icon:'▤',title:t('Runtime stack zatím není'),
-  body:t('Vrstvený diagram toho, co na stroji běží: od API, které volají klienti, přes routery a servery modelů až po čip. Zveřejní ho agent, který stroj zná.'),
-  agentPrompt:t('Popiš runtime stack stroje „{id}“ v Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a home:write. Zjisti, co na stroji běží (brány a API, llama-swap, Ollama, LM Studio, llama.cpp, vLLM a podobně, na jakých portech, s jakými modely) a zveřejni to nástrojem runtime_publish: vrstvy input, tool, runtime, engine, hardware, jeden sloupec na rodinu enginu. Nezapisuj žádná hesla, tokeny ani klíče. Nakonec výsledek ověř nástrojem device_list s runtime: true.',{id:m.id})}));
+  body:t('Vrstvený diagram toho, co na zařízení běží: od API, které volají klienti, přes routery a servery modelů až po čip. Zveřejní ho agent, který zařízení zná.'),
+  agentPrompt:t('Popiš runtime stack zařízení „{id}“ v Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a home:write. Zjisti, co na zařízení běží (brány a API, llama-swap, Ollama, LM Studio, llama.cpp, vLLM a podobně, na jakých portech, s jakými modely) a zveřejni to nástrojem runtime_publish: vrstvy input, tool, runtime, engine, hardware, jeden sloupec na rodinu enginu. Nezapisuj žádná hesla, tokeny ani klíče. Nakonec výsledek ověř nástrojem device_list s runtime: true.',{id:m.id})}));
 }
 
 // --- device page ------------------------------------------------------------------------------
@@ -321,8 +321,8 @@ const seriesFor=m=>familyOf(m)==='windows'?SERIES.filter(d=>d.key!=='power'&&d.k
 const section=(title,sub,...body)=>el('section',{class:'hv-sec'},el('div',{class:'hv-sec-head'},el('h2',{},title),sub?el('p',{},sub):null),...body.flat().filter(Boolean));
 function sourceBadge(m){
  const changed=Boolean(m.siteOverride?.fields?.length||m.siteOverride?.image);
- if(m.source==='site')return el('span',{class:'hv-badge',title:changed?t('Stroj je zapsaný v local/site.json. Název, adresu, hardware nebo obrázek tu upravil vlastník; id, role, systém a napojení zůstávají podle konfigurace webu.')
-  :t('Stroj je zapsaný v local/site.json. Název, adresu, hardware a obrázek jde upravit tady (Upravit stroj); id, role, systém a napojení zůstávají podle konfigurace webu.')},
+ if(m.source==='site')return el('span',{class:'hv-badge',title:changed?t('Zařízení je zapsané v local/site.json. Název, adresu, hardware nebo obrázek tu upravil vlastník; id, role, systém a napojení zůstávají podle konfigurace webu.')
+  :t('Zařízení je zapsané v local/site.json. Název, adresu, hardware a obrázek jde upravit tady (Upravit zařízení); id, role, systém a napojení zůstávají podle konfigurace webu.')},
   changed?t('z konfigurace webu · upraveno'):t('z konfigurace webu'));
  const when=m.createdAt?stamp(m.createdAt):'';
  return el('span',{class:'hv-badge',title:when||null},m.source==='agent'?t('přidal agent {name}',{name:m.createdBy||'API'}):t('přidáno v přehledu'));
@@ -362,7 +362,7 @@ function renderChild(slot,device,{repaint:again,focus}={}){
   el('button',{type:'button',class:'ui-button','data-action':'edit',onclick:()=>edit()},icon('pencil'),t('Upravit zařízení')),
   el('button',{type:'button',class:'ui-button hv-danger',onclick:async e=>{const b=e.currentTarget;b.disabled=true;
     try{if(await removeDevice(device)){cache=null;historyCache.clear();location.hash='#overview';}else b.disabled=false;}catch{b.disabled=false;}}},t('Odebrat zařízení')))
-  :siteEdit?el('div',{class:'ui-head-actions'},el('button',{type:'button',class:'ui-button','data-action':'edit',onclick:siteEdit},icon('pencil'),t('Upravit stroj')),
+  :siteEdit?el('div',{class:'ui-head-actions'},el('button',{type:'button',class:'ui-button','data-action':'edit',onclick:siteEdit},icon('pencil'),t('Upravit zařízení')),
    siteTelemetry?el('button',{type:'button',class:'ui-button','data-action':'site-telemetry',onclick:siteTelemetry},device.telemetryBinding?t('Nastavení telemetrie'):t('Připojit telemetrii')):null):null;
  const head=el('header',{class:'hv-host-head'},
   el('a',{href:'#overview',class:'hv-back'},t('← přehled')),
@@ -371,7 +371,7 @@ function renderChild(slot,device,{repaint:again,focus}={}){
     el('div',{class:'hv-badges'},statusPill(device),el('span',{class:'hv-badge'},t(ROLES[device.role]||ROLES.other)),device.platform?el('span',{class:'hv-badge'},t(PLATFORM_NAMES[device.platform]||device.platform)):null,sourceBadge(device),
      device.collectedAt?el('span',{class:'hv-badge'},t('sebráno {when}',{when:date(device.collectedAt)})):null,
      // What is set up for this device across the hub (telemetry, backups, versions, …): Integrations → Devices.
-     canAdmin?el('a',{class:'hv-badge hv-badge-link',href:`#integrations/device/${encodeURIComponent(device.id)}`},t('Integrace stroje →')):null)),
+     canAdmin?el('a',{class:'hv-badge hv-badge-link',href:`#integrations/device/${encodeURIComponent(device.id)}`},t('Integrace zařízení →')):null)),
    actions),
   hostProps(device));
  const notice=telemetryNotice(device,meta,{onConnect:device.added&&canEdit?()=>edit('telemetry'):siteTelemetry});
@@ -444,16 +444,16 @@ function disabledBar(){
 function emptyOverview(add){
  const name=cache?.telemetry?.agent||'Thermo';
  return emptyState({icon:'◇',title:t('Vítej v Home Hubu. Přehled je zatím prázdný'),
-  body:t('Přehled ukazuje stroje tvé sítě jako dlaždice: stav, parametry a s telemetrickým agentem i živé CPU, GPU, paměť, příkon a teploty. Každý stroj má stránku s grafy a runtime stackem. Naplnit ho jde dvěma způsoby.'),
+  body:t('Přehled ukazuje zařízení tvé sítě jako dlaždice: stav, parametry a s telemetrickým agentem i živé CPU, GPU, paměť, příkon a teploty. Každé zařízení má stránku s grafy a runtime stackem. Naplnit ho jde dvěma způsoby.'),
   steps:[canEdit?t('Ručně: tlačítkem Přidat zařízení zadej název, adresu a vyber obrázek. Živá čísla připojíš kdykoli později.'):t('Ručně: zařízení přidává účet s právem zápisu tlačítkem Přidat zařízení.'),
    t('Přes agenta: v Uživatelé a API založ servisní účet se scopes read a home:write, připoj kódovacího agenta přes MCP (níže) a dej mu zadání.'),
-   t('Živé metriky jsou volitelné: dodává je agent {name}, který běží na každém stroji. Dlaždice bez něj řekne, jak ho nainstalovat.',{name})],
-  agentPrompt:t('Naplň přehled tohoto Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a home:write. Nejdřív zavolej device_list: uvidíš, co v přehledu je, jaké obrázky a role jsou k dispozici a do jakých sítí musí IP adresy patřit. Zeptej se mě, jaké stroje mám (název, hostname, IP, role: computer, nas, router nebo other, CPU, GPU, RAM), a každý založ nástrojem device_upsert s vhodným obrázkem. Ke stroji, na kterém běží lokální AI, zveřejni runtime stack nástrojem runtime_publish (vrstvy input, tool, runtime, engine, hardware). Do žádného pole nepiš hesla, tokeny ani klíče. Nakonec zavolej device_list a shrň, co jsi přidal.'),
+   t('Živé metriky jsou volitelné: dodává je agent {name}, který běží na každém zařízení. Dlaždice bez něj řekne, jak ho nainstalovat.',{name})],
+  agentPrompt:t('Naplň přehled tohoto Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a home:write. Nejdřív zavolej device_list: uvidíš, co v přehledu je, jaké obrázky a role jsou k dispozici a do jakých sítí musí IP adresy patřit. Zeptej se mě, jaká zařízení mám (název, hostname, IP, role: computer, nas, router nebo other, CPU, GPU, RAM), a každý založ nástrojem device_upsert s vhodným obrázkem. K zařízení, na kterém běží lokální AI, zveřejni runtime stack nástrojem runtime_publish (vrstvy input, tool, runtime, engine, hardware). Do žádného pole nepiš hesla, tokeny ani klíče. Nakonec zavolej device_list a shrň, co jsi přidal.'),
   mcpSnippet:true,
   actions:[canEdit?{label:t('⊕ Přidat zařízení'),onclick:add,primary:true}:null,canAdmin?{label:t('Uživatelé a API'),href:'#access'}:null]});
 }
 const summary=list=>{const counted=list.filter(m=>m.telemetry?.state!=='not-applicable'),ok=counted.filter(m=>m.telemetry?.state==='ok').length;
- return `${tp(list.length,'{n} stroj|{n} stroje|{n} strojů')} · ${t('telemetrie běží na {ok} z {all}',{ok,all:counted.length})}`;};
+ return `${tp(list.length,'{n} zařízení|{n} zařízení|{n} zařízení')} · ${t('telemetrie běží na {ok} z {all}',{ok,all:counted.length})}`;};
 export function homeView(deviceId,me){
  canEdit=me?.canWrite===true;canEditSite=canEdit&&me?.authKind==='session';canAdmin=me?.canAdmin===true;
  viewGen++;disposeCharts();disposeSparks();dragger?.destroy();dragger=null;childCards=null;built=false;
@@ -471,7 +471,7 @@ export function homeView(deviceId,me){
    if(dragger?.busy())return;// a tile is in the hand: this refresh waits for the drop
    const saved=orderCache.get(),list=orderedDevices(cache.devices,saved?.order);
    // A hub without devices yet: say what belongs here and how to add it.
-   if(!list.length){const head=pageHeader({eyebrow:t('Domov'),title:t('Přehled'),lead:t('Stroje, jejich stav a živé metriky na jednom místě.')});head.append(headActions());
+   if(!list.length){const head=pageHeader({eyebrow:t('Domov'),title:t('Přehled'),lead:t('Zařízení, jejich stav a živé metriky na jednom místě.')});head.append(headActions());
     slot.replaceChildren(...[head,disabledBar(),emptyOverview(add)].filter(Boolean));built=false;return;}
    const movable=saved?.available===true&&list.length>1,ids=list.map(m=>m.id);
    const grid=slot.querySelector('.hv-tiles'),shown=grid?[...grid.children].map(n=>n.dataset.id):[];
@@ -490,7 +490,7 @@ export function homeView(deviceId,me){
    slot.replaceChildren(...[head,disabledBar(),hint,g].filter(Boolean));built=true;return;
   }
   const device=cache.devices.find(m=>m.id===deviceId);
-  if(!device){slot.replaceChildren(emptyState({icon:'◌',title:t('Neznámý stroj.'),body:t('Stroj s tímhle id v přehledu není. Mohl být odebrán.'),actions:[{label:t('← přehled'),href:'#overview',primary:true}]}));return;}
+  if(!device){slot.replaceChildren(emptyState({icon:'◌',title:t('Neznámé zařízení.'),body:t('Zařízení s tímhle id v přehledu není. Mohlo být odebráno.'),actions:[{label:t('← přehled'),href:'#overview',primary:true}]}));return;}
   if(built&&slot.querySelector('.hv-host-head')){refreshChild(slot,device,paint);return;}
   const hash=(location.hash.split('/')[1]||'').replace(/[^a-z0-9_-]/g,'');
   state.blk=hash||null;

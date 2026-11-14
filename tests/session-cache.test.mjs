@@ -54,7 +54,7 @@ test('router: Inventář pages — the map for every account, versions for admin
  assert.match(app,/manifest\.pages\.find\(p=>p\.hash===\(page\|\|HOME_PAGE\)\)/,'the page module comes from the server manifest');
  const security=await readFile(new URL('../server/core/security.mjs',import.meta.url),'utf8');
  assert.match(security,/hash:'versions',[^}]*admin:true/,'versions link only for admins');
- assert.doesNotMatch(app,/#host-\$\{id\}|'Stroje'/,'no device list in the sidebar');
+ assert.doesNotMatch(app,/#host-\$\{id\}|'Seznam zařízení'/,'no device list in the sidebar');
  assert.match(app,/setIdentity\(null\)/,'edit rights are dropped on logout');
  const inv=await readFile(new URL('../public/inventory-view.js',import.meta.url),'utf8');
  assert.match(inv,/if\(pageAllowed\('versions',me\)\)loadSystems\(\)/,'only accounts that may read versions fetch /api/systems');

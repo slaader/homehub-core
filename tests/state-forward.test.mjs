@@ -224,6 +224,10 @@ test('security/ssh-keys.json and probes.json of 1.0.0: schema 2, every key and s
  assert.equal(SECURITY_SCHEMA,2);
  assert.deepEqual(doc,now,'exactly the document a 2.0 collector writes');
  assert.equal(JSON.stringify(doc),JSON.stringify(now),'with every key in its place');noOldWord(doc);
+ // 1.0.0 stored its Czech wording ("stroj") in the findings' templates, which are keys of today's dictionary ("zařízení").
+ assert.match(JSON.stringify(old),/na cílovém stroji\./,'the fixture has the wording of 1.0.0');
+ assert.doesNotMatch(JSON.stringify(doc),/(?<![Nn]á)stroj/,'no finding keeps it');
+ assert.ok(doc.findings.some(f=>f.detailT?.some(p=>p.key==='Kdo získá soubor klíče, je root na cílovém zařízení. Jde o záměr pro agenty, ochranu dělají jen from= a AllowUsers. {keys}')),'its template is today\'s');
  assert.ok(doc.findings.some(f=>f.titleT?.some(p=>p.key.includes('{device}')&&typeof p.params.device==='string')),'a finding\'s template is the one today\'s dictionary has');
  assert.deepEqual(await json(file),now);assert.equal((await stat(file)).mtimeMs,then.getTime());assert.equal((await stat(file)).mode&0o777,0o600);
  const before=await mark(file);

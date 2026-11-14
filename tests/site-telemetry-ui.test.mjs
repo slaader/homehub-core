@@ -36,7 +36,7 @@ test('hints for a device whose system is not said: every way there is, and the s
  const m=nas();
  const steps=installSteps(m,meta).join(' ');
  assert.match(steps,/Prometheus, který už máš/);assert.match(steps,/WinRM/);assert.match(steps,/Nastavení telemetrie/);
- assert.doesNotMatch(steps,/Nainstaluj na stroj telemetrického agenta|thermo-hosts\.json|jen zařízení přidanému/,'not "install Thermo", not "only added devices"');
+ assert.doesNotMatch(steps,/Nainstaluj na zařízení telemetrického agenta|thermo-hosts\.json|jen zařízení přidanému/,'not "install Thermo", not "only added devices"');
  const tile=text(tileNotice({...m,kind:'other'},meta));assert.doesNotMatch(tile,/Živá čísla dodá agent Thermo/);assert.match(tile,/Linux a Windows jdou číst bez agenta/);
  let clicked=0;const notice=telemetryNotice({...m,kind:'other'},meta,{onConnect:()=>clicked++});
  assert.doesNotMatch(text(notice),/Telemetrie tu není nainstalovaná|Jak nainstalovat Thermo/);assert.match(text(notice),/Telemetrie tu není připojená/);
@@ -47,7 +47,7 @@ test('hints for a device whose system is not said: every way there is, and the s
  assert.match(installSteps({...m,platform:'linux'},meta).join(' '),/Node Exporter[\s\S]*Nastavení telemetrie/);
  // An added Mac-less device without a platform: every way too, through its own edit dialog.
  assert.match(installSteps({id:'x',source:'ui',platform:null},meta).join(' '),/Upravit zařízení → Telemetrie, zvol systém a zdroj/);
- assert.match(installSteps({id:'x',source:'ui',platform:'macos'},meta).join(' '),/Nainstaluj na stroj telemetrického agenta Thermo/,'a Mac still gets Thermo');
+ assert.match(installSteps({id:'x',source:'ui',platform:'macos'},meta).join(' '),/Nainstaluj na zařízení telemetrického agenta Thermo/,'a Mac still gets Thermo');
 });
 
 test('the site device\'s telemetry settings open its site editor at telemetry: agent-less providers only, a draft for its own id',async()=>{

@@ -16,7 +16,7 @@ import {pageHeader,errorState,loadingState,copyBlock,statusPill,toast,banner,seg
 import {api,bytes,scheduleText,retentionText,targetText,sourceText,missingText} from './backups-view.js';
 
 const STEPS=[['target','Cíl'],['access','Přístup'],['connect','Spojení'],['sources','Zdroje'],['schedule','Plán'],['review','Souhrn']];
-const CHECKS={ssh:'Přihlášení přes SSH',dir:'Adresář existuje',writable:'Do adresáře jde zapisovat',rsync:'rsync na stroji',space:'Volné místo',exists:'Cesta existuje',readable:'Jde číst',owner:'Adresář patří této úloze',protected:'Mimo klíče a stav záloh'};
+const CHECKS={ssh:'Přihlášení přes SSH',dir:'Adresář existuje',writable:'Do adresáře jde zapisovat',rsync:'rsync na zařízení',space:'Volné místo',exists:'Cesta existuje',readable:'Jde číst',owner:'Adresář patří této úloze',protected:'Mimo klíče a stav záloh'};
 const DAYS=['Po','Út','St','Čt','Pá','So','Ne'];
 
 const field=(label,control,help)=>el('label',{class:'bk-field'},el('span',{},label),control,help?el('small',{},help):null);
@@ -51,10 +51,10 @@ export function wizardView({me,id}){
    if(!job())s.detail=await api('/api/backup-jobs/create',{name:f.name.value.trim()||t('Záloha')});
    await save({name:f.name.value.trim()||job().name,target:{host:f.host.value.trim(),port:f.port.value.trim(),user:f.user.value.trim(),path:f.path.value.trim()}});
    go(1);});}},
-   el('p',{class:'bk-lead'},t('Cíl je stroj, na který se zálohy ukládají: NAS nebo jakýkoli stroj s SSH a rsync. Hub se k němu přihlásí vlastním klíčem jako uživatel, kterého tu zadáš.')),
+   el('p',{class:'bk-lead'},t('Cíl je zařízení, na které se zálohy ukládají: NAS nebo jakékoli zařízení s SSH a rsync. Hub se k němu přihlásí vlastním klíčem jako uživatel, kterého tu zadáš.')),
    field(t('Název úlohy'),input('name',j?.name||'',{required:'',maxlength:'80',placeholder:t('např. Dokumenty na NAS')})),
    el('div',{class:'bk-row'},
-    field(t('Cílový stroj'),input('host',tg?.host,{required:'',list:'bk-hosts',placeholder:'nas.example.lan'}),t('Jméno nebo IPv4 adresa. Stroje z konfigurace webu se nabízejí.')),
+    field(t('Cílové zařízení'),input('host',tg?.host,{required:'',list:'bk-hosts',placeholder:'nas.example.lan'}),t('Jméno nebo IPv4 adresa. Zařízení z konfigurace webu se nabízejí.')),
     field(t('Port SSH'),input('port',tg?.port??22,{inputmode:'numeric',pattern:'[0-9]{1,5}',class:'bk-short'}))),
    el('div',{class:'bk-row'},
     field(t('Uživatel na cíli'),input('user',tg?.user,{required:'',placeholder:'hubbackup'}),t('Nejlépe samostatný uživatel jen pro zálohy.')),
@@ -69,13 +69,13 @@ export function wizardView({me,id}){
    el('p',{class:'bk-lead'},t('Hub pro tuhle úlohu vytvořil vlastní klíč ed25519. Soukromá část zůstává na hubu a nikdy se neukáže; na cíl patří jen veřejná část.')),
    ak?copyBlock(t('Řádek do authorized_keys na cíli'),ak.line,{note:ak.address?t('restrict vypne přesměrování portů, agenta i terminál; from="{address}" klíč přijme jen z adresy hubu. Když hub připojuje z jiné adresy, from="…" uprav nebo vynech.',{address:ak.address}):t('restrict vypne přesměrování portů, agenta i terminál. Můžeš doplnit from="adresa hubu", aby klíč fungoval jen odtud.')}):banner({tone:'bad',title:t('Veřejný klíč chybí.')}),
    d.publicKey?copyBlock(t('Jen veřejný klíč'),d.publicKey):null,
-   el('h3',{class:'bk-h3'},t('Co udělat na cílovém stroji ({host})',{host:j.target?.host||'—'})),
+   el('h3',{class:'bk-h3'},t('Co udělat na cílovém zařízení ({host})',{host:j.target?.host||'—'})),
    el('ol',{class:'ui-steps'},
     el('li',{},t('Založ uživatele {user} se skutečným shellem (sh, bash nebo zsh, ne nologin). Na TrueNAS: Credentials → Users.',{user:j.target?.user||'—'})),
     el('li',{},t('Založ cílový adresář {path} a dej ho tomu uživateli (vlastník a právo zápisu).',{path:j.target?.path||'—'})),
     el('li',{},t('Vlož řádek výše do ~{user}/.ssh/authorized_keys (adresář .ssh s právy 700, soubor 600). Na TrueNAS jde vložit do pole Authorized Keys u uživatele.',{user:j.target?.user||''})),
-    el('li',{},t('Zapni službu SSH a ověř, že je na stroji rsync (TrueNAS i běžné Linuxy ho mají).')),
-    el('li',{},t('Na stroji si zobraz otisk jeho klíče, budeš ho v dalším kroku porovnávat:'),el('code',{class:'bk-code'},'ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub'))),
+    el('li',{},t('Zapni službu SSH a ověř, že je na zařízení rsync (TrueNAS i běžné Linuxy ho mají).')),
+    el('li',{},t('Na zařízení si zobraz otisk jeho klíče, budeš ho v dalším kroku porovnávat:'),el('code',{class:'bk-code'},'ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub'))),
    el('p',{class:'bk-note'},t('Hub potřebuje na cíli spustit mkdir, mv, rm, ln a df (přejmenování snímku a mazání starých), proto omezení příkazem rrsync tady nepoužívá. Bezpečnost dává samostatný uživatel, který smí jen do svého adresáře.')),
    el('p',{class:'bk-note'},t('Přihlašovací shell toho uživatele musí rozumět příkazům ve stylu sh (sh, bash, zsh, dash, ksh); csh a tcsh nejsou podporované.')),
    nav(true,{nextLabel:t('Hotovo, pokračovat')}));
@@ -86,7 +86,7 @@ export function wizardView({me,id}){
   const show=r=>{
    s.tests[key]=r;const out=[];
    if(r.state==='trust'){
-    out.push(banner({tone:'warn',title:t('Potvrď klíč hostitele.'),body:t('Hub se k tomuto stroji ještě nepřipojil. Porovnej otisk s tím, co ukazuje stroj sám (ssh-keygen -lf na jeho veřejný klíč). Shoduje se? Potvrď ho; od té doby hub jiný klíč odmítne.')}));
+    out.push(banner({tone:'warn',title:t('Potvrď klíč hostitele.'),body:t('Hub se k tomuto zařízení ještě nepřipojil. Porovnej otisk s tím, co ukazuje zařízení samo (ssh-keygen -lf na jeho veřejný klíč). Shoduje se? Potvrď ho; od té doby hub jiný klíč odmítne.')}));
     out.push(el('ul',{class:'bk-keys'},r.hostKeys.map(k=>el('li',{},el('span',{class:'bk-mono'},k.type),el('code',{class:'bk-fp'},k.fingerprint),
      el('button',{type:'button',class:'ui-button small primary',onclick:async e=>{e.currentTarget.disabled=true;
       try{s.detail=await api('/api/backup-jobs/trust',{id:job().id,part,index,fingerprint:k.fingerprint});toast.good(t('Klíč hostitele je připnutý.'));await run();}
@@ -94,7 +94,7 @@ export function wizardView({me,id}){
    }else if(r.state==='changed'){
     out.push(banner({tone:'bad',title:t('Klíč hostitele se změnil!'),body:t(r.message||'')}));
     out.push(el('p',{class:'bk-note'},t('Potvrzený: {fp}',{fp:r.pinned?.fingerprint||'—'})),el('ul',{class:'bk-keys'},r.hostKeys.map(k=>el('li',{},el('span',{class:'bk-mono'},k.type),el('code',{class:'bk-fp'},k.fingerprint)))));
-    out.push(el('p',{class:'bk-note'},t('Když jde o přeinstalovaný stroj a nový otisk jsi ověřil, změň v kroku Cíl port nebo jméno a vrať je zpět: tím se starý klíč zapomene.')));
+    out.push(el('p',{class:'bk-note'},t('Když jde o přeinstalované zařízení a nový otisk jsi ověřil, změň v kroku Cíl port nebo jméno a vrať je zpět: tím se starý klíč zapomene.')));
    }else{
     out.push(el('ul',{class:'bk-checks'},r.checks.map(c=>el('li',{class:c.ok?'ok':'bad'},statusPill(c.ok?t('ano'):t('ne'),c.ok?'good':'bad'),t(CHECKS[c.id]||c.id),
      c.value?el('span',{class:'bk-dim'},t('{free} volných z {total}',{free:bytes(c.value.availableBytes),total:bytes(c.value.totalBytes)})):null))));
@@ -126,8 +126,8 @@ export function wizardView({me,id}){
   const draw=kind=>{
    const v=row.values||src;
    row.replaceChildren(...[el('legend',{},t('Zdroj')),
-    segmented({label:t('Odkud'),value:kind,name:'kind',options:[{id:'local',label:t('Tento hub')},{id:'ssh',label:t('Jiný stroj (SSH)')}],onchange:k=>{row.values=collect();draw(k);}}),
-    kind==='ssh'?el('div',{class:'bk-row'},field(t('Stroj'),input('host',v.host,{required:'',list:'bk-hosts',placeholder:'mini.example.lan'})),field(t('Port SSH'),input('port',v.port??22,{inputmode:'numeric',class:'bk-short'})),field(t('Uživatel'),input('user',v.user,{required:'',placeholder:'alice'}))):null,
+    segmented({label:t('Odkud'),value:kind,name:'kind',options:[{id:'local',label:t('Tento hub')},{id:'ssh',label:t('Jiné zařízení (SSH)')}],onchange:k=>{row.values=collect();draw(k);}}),
+    kind==='ssh'?el('div',{class:'bk-row'},field(t('Zařízení'),input('host',v.host,{required:'',list:'bk-hosts',placeholder:'mini.example.lan'})),field(t('Port SSH'),input('port',v.port??22,{inputmode:'numeric',class:'bk-short'})),field(t('Uživatel'),input('user',v.user,{required:'',placeholder:'alice'}))):null,
     el('div',{class:'bk-row'},field(t('Cesta'),input('path',v.path,{required:'',placeholder:kind==='ssh'?'/Users/alice/Projects':'~/Documents'}),kind==='ssh'?t('Absolutní cesta k adresáři, bez mezer.'):t('Absolutní cesta, nebo začíná ~/ (domov uživatele, pod kterým hub běží).')),
      field(t('Složka ve snímku'),input('name',v.name,{pattern:'[a-z0-9][a-z0-9._\\-]{0,39}',placeholder:t('podle cesty')}))),
     el('button',{type:'button',class:'ui-button small quiet bk-remove',onclick:()=>{row.remove();rows.changed?.();}},t('Odebrat zdroj'))].filter(Boolean));
@@ -146,11 +146,11 @@ export function wizardView({me,id}){
   const form=el('form',{class:'bk-form',onsubmit:e=>{e.preventDefault();busy(form,async()=>{
    await saveSources();
    const pending=job().sources.filter(x=>x.kind==='ssh'&&!x.hostKey);
-   if(pending.length){toast(t('Uloženo. U zdrojů na jiných strojích ještě potvrď jejich klíč.'));draw();return;}
+   if(pending.length){toast(t('Uloženo. U zdrojů na jiných zařízeních ještě potvrď jejich klíč.'));draw();return;}
    go(4);});}},
-   el('p',{class:'bk-lead'},t('Co zálohovat: adresáře na tomhle hubu a/nebo na jiných strojích. Každý zdroj má ve snímku svou složku. Zdroj na jiném stroji hub nejdřív zrcadlí k sobě (do pracovní kopie), pak ho pošle na cíl; na tom stroji musí být stejný veřejný klíč úlohy.')),
+   el('p',{class:'bk-lead'},t('Co zálohovat: adresáře na tomhle hubu a/nebo na jiných zařízeních. Každý zdroj má ve snímku svou složku. Zdroj na jiném zařízení hub nejdřív zrcadlí k sobě (do pracovní kopie), pak ho pošle na cíl; na tom zařízení musí být stejný veřejný klíč úlohy.')),
    el('p',{class:'bk-note'},t('Klíče záloh, adresář private/ hubu a stav záloh (včetně pracovních kopií) se ze zdroje na tomhle hubu vždy vynechají; zdroj uvnitř klíčů nebo stavu záloh hub odmítne.')),
-   el('p',{class:'bk-note'},t('Na zdroji na jiném stroji dává klíč úlohy shell, stejně jako na cíli. Kdo chce víc omezení, může před klíč v authorized_keys toho stroje dát command="rrsync -ro <cesta>": zálohy poběží, jen test spojení v průvodci ohlásí chybějící shell.')),
+   el('p',{class:'bk-note'},t('Na zdroji na jiném zařízení dává klíč úlohy shell, stejně jako na cíli. Kdo chce víc omezení, může před klíč v authorized_keys toho zařízení dát command="rrsync -ro <cesta>": zálohy poběží, jen test spojení v průvodci ohlásí chybějící shell.')),
    rows,el('button',{type:'button',class:'ui-button small',onclick:()=>rows.append(sourceRow({kind:'local'},rows))},t('+ Přidat zdroj')),
    datalist('bk-hosts',s.suggestions),
    j.sources.length?el('div',{},el('h3',{class:'bk-h3'},t('Ověření zdrojů')),el('p',{class:'bk-note'},t('Ověřuje uložené zdroje. Po změně je nejdřív ulož.')),checks):null,

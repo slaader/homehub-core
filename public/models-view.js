@@ -13,7 +13,7 @@ import {usageCharts,seriesName} from './models-charts.js';
 const RANGES=['24h','7d','30d'];
 const KINDS=['llm','embedding','image','video','music','audio','other'];
 const KIND_LABEL={llm:'LLM',embedding:'embedding',image:'difúze · obraz',video:'difúze · video',music:'hudba',audio:'zvuk a řeč',other:'ostatní'};
-const DIMS=[['model','Model'],['device','Stroj'],['client','Klient'],['kind','Druh požadavku']];
+const DIMS=[['model','Model'],['device','Zařízení'],['client','Klient'],['kind','Druh požadavku']];
 const REFRESH_MS=30000;
 let stylesheet=false;
 
@@ -75,13 +75,13 @@ function stat(label,value,note){return el('div',{class:'md-stat'},el('span',{cla
 function strip(o){
  const r=o.runtimes,tokens=(o.inputTokens||0)+(o.outputTokens||0);
  return el('section',{class:'md-strip','aria-label':t('Přehled')},
-  stat(t('Stroje s runtimy'),String(o.devices)),
+  stat(t('Zařízení s runtimy'),String(o.devices)),
   stat(t('Runtimy'),[String(r.up),el('small',{},` / ${r.total}`)],r.down||r.unknown?[r.down?t('{n} zastavené',{n:r.down}):null,r.down&&r.unknown?' · ':null,r.unknown?t('{n} bez čerstvých dat',{n:r.unknown}):null]:t('všechny běží')),
   stat(t('Načtené modely'),[String(o.models.loaded),el('small',{},` / ${o.models.total}`)],Object.entries(o.models.byKind||{}).map(([k,n])=>`${kindLabel(k)} ${n}`).join(' · ')||null),
   stat(t('Požadavky · {range}',{range:o.range}),short(o.requests),o.requests?t('{n} přiřazených klientům',{n:short(o.attributed)}):t('žádná historie')),
   stat(t('Tokeny · {range}',{range:o.range}),short(tokens),tokens?t('vstup {in} · výstup {out}',{in:short(o.inputTokens),out:short(o.outputTokens)}):null),
   stat(t('Medián tok/s'),o.medianTps==null?'—':num(o.medianTps),o.medianTps==null?t('není z čeho počítat'):t('generování, {range}',{range:o.range})),
-  o.memory.length?el('div',{class:'md-stat md-mem'},el('span',{class:'md-stat-label'},t('Paměť modelů na strojích')),
+  o.memory.length?el('div',{class:'md-stat md-mem'},el('span',{class:'md-stat-label'},t('Paměť modelů na zařízeních')),
    ...o.memory.map(m=>el('div',{class:'md-mem-row'},el('b',{},m.name),svgBar(m.residentGb||0,m.ramGb||Math.max(...m.pools.map(p=>p.capacityGb||0),m.residentGb||0,1)),
     el('span',{},m.ramGb?t('{used} z {total} GB',{used:num(m.residentGb),total:num(m.ramGb)}):gb(m.residentGb)),
     m.pools.length?el('span',{class:'md-pools'},m.pools.map(p=>`${p.name} ${p.basis==='budget'?t('rozpočet'):t('drží')} ${p.usedGb==null?'?':num(p.usedGb)}/${p.capacityGb==null?'?':num(p.capacityGb)} GB`).join(' · ')):null))):null);
@@ -122,19 +122,19 @@ function modelsTable(data,{filter,sort,query,onSort}){
   const one=g.placements.length===1?g.placements[0]:null;
   rows.push(el('tr',{},
    modelCell(g.name),el('td',{},kindTag(g.kind)),
-   el('td',{},one?where(one):tp(g.devices.length,'{n} stroj|{n} stroje|{n} strojů')+' · '+tp(g.placements.length,'{n} umístění|{n} umístění|{n} umístění')),
+   el('td',{},one?where(one):tp(g.devices.length,'{n} zařízení|{n} zařízení|{n} zařízení')+' · '+tp(g.placements.length,'{n} umístění|{n} umístění|{n} umístění')),
    el('td',{class:'md-state'},stateTag(g.state,g)),el('td',{class:'num'},gb(g.sizeGb)),el('td',{class:'num md-hide-narrow'},ctxLen(g.contextTokens)),
    el('td',{class:'num md-hide-narrow'},ttl(g.ttlRemainingSeconds)),el('td',{class:'md-hide-narrow',title:at(g.lastRequestAt)||null},ago(g.lastRequestAt)),el('td',{class:'num'},g.requests?short(g.requests):'—')));
   if(!one)for(const p of g.placements)rows.push(el('tr',{class:'md-sub'},modelCell(p.id),el('td',{},p.engine||''),el('td',{},where(p)),el('td',{class:'md-state'},stateTag(p.state,p)),
    el('td',{class:'num'},gb(p.sizeGb)),el('td',{class:'num md-hide-narrow'},ctxLen(p.contextTokens)),el('td',{class:'num md-hide-narrow'},ttl(p.ttlRemainingSeconds)),el('td',{class:'md-hide-narrow',title:at(p.lastRequestAt)||null},ago(p.lastRequestAt)),el('td',{class:'num'},p.requests?short(p.requests):'—')));
  }
  const select=(name,label,options,value)=>el('select',{'aria-label':label,'data-q':name,onchange:e=>query.set(name,e.target.value)},el('option',{value:''},label),...options.map(([v,l])=>{const o=el('option',{value:v},l);if(v===value)o.selected=true;return o;}));
- const search=el('input',{type:'search',placeholder:t('Hledat model, runtime, stroj…'),'aria-label':t('Hledat model'),value:query.text||'',oninput:e=>query.set('text',e.target.value,{soft:true})});
+ const search=el('input',{type:'search',placeholder:t('Hledat model, runtime, zařízení…'),'aria-label':t('Hledat model'),value:query.text||'',oninput:e=>query.set('text',e.target.value,{soft:true})});
  return [el('div',{class:'md-filters'},search,
    select('kind',t('Všechny druhy'),kinds.map(k=>[k,kindLabel(k)]),query.kind),
-   select('device',t('Všechny stroje'),devices.map(m=>[m,data.devices.find(x=>x.device===m)?.name||m]),query.device),
+   select('device',t('Všechna zařízení'),devices.map(m=>[m,data.devices.find(x=>x.device===m)?.name||m]),query.device),
    select('state',t('Načtené i nenačtené'),[['loaded',t('Jen načtené')]],query.state)),
-  groups.length?el('div',{class:'md-table-wrap'},el('table',{class:'md-table'},el('thead',{},el('tr',{},head('name',t('Model')),head('kind',t('Druh')),head('device',t('Stroj · runtime')),head('state',t('Stav')),
+  groups.length?el('div',{class:'md-table-wrap'},el('table',{class:'md-table'},el('thead',{},el('tr',{},head('name',t('Model')),head('kind',t('Druh')),head('device',t('Zařízení · runtime')),head('state',t('Stav')),
    head('size',t('Velikost'),'num'),head('context',t('Kontext'),'num md-hide-narrow'),head('ttl',t('TTL zbývá'),'num md-hide-narrow'),head('last',t('Poslední požadavek'),'md-hide-narrow'),head('requests',t('Požadavky'),'num'))),el('tbody',{},rows)))
    :emptyState({compact:true,icon:'search',title:t('Žádný model neodpovídá filtru'),body:t('Zruš filtr nebo hledání.')})];
 }
@@ -143,14 +143,14 @@ function clientsTable(data,filter){
  const rows=data.clients.filter(c=>clientMatches(c,filter,data.models));
  const name=id=>data.devices.find(m=>m.device===id)?.name||id;
  const from=c=>c.clientDevice?[el('b',{},name(c.clientDevice)),c.via.includes('address')?el('span',{class:'md-alias'},t('podle adresy')):null]
-  :[el('span',{class:'md-dim'},t('stroj neznámý')),c.via.includes('loopback')?el('span',{class:'md-alias'},t('loopback: tento stroj nebo SSH tunel')):null];
+  :[el('span',{class:'md-dim'},t('zařízení neznámé')),c.via.includes('loopback')?el('span',{class:'md-alias'},t('loopback: toto zařízení nebo SSH tunel')):null];
  if(!data.clients.length)return [emptyState({compact:true,icon:'users',title:t('Žádné požadavky v tomto rozsahu'),body:t('Klienti se objeví, jakmile poskytovatel runtimů předá historii požadavků (runtimes.requests).')})];
  return [el('div',{class:'md-table-wrap'},el('table',{class:'md-table'},
   el('thead',{},el('tr',{},el('th',{scope:'col'},t('Klient')),el('th',{scope:'col'},t('Odkud')),el('th',{scope:'col'},t('Kam')),el('th',{scope:'col',class:'num'},t('Požadavky')),el('th',{scope:'col',class:'num md-hide-narrow'},t('Tokeny')),el('th',{scope:'col',class:'md-hide-narrow'},t('Naposledy')))),
   el('tbody',{},rows.map(c=>el('tr',{},el('td',{},c.attributed?el('b',{},c.client):el('span',{class:'md-dim'},t('Nepřiřazeno'))),el('td',{},from(c)),
-   el('td',{},c.targets.map(tg=>el('div',{},`${tg.runtime} @ ${name(tg.device)}`,c.clientDevice&&tg.device!==c.clientDevice?[' ',statusPill(t('mezi stroji'),'accent')]:null,el('span',{class:'md-alias'},tg.models.map(m=>`${m.model} ×${m.requests}`).join(', '))))),
+   el('td',{},c.targets.map(tg=>el('div',{},`${tg.runtime} @ ${name(tg.device)}`,c.clientDevice&&tg.device!==c.clientDevice?[' ',statusPill(t('mezi zařízeními'),'accent')]:null,el('span',{class:'md-alias'},tg.models.map(m=>`${m.model} ×${m.requests}`).join(', '))))),
    el('td',{class:'num'},short(c.requests)),el('td',{class:'num md-hide-narrow'},short(c.inputTokens+c.outputTokens)),el('td',{class:'md-hide-narrow',title:at(c.lastAt)||null},ago(c.lastAt))))))),
-  el('p',{class:'md-note'},t('Klienta pozná poskytovatel historie, pokud ho umí určit (u llama-swap podle User-Agent v jeho přístupovém logu). Stroj klienta je známý jen tam, kde to data říkají: llama-swap na loopbacku vidí všechny požadavky z 127.0.0.1, včetně těch, které přišly SSH tunelem z jiného stroje.'))];
+  el('p',{class:'md-note'},t('Klienta pozná poskytovatel historie, pokud ho umí určit (u llama-swap podle User-Agent v jeho přístupovém logu). Zařízení klienta je známé jen tam, kde to data říkají: llama-swap na loopbacku vidí všechny požadavky z 127.0.0.1, včetně těch, které přišly SSH tunelem z jiného zařízení.'))];
 }
 
 function topTable(h,dim){
@@ -169,16 +169,16 @@ function knownList(known){
 
 function emptyPage(known){
  return el('div',{class:'md-page'},emptyState({icon:'flow',title:t('Zatím žádné runtimy modelů'),
-  body:t('Tahle stránka ukazuje lokální LLM, embeddingové a difúzní modely (obraz, video, hudba, zvuk) na všech strojích: co je kde načtené, kolik paměti drží, kdo je odkud volá a jak je to zapojené. Data dodávají poskytovatelé runtimů; žádný tu zatím není.'),
-  steps:[t('Přidej runtimy do site.json → runtimes (llama-swap, Ollama, LM Studio, vLLM, oMLX…), hub je pak čte přímo.'),t('Nebo je zapoj na stránce Integrace, nebo pluginem, který poskytuje home.runtimes a runtimes.requests (docs/plugins.md).'),t('Nebo připoj agenta přes MCP: runtime_publish zapíše stack stroje a models_overview ukáže, co hub vidí.')],
-  agentPrompt:t('Připoj lokální LLM runtimy k Home Hubu: zjisti, které runtimy (llama-swap, Ollama, LM Studio, vLLM, oMLX, mlx-serve) běží na strojích z device_list, a zapiš je do site.json → runtimes nebo zveřejni stack přes runtime_publish. Potom ověř models_overview.'),
+  body:t('Tahle stránka ukazuje lokální LLM, embeddingové a difúzní modely (obraz, video, hudba, zvuk) na všech zařízeních: co je kde načtené, kolik paměti drží, kdo je odkud volá a jak je to zapojené. Data dodávají poskytovatelé runtimů; žádný tu zatím není.'),
+  steps:[t('Přidej runtimy do site.json → runtimes (llama-swap, Ollama, LM Studio, vLLM, oMLX…), hub je pak čte přímo.'),t('Nebo je zapoj na stránce Integrace, nebo pluginem, který poskytuje home.runtimes a runtimes.requests (docs/plugins.md).'),t('Nebo připoj agenta přes MCP: runtime_publish zapíše stack zařízení a models_overview ukáže, co hub vidí.')],
+  agentPrompt:t('Připoj lokální LLM runtimy k Home Hubu: zjisti, které runtimy (llama-swap, Ollama, LM Studio, vLLM, oMLX, mlx-serve) běží na zařízeních z device_list, a zapiš je do site.json → runtimes nebo zveřejni stack přes runtime_publish. Potom ověř models_overview.'),
   mcpSnippet:true}),
-  known.length?panel(t('Známé ze stacku'),t('Nástroje, které popisuje stack strojů (site.json nebo runtime_publish). Hub k nim nemá živá data.'),knownList(known)):null);
+  known.length?panel(t('Známé ze stacku'),t('Nástroje, které popisuje stack zařízení (site.json nebo runtime_publish). Hub k nim nemá živá data.'),knownList(known)):null);
 }
 
 export function modelsPage(){
  if(!stylesheet){document.head.append(el('link',{rel:'stylesheet',href:'/models.css'}));stylesheet=true;}
- const header=pageHeader({eyebrow:t('Lokální AI'),title:t('LLM a difúze'),lead:t('Lokální jazykové a generativní modely na všech strojích: co je načtené, paměť, provoz a kdo je odkud volá.')});
+ const header=pageHeader({eyebrow:t('Lokální AI'),title:t('LLM a difúze'),lead:t('Lokální jazykové a generativní modely na všech zařízeních: co je načtené, paměť, provoz a kdo je odkud volá.')});
  const body=el('div',{},loadingState(t('Načítám modely…')));
  const root=el('div',{class:'md-page'},header,body);
  const state={range:'24h',dim:'model',filter:null,sort:{key:'state',dir:'desc'},query:{text:'',kind:'',device:'',state:''},data:null,history:null};
@@ -219,14 +219,14 @@ export function modelsPage(){
    parts.strip=el('div',{});parts.work=el('div',{});parts.banners=el('div',{});parts.models=el('div',{class:'md-stack'});parts.clients=el('div',{});parts.usage=el('div',{});parts.known=el('div',{});parts.filter=el('div',{class:'md-filterbox'});
    parts.stamp=el('span',{class:'md-stamp'});
    const legend=el('div',{class:'md-legend'},...KINDS.map(k=>el('span',{},el('i',{class:`md-key k-${k}`,'aria-hidden':'true'}),kindLabel(k))),
-    el('span',{},el('i',{class:'md-key line k-flow','aria-hidden':'true'}),t('provoz (šířka = požadavky)')),el('span',{},el('i',{class:'md-key dash','aria-hidden':'true'}),t('mezi stroji')),el('span',{},el('i',{class:'md-key line faint','aria-hidden':'true'}),t('bez provozu')));
+    el('span',{},el('i',{class:'md-key line k-flow','aria-hidden':'true'}),t('provoz (šířka = požadavky)')),el('span',{},el('i',{class:'md-key dash','aria-hidden':'true'}),t('mezi zařízeními')),el('span',{},el('i',{class:'md-key line faint','aria-hidden':'true'}),t('bez provozu')));
    body.replaceChildren(el('div',{class:'md-page'},
     el('div',{class:'md-toolbar'},segmented({label:t('Rozsah'),value:state.range,options:RANGES.map(id=>({id,label:id})),onchange:id=>{state.range=id;load();}}),parts.filter,el('span',{class:'md-grow'}),parts.stamp),
     parts.banners,parts.work,parts.strip,
-    panel(t('Zapojení'),t('Klienti vlevo podle stroje, na kterém běží; uprostřed vstupní brána a enginy; vpravo modely. Pohyb ukazuje provoz posledních 15 minut.'),graph.node,legend),
-    panel(t('Modely'),t('Všechny modely, které runtimy hlásí. Jeden model na více strojích je jeden řádek s umístěními pod ním.'),parts.models),
+    panel(t('Zapojení'),t('Klienti vlevo podle zařízení, na kterém běží; uprostřed vstupní brána a enginy; vpravo modely. Pohyb ukazuje provoz posledních 15 minut.'),graph.node,legend),
+    panel(t('Modely'),t('Všechny modely, které runtimy hlásí. Jeden model na více zařízeních je jeden řádek s umístěními pod ním.'),parts.models),
     panel(t('Využití a historie'),null,parts.usage),
-    panel(t('Klienti: odkud se pracuje'),t('Který klient z kterého stroje posílal požadavky na který runtime.'),parts.clients),
+    panel(t('Klienti: odkud se pracuje'),t('Který klient z kterého zařízení posílal požadavky na který runtime.'),parts.clients),
     parts.known));
    built=true;
   }
@@ -241,7 +241,7 @@ export function modelsPage(){
   graph.update(d.graph,{selected:graph.selected()});
   if(state.filter&&!d.models.some(g=>groupMatches(g,state.filter,d.clients))&&!d.clients.some(c=>clientMatches(c,state.filter,d.models)))state.filter=null;
   drawFiltered();drawUsage();
-  parts.known.replaceChildren(...(d.known.some(k=>k.role==='runtime')?[panel(t('Známé ze stacku, bez živých statistik'),t('Generativní a jiné nástroje, které popisuje stack strojů (site.json nebo runtime_publish), ale žádný poskytovatel je nehlásí.'),knownList(d.known))]:[]));
+  parts.known.replaceChildren(...(d.known.some(k=>k.role==='runtime')?[panel(t('Známé ze stacku, bez živých statistik'),t('Generativní a jiné nástroje, které popisuje stack zařízení (site.json nebo runtime_publish), ale žádný poskytovatel je nehlásí.'),knownList(d.known))]:[]));
  }
  load();
  timer=setInterval(()=>{if(!document.hidden)load({quiet:true});},REFRESH_MS);

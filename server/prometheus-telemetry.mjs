@@ -43,7 +43,7 @@ export const promLabel=r=>`${r.instance} (${r.job}) · ${r.scheme}://${r.host}:$
 export const PROMETHEUS_ERRORS=Object.freeze({
  refused:'Na tom portu nic nepřijímá spojení. Běží Prometheus a je jeho port (výchozí 9090; v Dockeru zveřejněný port kontejneru) dostupný z adresy Home Hubu?',
  unresolved:'Jméno hostitele se ze serveru s Home Hubem nedá přeložit. Zadej IP adresu nebo jméno, které zná tvoje DNS (jméno kontejneru Dockeru zvenku nefunguje).',
- timeout:'Prometheus neodpověděl včas. Stroj může spát nebo být mimo síť, nebo port blokuje firewall.',
+ timeout:'Prometheus neodpověděl včas. Zařízení může spát nebo být mimo síť, nebo port blokuje firewall.',
  unreachable:'Server s Prometheem není v síti k zastižení.',
  'tls-untrusted':'Certifikát Promethea neověřila žádná autorita, které Home Hub věří. Použij připnutí otisku certifikátu.',
  'tls-hostname':'Certifikát Promethea nepatří k tomuhle jménu hostitele. Zadej jméno z certifikátu, nebo použij připnutí otisku.',
@@ -60,9 +60,9 @@ export const PROMETHEUS_ERRORS=Object.freeze({
  'prom-error':'Prometheus dotaz odmítl. Je to Prometheus 2.x nebo novější?',
  'no-targets':'Prometheus nemá žádný cíl s metrikami Node Exporteru (node_uname_info). Na Linuxu spusť Node Exporter a přidej ho do scrape_configs Promethea (návod v nastavení spojení), pak načti cíle znovu.',
  'target-missing':'Vybraný cíl (job a instance) už Prometheus nemá. Načti cíle znovu a vyber ho.',
- 'target-down':'Prometheus vybraný cíl nedokáže sesbírat (up = 0). Běží na stroji Node Exporter a dosáhne na něj Prometheus?',
+ 'target-down':'Prometheus vybraný cíl nedokáže sesbírat (up = 0). Běží na zařízení Node Exporter a dosáhne na něj Prometheus?',
  stale:'Prometheus z vybraného cíle poslední dvě minuty nic nesesbíral. Data starší než dvě minuty Home Hub neukazuje jako aktuální.',
- ambiguous:'Pod tímhle jobem a instancí má Prometheus víc strojů (víc řad node_uname_info). Home Hub je nesčítá; uprav relabeling, aby měl každý stroj vlastní instanci.',
+ ambiguous:'Pod tímhle jobem a instancí má Prometheus víc zařízení (víc řad node_uname_info). Home Hub je nesčítá; uprav relabeling, aby mělo každé zařízení vlastní instanci.',
  'no-metrics':'Cíl je v Prometheu, ale bez metrik CPU a paměti Node Exporteru. Jsou vypnuté výchozí kolektory cpu a meminfo?',
  'plain-http':'Na tomhle portu běží HTTPS. Zvol HTTPS a ověř certifikát.',
  busy:'Právě běží jiné zkoušky spojení. Zkus to za chvíli.',unavailable:'Telemetrie Linuxu teď neodpovídá.'});

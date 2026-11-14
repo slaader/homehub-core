@@ -123,7 +123,7 @@ const partOf=input=>{const part=input?.part,index=input?.index??0;if(!['target',
 const JOB_WORD={ok:'v pořádku',warning:'s varováním',failed:'selhala',cancelled:'zrušená',interrupted:'přerušená',running:'běží',ready:'připravená',draft:'rozpracovaná',off:'vypnutá'};
 async function backupFacet(b,hub,devices){
  const report={id:'backups',title:'Zálohy',icon:'archive',order:20,page:'backup-jobs',how:HOW.backups,prompt:PROMPTS.backups,
-  howTo:'Žádná úloha záloh na tenhle stroj neukládá ani ho nezálohuje. Založ ji na stránce Zálohování.',devices:{}};
+  howTo:'Žádná úloha záloh na tohle zařízení neukládá ani ho nezálohuje. Založ ji na stránce Zálohování.',devices:{}};
  if(!hub.integrationEnabled(BACKUP_INTEGRATION))return {...report,off:true};
  let jobs=[];try{jobs=b.jobs();}catch{return report;}
  const local=hub.site.devices.find(m=>m.ssh?.alias==='local')?.id||deviceForHost(devices,os.hostname())?.id||null;
@@ -264,7 +264,7 @@ export default {
     catch(e){return reply(c,e);}}},
  ],
  integrations:[{id:BACKUP_INTEGRATION,title:'Zálohování',kind:'storage',
-  description:'Zálohy, které hub spouští sám: rsync přes SSH na cílový stroj (NAS, server), jeden snímek na běh. Vypnuté: plánovač nic nespustí, nic se nedohání a zálohu nejde spustit ručně; úlohy i snímky zůstanou.',
+  description:'Zálohy, které hub spouští sám: rsync přes SSH na cílové zařízení (NAS, server), jeden snímek na běh. Vypnuté: plánovač nic nespustí, nic se nedohání a zálohu nejde spustit ručně; úlohy i snímky zůstanou.',
   howTo:'Založ úlohu v průvodci na stránce Zálohování.',page:'backup-jobs',docs:'docs/API.md → Backup jobs',
   status:(b,hub,opts)=>integrationStatus(b,hub,opts)}],
  mcpInstructions:'Backups the hub runs itself: backup_jobs_list returns each job with its state, last run, next run and snapshot count. Jobs are set up by an administrator in the web UI.',
@@ -273,7 +273,7 @@ export default {
   inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,openWorldHint:false},
   run:async(args,{state})=>({timeZone:state.timeZone()||null,jobs:await Promise.all(state.jobs().map(j=>summary(state,j)))})}],
  apiDocs:[{title:'Zálohování',routes:[
-  ['GET','/api/backup-jobs','read','Úlohy záloh se stavem, posledním a příštím během, velikostí a počtem snímků; návrhy strojů pro průvodce.'],
+  ['GET','/api/backup-jobs','read','Úlohy záloh se stavem, posledním a příštím během, velikostí a počtem snímků; návrhy zařízení pro průvodce.'],
   ['GET','/api/backup-jobs/detail?id=…','read','Jedna úloha: nastavení, veřejný klíč a řádek do authorized_keys, běhy a snímky na cíli.'],
   ['GET','/api/backup-jobs/log?id=…&run=…','read','Záznam jednoho běhu (text, omezená velikost).'],
   ['POST','/api/backup-jobs/create','admin','{name}: nová rozpracovaná úloha s vlastním klíčem ed25519.'],

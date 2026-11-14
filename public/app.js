@@ -47,7 +47,7 @@ function login(message=''){
   el('div',{class:'hh-login-card'},
    el('div',{class:'hh-mark'},orb(),'Home Hub'),
    site().name?el('p',{class:'hh-login-site'},site().name):null,
-   el('p',{class:'hh-dim'},t('Stroje, služby a lokální AI na jednom místě.')),
+   el('p',{class:'hh-dim'},t('Zařízení, služby a lokální AI na jednom místě.')),
    el('form',{onsubmit:async event=>{event.preventDefault();const form=event.currentTarget;const button=form.querySelector('button');button.disabled=true;alert.textContent='';
      try{const response=await fetch('/api/session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:form.username.value,password:form.password.value})});
       const result=await response.json().catch(()=>({}));if(!response.ok){alert.textContent=t(result.error?.message)||t('Přihlášení selhalo.');return;}await start();}

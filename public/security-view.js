@@ -132,13 +132,13 @@ function keysTable(doc,m,now){
     el('div',{class:'col-dim col-mono',title:k.fingerprint},`${typeText(k)} · ${k.fingerprint.slice(7,19)}… · ${ageText(h.ageDays)}`),encBadge(k),strengthBadge(h),ageBadge(h)),
    cell(t('Kde leží'),el('div',{class:'col-lines'},k.copies.map(c=>el('div',{},el('b',{},m.mName(c.device)),c.backup?badge(t('záloha'),'warn'):null,
     el('span',{class:'col-dim col-path',title:c.path},m.tilde(c.device,c.owner,c.path)),el('span',{class:'col-dim'},`${c.owner} · ${c.mode} · ${day(c.mtime)}`))))),
-   cell(t('Vlastník · sudo na tom stroji'),el('div',{class:'col-lines'},owners.map(c=>el('div',{},el('span',{class:'col-user'},c.owner),t('na'),m.mName(c.device),sudoBadge(m.account(c.device,c.owner)?.sudo))))),
-   cell(t('Co odemyká (stroj · IP · účet · sudo tam)'),k.access.length?el('div',{class:'col-lines'},k.access.map(a=>accessLine(a,m))):el('span',{class:'col-dim'},t('Nikam nevede – nenašel jsem ho v žádném authorized_keys ani ve Forgejo.'))),
+   cell(t('Vlastník · sudo na tom zařízení'),el('div',{class:'col-lines'},owners.map(c=>el('div',{},el('span',{class:'col-user'},c.owner),t('na'),m.mName(c.device),sudoBadge(m.account(c.device,c.owner)?.sudo))))),
+   cell(t('Co odemyká (zařízení · IP · účet · sudo tam)'),k.access.length?el('div',{class:'col-lines'},k.access.map(a=>accessLine(a,m))):el('span',{class:'col-dim'},t('Nikam nevede – nenašel jsem ho v žádném authorized_keys ani ve Forgejo.'))),
    cell(t('Použití v ~/.ssh/config'),k.routes.length?el('div',{class:'col-lines'},k.routes.map(r=>el('div',{title:`${r.hostname}:${r.port}${r.proxyJump?' '+t('přes {jump}',{jump:r.proxyJump}):''}`},
      el('code',{class:'col-mono'},`ssh ${r.alias}`),r.accepted===false?badge(t('cíl ho nepřijímá'),'warn'):r.alsoGit?badge(t('i git'),'',t('Stejný Host blok vybírá klíč i pro git na Forgejo (:2222).')):null))):el('span',{class:'col-dim'},'—')));
  });
  return el('section',{class:'col-card'},el('div',{class:'col-scroll'},el('table',{class:'col-table'},
-  el('thead',{},el('tr',{},...[t('Klíč'),t('Kde leží'),t('Vlastník · sudo na tom stroji'),t('Co odemyká (stroj · IP · účet · sudo tam)'),t('Použití v ~/.ssh/config')].map(h=>el('th',{scope:'col'},h)))),
+  el('thead',{},el('tr',{},...[t('Klíč'),t('Kde leží'),t('Vlastník · sudo na tom zařízení'),t('Co odemyká (zařízení · IP · účet · sudo tam)'),t('Použití v ~/.ssh/config')].map(h=>el('th',{scope:'col'},h)))),
   el('tbody',{},rows))));
 }
 
@@ -171,10 +171,10 @@ function accounts(doc,m){
 
 function otherKeys(doc,m){
  if(!doc.otherKeys.length)return el('p',{class:'col-empty'},t('Žádné jiné privátní klíče sonda nenašla.'));
- const rows=doc.otherKeys.map(o=>el('tr',{},cell(t('Účel'),t(o.label),o.backup?badge(t('záloha'),'warn'):null),cell(t('Stroj'),el('b',{},m.mName(o.device)),' ',el('span',{class:'col-dim'},m.mIp(o.device))),
+ const rows=doc.otherKeys.map(o=>el('tr',{},cell(t('Účel'),t(o.label),o.backup?badge(t('záloha'),'warn'):null),cell(t('Zařízení'),el('b',{},m.mName(o.device)),' ',el('span',{class:'col-dim'},m.mIp(o.device))),
   cell(t('Cesta'),el('span',{class:'col-dim col-path',title:o.path},m.tilde(o.device,o.owner,o.path))),cell(t('Vlastník · práva'),`${o.owner} · ${o.mode}`),cell(t('Typ'),el('span',{class:'col-dim'},[o.type,o.bits].filter(Boolean).join(' ')||'—'))));
  return el('div',{class:'col-watch'},el('p',{class:'col-lead'},t('Privátní klíče, které nejsou klientské SSH klíče: HTTPS certifikáty, klíče SSH serverů, podpisové klíče a identita aplikací.')),
-  el('section',{class:'col-card'},el('div',{class:'col-scroll'},el('table',{class:'col-table'},el('thead',{},el('tr',{},...[t('Účel'),t('Stroj'),t('Cesta'),t('Vlastník · práva'),t('Typ')].map(h=>el('th',{scope:'col'},h)))),el('tbody',{},rows)))));
+  el('section',{class:'col-card'},el('div',{class:'col-scroll'},el('table',{class:'col-table'},el('thead',{},el('tr',{},...[t('Účel'),t('Zařízení'),t('Cesta'),t('Vlastník · práva'),t('Typ')].map(h=>el('th',{scope:'col'},h)))),el('tbody',{},rows)))));
 }
 
 function render(box,doc,now=Date.now()){
@@ -185,43 +185,43 @@ function render(box,doc,now=Date.now()){
  const foreign=doc.unknownAuthorized.length+(doc.forgejo?.unknown?.length||0);
  const warn=doc.findings.filter(f=>f.level!=='info').length;
  const unprobed=doc.devices.filter(x=>x.sshOpen!==undefined&&x.note);
- const tabs=[['matrix',t('Matice klíčů')],['keys',t('Inventář klíčů')],['accounts',t('Účty na strojích')],['other',t('Ostatní klíče')]];
+ const tabs=[['matrix',t('Matice klíčů')],['keys',t('Inventář klíčů')],['accounts',t('Účty na zařízeních')],['other',t('Ostatní klíče')]];
  const content=el('div',{});
  const buttons=tabs.map(([id,label])=>[id,el('button',{type:'button',role:'tab',class:'col-chip',onclick:()=>{tab=id;paint();}},label)]);
  const nav=el('div',{class:'col-chips',role:'tablist','aria-label':t('Pohled')},buttons.map(([,b])=>b));
- const paint=()=>{fill(content,!doc.keys.length&&(tab==='matrix'||tab==='keys')?el('p',{class:'col-empty'},t('Sonda na prověřených strojích nenašla žádný SSH klíč.')):tab==='keys'?keysTable(doc,m,now):tab==='accounts'?accounts(doc,m):tab==='other'?otherKeys(doc,m):matrix(doc,m,now));
+ const paint=()=>{fill(content,!doc.keys.length&&(tab==='matrix'||tab==='keys')?el('p',{class:'col-empty'},t('Sonda na prověřených zařízeních nenašla žádný SSH klíč.')):tab==='keys'?keysTable(doc,m,now):tab==='accounts'?accounts(doc,m):tab==='other'?otherKeys(doc,m):matrix(doc,m,now));
   for(const [id,b] of buttons){b.classList.toggle('on',id===tab);b.setAttribute('aria-selected',String(id===tab));}};
  fill(box,
-  pageHeader({eyebrow:t('Bezpečnost'),title:t('SSH klíče'),lead:t('Kde leží každý privátní klíč, jakého je typu a stáří a kam se s ním dá přihlásit. Sběr posílá jen otisky a veřejné řádky; klíče samotné stroj neopouštějí.'),provenance:doc.provenance,
-   actions:[{label:t('Ochrana strojů'),href:'#hardening'}]}),
+  pageHeader({eyebrow:t('Bezpečnost'),title:t('SSH klíče'),lead:t('Kde leží každý privátní klíč, jakého je typu a stáří a kam se s ním dá přihlásit. Sběr posílá jen otisky a veřejné řádky; samotné klíče zařízení neopouštějí.'),provenance:doc.provenance,
+   actions:[{label:t('Ochrana zařízení'),href:'#hardening'}]}),
   freshnessBanner([{label:doc.collectedFrom?t('Snímek z {from}:',{from:doc.collectedFrom}):t('Snímek:'),...(doc.collector||{}),collectedAt:doc.collectedAt}]),
   el('div',{class:'col-stats'},
    stat(t('SSH klíčů'),doc.keys.length,t('{n} bez passphrase',{n:noPass.length}),noPass.length?'warn':''),
    stat(t('Klíčů = root'),rootKeys.length,t('otevírají účet se sudo bez hesla'),rootKeys.length?'bad':''),
    stat(t('Slabé a staré klíče'),weak+aging,t('{weak} slabý typ · {old} k výměně',{weak,old:aging}),weak?'bad':aging?'warn':''),
-   stat(t('Cizí povolené klíče'),foreign,t('privátní část není na žádném stroji'),foreign?'warn':''),
+   stat(t('Cizí povolené klíče'),foreign,t('privátní část není na žádném zařízení'),foreign?'warn':''),
    stat(t('Nálezy'),doc.findings.length,t('{warn} k řešení · {info} info',{warn,info:doc.findings.length-warn}),warn?'warn':'')),
   doc.findings.length?el('details',{class:'col-card',open:''},el('summary',{class:'col-sub'},el('span',{class:'col-name'},t('Nálezy')),' ',el('span',{class:'col-dim'},t('{warn} k řešení · {info} info',{warn,info:doc.findings.length-warn}))),
    el('ul',{class:'col-findings'},doc.findings.map(f=>el('li',{class:f.level},el('span',{class:'dot','aria-hidden':'true'}),el('div',{},el('div',{class:'col-name'},say(f.title,f.titleT)),f.detail?el('div',{class:'col-dim'},say(f.detail,f.detailT)):null))))):null,
   nav,content,
-  el('p',{class:'col-foot'},t('Klíče jsem neotevíral mimo jejich stroj: probe na každém stroji pošle jen otisk (SHA256), cestu, práva a veřejné řádky authorized_keys.'),
+  el('p',{class:'col-foot'},t('Klíče jsem neotevíral mimo jejich zařízení: probe na každém zařízení pošle jen otisk (SHA256), cestu, práva a veřejné řádky authorized_keys.'),
    ...unprobed.map(x=>` ${x.name}: ${t(x.note).replace(/\.?$/,'.')}`)));
  paint();
 }
 
 // --- not configured / no snapshot yet -----------------------------------------------------------------
 const setupSteps=()=>[
- t('V local/site.json dej každému stroji položku ssh s aliasem z ~/.ssh/config. Alias „local“ je stroj, na kterém sběr běží; „keys“: false stroj vynechá.'),
- t('Ověř, že „ssh <alias> true“ projde z tohoto stroje bez dotazu na heslo.'),
+ t('V local/site.json dej každému zařízení položku ssh s aliasem z ~/.ssh/config. Alias „local“ je zařízení, na kterém sběr běží; „keys“: false zařízení vynechá.'),
+ t('Ověř, že „ssh <alias> true“ projde z tohoto zařízení bez dotazu na heslo.'),
  t('Spusť sběr klíčů: {command}',{command:'node scripts/collect-security.mjs'}),
  t('Aby se snímek obnovoval sám: {mac} (macOS), nebo timer z {linux} (Linux).',{mac:'sh scripts/systems/install-launchd.sh --with-security',linux:'examples/systemd/'})];
 function setupState(collector){
  if(collector?.state==='waiting'){const n=collector.devices?.length||0;
   return emptyState({icon:'◔',title:t('Sběr klíčů je nastavený, ale ještě neproběhl'),
-   body:`${tp(n,'V konfiguraci je {n} stroj s aliasem ssh.|V konfiguraci jsou {n} stroje s aliasem ssh.|V konfiguraci je {n} strojů s aliasem ssh.')} ${t('Sběr jen čte: posílá otisky, cesty a veřejné řádky authorized_keys, nic na strojích nemění.')}`,
+   body:`${tp(n,'V konfiguraci je {n} zařízení s aliasem ssh.|V konfiguraci jsou {n} zařízení s aliasem ssh.|V konfiguraci je {n} zařízení s aliasem ssh.')} ${t('Sběr jen čte: posílá otisky, cesty a veřejné řádky authorized_keys, nic na zařízeních nemění.')}`,
    steps:setupSteps().slice(2)});}
  return notInstalled({title:t('Inventář SSH klíčů není nastavený'),
-  body:t('Tahle stránka ukazuje, kde leží privátní SSH klíče a kam se s nimi dá přihlásit. Čte to sběr po SSH, jen pro čtení, a zatím neví, které stroje má číst. Zbytek Home Hubu funguje dál.'),steps:setupSteps()});
+  body:t('Tahle stránka ukazuje, kde leží privátní SSH klíče a kam se s nimi dá přihlásit. Čte to sběr po SSH, jen pro čtení, a zatím neví, která zařízení má číst. Zbytek Home Hubu funguje dál.'),steps:setupSteps()});
 }
 
 export function securityView(){

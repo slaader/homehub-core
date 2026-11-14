@@ -1541,7 +1541,7 @@
      "core": true,
      "title": "Telemetrie Thermo",
      "kind": "telemetry",
-     "description": "Živé CPU, GPU, paměť, příkon, teploty a disky strojů z aplikace Thermo. Vypnutá: hub zavře spojení, nic nečte a přehled ukáže stroje bez telemetrie.",
+     "description": "Živé CPU, GPU, paměť, příkon, teploty a disky zařízení z aplikace Thermo. Vypnutá: hub zavře spojení, nic nečte a přehled ukáže zařízení bez telemetrie.",
      "howTo": "Na přehledu přidej zařízení s Thermo (Přidat zařízení), nebo zapiš hostitele do souboru private/thermo-hosts.json.",
      "page": "overview",
      "docs": "docs/plugins.md → Site configuration (thermoId)",
@@ -1570,7 +1570,7 @@
           "label": "60 s"
          }
         ],
-        "help": "Jak často hub čte Thermo na strojích.",
+        "help": "Jak často hub čte Thermo na zařízeních.",
         "placeholder": null
        }
       ],
@@ -1580,7 +1580,7 @@
      },
      "status": {
       "state": "not-configured",
-      "summary": "Žádný stroj nemá přihlášení k Thermo.",
+      "summary": "Žádné zařízení nemá přihlášení k Thermo.",
       "lastSuccessAt": null,
       "lastError": null,
       "configuredBy": [
@@ -1599,7 +1599,7 @@
      "core": true,
      "title": "Telemetrie Windows (SSH)",
      "kind": "telemetry",
-     "description": "CPU a jádra, GPU, paměť, disky a síť strojů s Windows, čtené přes SSH klíčem a pevným skriptem PowerShellu, který jen čte. Na Windows se nic neinstaluje. Vypnutá: hub se nepřipojuje a stroje s Windows jsou bez živých čísel.",
+     "description": "CPU a jádra, GPU, paměť, disky a síť zařízení s Windows, čtené přes SSH klíčem a pevným skriptem PowerShellu, který jen čte. Na Windows se nic neinstaluje. Vypnutá: hub se nepřipojuje a zařízení s Windows jsou bez živých čísel.",
      "howTo": "Na přehledu přidej zařízení (nebo uprav existující), zvol systém Windows a telemetrii Windows (SSH) a postupuj podle návodu v dialogu.",
      "page": "overview",
      "docs": "docs/API.md → Windows telemetry",
@@ -1609,7 +1609,7 @@
      "settings": null,
      "status": {
       "state": "not-configured",
-      "summary": "Žádný stroj s Windows není připojený.",
+      "summary": "Žádné zařízení s Windows není připojené.",
       "lastSuccessAt": null,
       "lastError": null,
       "configuredBy": [],
@@ -1621,10 +1621,10 @@
      "module": "home",
      "moduleTitle": "Overview",
      "core": true,
-     "title": "Dosah strojů (TCP)",
+     "title": "Dosah zařízení (TCP)",
      "kind": "other",
-     "description": "Zda stroje ze site.json odpovídají na síti: hub se na jejich porty (ve výchozím stavu 22) připojí TCP a zapíše, jestli některý odpověděl. Je to jiný údaj než „online“, ten se tím nemění. Vypnutá: hub se na stroje nepřipojuje a jejich dosah je neznámý.",
-     "howTo": "Nic nastavovat není potřeba. Stroj, který se kontrolovat nemá, označ v site.json jako \"reach\": false; porty změníš v \"reach\": {\"ports\": [22]}.",
+     "description": "Zda zařízení ze site.json odpovídají na síti: hub se na jejich porty (ve výchozím stavu 22) připojí TCP a zapíše, jestli některý odpověděl. Je to jiný údaj než „online“, ten se tím nemění. Vypnutá: hub se na zařízení nepřipojuje a jejich dosah je neznámý.",
+     "howTo": "Nic nastavovat není potřeba. Zařízení, které se kontrolovat nemá, označ v site.json jako \"reach\": false; porty změníš v \"reach\": {\"ports\": [22]}.",
      "page": "overview",
      "docs": "docs/API.md → Home: the overview",
      "toggle": true,
@@ -1633,10 +1633,10 @@
      "settings": null,
      "status": {
       "state": "stale",
-      "summary": "Na síti odpovídá 0 z 5 strojů.",
+      "summary": "Na síti odpovídá 0 z 5 zařízení.",
       "summaryT": [
        {
-        "key": "Na síti odpovídá {ok} z {total} strojů.",
+        "key": "Na síti odpovídá {ok} z {total} zařízení.",
         "params": {
          "ok": 0,
          "total": 5
@@ -1707,10 +1707,10 @@
      "settings": null,
      "status": {
       "state": "not-configured",
-      "summary": "Přes Windows (WinRM) není připojený žádný stroj.",
+      "summary": "Přes Windows (WinRM) není připojené žádné zařízení.",
       "summaryT": [
        {
-        "key": "Přes {name} není připojený žádný stroj.",
+        "key": "Přes {name} není připojené žádné zařízení.",
         "params": {
          "name": "Windows (WinRM)"
         }
@@ -1739,10 +1739,10 @@
      "settings": null,
      "status": {
       "state": "not-configured",
-      "summary": "Přes Linux (Node Exporter) není připojený žádný stroj.",
+      "summary": "Přes Linux (Node Exporter) není připojené žádné zařízení.",
       "summaryT": [
        {
-        "key": "Přes {name} není připojený žádný stroj.",
+        "key": "Přes {name} není připojené žádné zařízení.",
         "params": {
          "name": "Linux (Node Exporter)"
         }
@@ -1762,7 +1762,7 @@
      "title": "Telemetrie Linuxu (Prometheus)",
      "kind": "telemetry",
      "description": "Metriky Linuxu jednoho cíle node_exporter z existujícího Prometheu přes jeho API jen ke čtení. Vypnutá: hub se Promethea neptá.",
-     "howTo": "Na přehledu přidej nebo uprav zařízení, zvol systém Linux a Linux (Prometheus), načti cíle a vyber stroj.",
+     "howTo": "Na přehledu přidej nebo uprav zařízení, zvol systém Linux a Linux (Prometheus), načti cíle a vyber zařízení.",
      "page": "overview",
      "docs": "docs/API.md → Agent-less telemetry",
      "toggle": true,
@@ -1771,10 +1771,10 @@
      "settings": null,
      "status": {
       "state": "not-configured",
-      "summary": "Přes Linux (Prometheus) není připojený žádný stroj.",
+      "summary": "Přes Linux (Prometheus) není připojené žádné zařízení.",
       "summaryT": [
        {
-        "key": "Přes {name} není připojený žádný stroj.",
+        "key": "Přes {name} není připojené žádné zařízení.",
         "params": {
          "name": "Linux (Prometheus)"
         }
@@ -1803,10 +1803,10 @@
      "settings": null,
      "status": {
       "state": "not-configured",
-      "summary": "Přes Linux (SSH) není připojený žádný stroj.",
+      "summary": "Přes Linux (SSH) není připojené žádné zařízení.",
       "summaryT": [
        {
-        "key": "Přes {name} není připojený žádný stroj.",
+        "key": "Přes {name} není připojené žádné zařízení.",
         "params": {
          "name": "Linux (SSH)"
         }
@@ -1855,8 +1855,8 @@
      "core": true,
      "title": "Sběr verzí a ochrany (collect-systems)",
      "kind": "collector",
-     "description": "Verze systémů a softwaru, aktualizace a ochrana strojů ze snímku, který zapisuje scripts/collect-systems.mjs. Vypnutí jen skryje data v Home Hubu a hub přestane číst soubor se snímkem. Naplánovanou úlohu (launchd, systemd, cron) nezastaví: ta poběží dál.",
-     "howTo": "V local/site.json dej strojům ssh.alias a ssh.probe, spusť node scripts/collect-systems.mjs a naplánuj ho (sh scripts/systems/install-launchd.sh).",
+     "description": "Verze systémů a softwaru, aktualizace a ochrana zařízení ze snímku, který zapisuje scripts/collect-systems.mjs. Vypnutí jen skryje data v Home Hubu a hub přestane číst soubor se snímkem. Naplánovanou úlohu (launchd, systemd, cron) nezastaví: ta poběží dál.",
+     "howTo": "V local/site.json dej zařízením ssh.alias a ssh.probe, spusť node scripts/collect-systems.mjs a naplánuj ho (sh scripts/systems/install-launchd.sh).",
      "page": "versions",
      "docs": "docs/API.md → Collectors",
      "toggle": true,
@@ -1933,7 +1933,7 @@
      "title": "Inventář SSH klíčů (collect-security)",
      "kind": "collector",
      "description": "Kde leží privátní SSH klíče a kam se s nimi dá přihlásit, ze snímku, který zapisuje scripts/collect-security.mjs. Vypnutí jen skryje data v Home Hubu a hub přestane číst soubor se snímkem. Naplánovanou úlohu (launchd, systemd, cron) nezastaví: ta poběží dál.",
-     "howTo": "V local/site.json dej strojům ssh.alias, spusť node scripts/collect-security.mjs a naplánuj ho (install-launchd.sh --with-security).",
+     "howTo": "V local/site.json dej zařízením ssh.alias, spusť node scripts/collect-security.mjs a naplánuj ho (install-launchd.sh --with-security).",
      "page": "security",
      "docs": "docs/API.md → Collectors",
      "toggle": true,
@@ -2005,7 +2005,7 @@
      "core": true,
      "title": "Zálohování",
      "kind": "storage",
-     "description": "Zálohy, které hub spouští sám: rsync přes SSH na cílový stroj (NAS, server), jeden snímek na běh. Vypnuté: plánovač nic nespustí, nic se nedohání a zálohu nejde spustit ručně; úlohy i snímky zůstanou.",
+     "description": "Zálohy, které hub spouští sám: rsync přes SSH na cílové zařízení (NAS, server), jeden snímek na běh. Vypnuté: plánovač nic nespustí, nic se nedohání a zálohu nejde spustit ručně; úlohy i snímky zůstanou.",
      "howTo": "Založ úlohu v průvodci na stránce Zálohování.",
      "page": "backup-jobs",
      "docs": "docs/API.md → Backup jobs",
@@ -2183,7 +2183,7 @@
      "title": "Telemetrie",
      "icon": "pulse",
      "page": "overview",
-     "howTo": "Telemetrie není připojená. Připoj ji na stránce stroje v Přehledu.",
+     "howTo": "Telemetrie není připojená. Připoj ji na stránce zařízení v Přehledu.",
      "off": false
     },
     {
@@ -2191,7 +2191,7 @@
      "title": "Zálohy",
      "icon": "archive",
      "page": "backup-jobs",
-     "howTo": "Žádná úloha záloh na tenhle stroj neukládá ani ho nezálohuje. Založ ji na stránce Zálohování.",
+     "howTo": "Žádná úloha záloh na tohle zařízení neukládá ani ho nezálohuje. Založ ji na stránce Zálohování.",
      "off": false
     },
     {
@@ -2199,15 +2199,15 @@
      "title": "Verze a aktualizace",
      "icon": "versions",
      "page": "versions",
-     "howTo": "Kolektor čte jen stroje, které mají v local/site.json ssh.probe (a běží na nich agent kolektoru).",
+     "howTo": "Kolektor čte jen zařízení, která mají v local/site.json ssh.probe (a běží na nich agent kolektoru).",
      "off": false
     },
     {
      "id": "protection",
-     "title": "Ochrana stroje",
+     "title": "Ochrana tohoto zařízení",
      "icon": "shield",
      "page": "hardening",
-     "howTo": "Kolektor čte jen stroje, které mají v local/site.json ssh.probe (a běží na nich agent kolektoru).",
+     "howTo": "Kolektor čte jen zařízení, která mají v local/site.json ssh.probe (a běží na nich agent kolektoru).",
      "off": false
     },
     {
@@ -2215,7 +2215,7 @@
      "title": "SSH klíče",
      "icon": "key",
      "page": "security",
-     "howTo": "Kolektor SSH klíčů čte jen stroje, které mají v local/site.json ssh (a keys není false).",
+     "howTo": "Kolektor SSH klíčů čte jen zařízení, která mají v local/site.json ssh (a keys není false).",
      "off": false
     },
     {
@@ -2223,7 +2223,7 @@
      "title": "Inventář",
      "icon": "list",
      "page": "inventory-map",
-     "howTo": "Stroj v inventáři není. Zapíše ho agent (MCP inventory_update) nebo ho přidáš na mapě inventáře.",
+     "howTo": "Zařízení v inventáři není. Zapíše ho agent (MCP inventory_update) nebo ho přidáš na mapě inventáře.",
      "off": false
     },
     {
@@ -2277,13 +2277,13 @@
        "icon": "pulse",
        "how": {
         "by": "source",
-        "text": "Home Hub data čte sám: z Thermo (macOS), node_exporter nebo Promethea (Linux), WinRM nebo SSH (Windows a Linux). Na stroji musí běžet zdroj; připojení nastavíš na stránce stroje v Přehledu."
+        "text": "Home Hub data čte sám: z Thermo (macOS), node_exporter nebo Promethea (Linux), WinRM nebo SSH (Windows a Linux). Na zařízení musí běžet zdroj; připojení nastavíš na stránce zařízení v Přehledu."
        },
        "state": "error",
-       "summary": "Thermo: stroj neodpovídá.",
+       "summary": "Thermo: zařízení neodpovídá.",
        "summaryT": [
         {
-         "key": "{provider}: stroj neodpovídá.",
+         "key": "{provider}: zařízení neodpovídá.",
          "params": {
           "provider": "Thermo"
          }
@@ -2296,10 +2296,10 @@
         }
        ],
        "href": "#host-mini",
-       "prompt": "Připrav stroj „Mac mini“ (mini.example.lan) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo stroj přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce stroje.",
+       "prompt": "Připrav zařízení „Mac mini“ (mini.example.lan) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo zařízení přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce zařízení.",
        "promptT": [
         {
-         "key": "Připrav stroj „{name}“ ({hostname}) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo stroj přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce stroje.",
+         "key": "Připrav zařízení „{name}“ ({hostname}) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo zařízení přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce zařízení.",
          "params": {
           "id": "mini",
           "name": "Mac mini",
@@ -2314,15 +2314,15 @@
        "icon": "archive",
        "how": {
         "by": "hub",
-        "text": "Home Hub zálohuje sám: rsync přes SSH s vlastním klíčem, plán, uchovávání a kontrola místa. Na cílovém stroji stačí účet s SSH, rsync a řádek do authorized_keys z průvodce."
+        "text": "Home Hub zálohuje sám: rsync přes SSH s vlastním klíčem, plán, uchovávání a kontrola místa. Na cílovém zařízení stačí účet s SSH, rsync a řádek do authorized_keys z průvodce."
        },
        "state": "not-configured",
-       "summary": "Žádná úloha záloh na tenhle stroj neukládá ani ho nezálohuje. Založ ji na stránce Zálohování.",
+       "summary": "Žádná úloha záloh na tohle zařízení neukládá ani ho nezálohuje. Založ ji na stránce Zálohování.",
        "href": "#backup-jobs",
-       "prompt": "Připrav stroj „Mac mini“ (mini.example.lan) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na stroji neměň.",
+       "prompt": "Připrav zařízení „Mac mini“ (mini.example.lan) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na zařízení neměň.",
        "promptT": [
         {
-         "key": "Připrav stroj „{name}“ ({hostname}) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na stroji neměň.",
+         "key": "Připrav zařízení „{name}“ ({hostname}) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na zařízení neměň.",
          "params": {
           "id": "mini",
           "name": "Mac mini",
@@ -2337,15 +2337,15 @@
        "icon": "versions",
        "how": {
         "by": "collector",
-        "text": "Kolektor scripts/collect-systems.mjs běží na stroji hubu (launchd, každých 6 h), přihlásí se přes SSH a jen čte. Stroj musí být v local/site.json s ssh.alias a ssh.probe (mac nebo nas)."
+        "text": "Kolektor scripts/collect-systems.mjs běží na zařízení hubu (launchd, každých 6 h), přihlásí se přes SSH a jen čte. Zařízení musí být v local/site.json s ssh.alias a ssh.probe (mac nebo nas)."
        },
        "state": "stale",
-       "summary": "Kolektor verzí stroj ještě nepřečetl.",
+       "summary": "Kolektor verzí toto zařízení ještě nepřečetl.",
        "href": "#versions",
-       "prompt": "Zapoj stroj „Mac mini“ (mini.example.lan, id mini) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje mini nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only mini a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+       "prompt": "Zapoj zařízení „Mac mini“ (mini.example.lan, id mini) do kolektoru verzí a ochrany Home Hubu. Na zařízení, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na zařízení přihlásí klíčem bez hesla, a v local/site.json u zařízení mini nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li zařízení v hubu jen přidané, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only mini a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném zařízení nic neinstaluj ani neměň.",
        "promptT": [
         {
-         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+         "key": "Zapoj zařízení „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na zařízení, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na zařízení přihlásí klíčem bez hesla, a v local/site.json u zařízení {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li zařízení v hubu jen přidané, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném zařízení nic neinstaluj ani neměň.",
          "params": {
           "id": "mini",
           "name": "Mac mini",
@@ -2356,19 +2356,19 @@
       },
       {
        "id": "protection",
-       "title": "Ochrana stroje",
+       "title": "Ochrana tohoto zařízení",
        "icon": "shield",
        "how": {
         "by": "collector",
         "text": "Stejný kolektor jako verze (collect-systems): firewall, šifrování disku, SSH heslem, otevřené porty. Jen čte."
        },
        "state": "stale",
-       "summary": "Kolektor verzí stroj ještě nepřečetl.",
+       "summary": "Kolektor verzí toto zařízení ještě nepřečetl.",
        "href": "#hardening",
-       "prompt": "Zapoj stroj „Mac mini“ (mini.example.lan, id mini) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje mini nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only mini a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+       "prompt": "Zapoj zařízení „Mac mini“ (mini.example.lan, id mini) do kolektoru verzí a ochrany Home Hubu. Na zařízení, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na zařízení přihlásí klíčem bez hesla, a v local/site.json u zařízení mini nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li zařízení v hubu jen přidané, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only mini a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném zařízení nic neinstaluj ani neměň.",
        "promptT": [
         {
-         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+         "key": "Zapoj zařízení „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na zařízení, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na zařízení přihlásí klíčem bez hesla, a v local/site.json u zařízení {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li zařízení v hubu jen přidané, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném zařízení nic neinstaluj ani neměň.",
          "params": {
           "id": "mini",
           "name": "Mac mini",
@@ -2383,15 +2383,15 @@
        "icon": "key",
        "how": {
         "by": "collector",
-        "text": "Kolektor scripts/collect-security.mjs běží na stroji hubu jednou denně a přes SSH přečte otisky klíčů a authorized_keys. Soukromé klíče nikdy neopustí stroj."
+        "text": "Kolektor scripts/collect-security.mjs běží na zařízení hubu jednou denně a přes SSH přečte otisky klíčů a authorized_keys. Soukromé klíče nikdy neopustí zařízení."
        },
        "state": "stale",
-       "summary": "Kolektor SSH klíčů stroj ještě nepřečetl.",
+       "summary": "Kolektor SSH klíčů toto zařízení ještě nepřečetl.",
        "href": "#security",
-       "prompt": "Zapoj stroj „Mac mini“ (mini.example.lan, id mini) do inventáře SSH klíčů Home Hubu. Na stroji, kde běží Home Hub: ověř, že se ssh alias stroje z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na stroji nic neměň.",
+       "prompt": "Zapoj zařízení „Mac mini“ (mini.example.lan, id mini) do inventáře SSH klíčů Home Hubu. Na zařízení, kde běží Home Hub: ověř, že se ssh alias zařízení z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na zařízení nic neměň.",
        "promptT": [
         {
-         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do inventáře SSH klíčů Home Hubu. Na stroji, kde běží Home Hub: ověř, že se ssh alias stroje z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na stroji nic neměň.",
+         "key": "Zapoj zařízení „{name}“ ({hostname}, id {id}) do inventáře SSH klíčů Home Hubu. Na zařízení, kde běží Home Hub: ověř, že se ssh alias zařízení z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na zařízení nic neměň.",
          "params": {
           "id": "mini",
           "name": "Mac mini",
@@ -2409,12 +2409,12 @@
         "text": "Inventář sám nic nezjišťuje: zapíše ho agent přes MCP (inventory_update) nebo ty na mapě inventáře."
        },
        "state": "not-configured",
-       "summary": "Stroj v inventáři není. Zapíše ho agent (MCP inventory_update) nebo ho přidáš na mapě inventáře.",
+       "summary": "Zařízení v inventáři není. Zapíše ho agent (MCP inventory_update) nebo ho přidáš na mapě inventáře.",
        "href": "#inventory-map",
-       "prompt": "Zapiš stroj „Mac mini“ (id mini, mini.example.lan) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind device, id mini) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+       "prompt": "Zapiš zařízení „Mac mini“ (id mini, mini.example.lan) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš zařízení (kind device, id mini) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
        "promptT": [
         {
-         "key": "Zapiš stroj „{name}“ (id {id}, {hostname}) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind device, id {id}) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+         "key": "Zapiš zařízení „{name}“ (id {id}, {hostname}) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš zařízení (kind device, id {id}) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
          "params": {
           "id": "mini",
           "name": "Mac mini",
@@ -2474,13 +2474,13 @@
        "icon": "pulse",
        "how": {
         "by": "source",
-        "text": "Home Hub data čte sám: z Thermo (macOS), node_exporter nebo Promethea (Linux), WinRM nebo SSH (Windows a Linux). Na stroji musí běžet zdroj; připojení nastavíš na stránce stroje v Přehledu."
+        "text": "Home Hub data čte sám: z Thermo (macOS), node_exporter nebo Promethea (Linux), WinRM nebo SSH (Windows a Linux). Na zařízení musí běžet zdroj; připojení nastavíš na stránce zařízení v Přehledu."
        },
        "state": "error",
-       "summary": "Thermo: stroj neodpovídá.",
+       "summary": "Thermo: zařízení neodpovídá.",
        "summaryT": [
         {
-         "key": "{provider}: stroj neodpovídá.",
+         "key": "{provider}: zařízení neodpovídá.",
          "params": {
           "provider": "Thermo"
          }
@@ -2493,10 +2493,10 @@
         }
        ],
        "href": "#host-studio",
-       "prompt": "Připrav stroj „Mac Studio“ (studio.example.lan) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo stroj přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce stroje.",
+       "prompt": "Připrav zařízení „Mac Studio“ (studio.example.lan) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo zařízení přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce zařízení.",
        "promptT": [
         {
-         "key": "Připrav stroj „{name}“ ({hostname}) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo stroj přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce stroje.",
+         "key": "Připrav zařízení „{name}“ ({hostname}) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo zařízení přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce zařízení.",
          "params": {
           "id": "studio",
           "name": "Mac Studio",
@@ -2511,15 +2511,15 @@
        "icon": "archive",
        "how": {
         "by": "hub",
-        "text": "Home Hub zálohuje sám: rsync přes SSH s vlastním klíčem, plán, uchovávání a kontrola místa. Na cílovém stroji stačí účet s SSH, rsync a řádek do authorized_keys z průvodce."
+        "text": "Home Hub zálohuje sám: rsync přes SSH s vlastním klíčem, plán, uchovávání a kontrola místa. Na cílovém zařízení stačí účet s SSH, rsync a řádek do authorized_keys z průvodce."
        },
        "state": "not-configured",
-       "summary": "Žádná úloha záloh na tenhle stroj neukládá ani ho nezálohuje. Založ ji na stránce Zálohování.",
+       "summary": "Žádná úloha záloh na tohle zařízení neukládá ani ho nezálohuje. Založ ji na stránce Zálohování.",
        "href": "#backup-jobs",
-       "prompt": "Připrav stroj „Mac Studio“ (studio.example.lan) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na stroji neměň.",
+       "prompt": "Připrav zařízení „Mac Studio“ (studio.example.lan) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na zařízení neměň.",
        "promptT": [
         {
-         "key": "Připrav stroj „{name}“ ({hostname}) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na stroji neměň.",
+         "key": "Připrav zařízení „{name}“ ({hostname}) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na zařízení neměň.",
          "params": {
           "id": "studio",
           "name": "Mac Studio",
@@ -2534,15 +2534,15 @@
        "icon": "versions",
        "how": {
         "by": "collector",
-        "text": "Kolektor scripts/collect-systems.mjs běží na stroji hubu (launchd, každých 6 h), přihlásí se přes SSH a jen čte. Stroj musí být v local/site.json s ssh.alias a ssh.probe (mac nebo nas)."
+        "text": "Kolektor scripts/collect-systems.mjs běží na zařízení hubu (launchd, každých 6 h), přihlásí se přes SSH a jen čte. Zařízení musí být v local/site.json s ssh.alias a ssh.probe (mac nebo nas)."
        },
        "state": "stale",
-       "summary": "Kolektor verzí stroj ještě nepřečetl.",
+       "summary": "Kolektor verzí toto zařízení ještě nepřečetl.",
        "href": "#versions",
-       "prompt": "Zapoj stroj „Mac Studio“ (studio.example.lan, id studio) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje studio nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only studio a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+       "prompt": "Zapoj zařízení „Mac Studio“ (studio.example.lan, id studio) do kolektoru verzí a ochrany Home Hubu. Na zařízení, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na zařízení přihlásí klíčem bez hesla, a v local/site.json u zařízení studio nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li zařízení v hubu jen přidané, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only studio a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném zařízení nic neinstaluj ani neměň.",
        "promptT": [
         {
-         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+         "key": "Zapoj zařízení „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na zařízení, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na zařízení přihlásí klíčem bez hesla, a v local/site.json u zařízení {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li zařízení v hubu jen přidané, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném zařízení nic neinstaluj ani neměň.",
          "params": {
           "id": "studio",
           "name": "Mac Studio",
@@ -2553,19 +2553,19 @@
       },
       {
        "id": "protection",
-       "title": "Ochrana stroje",
+       "title": "Ochrana tohoto zařízení",
        "icon": "shield",
        "how": {
         "by": "collector",
         "text": "Stejný kolektor jako verze (collect-systems): firewall, šifrování disku, SSH heslem, otevřené porty. Jen čte."
        },
        "state": "stale",
-       "summary": "Kolektor verzí stroj ještě nepřečetl.",
+       "summary": "Kolektor verzí toto zařízení ještě nepřečetl.",
        "href": "#hardening",
-       "prompt": "Zapoj stroj „Mac Studio“ (studio.example.lan, id studio) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje studio nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only studio a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+       "prompt": "Zapoj zařízení „Mac Studio“ (studio.example.lan, id studio) do kolektoru verzí a ochrany Home Hubu. Na zařízení, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na zařízení přihlásí klíčem bez hesla, a v local/site.json u zařízení studio nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li zařízení v hubu jen přidané, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only studio a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném zařízení nic neinstaluj ani neměň.",
        "promptT": [
         {
-         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+         "key": "Zapoj zařízení „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na zařízení, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na zařízení přihlásí klíčem bez hesla, a v local/site.json u zařízení {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li zařízení v hubu jen přidané, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném zařízení nic neinstaluj ani neměň.",
          "params": {
           "id": "studio",
           "name": "Mac Studio",
@@ -2580,15 +2580,15 @@
        "icon": "key",
        "how": {
         "by": "collector",
-        "text": "Kolektor scripts/collect-security.mjs běží na stroji hubu jednou denně a přes SSH přečte otisky klíčů a authorized_keys. Soukromé klíče nikdy neopustí stroj."
+        "text": "Kolektor scripts/collect-security.mjs běží na zařízení hubu jednou denně a přes SSH přečte otisky klíčů a authorized_keys. Soukromé klíče nikdy neopustí zařízení."
        },
        "state": "stale",
-       "summary": "Kolektor SSH klíčů stroj ještě nepřečetl.",
+       "summary": "Kolektor SSH klíčů toto zařízení ještě nepřečetl.",
        "href": "#security",
-       "prompt": "Zapoj stroj „Mac Studio“ (studio.example.lan, id studio) do inventáře SSH klíčů Home Hubu. Na stroji, kde běží Home Hub: ověř, že se ssh alias stroje z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na stroji nic neměň.",
+       "prompt": "Zapoj zařízení „Mac Studio“ (studio.example.lan, id studio) do inventáře SSH klíčů Home Hubu. Na zařízení, kde běží Home Hub: ověř, že se ssh alias zařízení z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na zařízení nic neměň.",
        "promptT": [
         {
-         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do inventáře SSH klíčů Home Hubu. Na stroji, kde běží Home Hub: ověř, že se ssh alias stroje z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na stroji nic neměň.",
+         "key": "Zapoj zařízení „{name}“ ({hostname}, id {id}) do inventáře SSH klíčů Home Hubu. Na zařízení, kde běží Home Hub: ověř, že se ssh alias zařízení z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na zařízení nic neměň.",
          "params": {
           "id": "studio",
           "name": "Mac Studio",
@@ -2668,13 +2668,13 @@
        "icon": "pulse",
        "how": {
         "by": "source",
-        "text": "Home Hub data čte sám: z Thermo (macOS), node_exporter nebo Promethea (Linux), WinRM nebo SSH (Windows a Linux). Na stroji musí běžet zdroj; připojení nastavíš na stránce stroje v Přehledu."
+        "text": "Home Hub data čte sám: z Thermo (macOS), node_exporter nebo Promethea (Linux), WinRM nebo SSH (Windows a Linux). Na zařízení musí běžet zdroj; připojení nastavíš na stránce zařízení v Přehledu."
        },
        "state": "error",
-       "summary": "Thermo: stroj neodpovídá.",
+       "summary": "Thermo: zařízení neodpovídá.",
        "summaryT": [
         {
-         "key": "{provider}: stroj neodpovídá.",
+         "key": "{provider}: zařízení neodpovídá.",
          "params": {
           "provider": "Thermo"
          }
@@ -2687,10 +2687,10 @@
         }
        ],
        "href": "#host-mini_server",
-       "prompt": "Připrav stroj „mini_server“ (mini-server.example.lan) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo stroj přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce stroje.",
+       "prompt": "Připrav zařízení „mini_server“ (mini-server.example.lan) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo zařízení přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce zařízení.",
        "promptT": [
         {
-         "key": "Připrav stroj „{name}“ ({hostname}) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo stroj přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce stroje.",
+         "key": "Připrav zařízení „{name}“ ({hostname}) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo zařízení přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce zařízení.",
          "params": {
           "id": "mini_server",
           "name": "mini_server",
@@ -2705,15 +2705,15 @@
        "icon": "archive",
        "how": {
         "by": "hub",
-        "text": "Home Hub zálohuje sám: rsync přes SSH s vlastním klíčem, plán, uchovávání a kontrola místa. Na cílovém stroji stačí účet s SSH, rsync a řádek do authorized_keys z průvodce."
+        "text": "Home Hub zálohuje sám: rsync přes SSH s vlastním klíčem, plán, uchovávání a kontrola místa. Na cílovém zařízení stačí účet s SSH, rsync a řádek do authorized_keys z průvodce."
        },
        "state": "not-configured",
-       "summary": "Žádná úloha záloh na tenhle stroj neukládá ani ho nezálohuje. Založ ji na stránce Zálohování.",
+       "summary": "Žádná úloha záloh na tohle zařízení neukládá ani ho nezálohuje. Založ ji na stránce Zálohování.",
        "href": "#backup-jobs",
-       "prompt": "Připrav stroj „mini_server“ (mini-server.example.lan) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na stroji neměň.",
+       "prompt": "Připrav zařízení „mini_server“ (mini-server.example.lan) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na zařízení neměň.",
        "promptT": [
         {
-         "key": "Připrav stroj „{name}“ ({hostname}) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na stroji neměň.",
+         "key": "Připrav zařízení „{name}“ ({hostname}) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na zařízení neměň.",
          "params": {
           "id": "mini_server",
           "name": "mini_server",
@@ -2728,15 +2728,15 @@
        "icon": "versions",
        "how": {
         "by": "collector",
-        "text": "Kolektor scripts/collect-systems.mjs běží na stroji hubu (launchd, každých 6 h), přihlásí se přes SSH a jen čte. Stroj musí být v local/site.json s ssh.alias a ssh.probe (mac nebo nas)."
+        "text": "Kolektor scripts/collect-systems.mjs běží na zařízení hubu (launchd, každých 6 h), přihlásí se přes SSH a jen čte. Zařízení musí být v local/site.json s ssh.alias a ssh.probe (mac nebo nas)."
        },
        "state": "stale",
-       "summary": "Kolektor verzí stroj ještě nepřečetl.",
+       "summary": "Kolektor verzí toto zařízení ještě nepřečetl.",
        "href": "#versions",
-       "prompt": "Zapoj stroj „mini_server“ (mini-server.example.lan, id mini_server) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje mini_server nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only mini_server a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+       "prompt": "Zapoj zařízení „mini_server“ (mini-server.example.lan, id mini_server) do kolektoru verzí a ochrany Home Hubu. Na zařízení, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na zařízení přihlásí klíčem bez hesla, a v local/site.json u zařízení mini_server nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li zařízení v hubu jen přidané, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only mini_server a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném zařízení nic neinstaluj ani neměň.",
        "promptT": [
         {
-         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+         "key": "Zapoj zařízení „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na zařízení, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na zařízení přihlásí klíčem bez hesla, a v local/site.json u zařízení {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li zařízení v hubu jen přidané, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném zařízení nic neinstaluj ani neměň.",
          "params": {
           "id": "mini_server",
           "name": "mini_server",
@@ -2747,19 +2747,19 @@
       },
       {
        "id": "protection",
-       "title": "Ochrana stroje",
+       "title": "Ochrana tohoto zařízení",
        "icon": "shield",
        "how": {
         "by": "collector",
         "text": "Stejný kolektor jako verze (collect-systems): firewall, šifrování disku, SSH heslem, otevřené porty. Jen čte."
        },
        "state": "stale",
-       "summary": "Kolektor verzí stroj ještě nepřečetl.",
+       "summary": "Kolektor verzí toto zařízení ještě nepřečetl.",
        "href": "#hardening",
-       "prompt": "Zapoj stroj „mini_server“ (mini-server.example.lan, id mini_server) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje mini_server nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only mini_server a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+       "prompt": "Zapoj zařízení „mini_server“ (mini-server.example.lan, id mini_server) do kolektoru verzí a ochrany Home Hubu. Na zařízení, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na zařízení přihlásí klíčem bez hesla, a v local/site.json u zařízení mini_server nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li zařízení v hubu jen přidané, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only mini_server a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném zařízení nic neinstaluj ani neměň.",
        "promptT": [
         {
-         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+         "key": "Zapoj zařízení „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na zařízení, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na zařízení přihlásí klíčem bez hesla, a v local/site.json u zařízení {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li zařízení v hubu jen přidané, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném zařízení nic neinstaluj ani neměň.",
          "params": {
           "id": "mini_server",
           "name": "mini_server",
@@ -2774,15 +2774,15 @@
        "icon": "key",
        "how": {
         "by": "collector",
-        "text": "Kolektor scripts/collect-security.mjs běží na stroji hubu jednou denně a přes SSH přečte otisky klíčů a authorized_keys. Soukromé klíče nikdy neopustí stroj."
+        "text": "Kolektor scripts/collect-security.mjs běží na zařízení hubu jednou denně a přes SSH přečte otisky klíčů a authorized_keys. Soukromé klíče nikdy neopustí zařízení."
        },
        "state": "stale",
-       "summary": "Kolektor SSH klíčů stroj ještě nepřečetl.",
+       "summary": "Kolektor SSH klíčů toto zařízení ještě nepřečetl.",
        "href": "#security",
-       "prompt": "Zapoj stroj „mini_server“ (mini-server.example.lan, id mini_server) do inventáře SSH klíčů Home Hubu. Na stroji, kde běží Home Hub: ověř, že se ssh alias stroje z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na stroji nic neměň.",
+       "prompt": "Zapoj zařízení „mini_server“ (mini-server.example.lan, id mini_server) do inventáře SSH klíčů Home Hubu. Na zařízení, kde běží Home Hub: ověř, že se ssh alias zařízení z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na zařízení nic neměň.",
        "promptT": [
         {
-         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do inventáře SSH klíčů Home Hubu. Na stroji, kde běží Home Hub: ověř, že se ssh alias stroje z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na stroji nic neměň.",
+         "key": "Zapoj zařízení „{name}“ ({hostname}, id {id}) do inventáře SSH klíčů Home Hubu. Na zařízení, kde běží Home Hub: ověř, že se ssh alias zařízení z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na zařízení nic neměň.",
          "params": {
           "id": "mini_server",
           "name": "mini_server",
@@ -2800,12 +2800,12 @@
         "text": "Inventář sám nic nezjišťuje: zapíše ho agent přes MCP (inventory_update) nebo ty na mapě inventáře."
        },
        "state": "not-configured",
-       "summary": "Stroj v inventáři není. Zapíše ho agent (MCP inventory_update) nebo ho přidáš na mapě inventáře.",
+       "summary": "Zařízení v inventáři není. Zapíše ho agent (MCP inventory_update) nebo ho přidáš na mapě inventáře.",
        "href": "#inventory-map",
-       "prompt": "Zapiš stroj „mini_server“ (id mini_server, mini-server.example.lan) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind device, id mini_server) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+       "prompt": "Zapiš zařízení „mini_server“ (id mini_server, mini-server.example.lan) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš zařízení (kind device, id mini_server) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
        "promptT": [
         {
-         "key": "Zapiš stroj „{name}“ (id {id}, {hostname}) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind device, id {id}) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+         "key": "Zapiš zařízení „{name}“ (id {id}, {hostname}) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš zařízení (kind device, id {id}) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
          "params": {
           "id": "mini_server",
           "name": "mini_server",
@@ -2865,15 +2865,15 @@
        "icon": "pulse",
        "how": {
         "by": "source",
-        "text": "Home Hub data čte sám: z Thermo (macOS), node_exporter nebo Promethea (Linux), WinRM nebo SSH (Windows a Linux). Na stroji musí běžet zdroj; připojení nastavíš na stránce stroje v Přehledu."
+        "text": "Home Hub data čte sám: z Thermo (macOS), node_exporter nebo Promethea (Linux), WinRM nebo SSH (Windows a Linux). Na zařízení musí běžet zdroj; připojení nastavíš na stránce zařízení v Přehledu."
        },
        "state": "not-configured",
-       "summary": "Telemetrie není připojená. Připoj ji na stránce stroje v Přehledu.",
+       "summary": "Telemetrie není připojená. Připoj ji na stránce zařízení v Přehledu.",
        "href": "#host-nas",
-       "prompt": "Připrav stroj „NAS“ (nas.example.lan) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo stroj přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce stroje.",
+       "prompt": "Připrav zařízení „NAS“ (nas.example.lan) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo zařízení přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce zařízení.",
        "promptT": [
         {
-         "key": "Připrav stroj „{name}“ ({hostname}) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo stroj přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce stroje.",
+         "key": "Připrav zařízení „{name}“ ({hostname}) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo zařízení přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce zařízení.",
          "params": {
           "id": "nas",
           "name": "NAS",
@@ -2888,15 +2888,15 @@
        "icon": "archive",
        "how": {
         "by": "hub",
-        "text": "Home Hub zálohuje sám: rsync přes SSH s vlastním klíčem, plán, uchovávání a kontrola místa. Na cílovém stroji stačí účet s SSH, rsync a řádek do authorized_keys z průvodce."
+        "text": "Home Hub zálohuje sám: rsync přes SSH s vlastním klíčem, plán, uchovávání a kontrola místa. Na cílovém zařízení stačí účet s SSH, rsync a řádek do authorized_keys z průvodce."
        },
        "state": "not-configured",
-       "summary": "Žádná úloha záloh na tenhle stroj neukládá ani ho nezálohuje. Založ ji na stránce Zálohování.",
+       "summary": "Žádná úloha záloh na tohle zařízení neukládá ani ho nezálohuje. Založ ji na stránce Zálohování.",
        "href": "#backup-jobs",
-       "prompt": "Připrav stroj „NAS“ (nas.example.lan) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na stroji neměň.",
+       "prompt": "Připrav zařízení „NAS“ (nas.example.lan) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na zařízení neměň.",
        "promptT": [
         {
-         "key": "Připrav stroj „{name}“ ({hostname}) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na stroji neměň.",
+         "key": "Připrav zařízení „{name}“ ({hostname}) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na zařízení neměň.",
          "params": {
           "id": "nas",
           "name": "NAS",
@@ -2911,15 +2911,15 @@
        "icon": "versions",
        "how": {
         "by": "collector",
-        "text": "Kolektor scripts/collect-systems.mjs běží na stroji hubu (launchd, každých 6 h), přihlásí se přes SSH a jen čte. Stroj musí být v local/site.json s ssh.alias a ssh.probe (mac nebo nas)."
+        "text": "Kolektor scripts/collect-systems.mjs běží na zařízení hubu (launchd, každých 6 h), přihlásí se přes SSH a jen čte. Zařízení musí být v local/site.json s ssh.alias a ssh.probe (mac nebo nas)."
        },
        "state": "stale",
-       "summary": "Kolektor verzí stroj ještě nepřečetl.",
+       "summary": "Kolektor verzí toto zařízení ještě nepřečetl.",
        "href": "#versions",
-       "prompt": "Zapoj stroj „NAS“ (nas.example.lan, id nas) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje nas nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only nas a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+       "prompt": "Zapoj zařízení „NAS“ (nas.example.lan, id nas) do kolektoru verzí a ochrany Home Hubu. Na zařízení, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na zařízení přihlásí klíčem bez hesla, a v local/site.json u zařízení nas nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li zařízení v hubu jen přidané, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only nas a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném zařízení nic neinstaluj ani neměň.",
        "promptT": [
         {
-         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+         "key": "Zapoj zařízení „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na zařízení, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na zařízení přihlásí klíčem bez hesla, a v local/site.json u zařízení {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li zařízení v hubu jen přidané, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném zařízení nic neinstaluj ani neměň.",
          "params": {
           "id": "nas",
           "name": "NAS",
@@ -2930,19 +2930,19 @@
       },
       {
        "id": "protection",
-       "title": "Ochrana stroje",
+       "title": "Ochrana tohoto zařízení",
        "icon": "shield",
        "how": {
         "by": "collector",
         "text": "Stejný kolektor jako verze (collect-systems): firewall, šifrování disku, SSH heslem, otevřené porty. Jen čte."
        },
        "state": "stale",
-       "summary": "Kolektor verzí stroj ještě nepřečetl.",
+       "summary": "Kolektor verzí toto zařízení ještě nepřečetl.",
        "href": "#hardening",
-       "prompt": "Zapoj stroj „NAS“ (nas.example.lan, id nas) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje nas nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only nas a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+       "prompt": "Zapoj zařízení „NAS“ (nas.example.lan, id nas) do kolektoru verzí a ochrany Home Hubu. Na zařízení, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na zařízení přihlásí klíčem bez hesla, a v local/site.json u zařízení nas nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li zařízení v hubu jen přidané, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only nas a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném zařízení nic neinstaluj ani neměň.",
        "promptT": [
         {
-         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+         "key": "Zapoj zařízení „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na zařízení, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na zařízení přihlásí klíčem bez hesla, a v local/site.json u zařízení {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li zařízení v hubu jen přidané, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném zařízení nic neinstaluj ani neměň.",
          "params": {
           "id": "nas",
           "name": "NAS",
@@ -2957,15 +2957,15 @@
        "icon": "key",
        "how": {
         "by": "collector",
-        "text": "Kolektor scripts/collect-security.mjs běží na stroji hubu jednou denně a přes SSH přečte otisky klíčů a authorized_keys. Soukromé klíče nikdy neopustí stroj."
+        "text": "Kolektor scripts/collect-security.mjs běží na zařízení hubu jednou denně a přes SSH přečte otisky klíčů a authorized_keys. Soukromé klíče nikdy neopustí zařízení."
        },
        "state": "stale",
-       "summary": "Kolektor SSH klíčů stroj ještě nepřečetl.",
+       "summary": "Kolektor SSH klíčů toto zařízení ještě nepřečetl.",
        "href": "#security",
-       "prompt": "Zapoj stroj „NAS“ (nas.example.lan, id nas) do inventáře SSH klíčů Home Hubu. Na stroji, kde běží Home Hub: ověř, že se ssh alias stroje z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na stroji nic neměň.",
+       "prompt": "Zapoj zařízení „NAS“ (nas.example.lan, id nas) do inventáře SSH klíčů Home Hubu. Na zařízení, kde běží Home Hub: ověř, že se ssh alias zařízení z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na zařízení nic neměň.",
        "promptT": [
         {
-         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do inventáře SSH klíčů Home Hubu. Na stroji, kde běží Home Hub: ověř, že se ssh alias stroje z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na stroji nic neměň.",
+         "key": "Zapoj zařízení „{name}“ ({hostname}, id {id}) do inventáře SSH klíčů Home Hubu. Na zařízení, kde běží Home Hub: ověř, že se ssh alias zařízení z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na zařízení nic neměň.",
          "params": {
           "id": "nas",
           "name": "NAS",
@@ -2983,12 +2983,12 @@
         "text": "Inventář sám nic nezjišťuje: zapíše ho agent přes MCP (inventory_update) nebo ty na mapě inventáře."
        },
        "state": "not-configured",
-       "summary": "Stroj v inventáři není. Zapíše ho agent (MCP inventory_update) nebo ho přidáš na mapě inventáře.",
+       "summary": "Zařízení v inventáři není. Zapíše ho agent (MCP inventory_update) nebo ho přidáš na mapě inventáře.",
        "href": "#inventory-map",
-       "prompt": "Zapiš stroj „NAS“ (id nas, nas.example.lan) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind device, id nas) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+       "prompt": "Zapiš zařízení „NAS“ (id nas, nas.example.lan) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš zařízení (kind device, id nas) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
        "promptT": [
         {
-         "key": "Zapiš stroj „{name}“ (id {id}, {hostname}) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind device, id {id}) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+         "key": "Zapiš zařízení „{name}“ (id {id}, {hostname}) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš zařízení (kind device, id {id}) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
          "params": {
           "id": "nas",
           "name": "NAS",
@@ -3048,7 +3048,7 @@
        "icon": "pulse",
        "how": {
         "by": "source",
-        "text": "Home Hub data čte sám: z Thermo (macOS), node_exporter nebo Promethea (Linux), WinRM nebo SSH (Windows a Linux). Na stroji musí běžet zdroj; připojení nastavíš na stránce stroje v Přehledu."
+        "text": "Home Hub data čte sám: z Thermo (macOS), node_exporter nebo Promethea (Linux), WinRM nebo SSH (Windows a Linux). Na zařízení musí běžet zdroj; připojení nastavíš na stránce zařízení v Přehledu."
        },
        "state": "not-applicable",
        "summary": "Router čte adaptér routeru, ne telemetrie.",
@@ -3060,15 +3060,15 @@
        "icon": "archive",
        "how": {
         "by": "hub",
-        "text": "Home Hub zálohuje sám: rsync přes SSH s vlastním klíčem, plán, uchovávání a kontrola místa. Na cílovém stroji stačí účet s SSH, rsync a řádek do authorized_keys z průvodce."
+        "text": "Home Hub zálohuje sám: rsync přes SSH s vlastním klíčem, plán, uchovávání a kontrola místa. Na cílovém zařízení stačí účet s SSH, rsync a řádek do authorized_keys z průvodce."
        },
        "state": "not-configured",
-       "summary": "Žádná úloha záloh na tenhle stroj neukládá ani ho nezálohuje. Založ ji na stránce Zálohování.",
+       "summary": "Žádná úloha záloh na tohle zařízení neukládá ani ho nezálohuje. Založ ji na stránce Zálohování.",
        "href": "#backup-jobs",
-       "prompt": "Připrav stroj „Router“ (10.0.0.1) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na stroji neměň.",
+       "prompt": "Připrav zařízení „Router“ (10.0.0.1) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na zařízení neměň.",
        "promptT": [
         {
-         "key": "Připrav stroj „{name}“ ({hostname}) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na stroji neměň.",
+         "key": "Připrav zařízení „{name}“ ({hostname}) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na zařízení neměň.",
          "params": {
           "id": "router",
           "name": "Router",
@@ -3083,15 +3083,15 @@
        "icon": "versions",
        "how": {
         "by": "collector",
-        "text": "Kolektor scripts/collect-systems.mjs běží na stroji hubu (launchd, každých 6 h), přihlásí se přes SSH a jen čte. Stroj musí být v local/site.json s ssh.alias a ssh.probe (mac nebo nas)."
+        "text": "Kolektor scripts/collect-systems.mjs běží na zařízení hubu (launchd, každých 6 h), přihlásí se přes SSH a jen čte. Zařízení musí být v local/site.json s ssh.alias a ssh.probe (mac nebo nas)."
        },
        "state": "not-configured",
-       "summary": "Kolektor čte jen stroje, které mají v local/site.json ssh.probe (a běží na nich agent kolektoru).",
+       "summary": "Kolektor čte jen zařízení, která mají v local/site.json ssh.probe (a běží na nich agent kolektoru).",
        "href": "#versions",
-       "prompt": "Zapoj stroj „Router“ (10.0.0.1, id router) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje router nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only router a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+       "prompt": "Zapoj zařízení „Router“ (10.0.0.1, id router) do kolektoru verzí a ochrany Home Hubu. Na zařízení, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na zařízení přihlásí klíčem bez hesla, a v local/site.json u zařízení router nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li zařízení v hubu jen přidané, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only router a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném zařízení nic neinstaluj ani neměň.",
        "promptT": [
         {
-         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+         "key": "Zapoj zařízení „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na zařízení, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na zařízení přihlásí klíčem bez hesla, a v local/site.json u zařízení {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li zařízení v hubu jen přidané, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném zařízení nic neinstaluj ani neměň.",
          "params": {
           "id": "router",
           "name": "Router",
@@ -3102,19 +3102,19 @@
       },
       {
        "id": "protection",
-       "title": "Ochrana stroje",
+       "title": "Ochrana tohoto zařízení",
        "icon": "shield",
        "how": {
         "by": "collector",
         "text": "Stejný kolektor jako verze (collect-systems): firewall, šifrování disku, SSH heslem, otevřené porty. Jen čte."
        },
        "state": "not-configured",
-       "summary": "Kolektor čte jen stroje, které mají v local/site.json ssh.probe (a běží na nich agent kolektoru).",
+       "summary": "Kolektor čte jen zařízení, která mají v local/site.json ssh.probe (a běží na nich agent kolektoru).",
        "href": "#hardening",
-       "prompt": "Zapoj stroj „Router“ (10.0.0.1, id router) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje router nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only router a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+       "prompt": "Zapoj zařízení „Router“ (10.0.0.1, id router) do kolektoru verzí a ochrany Home Hubu. Na zařízení, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na zařízení přihlásí klíčem bez hesla, a v local/site.json u zařízení router nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li zařízení v hubu jen přidané, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only router a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném zařízení nic neinstaluj ani neměň.",
        "promptT": [
         {
-         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+         "key": "Zapoj zařízení „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na zařízení, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na zařízení přihlásí klíčem bez hesla, a v local/site.json u zařízení {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li zařízení v hubu jen přidané, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném zařízení nic neinstaluj ani neměň.",
          "params": {
           "id": "router",
           "name": "Router",
@@ -3129,15 +3129,15 @@
        "icon": "key",
        "how": {
         "by": "collector",
-        "text": "Kolektor scripts/collect-security.mjs běží na stroji hubu jednou denně a přes SSH přečte otisky klíčů a authorized_keys. Soukromé klíče nikdy neopustí stroj."
+        "text": "Kolektor scripts/collect-security.mjs běží na zařízení hubu jednou denně a přes SSH přečte otisky klíčů a authorized_keys. Soukromé klíče nikdy neopustí zařízení."
        },
        "state": "not-configured",
-       "summary": "Kolektor SSH klíčů čte jen stroje, které mají v local/site.json ssh (a keys není false).",
+       "summary": "Kolektor SSH klíčů čte jen zařízení, která mají v local/site.json ssh (a keys není false).",
        "href": "#security",
-       "prompt": "Zapoj stroj „Router“ (10.0.0.1, id router) do inventáře SSH klíčů Home Hubu. Na stroji, kde běží Home Hub: ověř, že se ssh alias stroje z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na stroji nic neměň.",
+       "prompt": "Zapoj zařízení „Router“ (10.0.0.1, id router) do inventáře SSH klíčů Home Hubu. Na zařízení, kde běží Home Hub: ověř, že se ssh alias zařízení z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na zařízení nic neměň.",
        "promptT": [
         {
-         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do inventáře SSH klíčů Home Hubu. Na stroji, kde běží Home Hub: ověř, že se ssh alias stroje z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na stroji nic neměň.",
+         "key": "Zapoj zařízení „{name}“ ({hostname}, id {id}) do inventáře SSH klíčů Home Hubu. Na zařízení, kde běží Home Hub: ověř, že se ssh alias zařízení z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na zařízení nic neměň.",
          "params": {
           "id": "router",
           "name": "Router",
@@ -3155,12 +3155,12 @@
         "text": "Inventář sám nic nezjišťuje: zapíše ho agent přes MCP (inventory_update) nebo ty na mapě inventáře."
        },
        "state": "not-configured",
-       "summary": "Stroj v inventáři není. Zapíše ho agent (MCP inventory_update) nebo ho přidáš na mapě inventáře.",
+       "summary": "Zařízení v inventáři není. Zapíše ho agent (MCP inventory_update) nebo ho přidáš na mapě inventáře.",
        "href": "#inventory-map",
-       "prompt": "Zapiš stroj „Router“ (id router, 10.0.0.1) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind device, id router) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+       "prompt": "Zapiš zařízení „Router“ (id router, 10.0.0.1) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš zařízení (kind device, id router) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
        "promptT": [
         {
-         "key": "Zapiš stroj „{name}“ (id {id}, {hostname}) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind device, id {id}) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+         "key": "Zapiš zařízení „{name}“ (id {id}, {hostname}) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš zařízení (kind device, id {id}) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
          "params": {
           "id": "router",
           "name": "Router",
@@ -3204,10 +3204,10 @@
        "state": "not-configured",
        "summary": "Žádný adaptér routeru není nastavený.",
        "href": "#integrations",
-       "prompt": "V Home Hubu zprovozni integraci „Adaptér routeru“ pro stroj „Router“ (10.0.0.1, id router). Postup podle hubu: V local/site.json nastav router.adapter („unifi“) a host a spouštěj python3 scripts/collect-router-unifi.py každou minutu. Nejdřív mi řekni, co přesně uděláš a jaký přístup k tomu potřebuješ; nic dalšího neměň.",
+       "prompt": "V Home Hubu zprovozni integraci „Adaptér routeru“ pro zařízení „Router“ (10.0.0.1, id router). Postup podle hubu: V local/site.json nastav router.adapter („unifi“) a host a spouštěj python3 scripts/collect-router-unifi.py každou minutu. Nejdřív mi řekni, co přesně uděláš a jaký přístup k tomu potřebuješ; nic dalšího neměň.",
        "promptT": [
         {
-         "key": "V Home Hubu zprovozni integraci „{title}“ pro stroj „{name}“ ({hostname}, id {id}). Postup podle hubu: {howTo} Nejdřív mi řekni, co přesně uděláš a jaký přístup k tomu potřebuješ; nic dalšího neměň.",
+         "key": "V Home Hubu zprovozni integraci „{title}“ pro zařízení „{name}“ ({hostname}, id {id}). Postup podle hubu: {howTo} Nejdřív mi řekni, co přesně uděláš a jaký přístup k tomu potřebuješ; nic dalšího neměň.",
          "params": {
           "title": [
            "Adaptér routeru"
@@ -3249,15 +3249,15 @@
        "icon": "pulse",
        "how": {
         "by": "source",
-        "text": "Home Hub data čte sám: z Thermo (macOS), node_exporter nebo Promethea (Linux), WinRM nebo SSH (Windows a Linux). Na stroji musí běžet zdroj; připojení nastavíš na stránce stroje v Přehledu."
+        "text": "Home Hub data čte sám: z Thermo (macOS), node_exporter nebo Promethea (Linux), WinRM nebo SSH (Windows a Linux). Na zařízení musí běžet zdroj; připojení nastavíš na stránce zařízení v Přehledu."
        },
        "state": "not-configured",
-       "summary": "Telemetrie není připojená. Připoj ji na stránce stroje v Přehledu.",
+       "summary": "Telemetrie není připojená. Připoj ji na stránce zařízení v Přehledu.",
        "href": "#host-pi-box",
-       "prompt": "Připrav stroj „Pi box“ (pi.example.lan) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo stroj přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce stroje.",
+       "prompt": "Připrav zařízení „Pi box“ (pi.example.lan) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo zařízení přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce zařízení.",
        "promptT": [
         {
-         "key": "Připrav stroj „{name}“ ({hostname}) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo stroj přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce stroje.",
+         "key": "Připrav zařízení „{name}“ ({hostname}) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo zařízení přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce zařízení.",
          "params": {
           "id": "pi-box",
           "name": "Pi box",
@@ -3272,15 +3272,15 @@
        "icon": "archive",
        "how": {
         "by": "hub",
-        "text": "Home Hub zálohuje sám: rsync přes SSH s vlastním klíčem, plán, uchovávání a kontrola místa. Na cílovém stroji stačí účet s SSH, rsync a řádek do authorized_keys z průvodce."
+        "text": "Home Hub zálohuje sám: rsync přes SSH s vlastním klíčem, plán, uchovávání a kontrola místa. Na cílovém zařízení stačí účet s SSH, rsync a řádek do authorized_keys z průvodce."
        },
        "state": "not-configured",
-       "summary": "Žádná úloha záloh na tenhle stroj neukládá ani ho nezálohuje. Založ ji na stránce Zálohování.",
+       "summary": "Žádná úloha záloh na tohle zařízení neukládá ani ho nezálohuje. Založ ji na stránce Zálohování.",
        "href": "#backup-jobs",
-       "prompt": "Připrav stroj „Pi box“ (pi.example.lan) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na stroji neměň.",
+       "prompt": "Připrav zařízení „Pi box“ (pi.example.lan) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na zařízení neměň.",
        "promptT": [
         {
-         "key": "Připrav stroj „{name}“ ({hostname}) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na stroji neměň.",
+         "key": "Připrav zařízení „{name}“ ({hostname}) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na zařízení neměň.",
          "params": {
           "id": "pi-box",
           "name": "Pi box",
@@ -3295,15 +3295,15 @@
        "icon": "versions",
        "how": {
         "by": "collector",
-        "text": "Kolektor scripts/collect-systems.mjs běží na stroji hubu (launchd, každých 6 h), přihlásí se přes SSH a jen čte. Stroj musí být v local/site.json s ssh.alias a ssh.probe (mac nebo nas)."
+        "text": "Kolektor scripts/collect-systems.mjs běží na zařízení hubu (launchd, každých 6 h), přihlásí se přes SSH a jen čte. Zařízení musí být v local/site.json s ssh.alias a ssh.probe (mac nebo nas)."
        },
        "state": "not-configured",
-       "summary": "Kolektor čte jen stroje, které mají v local/site.json ssh.probe (a běží na nich agent kolektoru).",
+       "summary": "Kolektor čte jen zařízení, která mají v local/site.json ssh.probe (a běží na nich agent kolektoru).",
        "href": "#versions",
-       "prompt": "Zapoj stroj „Pi box“ (pi.example.lan, id pi-box) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje pi-box nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only pi-box a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+       "prompt": "Zapoj zařízení „Pi box“ (pi.example.lan, id pi-box) do kolektoru verzí a ochrany Home Hubu. Na zařízení, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na zařízení přihlásí klíčem bez hesla, a v local/site.json u zařízení pi-box nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li zařízení v hubu jen přidané, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only pi-box a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném zařízení nic neinstaluj ani neměň.",
        "promptT": [
         {
-         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+         "key": "Zapoj zařízení „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na zařízení, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na zařízení přihlásí klíčem bez hesla, a v local/site.json u zařízení {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li zařízení v hubu jen přidané, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném zařízení nic neinstaluj ani neměň.",
          "params": {
           "id": "pi-box",
           "name": "Pi box",
@@ -3314,19 +3314,19 @@
       },
       {
        "id": "protection",
-       "title": "Ochrana stroje",
+       "title": "Ochrana tohoto zařízení",
        "icon": "shield",
        "how": {
         "by": "collector",
         "text": "Stejný kolektor jako verze (collect-systems): firewall, šifrování disku, SSH heslem, otevřené porty. Jen čte."
        },
        "state": "not-configured",
-       "summary": "Kolektor čte jen stroje, které mají v local/site.json ssh.probe (a běží na nich agent kolektoru).",
+       "summary": "Kolektor čte jen zařízení, která mají v local/site.json ssh.probe (a běží na nich agent kolektoru).",
        "href": "#hardening",
-       "prompt": "Zapoj stroj „Pi box“ (pi.example.lan, id pi-box) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje pi-box nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only pi-box a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+       "prompt": "Zapoj zařízení „Pi box“ (pi.example.lan, id pi-box) do kolektoru verzí a ochrany Home Hubu. Na zařízení, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na zařízení přihlásí klíčem bez hesla, a v local/site.json u zařízení pi-box nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li zařízení v hubu jen přidané, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only pi-box a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném zařízení nic neinstaluj ani neměň.",
        "promptT": [
         {
-         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+         "key": "Zapoj zařízení „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na zařízení, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na zařízení přihlásí klíčem bez hesla, a v local/site.json u zařízení {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li zařízení v hubu jen přidané, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném zařízení nic neinstaluj ani neměň.",
          "params": {
           "id": "pi-box",
           "name": "Pi box",
@@ -3341,15 +3341,15 @@
        "icon": "key",
        "how": {
         "by": "collector",
-        "text": "Kolektor scripts/collect-security.mjs běží na stroji hubu jednou denně a přes SSH přečte otisky klíčů a authorized_keys. Soukromé klíče nikdy neopustí stroj."
+        "text": "Kolektor scripts/collect-security.mjs běží na zařízení hubu jednou denně a přes SSH přečte otisky klíčů a authorized_keys. Soukromé klíče nikdy neopustí zařízení."
        },
        "state": "not-configured",
-       "summary": "Kolektor SSH klíčů čte jen stroje, které mají v local/site.json ssh (a keys není false).",
+       "summary": "Kolektor SSH klíčů čte jen zařízení, která mají v local/site.json ssh (a keys není false).",
        "href": "#security",
-       "prompt": "Zapoj stroj „Pi box“ (pi.example.lan, id pi-box) do inventáře SSH klíčů Home Hubu. Na stroji, kde běží Home Hub: ověř, že se ssh alias stroje z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na stroji nic neměň.",
+       "prompt": "Zapoj zařízení „Pi box“ (pi.example.lan, id pi-box) do inventáře SSH klíčů Home Hubu. Na zařízení, kde běží Home Hub: ověř, že se ssh alias zařízení z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na zařízení nic neměň.",
        "promptT": [
         {
-         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do inventáře SSH klíčů Home Hubu. Na stroji, kde běží Home Hub: ověř, že se ssh alias stroje z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na stroji nic neměň.",
+         "key": "Zapoj zařízení „{name}“ ({hostname}, id {id}) do inventáře SSH klíčů Home Hubu. Na zařízení, kde běží Home Hub: ověř, že se ssh alias zařízení z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na zařízení nic neměň.",
          "params": {
           "id": "pi-box",
           "name": "Pi box",
@@ -3367,12 +3367,12 @@
         "text": "Inventář sám nic nezjišťuje: zapíše ho agent přes MCP (inventory_update) nebo ty na mapě inventáře."
        },
        "state": "not-configured",
-       "summary": "Stroj v inventáři není. Zapíše ho agent (MCP inventory_update) nebo ho přidáš na mapě inventáře.",
+       "summary": "Zařízení v inventáři není. Zapíše ho agent (MCP inventory_update) nebo ho přidáš na mapě inventáře.",
        "href": "#inventory-map",
-       "prompt": "Zapiš stroj „Pi box“ (id pi-box, pi.example.lan) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind device, id pi-box) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+       "prompt": "Zapiš zařízení „Pi box“ (id pi-box, pi.example.lan) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš zařízení (kind device, id pi-box) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
        "promptT": [
         {
-         "key": "Zapiš stroj „{name}“ (id {id}, {hostname}) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind device, id {id}) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+         "key": "Zapiš zařízení „{name}“ (id {id}, {hostname}) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš zařízení (kind device, id {id}) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
          "params": {
           "id": "pi-box",
           "name": "Pi box",

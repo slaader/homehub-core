@@ -8,11 +8,11 @@ import {site} from './site.js';
 import {placesOf,DEFAULT_CATEGORY,TEMPLATE_PREFIX,INVENTORY_SCHEMA} from './inventory-rules.js';
 
 // Labels are Czech source text: pass them through t() when drawing.
-export const KIND={network:'Síť',device:'Stroj',runtime:'Služba',tool:'Nástroj','model-store':'Úložiště modelů','skill-store':'Úložiště skillů','secret-store':'Úložiště tajemství',external:'Vnější služba','secret-item':'Položka tajemství'};
+export const KIND={network:'Síť',device:'Zařízení',runtime:'Služba',tool:'Nástroj','model-store':'Úložiště modelů','skill-store':'Úložiště skillů','secret-store':'Úložiště tajemství',external:'Vnější služba','secret-item':'Položka tajemství'};
 export const GROUPS={runtime:'Služby',tool:'Nástroje','model-store':'Úložiště modelů','skill-store':'Úložiště skillů','secret-store':'Úložiště tajemství'};
 // Dependency kinds: runs-on is implied by an entry's device; the rest are recorded in depends_on.
 export const DEPS={'runs-on':'Běží na',call:'Volá',data:'Používá data',secret:'Potřebuje tajemství',cert:'Potřebuje certifikát'};
-export const DEP_HELP={'runs-on':'Stroj, na kterém běží (pole device)',call:'Volá ho po síti nebo přes API',data:'Čte jeho soubory: váhy, dumpy, složky',secret:'Bere si od něj přihlašovací údaj',cert:'Bere si od něj TLS certifikát'};
+export const DEP_HELP={'runs-on':'Zařízení, na kterém běží (pole device)',call:'Volá ho po síti nebo přes API',data:'Čte jeho soubory: váhy, dumpy, složky',secret:'Bere si od něj přihlašovací údaj',cert:'Bere si od něj TLS certifikát'};
 // Categories colour the map cards; the same list is CATEGORIES in inventory-rules.js.
 export const CATS=[['hardware','Hardware'],['network','Síť'],['service','Služby'],['model','Modely'],['tool','Nástroje'],['llm-support','Podpora LLM'],['saas','SaaS'],['secret','Tajemství']];
 export const CAT_KEYS=CATS.map(c=>c[0]),CAT_LABEL=Object.fromEntries(CATS);

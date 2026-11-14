@@ -9,16 +9,16 @@
 // translated through public/i18n-en-*.js like every other string.
 // readOnly: holding it does not make a key a writer. legacy:false: old read/write keys never get it.
 export const CORE_SCOPES=Object.freeze({
- 'read':{label:'Čtení',desc:'Číst přehled, stroje, inventář, služby, zálohy, modely a paměť. Každý servisní účet ho má.',readOnly:true},
+ 'read':{label:'Čtení',desc:'Číst přehled, zařízení, inventář, služby, zálohy, modely a paměť. Každý servisní účet ho má.',readOnly:true},
  'inventory:write':{label:'Inventář – zápis',desc:'Zakládat a měnit záznamy inventáře a služeb (s kontrolou otisku a bez tajemství).'},
  'home:settings':{label:'Nastavení přehledu',desc:'Měnit interval čtení Thermo.'},
  'tickets:write':{label:'Tickety – zápis',desc:'Zakládat a měnit tickety, komentáře, releasy a projekty vývoje.'},
  'review:write':{label:'Review – zápis',desc:'Nahrávat varianty k posouzení (mockupy, rendery) a ukládat rozhodnutí a připomínky.'},
- 'security:read':{label:'Bezpečnost – čtení',desc:'Číst inventář SSH klíčů, verze systémů a ochranu strojů.',readOnly:true,legacy:false},
+ 'security:read':{label:'Bezpečnost – čtení',desc:'Číst inventář SSH klíčů, verze systémů a ochranu zařízení.',readOnly:true,legacy:false},
 
  // Overview module (server/core/home.mjs): device_upsert, device_remove, runtime_publish. New, so old read/write keys never get it.
- 'home:write':{label:'Přehled – zápis',desc:'Přidávat, měnit a odebírat stroje v přehledu a zveřejňovat jejich runtime stack a endpointy LLM runtimů, které hub čte (s kontrolou otisku a bez tajemství).',legacy:false},
- 'software:write':{label:'Sledovaný software – zápis',desc:'Číst a měnit seznam sledovaného softwaru: odkud se bere nejnovější verze a jak se na stroji zjistí nainstalovaná.',legacy:false},
+ 'home:write':{label:'Přehled – zápis',desc:'Přidávat, měnit a odebírat zařízení v přehledu a zveřejňovat jejich runtime stack a endpointy LLM runtimů, které hub čte (s kontrolou otisku a bez tajemství).',legacy:false},
+ 'software:write':{label:'Sledovaný software – zápis',desc:'Číst a měnit seznam sledovaného softwaru: odkud se bere nejnovější verze a jak se na zařízení zjistí nainstalovaná.',legacy:false},
  // Backups (server/core/backups.mjs): run now, cancel, delete a snapshot. Setting a job up stays with administrators.
  'backup-jobs:manage':{label:'Zálohy – spouštění',desc:'Spouštět a rušit naplánované zálohy hubu a mazat jejich snímky. Úlohy zakládá a mění jen administrátor.',legacy:false},
  // Git LFS module (server/core/git-lfs.mjs): connections to git hosts and deleting orphaned LFS objects.
@@ -87,7 +87,7 @@ export const BUILTIN_ROLES=Object.freeze([
  {id:'owner',name:'Vlastník',description:'Vestavěný účet tohoto Home Hubu. Smí všechno včetně správy; nejde smazat, zakázat ani mu změnit roli.',admin:true,assignable:false,grants:()=>scopeIds()},
  {id:'admin',name:'Admin',description:'Všechno včetně správy uživatelů, rolí, servisních účtů, klíčů a tokenů aplikací.',admin:true,assignable:true,grants:()=>scopeIds()},
  {id:'editor',name:'Editor',description:'Čtení a všechny zápisy. Bez správy přístupu a bez citlivých přehledů (bezpečnost).',admin:false,assignable:true,grants:()=>scopeIds().filter(s=>s==='read'||!SCOPES[s].readOnly)},
- {id:'viewer',name:'Čtenář',description:'Jen čtení: vidí přehled, stroje, inventář a tracker, nic nemění.',admin:false,assignable:true,grants:()=>['read']},
+ {id:'viewer',name:'Čtenář',description:'Jen čtení: vidí přehled, zařízení, inventář a tracker, nic nemění.',admin:false,assignable:true,grants:()=>['read']},
 ]);
 export const ROLE_ID=/^[a-z][a-z0-9-]{1,31}$/;
 // Ids a new custom role may not take: the built-in ones and the principal kinds. "app" joined them in 2.0;

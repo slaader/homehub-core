@@ -2,7 +2,7 @@
 // which returns it as-is in Czech or looks it up in the English dictionary (gettext-style, the Czech text
 // is the key). A missing English entry falls back to the Czech text, never to an empty string.
 //   t('Přehled')                              → 'Overview'
-//   t('Stroj {name} neodpovídá.',{name})      → placeholders {x}, same names in both languages
+//   t('Zařízení {name} neodpovídá.',{name})      → placeholders {x}, same names in both languages
 //   tp(n,'{n} den|{n} dny|{n} dní')           → Czech one|few|many; English entry '{n} day|{n} days'
 // Strings sent by the server (error messages, scope labels, check names) go through t() as well, so a
 // static server message translates once its Czech text is in the dictionary.

@@ -60,7 +60,7 @@ test('the overview wires an Edit button on every tile a writer may edit, outside
  assert.match(view,/'aria-label':t\('Upravit \{name\}',\{name:m\.name\}\)/,'the button names its device');
  assert.match(view,/e\.preventDefault\(\);e\.stopPropagation\(\);open\(\);/,'a click on Edit never opens the page under it');
  assert.match(view,/Boolean\(editorOf\(m\)\)\]\.join/,'the tile is redrawn when the Edit action appears or goes');
- assert.match(view,/t\('Upravit stroj'\)/);
+ assert.match(view,/t\('Upravit zařízení'\)/);
  assert.match(css,/\.hv-tile:has\(>\.hv-tile-link:focus-visible\)\{outline/,'the card shows the link\'s keyboard focus');
  assert.match(css,/\.hv-tile-edit\{position:absolute/);
 });
@@ -81,7 +81,7 @@ test('the site editor of the NAS saves only what changed, over the site\'s value
  posts.length=0;
  const d=openSiteEdit({device:siteDevice(),meta,onSaved:()=>{}});
  const body=text(d);
- assert.match(body,/Upravit stroj/);assert.match(body,/2 · Co to je/);assert.match(body,/jen k zobrazení/);assert.match(body,/Z konfigurace webu/);
+ assert.match(body,/Upravit zařízení/);assert.match(body,/2 · Co to je/);assert.match(body,/jen k zobrazení/);assert.match(body,/Z konfigurace webu/);
  assert.ok(!body.includes('Odebrat'),'no remove');assert.ok(!body.includes('Obnovit výchozí'),'no reset without an override');
  const [name]=inputs(d);assert.equal(name.value,'NAS');name.value='Storage';
  fire(all(d,n=>n.tagName==='form')[0],'submit');await tick();

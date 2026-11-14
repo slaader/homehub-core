@@ -31,8 +31,21 @@ export function forwardKeys(o,...names){
 }
 /** "machine-removed" → "device-removed", "machine mini" → "device mini": the stored words 1.x wrote as values. */
 export const forwardWord=v=>typeof v==='string'&&(v.startsWith(V1.device+'-')||v.startsWith(V1.device+' '))?'device'+v.slice(V1.device.length):v;
-/** A stored text template's placeholder: "{machine}: …" → "{device}: …". */
-export const forwardTemplate=key=>typeof key==='string'?key.replaceAll(`{${V1.device}}`,'{device}'):key;
+/**
+ * The Czech sentences (the UI's source language) 1.x stored in the findings of ssh-keys.json, in a template and in
+ * its rendered text, as 2.0 says them: 1.x called a device "stroj", 2.0 "zařízení". A template is a key of today's
+ * dictionary, so the old wording would not be found there.
+ */
+export const V1_TEXT=Object.freeze([
+ ['je root na cílovém stroji.','je root na cílovém zařízení.'],
+ ['není na žádném z prověřených strojů (jiné zařízení nebo zapomenutý klíč).','není na žádném z prověřených zařízení (neprověřené zařízení nebo zapomenutý klíč).'],
+ ['Privátní část není na žádném z prověřených strojů.','Privátní část není na žádném z prověřených zařízení.'],
+ ['kteří na stroji nejsou.','kteří na zařízení nejsou.'],
+]);
+/** A stored text (a finding's title or detail) in 2.0's wording. */
+export const forwardText=v=>typeof v==='string'?V1_TEXT.reduce((s,[old,now])=>s.replaceAll(old,now),v):v;
+/** A stored text template: its placeholder ("{machine}: …" → "{device}: …") and its wording (forwardText). */
+export const forwardTemplate=key=>typeof key==='string'?forwardText(key.replaceAll(`{${V1.device}}`,'{device}')):key;
 
 /** Writes one JSON file whole: a temporary name beside it, then a rename. */
 export function writeJsonSync(file,doc,{mode=0o600,pretty=false}={}){

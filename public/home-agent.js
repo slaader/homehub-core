@@ -23,9 +23,9 @@ export function since(iso,now=Date.now()){
 const STATE={fresh:['hlásí se','good'],'no-news':['žádné zprávy','warn'],never:['zatím se neozval','']};
 const REFUSED=['hub hlášení nepřijímá','warn'];
 export const agentState=(a,{refused=false}={})=>refused?REFUSED:STATE[a?.freshness]||STATE.never;
-const SAYS={fresh:'Agent na stroji posílá zprávy.',
- 'no-news':'Agent se odmlčel. Neznamená to, že je stroj vypnutý: agent třeba neběží, nebo se nedostane k hubu.',
- never:'Klíč je vydaný, ale agent zatím nic neposlal. Nainstaluj ho na stroji instalátorem s tímhle klíčem.',
+const SAYS={fresh:'Agent na zařízení posílá zprávy.',
+ 'no-news':'Agent se odmlčel. Neznamená to, že je zařízení vypnuté: agent třeba neběží, nebo se nedostane k hubu.',
+ never:'Klíč je vydaný, ale agent zatím nic neposlal. Nainstaluj ho na zařízení instalátorem s tímhle klíčem.',
  refused:'Hub hlášení agentů nepřijímá: integrace Push agenti je v Administrace → Integrace zakázaná. Agent je možná dál posílá, hub je odmítá a nic neukládá.'};
 
 // The tile's line: "Agent · reporting", or since when there is no news, and what needs a re-install.
@@ -45,7 +45,7 @@ export function agentSection(m,{admin=false,refused=false}={}){
  const [label,tone]=agentState(a,{refused});
  const row=(k,...v)=>el('div',{},el('dt',{},k),el('dd',{},...v));
  return el('section',{class:'hv-sec hv-agent-sec'},
-  el('div',{class:'hv-sec-head'},el('h2',{},t('Push agent')),el('p',{},t('Co stroj sám posílá hubu. Stav agenta neříká, jestli stroj běží.'))),
+  el('div',{class:'hv-sec-head'},el('h2',{},t('Push agent')),el('p',{},t('Co zařízení samo posílá hubu. Stav agenta neříká, jestli zařízení běží.'))),
   el('dl',{class:'hv-agent-facts'},
    row(t('Stav'),statusPill(t(label),tone),el('span',{class:'hv-agent-note'},t(refused?SAYS.refused:SAYS[a.freshness]||SAYS.never))),
    row(t('Naposledy'),a.lastReportAt?el('time',{datetime:a.lastReportAt,title:when(a.lastReportAt)},`${when(a.lastReportAt)} · ${since(a.lastReportAt)}`):'—'),

@@ -90,7 +90,7 @@ export function buildDevices(devices,reports){
 // plugin's bridges, relays and services appear on the device pages without a provider of their own.
 const FROM_INTEGRATION={ok:'ok',stale:'stale',error:'error',off:'off','not-configured':'not-configured',disabled:'off'};
 const KIND_ICON={telemetry:'pulse','llm-runtimes':'cpu',router:'globe',collector:'list',upstream:'versions',storage:'archive',bridge:'plug',other:'puzzle'};
-export const INTEGRATION_PROMPT='V Home Hubu zprovozni integraci „{title}“ pro stroj „{name}“ ({hostname}, id {id}). Postup podle hubu: {howTo} Nejdřív mi řekni, co přesně uděláš a jaký přístup k tomu potřebuješ; nic dalšího neměň.';
+export const INTEGRATION_PROMPT='V Home Hubu zprovozni integraci „{title}“ pro zařízení „{name}“ ({hostname}, id {id}). Postup podle hubu: {howTo} Nejdřív mi řekni, co přesně uděláš a jaký přístup k tomu potřebuješ; nic dalšího neměň.';
 export function integrationReport(integration,status,targets){
  const devices={};
  for(const t of Array.isArray(targets)?targets:[]){

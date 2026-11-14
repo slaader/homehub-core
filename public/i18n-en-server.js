@@ -4,8 +4,8 @@
 export default {
  // index.mjs: error(...) messages
  'Tohle jde jen po přihlášení heslem.':'This requires a password sign-in.',
- 'Pořadí strojů se ukládá jen po přihlášení heslem.':'Device order is saved only with a password sign-in.',
- 'Neplatné pořadí: jen známé stroje, každý nejvýš jednou.':'Invalid order: known devices only, each at most once.',
+ 'Pořadí zařízení se ukládá jen po přihlášení heslem.':'Device order is saved only with a password sign-in.',
+ 'Neplatné pořadí: jen známá zařízení, každé nejvýš jednou.':'Invalid order: known devices only, each at most once.',
  'Účet už neexistuje.':'The account no longer exists.',
  'Heslo se mění jen po přihlášení heslem.':'The password can only be changed with a password sign-in.',
  'Příliš mnoho pokusů. Zkus to znovu za 15 minut.':'Too many attempts. Try again in 15 minutes.',
@@ -26,7 +26,7 @@ export default {
 
  // scopes.mjs: API key scopes (label, desc)
  'Čtení':'Read',
- 'Číst přehled, stroje, inventář, služby, zálohy, modely a paměť. Každý servisní účet ho má.':'Read the overview, devices, inventory, services, backups, models and memory. Every service account has it.',
+ 'Číst přehled, zařízení, inventář, služby, zálohy, modely a paměť. Každý servisní účet ho má.':'Read the overview, devices, inventory, services, backups, models and memory. Every service account has it.',
  'Inventář – zápis':'Inventory – write',
  'Zakládat a měnit záznamy inventáře a služeb (s kontrolou otisku a bez tajemství).':'Create and change inventory and service entries (hash-checked, no secrets).',
  'Nastavení přehledu':'Overview settings',
@@ -34,19 +34,19 @@ export default {
  'Tickety – zápis':'Tickets – write',
  'Zakládat a měnit tickety, komentáře, releasy a projekty vývoje.':'Create and change tickets, comments, releases and development projects.',
  'Bezpečnost – čtení':'Security – read',
- 'Číst inventář SSH klíčů, verze systémů a ochranu strojů.':'Read the SSH key inventory, system versions and host protection.',
+ 'Číst inventář SSH klíčů, verze systémů a ochranu zařízení.':'Read the SSH key inventory, system versions and host protection.',
 
  // home-data.mjs: tile props, runtime stack layers / blocks, chart source
  'vypnuto':'off',
  'žádný zdroj':'no source',
  'Thermo nesahá na NAS/router':'Thermo does not reach the NAS/router',
- 'Stroj nemá připojenou telemetrii.':'This device has no telemetry connected.',
- 'Přehled → stroj z konfigurace webu → Telemetrie':'Overview → device from the site configuration → Telemetry',
+ 'Zařízení nemá připojenou telemetrii.':'This device has no telemetry connected.',
+ 'Přehled → zařízení z konfigurace webu → Telemetrie':'Overview → device from the site configuration → Telemetry',
 
  // systems-data.mjs: versions, check labels / values / details, categories
  'Nejnovější verzi se nepodařilo zjistit.':'The latest version could not be determined.',
  'Aktivní LTS řada.':'Active LTS line.',
- 'Stroj nebyl prozkoumán.':'The device has not been scanned.',
+ 'Zařízení nebylo prozkoumáno.':'The device has not been scanned.',
  'Vlastní aplikace (custom app)':'Custom app',
  'Stejná verze aplikace, nový obraz kontejneru.':'Same app version, new container image.',
  'Vlastní aplikace: aktualizace = nový obraz.':'Custom app: an update means a new image.',
@@ -112,7 +112,7 @@ export default {
  'privátní klíč':'private key',
  'nedostupné':'unavailable',
  'Zastaralý záznam v ~/.ssh/config nebo chybějící authorized_keys.':'Stale entry in ~/.ssh/config or missing authorized_keys.',
- 'Privátní část není na žádném z prověřených strojů.':'The private part is not on any of the scanned devices.',
+ 'Privátní část není na žádném z prověřených zařízení.':'The private part is not on any of the scanned devices.',
  'Bez omezení adres (AllowUsers).':'No address restriction (AllowUsers).',
  'Účet má sudo bez hesla a ani from= ani AllowUsers neomezují, odkud se klíč smí použít.':'The account has passwordless sudo, and neither from= nor AllowUsers restricts where the key may be used from.',
 

@@ -204,6 +204,6 @@ test('payload: a bound NAS keeps its probed services and role, draws gauges; dev
  for(const id of ['mini','router'])assert.deepEqual({...bound.devices.find(m=>m.id===id),generatedAt:0},{...plain.devices.find(m=>m.id===id),generatedAt:0});
  // History: a bound site device has a source; an unbound one says so plainly.
  assert.deepEqual(homeHistoryQuery({device:'nas',range:'30m'},[],SITE,[{id:'nas',provider:'prometheus'}]),{device:'nas',range:'30m'});
- assert.equal(homeHistoryQuery({device:'nas',range:'30m'},[],SITE).reason,'Stroj nemá připojenou telemetrii.');
- assert.equal(homeHistoryQuery({device:'nas',range:'30m'},[],SITE,[{id:'ghost',provider:'prometheus'}]).reason,'Stroj nemá připojenou telemetrii.');
+ assert.equal(homeHistoryQuery({device:'nas',range:'30m'},[],SITE).reason,'Zařízení nemá připojenou telemetrii.');
+ assert.equal(homeHistoryQuery({device:'nas',range:'30m'},[],SITE,[{id:'ghost',provider:'prometheus'}]).reason,'Zařízení nemá připojenou telemetrii.');
 });

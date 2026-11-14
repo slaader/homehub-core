@@ -96,7 +96,7 @@ export default {
    const rows=await Promise.all(hub.registry.integrations.map(async i=>{const s=await runStatus(i,hub.state(i.module),hub,{enabled:hub.integrationEnabled(i.id)});return {id:i.id,kind:i.kind,state:s.state,summary:s.summary};}));
    return {integrations:rows};}}],
  apiDocs:[{title:'Integrace',routes:[
-  ['GET','/api/admin/devices','admin','Stroje: každý stroj z Přehledu a co o něm ví který modul (telemetrie, zálohy, verze, SSH klíče, inventář, LLM runtimy, Git LFS): nastaveno, nenastaveno, varování, vypnuto.'],
+  ['GET','/api/admin/devices','admin','Zařízení: každé zařízení z Přehledu a co o něm ví který modul (telemetrie, zálohy, verze, SSH klíče, inventář, LLM runtimy, Git LFS): nastaveno, nenastaveno, varování, vypnuto.'],
   ['GET','/api/admin/integrations','admin','Všechny integrace: stav, kde jsou nastavené, vypínač, test a nastavení. MCP integrations_status (jen čtení).'],
   ['POST','/api/admin/integrations/toggle','admin','{id, enabled}: zapnout nebo vypnout integraci. Zapíše se do auditu.'],
   ['POST','/api/admin/integrations/test','admin','{id}: spustit test integrace teď.'],

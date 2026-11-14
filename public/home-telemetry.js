@@ -37,11 +37,11 @@ const sshFeed=m=>['windows','linux-ssh'].includes(feedOf(m));
 // own feed (service probes, the router adapter); anything else has nothing to judge.
 export function statusOf(m){
  const tel=m.telemetry||{};
- const notOff=t('Neúspěšné čtení neznamená, že je stroj vypnutý.');
+ const notOff=t('Neúspěšné čtení neznamená, že je zařízení vypnuté.');
  if(m.kind==='thermo'){
   if(tel.state==='ok'||(!tel.state&&m.online==='online'))return {tone:'ok',text:'online',title:tel.lastSampleAt?t('Poslední měření {when}',{when:clock(tel.lastSampleAt)}):''};
   if(tel.state==='stale')return {tone:'warn',text:t('stará data · {when}',{when:clock(tel.lastSampleAt)}),title:notOff};
-  if(tel.reason==='no-login')return {tone:'warn',text:t('telemetrie nepřipojena'),title:t('Home Hub nemá přihlášení k telemetrii tohoto stroje.')};
+  if(tel.reason==='no-login')return {tone:'warn',text:t('telemetrie nepřipojena'),title:t('Home Hub nemá přihlášení k telemetrii tohoto zařízení.')};
   if(tel.reason==='denied')return {tone:'warn',text:t('přihlášení odmítnuto'),title:viaWindows(m)?t(tel.hint||'SSH přihlášení odmítnuto.'):feedOf(m)&&tel.hint?t(tel.hint):t('Telemetrie odmítla přihlášení Home Hubu.')};
   if(sshFeed(m)&&/^host-key/.test(tel.detail||''))return {tone:'warn',text:t('klíč hostitele neověřen'),title:t(tel.hint||'')};
   if(feedOf(m)&&/^tls-/.test(tel.detail||''))return {tone:'warn',text:t('certifikát neověřen'),title:t(tel.hint||'')};
@@ -49,14 +49,14 @@ export function statusOf(m){
  }
  if(m.kind==='nas'||m.kind==='router'){
   // No feed at all (no service probes for the NAS, no router adapter data) is "nothing to judge", not a failure.
-  if(m.kind==='nas'&&m.online==='unknown'&&tel.state==='not-installed')return {tone:'dim',text:t('bez telemetrie'),title:t('Home Hub z tohoto stroje telemetrii nečte, takže neví, jestli je zapnutý.')};
+  if(m.kind==='nas'&&m.online==='unknown'&&tel.state==='not-installed')return {tone:'dim',text:t('bez telemetrie'),title:t('Home Hub z tohoto zařízení telemetrii nečte, takže neví, jestli je zapnuté.')};
   if(m.kind==='router'&&m.online==='offline'&&!m.quad&&!m.lastSeen)return {tone:'dim',text:t('stav neznámý'),title:''};
   if(m.online==='online')return {tone:'ok',text:'online',title:m.lastSeen?t('Naposledy {when}',{when:clock(m.lastSeen)}):''};
   if(m.online==='stale')return {tone:'warn',text:m.lastSeen?t('stará data · {when}',{when:clock(m.lastSeen)}):t('stará data'),title:''};
   if(m.online==='offline')return {tone:'bad',text:t('neodpovídá'),title:notOff};
   return {tone:'dim',text:t('stav neznámý'),title:''};
  }
- return {tone:'dim',text:t('bez telemetrie'),title:t('Na tomhle stroji neběží telemetrický agent, takže Home Hub neví, jestli je zapnutý.')};
+ return {tone:'dim',text:t('bez telemetrie'),title:t('Na tomhle zařízení neběží telemetrický agent, takže Home Hub neví, jestli je zapnuté.')};
 }
 export const statusPill=m=>{const s=statusOf(m);return el('span',{class:`hv-status ${s.tone}`,title:s.title||null},el('i',{'aria-hidden':'true'}),s.text);};
 
@@ -69,19 +69,19 @@ export const hasReadings=m=>m.kind==='thermo'&&(m.telemetry?['ok','stale'].inclu
 // A device whose system is not said is told every way there is, never that only the agent would do.
 const siteEditable=m=>m.source==='site'&&m.telemetryEditable===true;
 export function installSteps(m,meta){
- const where=siteEditable(m)?t('Tady otevři Nastavení telemetrie: identita stroje zůstane v konfiguraci webu, uloží se jen spojení. Dialog ukáže návod, vyzkoušíš spojení a uložíš.')
-  :m.source==='site'?t('Stroj je z konfigurace webu a čte se přes Thermo: telemetrii mu nastavuje konfigurace webu (thermoId v local/site.json a účet v private/thermo-hosts.json).')
+ const where=siteEditable(m)?t('Tady otevři Nastavení telemetrie: identita zařízení zůstane v konfiguraci webu, uloží se jen spojení. Dialog ukáže návod, vyzkoušíš spojení a uložíš.')
+  :m.source==='site'?t('Zařízení je z konfigurace webu a čte se přes Thermo: telemetrii mu nastavuje konfigurace webu (thermoId v local/site.json a účet v private/thermo-hosts.json).')
   :null;
  if(m.platform==='linux')return [t('Linux nepotřebuje agenta od Home Hubu. Doporučený zdroj je Prometheus Node Exporter (čte se přímo jeho /metrics); jde i Prometheus, který už máš, nebo SSH s pevným skriptem, který jen čte /proc.'),
   where||t('Tady otevři Upravit zařízení → Telemetrie a vyber zdroj pro Linux. Dialog ukáže návod, vyzkoušíš spojení a uložíš.')];
  if(m.platform==='windows')return [t('Windows nepotřebuje agenta: Home Hub ho čte přes SSH vlastním klíčem a skriptem PowerShellu, který jen čte. Klíč vytvoří Home Hub sám; na Windows stačí OpenSSH Server a jeden příkaz, který klíč povolí.'),
   where||t('Tady otevři Upravit zařízení → Telemetrie → Windows (SSH). Dialog ukáže celý postup, vyzkoušíš spojení a uložíš.')];
- if(!m.platform&&(siteEditable(m)||m.source!=='site'))return [t('Zdroj vyber podle systému stroje. Linux (třeba NAS) bez agenta: Prometheus Node Exporter, Prometheus, který už máš, nebo SSH s pevným skriptem. Windows bez agenta: SSH nebo WinRM. macOS: agent Thermo.'),
+ if(!m.platform&&(siteEditable(m)||m.source!=='site'))return [t('Zdroj vyber podle systému zařízení. Linux (třeba NAS) bez agenta: Prometheus Node Exporter, Prometheus, který už máš, nebo SSH s pevným skriptem. Windows bez agenta: SSH nebo WinRM. macOS: agent Thermo.'),
   where||t('Tady otevři Upravit zařízení → Telemetrie, zvol systém a zdroj. Dialog ukáže návod, vyzkoušíš spojení a uložíš.')];
  const name=agentOf(meta);
- return [t('Nainstaluj na stroj telemetrického agenta {name}. Návod je v jeho repozitáři.',{name}),
+ return [t('Nainstaluj na zařízení telemetrického agenta {name}. Návod je v jeho repozitáři.',{name}),
   t('V {name} zapni přístup po síti (výchozí port 49286) a založ účet pro Home Hub: uživatele (třeba homehub) a heslo aspoň 12 znaků.',{name}),
-  m.source==='site'?t('Stroj je z konfigurace webu: v local/site.json mu nastav thermoId a přihlášení přidej do souboru private/thermo-hosts.json. Pak Home Hub restartuj.')
+  m.source==='site'?t('Zařízení je z konfigurace webu: v local/site.json mu nastav thermoId a přihlášení přidej do souboru private/thermo-hosts.json. Pak Home Hub restartuj.')
    :t('Tady otevři Upravit zařízení → Telemetrie, ověř spojení, potvrď otisk certifikátu a ulož.')];
 }
 // The not-installed notices name the agent only for a Mac (or a device the site reads through Thermo).
@@ -91,15 +91,15 @@ const unknownSystem=m=>!m.platform&&(siteEditable(m)||m.source!=='site');
 export function tileNotice(m,meta){
  const tel=m.telemetry||{},name=agentOf(meta,m);
  const box=(tone,title,body)=>el('div',{class:`hv-tile-note ${tone}`},el('b',{},title),el('span',{},body));
- if(tel.state==='not-installed')return box('dim',t('Telemetrie není nainstalovaná'),m.platform==='windows'?t('Windows jde číst přes SSH bez agenta. Postup je na stránce stroje.'):m.platform==='linux'?t('Linux jde číst přes Node Exporter, Prometheus nebo SSH. Postup je na stránce stroje.')
-  :unknownSystem(m)?t('Linux a Windows jdou číst bez agenta, Mac přes Thermo. Postup je na stránce stroje.'):t('Živá čísla dodá agent {name}. Postup je na stránce stroje.',{name}));
+ if(tel.state==='not-installed')return box('dim',t('Telemetrie není nainstalovaná'),m.platform==='windows'?t('Windows jde číst přes SSH bez agenta. Postup je na stránce zařízení.'):m.platform==='linux'?t('Linux jde číst přes Node Exporter, Prometheus nebo SSH. Postup je na stránce zařízení.')
+  :unknownSystem(m)?t('Linux a Windows jdou číst bez agenta, Mac přes Thermo. Postup je na stránce zařízení.'):t('Živá čísla dodá agent {name}. Postup je na stránce zařízení.',{name}));
  if(tel.state==='not-applicable')return null;
- if(tel.reason==='no-login')return box('warn',t('Telemetrie není připojená'),t('Home Hub k ní nemá přihlášení. Postup je na stránce stroje.'));
- if(tel.reason==='denied')return box('warn',t('Přihlášení odmítnuto'),viaWindows(m)?t('Windows nepřijal SSH klíč Home Hubu. Postup je na stránce stroje.'):feedOf(m)?t('{name} nepřijal přihlášení Home Hubu. Postup je na stránce stroje.',{name}):t('Zkontroluj účet pro Home Hub v {name}.',{name}));
- if(viaFeed(m)&&tel.state!=='stale')return box('warn',/^host-key/.test(tel.detail||'')?t('Klíč hostitele neověřen'):/^tls-/.test(tel.detail||'')?t('Certifikát neověřen'):t('Telemetrie neodpovídá'),t('Stroj nemusí být vypnutý: může spát, být mimo síť, nebo zdroj {name} neodpovídá.',{name}));
- if(viaWindows(m)&&tel.state!=='stale')return box('warn',/^host-key/.test(tel.detail||'')?t('Klíč hostitele neověřen'):t('Telemetrie neodpovídá'),t('Stroj nemusí být vypnutý: může spát, být mimo síť, nebo na něm neběží SSH.'));
- if(tel.state==='stale')return box('warn',t('Data jsou stará'),t('Poslední měření {when}. Stroj nemusí být vypnutý.',{when:clock(tel.lastSampleAt)}));
- return box('warn',t('Telemetrie neodpovídá'),t('Stroj nemusí být vypnutý: může spát, být mimo síť, nebo {name} neběží.',{name}));
+ if(tel.reason==='no-login')return box('warn',t('Telemetrie není připojená'),t('Home Hub k ní nemá přihlášení. Postup je na stránce zařízení.'));
+ if(tel.reason==='denied')return box('warn',t('Přihlášení odmítnuto'),viaWindows(m)?t('Windows nepřijal SSH klíč Home Hubu. Postup je na stránce zařízení.'):feedOf(m)?t('{name} nepřijal přihlášení Home Hubu. Postup je na stránce zařízení.',{name}):t('Zkontroluj účet pro Home Hub v {name}.',{name}));
+ if(viaFeed(m)&&tel.state!=='stale')return box('warn',/^host-key/.test(tel.detail||'')?t('Klíč hostitele neověřen'):/^tls-/.test(tel.detail||'')?t('Certifikát neověřen'):t('Telemetrie neodpovídá'),t('Zařízení nemusí být vypnuté: může spát, být mimo síť, nebo zdroj {name} neodpovídá.',{name}));
+ if(viaWindows(m)&&tel.state!=='stale')return box('warn',/^host-key/.test(tel.detail||'')?t('Klíč hostitele neověřen'):t('Telemetrie neodpovídá'),t('Zařízení nemusí být vypnuté: může spát, být mimo síť, nebo na něm neběží SSH.'));
+ if(tel.state==='stale')return box('warn',t('Data jsou stará'),t('Poslední měření {when}. Zařízení nemusí být vypnuté.',{when:clock(tel.lastSampleAt)}));
+ return box('warn',t('Telemetrie neodpovídá'),t('Zařízení nemusí být vypnuté: může spát, být mimo síť, nebo {name} neběží.',{name}));
 }
 
 // The full notice on a device's page, or null when telemetry is fine. onConnect: opens the edit dialog
@@ -111,51 +111,51 @@ export function telemetryNotice(m,meta,{onConnect}={}){
  if(tel.state==='not-installed'||!tel.state){
   const box=m.platform==='linux'
    ?notInstalled({dependency:'Node Exporter',installUrl:'https://github.com/prometheus/node_exporter',title:t('Telemetrie tu není připojená'),steps:installSteps(m,meta),
-    body:t('CPU a jádra, paměť, svazky, disky, síť a teploty (když je stroj hlásí) čte Home Hub z Linuxu přes Node Exporter, Prometheus nebo SSH. GPU a příkon tyhle zdroje neměří. Bez připojení má stroj dlaždici s údaji a zbytek Home Hubu funguje dál.')})
+    body:t('CPU a jádra, paměť, svazky, disky, síť a teploty (když je zařízení hlásí) čte Home Hub z Linuxu přes Node Exporter, Prometheus nebo SSH. GPU a příkon tyhle zdroje neměří. Bez připojení má zařízení dlaždici s údaji a zbytek Home Hubu funguje dál.')})
    :m.platform==='windows'
    ?notInstalled({dependency:'OpenSSH',title:t('Telemetrie tu není připojená'),steps:installSteps(m,meta),
-    body:t('CPU a jádra, GPU, paměť, disky a síť čte Home Hub z Windows sám, přes SSH. Teploty, ventilátory a příkon Windows nehlásí. Bez připojení má stroj dlaždici s údaji a zbytek Home Hubu funguje dál.')})
+    body:t('CPU a jádra, GPU, paměť, disky a síť čte Home Hub z Windows sám, přes SSH. Teploty, ventilátory a příkon Windows nehlásí. Bez připojení má zařízení dlaždici s údaji a zbytek Home Hubu funguje dál.')})
    :unknownSystem(m)
    ?notInstalled({dependency:t('zdroj telemetrie'),title:t('Telemetrie tu není připojená'),steps:installSteps(m,meta),
-    body:t('Živá čísla čte Home Hub podle systému stroje: Linux přes Node Exporter, Prometheus nebo SSH, Windows přes SSH nebo WinRM, obojí bez agenta; Mac přes agenta Thermo. Bez připojení má stroj dlaždici s údaji a zbytek Home Hubu funguje dál.')})
+    body:t('Živá čísla čte Home Hub podle systému zařízení: Linux přes Node Exporter, Prometheus nebo SSH, Windows přes SSH nebo WinRM, obojí bez agenta; Mac přes agenta Thermo. Bez připojení má zařízení dlaždici s údaji a zbytek Home Hubu funguje dál.')})
    :notInstalled({dependency:name,installUrl:meta?.repoUrl,title:t('Telemetrie tu není nainstalovaná'),steps:installSteps(m,meta),
-   body:t('Živé CPU, GPU, paměť, příkon, teploty a disky dodává {name}: samostatný agent, který běží na stroji. Bez něj má stroj dlaždici s údaji a zbytek Home Hubu funguje dál.',{name})});
+   body:t('Živé CPU, GPU, paměť, příkon, teploty a disky dodává {name}: samostatný agent, který běží na zařízení. Bez něj má zařízení dlaždici s údaji a zbytek Home Hubu funguje dál.',{name})});
   if(connect)box.append(connect);return box;
  }
  const notice=(title,body,checks)=>el('section',{class:'hv-notice',role:'status'},el('h3',{},title),el('p',{},body),checks?.length?el('ul',{},checks.map(c=>el('li',{},c))):null,connect);
  // Windows: the SSH collector's last failure says what to do (tel.hint); old data says since when.
  if(viaWindows(m)){
   const target=tel.target||'?',conn=tel.connection;
-  const checks=[t('Stroj je vzhůru a v síti.'),conn?.mode==='managed'?t('Na Windows běží služba OpenSSH Server (sshd) a firewall pouští port {port}.',{port:conn.port}):t('Na Windows běží služba OpenSSH Server (sshd) a firewall pouští port 22.'),
+  const checks=[t('Zařízení je vzhůru a v síti.'),conn?.mode==='managed'?t('Na Windows běží služba OpenSSH Server (sshd) a firewall pouští port {port}.',{port:conn.port}):t('Na Windows běží služba OpenSSH Server (sshd) a firewall pouští port 22.'),
    conn?.mode==='managed'?t('Na Windows proběhl příkaz, který povolí klíč Home Hubu pro účet {user} (krok 3 v nastavení spojení).',{user:conn.user})
     :t('Starší spojení přes alias: účet, pod kterým běží Home Hub, se přes ssh {target} dostane dovnitř bez hesla a bez otázek. Převeď ho na spojení, které spravuje Home Hub: Upravit zařízení → Telemetrie → Změnit.',{target})];
   if(tel.state==='stale')return el('section',{class:'hv-notice slim',role:'status'},el('h3',{},t('Data jsou stará')),
-   el('p',{},[t('Poslední měření přišlo {when}; grafy níže končí tam.',{when:clock(tel.lastSampleAt)}),tel.hint?t(tel.hint):t('Neúspěšné čtení neznamená, že je stroj vypnutý.')].join(' ')));
-  if(tel.reason==='no-login')return notice(t('Home Hub nemá spojení SSH tohoto stroje'),t('Připoj ho znovu: Upravit zařízení → Telemetrie → Windows (SSH).'),[]);
+   el('p',{},[t('Poslední měření přišlo {when}; grafy níže končí tam.',{when:clock(tel.lastSampleAt)}),tel.hint?t(tel.hint):t('Neúspěšné čtení neznamená, že je zařízení vypnuté.')].join(' ')));
+  if(tel.reason==='no-login')return notice(t('Home Hub nemá spojení SSH tohoto zařízení'),t('Připoj ho znovu: Upravit zařízení → Telemetrie → Windows (SSH).'),[]);
   return notice(/^host-key/.test(tel.detail||'')?t('Klíč hostitele Windows není ověřený'):tel.reason==='denied'?t('Windows odmítl SSH přihlášení'):t('Windows přes SSH neodpovídá'),
-   tel.hint?t(tel.hint):t('Home Hub se k tomuhle stroji přes SSH zatím nedostal. To neznamená, že je stroj vypnutý.'),checks);
+   tel.hint?t(tel.hint):t('Home Hub se k tomuhle zařízení přes SSH zatím nedostal. To neznamená, že je zařízení vypnuté.'),checks);
  }
  // WinRM, Node Exporter, Prometheus, Linux SSH: the provider's last failure says what to do (tel.hint).
  if(viaFeed(m)){
   if(tel.state==='stale')return el('section',{class:'hv-notice slim',role:'status'},el('h3',{},t('Data jsou stará')),
-   el('p',{},[t('Poslední měření přišlo {when}; grafy níže končí tam.',{when:clock(tel.lastSampleAt)}),tel.hint?t(tel.hint):t('Neúspěšné čtení neznamená, že je stroj vypnutý.')].join(' ')));
-  if(tel.reason==='no-login')return notice(t('Home Hub nemá spojení {name} tohoto stroje',{name}),t('Připoj ho znovu: Upravit zařízení → Telemetrie.'),[]);
+   el('p',{},[t('Poslední měření přišlo {when}; grafy níže končí tam.',{when:clock(tel.lastSampleAt)}),tel.hint?t(tel.hint):t('Neúspěšné čtení neznamená, že je zařízení vypnuté.')].join(' ')));
+  if(tel.reason==='no-login')return notice(t('Home Hub nemá spojení {name} tohoto zařízení',{name}),t('Připoj ho znovu: Upravit zařízení → Telemetrie.'),[]);
   const c=tel.connection||{};
-  const checks=[t('Stroj je vzhůru a v síti.'),c.host?t('Server s Home Hubem dosáhne na {host}:{port} (firewall, port).',{host:c.host,port:c.port}):null,
+  const checks=[t('Zařízení je vzhůru a v síti.'),c.host?t('Server s Home Hubem dosáhne na {host}:{port} (firewall, port).',{host:c.host,port:c.port}):null,
    feedOf(m)==='prometheus'&&c.job?t('Prometheus sbírá cíl job {job}, instance {instance}.',{job:c.job,instance:c.instance}):null].filter(Boolean);
   return notice(/^host-key/.test(tel.detail||'')?t('Klíč hostitele není ověřený'):/^tls-/.test(tel.detail||'')?t('Certifikát se změnil nebo není ověřený'):tel.reason==='denied'?t('{name} odmítl přihlášení',{name}):t('{name} neodpovídá',{name}),
-   tel.hint?t(tel.hint):t('Home Hub se k tomuhle zdroji zatím nedostal. To neznamená, že je stroj vypnutý.'),checks);
+   tel.hint?t(tel.hint):t('Home Hub se k tomuhle zdroji zatím nedostal. To neznamená, že je zařízení vypnuté.'),checks);
  }
  // Old data with a known cause (no login, a refused login) gets that cause below; otherwise just since when.
  if(tel.state==='stale'&&tel.reason!=='no-login'&&tel.reason!=='denied')return el('section',{class:'hv-notice slim',role:'status'},el('h3',{},t('Data jsou stará')),
-  el('p',{},t('Poslední měření přišlo {when}; grafy níže končí tam. Neúspěšné čtení neznamená, že je stroj vypnutý: může spát, být mimo síť, nebo {name} neběží.',{when:clock(tel.lastSampleAt),name})));
- if(tel.reason==='no-login')return notice(t('Home Hub nemá přihlášení k telemetrii tohoto stroje'),
-  m.source==='site'?t('Stroj uvádí hostitele telemetrie „{id}“, ale v souboru private/thermo-hosts.json pro něj není účet. Doplň ho a Home Hub restartuj.',{id:tel.thermoId})
-   :t('Stroj uvádí hostitele telemetrie „{id}“, ale Home Hub k němu nemá účet. Agent ho přes API zadat nemůže, protože hesla tudy nechodí: připoj ho tady.',{id:tel.thermoId}),installSteps(m,meta).slice(1));
- if(tel.reason==='denied')return notice(t('Telemetrie odmítla přihlášení'),t('{name} na tomto stroji odpovídá, ale účet Home Hubu nepřijal. Další pokus proběhne sám za 5 minut.',{name}),
+  el('p',{},t('Poslední měření přišlo {when}; grafy níže končí tam. Neúspěšné čtení neznamená, že je zařízení vypnuté: může spát, být mimo síť, nebo {name} neběží.',{when:clock(tel.lastSampleAt),name})));
+ if(tel.reason==='no-login')return notice(t('Home Hub nemá přihlášení k telemetrii tohoto zařízení'),
+  m.source==='site'?t('Zařízení uvádí hostitele telemetrie „{id}“, ale v souboru private/thermo-hosts.json pro něj není účet. Doplň ho a Home Hub restartuj.',{id:tel.thermoId})
+   :t('Zařízení uvádí hostitele telemetrie „{id}“, ale Home Hub k němu nemá účet. Agent ho přes API zadat nemůže, protože hesla tudy nechodí: připoj ho tady.',{id:tel.thermoId}),installSteps(m,meta).slice(1));
+ if(tel.reason==='denied')return notice(t('Telemetrie odmítla přihlášení'),t('{name} na tomto zařízení odpovídá, ale účet Home Hubu nepřijal. Další pokus proběhne sám za 5 minut.',{name}),
   [t('V {name} zkontroluj uživatele a heslo účtu pro Home Hub.',{name}),m.source==='site'?t('Stejné údaje musí být v souboru private/thermo-hosts.json.'):t('Po změně hesla telemetrii tady odpoj a připoj znovu (Upravit zařízení → Telemetrie).')]);
- return notice(t('Telemetrie neodpovídá'),t('Home Hub se k {name} na tomto stroji zatím nedostal. To neznamená, že je stroj vypnutý.',{name}),
-  [t('Stroj je vzhůru a v síti.'),t('{name} běží a má zapnutý přístup po síti.',{name}),t('Port 49286 je povolený ve firewallu stroje.')]);
+ return notice(t('Telemetrie neodpovídá'),t('Home Hub se k {name} na tomto zařízení zatím nedostal. To neznamená, že je zařízení vypnuté.',{name}),
+  [t('Zařízení je vzhůru a v síti.'),t('{name} běží a má zapnutý přístup po síti.',{name}),t('Port 49286 je povolený ve firewallu zařízení.')]);
 }
 
 // Local LLM runtimes on a device, one compact card per runtime: name and state, what it is, a figure or two,
@@ -237,7 +237,7 @@ export function runtimesSection(m,meta,{open=[]}={}){
  const old=data.observedAt&&Date.now()-Date.parse(data.observedAt)>(meta?.staleAfterSeconds||180)*1000;
  const source=[(data.sources?.length?data.sources:[data.source]).filter(Boolean).map(x=>t(x)).join(' + ')||null,data.observedAt?(old?t('stará data · naposledy {when}',{when:clock(data.observedAt)}):t('čteno {when}',{when:clock(data.observedAt)})):null].filter(Boolean).join(' · ');
  return el('div',{class:'hv-runtimes'},workPanel(m,meta),
-  data.runtimes.length?data.runtimes.map(r=>runtimeCard(r,open.includes(r.id))):el('p',{class:'hv-note'},t('Poskytovatel teď na tomhle stroji žádný runtime nehlásí.')),
+  data.runtimes.length?data.runtimes.map(r=>runtimeCard(r,open.includes(r.id))):el('p',{class:'hv-note'},t('Poskytovatel teď na tomhle zařízení žádný runtime nehlásí.')),
   source?el('p',{class:`hv-source${old?' warn':''}`},source):null);
 }
 
@@ -283,6 +283,6 @@ function linuxPanel(m,n){
    cell('CPU',[n.cpu?.name,n.cpu?.logical?`${n.cpu.logical}×`:null].filter(Boolean).join(' · ')||null),
    cell(t('Zátěž 1 / 5 / 15 min'),Array.isArray(n.load)?n.load.map(v=>Math.round(v*100)/100).join(' / '):null),
    cell(t('Disk čtení / zápis'),`${rate(n.disk?.readBps)} / ${rate(n.disk?.writeBps)}`),cell(t('Síť přijato / odesláno'),`${rate(n.net?.rxBps)} / ${rate(n.net?.txBps)}`),
-   ...temps,cell(t('GPU a příkon'),t('tenhle zdroj je neměří')),...(temps.length?[]:[cell(t('Senzory'),t('stroj teploty nehlásí'))])),
+   ...temps,cell(t('GPU a příkon'),t('tenhle zdroj je neměří')),...(temps.length?[]:[cell(t('Senzory'),t('zařízení teploty nehlásí'))])),
   bars?el('span',{class:'hv-k'},n.span?t('Jádra · průměr za {s} s',{s:Math.round(n.span)}):t('Jádra')):null,bars);
 }

@@ -80,13 +80,13 @@ export default {
   // Own overview tile order (Přehled → Upravit pořadí): per account, password sign-in only, read-only
   // viewers included. Ids are checked against the known devices; [] goes back to the default order.
   {method:'GET',path:'/api/profile/home-order',scope:null,async handler({principal,json,error,hub}){
-    if(principal.authKind!=='session')return error(403,'SESSION_REQUIRED','Pořadí strojů se ukládá jen po přihlášení heslem.');
+    if(principal.authKind!=='session')return error(403,'SESSION_REQUIRED','Pořadí zařízení se ukládá jen po přihlášení heslem.');
     const saved=hub.accessStore.homeOrder(principal.id),known=await hub.state('home').deviceIds();return json(200,{order:homeOrder(saved,known),saved:Boolean(saved),known});}},
   {method:'POST',path:'/api/profile/home-order',scope:null,write:false,async handler({principal,input,json,error,hub}){
-    if(principal.authKind!=='session')return error(403,'SESSION_REQUIRED','Pořadí strojů se ukládá jen po přihlášení heslem.');
+    if(principal.authKind!=='session')return error(403,'SESSION_REQUIRED','Pořadí zařízení se ukládá jen po přihlášení heslem.');
     const deviceIds=hub.state('home').deviceIds;
     let order;try{if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>k!=='order'))throw new Error('invalid');order=validHomeOrder(input.order,await deviceIds());}
-    catch{return error(400,'INVALID_ORDER','Neplatné pořadí: jen známé stroje, každý nejvýš jednou.');}
+    catch{return error(400,'INVALID_ORDER','Neplatné pořadí: jen známá zařízení, každé nejvýš jednou.');}
     try{const saved=await hub.accessStore.setHomeOrder(principal.id,order);return json(200,{order:homeOrder(saved,await deviceIds()),saved:Boolean(saved)});}
     catch(e){if(e.message==='not-found')return error(404,'NOT_FOUND','Účet už neexistuje.');throw e;}}},
   // Own password change (Nastavení): password sign-in only, the current password is required, five

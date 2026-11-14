@@ -30,7 +30,7 @@ const MESSAGES={
  conflict:[409,'GIT_LFS_CONFLICT','Repozitář se od náhledu změnil (refy nebo uložené objekty). Otevři náhled znovu.'],
  unverified:[503,'GIT_LFS_UNVERIFIED','Repozitář se nepodařilo znovu celý ověřit. Nic se nesmazalo.'],
  unsupported:[409,'GIT_LFS_UNSUPPORTED','Tenhle host neumí LFS objekty mazat přes API.'],
- 'git-missing':[503,'GIT_LFS_GIT_MISSING','Na tomhle stroji není git. Hub nic neinstaluje; nainstaluj git a restartuj hub.'],
+ 'git-missing':[503,'GIT_LFS_GIT_MISSING','Na tomhle zařízení není git. Hub nic neinstaluje; nainstaluj git a restartuj hub.'],
  'provider-missing':[409,'GIT_LFS_PROVIDER_MISSING','Plugin, který tenhle druh hostu přidal, není načtený.'],
  'audit-failed':[503,'GIT_LFS_AUDIT_FAILED','Záznam do auditu se nepodařilo zapsat; mazání se zastavilo.'],
 };

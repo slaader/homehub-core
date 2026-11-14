@@ -1,4 +1,4 @@
-/* Systémy · Verze a aktualizace + Ochrana strojů (builds on security.css: sec-stat, sec-table, sec-pill) */
+/* Systémy · Verze a aktualizace + Ochrana zařízení (builds on security.css: sec-stat, sec-table, sec-pill) */
 .sys-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 16px 10px}
 .sys-card h3{margin:0 0 6px;font:600 11px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
 .sys-chart{height:196px;width:100%}

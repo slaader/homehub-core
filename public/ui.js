@@ -118,9 +118,9 @@ export function mcpConnect({token,origin,label}={}){
 const PROV_ICON={manual:'users',agent:'cpu',config:'settings',collector:'pulse',telemetry:'bolt',plugin:'puzzle',other:'tag',mixed:'grid'};
 const provLabel=kind=>({manual:t('Ručně'),agent:t('Agent'),config:t('Konfigurace'),collector:t('Kolektor'),telemetry:t('Telemetrie'),plugin:t('Plugin'),other:t('Jiný zdroj'),mixed:t('Smíšený zdroj')})[kind]||kind;
 const provWhat=kind=>({manual:t('Upravil člověk ve webovém rozhraní nebo v aplikaci.'),agent:t('Zapsal agent klíčem servisního účtu, přes MCP nebo API.'),config:t('Načteno z konfiguračního souboru.'),
- collector:t('Zapsala automatická úloha, která stroje jen čte.'),telemetry:t('Hlásí živě agent na stroji.'),plugin:t('Dodává plugin.'),other:t('Razítko nebo jméno, které tady nenese žádný účet: import, úprava souboru nebo zrušený účet.')})[kind]||'';
+ collector:t('Zapsala automatická úloha, která zařízení jen čte.'),telemetry:t('Hlásí živě agent na zařízení.'),plugin:t('Dodává plugin.'),other:t('Razítko nebo jméno, které tady nenese žádný účet: import, úprava souboru nebo zrušený účet.')})[kind]||'';
 const provCount=(n,unit)=>({entries:()=>tp(n,'{n} záznam|{n} záznamy|{n} záznamů'),rounds:()=>tp(n,'{n} kolo|{n} kola|{n} kol'),
- devices:()=>tp(n,'{n} stroj|{n} stroje|{n} strojů'),records:()=>tp(n,'{n} zápis|{n} zápisy|{n} zápisů'),projects:()=>tp(n,'{n} projekt|{n} projekty|{n} projektů'),items:()=>tp(n,'{n} položka|{n} položky|{n} položek'),sources:()=>tp(n,'{n} zdroj|{n} zdroje|{n} zdrojů'),clients:()=>tp(n,'{n} klient|{n} klienti|{n} klientů')})[unit]?.()||String(n);
+ devices:()=>tp(n,'{n} zařízení|{n} zařízení|{n} zařízení'),records:()=>tp(n,'{n} zápis|{n} zápisy|{n} zápisů'),projects:()=>tp(n,'{n} projekt|{n} projekty|{n} projektů'),items:()=>tp(n,'{n} položka|{n} položky|{n} položek'),sources:()=>tp(n,'{n} zdroj|{n} zdroje|{n} zdrojů'),clients:()=>tp(n,'{n} klient|{n} klienti|{n} klientů')})[unit]?.()||String(n);
 const provState=state=>({'not-configured':t('nenastaveno'),waiting:t('zatím neběžel'),stale:t('starý snímek'),unavailable:t('poslední pokus selhal'),disabled:t('vypnuto administrátorem')})[state]||'';
 const DAY_ONLY=/^\d{4}-\d{2}-\d{2}$/;
 // "2 days ago" in the reader's language; a calendar day (an inventory stamp) is counted in whole days.
@@ -144,7 +144,7 @@ function provFacts(s){
  if(s.changes)out.push(tp(s.changes,'{n} pozdější změna|{n} pozdější změny|{n} pozdějších změn'));
  if(s.accounts?.length)out.push(t('servisní účty: {names}',{names:provNames(s.accounts,s.accountsMore)}));
  if(s.people?.length)out.push(t('lidé: {names}',{names:provNames(s.people,s.peopleMore)}));
- if(s.host)out.push(t('ze stroje {host}',{host:s.host}));
+ if(s.host)out.push(t('ze zařízení {host}',{host:s.host}));
  if(s.schedule)out.push(s.schedule.trigger==='manual'?t('spuštěno ručně'):s.schedule.scheduler?t('plánovaně ({scheduler})',{scheduler:s.schedule.label?`${s.schedule.scheduler} ${s.schedule.label}`:s.schedule.scheduler}):t('plánovaně'));
  if(s.intervalSeconds)out.push(t('každých {every}',{every:provEvery(s.intervalSeconds)}));
  if(provState(s.state))out.push(provState(s.state));
