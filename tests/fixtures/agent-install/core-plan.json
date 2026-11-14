@@ -1,0 +1,192 @@
+{
+ "macos": {
+  "lines": [
+   "Push agent (core <V>, commit cccccccccc) on macos as alice → <HOME>/Library/Application Support/Home Hub Agent",
+   "  hub https://hub.example.lan: pinned (abababababababab…)",
+   "  key hha_ffffffff… for machine studio → <HOME>/Library/Application Support/Home Hub Agent/private/agent.key (0600)",
+   "  18 files; agent.json and specs.txt in <HOME>/Library/Application Support/Home Hub Agent/config; state <HOME>/Library/Application Support/Home Hub Agent/state; log <HOME>/Library/Logs/Home Hub Agent/agent.log",
+   "  SSH keys: all-accounts; runtimes: ollama http://127.0.0.1:11434",
+   "  watch list (1 line): each one is run or read on this machine; confirm every line:",
+   "     1  node|cmd|/opt/homebrew/bin/node|--version|",
+   "  launchd-agent home-hub-agent: <HOME>/Library/LaunchAgents/home-hub-agent.plist",
+   "  sudoers /etc/sudoers.d/home-hub-agent (0440, checked with visudo -cf first):",
+   "     # The Home Hub push agent's privileged reads (docs/agent.md section 5), rendered from server/agent-privileged.mjs.",
+   "     # Written by scripts/install-host-agent.mjs --core: one exact command line each, no wildcard. Do not edit: install again.",
+   "     alice ALL=(root) NOPASSWD: /sbin/pfctl -s info",
+   "     alice ALL=(root) NOPASSWD: /sbin/pfctl -s rules",
+   "     alice ALL=(root) NOPASSWD: /usr/sbin/lsof +c 0 -nP -iTCP -sTCP\\:LISTEN",
+   "     alice ALL=(root) NOPASSWD: /usr/sbin/sshd -T",
+   "     alice ALL=(root) NOPASSWD: /usr/local/libexec/home-hub-agent/ssh-probe.sh \"\"",
+   "  a root-owned copy of ssh-probe.sh at /usr/local/libexec/home-hub-agent/ssh-probe.sh (0755)",
+   "  health: the first accepted report (status.json → lastAcceptedAt after the restart) within 90 s"
+  ],
+  "service": {
+   "kind": "launchd-agent",
+   "label": "home-hub-agent",
+   "file": "<HOME>/Library/LaunchAgents/home-hub-agent.plist",
+   "domain": "gui/501",
+   "text": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n\t<key>EnvironmentVariables</key>\n\t<dict>\n\t\t<key>HOME</key>\n\t\t<string><HOME></string>\n\t\t<key>PATH</key>\n\t\t<string>/usr/bin:/bin:/usr/sbin:/sbin</string>\n\t</dict>\n\t<key>KeepAlive</key>\n\t<true/>\n\t<key>Label</key>\n\t<string>home-hub-agent</string>\n\t<key>ProcessType</key>\n\t<string>Background</string>\n\t<key>ProgramArguments</key>\n\t<array>\n\t\t<string>/opt/homebrew/bin/node</string>\n\t\t<string><HOME>/Library/Application Support/Home Hub Agent/scripts/agent/agent.mjs</string>\n\t\t<string>--config</string>\n\t\t<string><HOME>/Library/Application Support/Home Hub Agent/config</string>\n\t\t<string>--key</string>\n\t\t<string><HOME>/Library/Application Support/Home Hub Agent/private/agent.key</string>\n\t\t<string>--state</string>\n\t\t<string><HOME>/Library/Application Support/Home Hub Agent/state</string>\n\t</array>\n\t<key>RunAtLoad</key>\n\t<true/>\n\t<key>StandardErrorPath</key>\n\t<string><HOME>/Library/Logs/Home Hub Agent/agent.log</string>\n\t<key>StandardOutPath</key>\n\t<string><HOME>/Library/Logs/Home Hub Agent/agent.log</string>\n\t<key>ThrottleInterval</key>\n\t<integer>60</integer>\n\t<key>WorkingDirectory</key>\n\t<string><HOME>/Library/Application Support/Home Hub Agent</string>\n</dict>\n</plist>\n"
+  },
+  "paths": {
+   "target": "<HOME>/Library/Application Support/Home Hub Agent",
+   "config": "<HOME>/Library/Application Support/Home Hub Agent/config",
+   "key": "<HOME>/Library/Application Support/Home Hub Agent/private/agent.key",
+   "state": "<HOME>/Library/Application Support/Home Hub Agent/state",
+   "log": "<HOME>/Library/Logs/Home Hub Agent/agent.log",
+   "service": "<HOME>/Library/LaunchAgents/home-hub-agent.plist",
+   "backups": "<HOME>/Library/Application Support/Home Hub Agent Backups",
+   "sudoers": "/etc/sudoers.d/home-hub-agent",
+   "probeCopy": "/usr/local/libexec/home-hub-agent/ssh-probe.sh"
+  },
+  "record": {
+   "schema": 1,
+   "kind": "core",
+   "core": "<V>",
+   "platform": "macos",
+   "account": "alice",
+   "label": "home-hub-agent",
+   "service": "launchd-agent",
+   "entry": "scripts/agent/agent.mjs",
+   "commits": {
+    "core": "cccccccccccccccccccccccccccccccccccccccc"
+   },
+   "dirty": false,
+   "agent": {
+    "id": "ag_1",
+    "machine": "studio",
+    "prefix": "hha_ffffffff"
+   },
+   "config": {
+    "path": "agent.json",
+    "sha256": "f71c1989587acb5a6be9be941a1f555691e3baf85cdd30625a1cdb22d19bf70e"
+   },
+   "specs": {
+    "sha256": "93edbc53ad050eaf3e899076ff3a5aebf37f8a61e6276aa8f0b90592db2df26b",
+    "lines": 1
+   },
+   "keyMode": "owner-file",
+   "keys": "all-accounts",
+   "privileged": {
+    "sudoers": "# The Home Hub push agent's privileged reads (docs/agent.md section 5), rendered from server/agent-privileged.mjs.\n# Written by scripts/install-host-agent.mjs --core: one exact command line each, no wildcard. Do not edit: install again.\nalice ALL=(root) NOPASSWD: /sbin/pfctl -s info\nalice ALL=(root) NOPASSWD: /sbin/pfctl -s rules\nalice ALL=(root) NOPASSWD: /usr/sbin/lsof +c 0 -nP -iTCP -sTCP\\:LISTEN\nalice ALL=(root) NOPASSWD: /usr/sbin/sshd -T\nalice ALL=(root) NOPASSWD: /usr/local/libexec/home-hub-agent/ssh-probe.sh \"\"\n",
+    "probeCopy": true
+   }
+  },
+  "files": [
+   "package.json",
+   "scripts/agent/agent.mjs",
+   "scripts/agent/config.mjs",
+   "scripts/agent/probes.mjs",
+   "scripts/agent/runtimes.mjs",
+   "scripts/agent/transport.mjs",
+   "scripts/security/ssh-probe.sh",
+   "scripts/systems/linux-probe.sh",
+   "scripts/systems/mac-probe.sh",
+   "server/agent-privileged.mjs",
+   "server/agent-report.mjs",
+   "server/endpoint-http.mjs",
+   "server/runtime-adapters.mjs",
+   "server/runtime-kinds.mjs",
+   "server/secret-patterns.mjs",
+   "server/semver.mjs",
+   "server/ssh-lines.mjs",
+   "server/watch-rules.mjs"
+  ],
+  "sudoers": "# The Home Hub push agent's privileged reads (docs/agent.md section 5), rendered from server/agent-privileged.mjs.\n# Written by scripts/install-host-agent.mjs --core: one exact command line each, no wildcard. Do not edit: install again.\nalice ALL=(root) NOPASSWD: /sbin/pfctl -s info\nalice ALL=(root) NOPASSWD: /sbin/pfctl -s rules\nalice ALL=(root) NOPASSWD: /usr/sbin/lsof +c 0 -nP -iTCP -sTCP\\:LISTEN\nalice ALL=(root) NOPASSWD: /usr/sbin/sshd -T\nalice ALL=(root) NOPASSWD: /usr/local/libexec/home-hub-agent/ssh-probe.sh \"\"\n",
+  "configText": "{\n \"$comment\": \"Written by scripts/install-host-agent.mjs --core. Do not edit: install again.\",\n \"schema\": 1,\n \"hub\": \"https://hub.example.lan\",\n \"trust\": {\n  \"pins\": [\n   \"abababababababababababababababababababababababababababababababab\"\n  ]\n },\n \"keys\": \"all-accounts\",\n \"runtimes\": [\n  {\n   \"id\": \"ollama\",\n   \"kind\": \"ollama\",\n   \"url\": \"http://127.0.0.1:11434\"\n  }\n ]\n}\n"
+ },
+ "linux": {
+  "lines": [
+   "Push agent (core <V>, commit cccccccccc) on linux as home-hub-agent → /opt/home-hub-agent",
+   "  hub https://hub.example.lan: pinned (abababababababab…)",
+   "  key hha_ffffffff… for machine studio → /etc/home-hub-agent/agent.key (root 0600, LoadCredential=agent-key)",
+   "  18 files; agent.json and specs.txt in /etc/home-hub-agent; state /var/lib/home-hub-agent; log: the journal",
+   "  SSH keys: off; runtimes: ollama http://127.0.0.1:11434",
+   "  watch list (1 line): each one is run or read on this machine; confirm every line:",
+   "     1  node|cmd|/opt/homebrew/bin/node|--version|",
+   "  systemd-system home-hub-agent: /etc/systemd/system/home-hub-agent.service",
+   "  sudoers /etc/sudoers.d/home-hub-agent (0440, checked with visudo -cf first):",
+   "     # The Home Hub push agent's privileged reads (docs/agent.md section 5), rendered from server/agent-privileged.mjs.",
+   "     # Written by scripts/install-host-agent.mjs --core: one exact command line each, no wildcard. Do not edit: install again.",
+   "     Defaults:home-hub-agent !requiretty",
+   "     home-hub-agent ALL=(root) NOPASSWD: /usr/sbin/sshd -T",
+   "     home-hub-agent ALL=(root) NOPASSWD: /usr/sbin/nft list ruleset",
+   "     home-hub-agent ALL=(root) NOPASSWD: /usr/bin/ss -Htlnp",
+   "     home-hub-agent ALL=(root) NOPASSWD: /usr/sbin/ss -Htlnp",
+   "     home-hub-agent ALL=(root) NOPASSWD: /bin/ss -Htlnp",
+   "  health: the first accepted report (status.json → lastAcceptedAt after the restart) within 90 s"
+  ],
+  "service": {
+   "kind": "systemd-system",
+   "label": "home-hub-agent",
+   "file": "/etc/systemd/system/home-hub-agent.service",
+   "domain": null,
+   "text": "# home-hub-agent: the Home Hub push agent (docs/agent.md section 5), written by scripts/install-host-agent.mjs --core.\n# Do not edit: run the installer again. It runs as the system account home-hub-agent, never as root; its privileged\n# reads go through the fixed lines of /etc/sudoers.d/home-hub-agent.\n[Unit]\nDescription=Home Hub push agent\nWants=network-online.target\nAfter=network-online.target\n\n[Service]\nType=simple\nUser=home-hub-agent\nGroup=home-hub-agent\nExecStart=\"/usr/bin/node\" \"/opt/home-hub-agent/scripts/agent/agent.mjs\" \"--config\" \"/etc/home-hub-agent\" \"--state\" \"/var/lib/home-hub-agent\"\nWorkingDirectory=/opt/home-hub-agent\nEnvironment=\"HOME=/var/lib/home-hub-agent\"\nLoadCredential=agent-key:/etc/home-hub-agent/agent.key\nStateDirectory=home-hub-agent\nStateDirectoryMode=0700\nRestart=always\nRestartSec=30\n# 78: agent.json or specs.txt failed its check at start; the agent stays stopped until the installer runs again.\nRestartPreventExitStatus=78\n# Only sandboxing that leaves sudo working: for a unit with User= (no CAP_SYS_ADMIN), PrivateDevices=,\n# ProtectKernelTunables=, ProtectKernelModules=, LockPersonality=, RestrictRealtime=, RestrictAddressFamilies= and the\n# other seccomp-based settings imply NoNewPrivileges=yes, and the setuid sudo could then never become root.\nProtectSystem=strict\nReadWritePaths=/var/lib/home-hub-agent\nProtectControlGroups=yes\n\n[Install]\nWantedBy=multi-user.target\n"
+  },
+  "paths": {
+   "target": "/opt/home-hub-agent",
+   "config": "/etc/home-hub-agent",
+   "key": "/etc/home-hub-agent/agent.key",
+   "state": "/var/lib/home-hub-agent",
+   "log": null,
+   "service": "/etc/systemd/system/home-hub-agent.service",
+   "backups": "/var/backups/home-hub-agent",
+   "sudoers": "/etc/sudoers.d/home-hub-agent",
+   "probeCopy": "/usr/local/libexec/home-hub-agent/ssh-probe.sh"
+  },
+  "record": {
+   "schema": 1,
+   "kind": "core",
+   "core": "<V>",
+   "platform": "linux",
+   "account": "home-hub-agent",
+   "label": "home-hub-agent",
+   "service": "systemd-system",
+   "entry": "scripts/agent/agent.mjs",
+   "commits": {
+    "core": "cccccccccccccccccccccccccccccccccccccccc"
+   },
+   "dirty": false,
+   "agent": {
+    "id": "ag_1",
+    "machine": "studio",
+    "prefix": "hha_ffffffff"
+   },
+   "config": {
+    "path": "agent.json",
+    "sha256": "c8cb3a43b159337f5d6855c86b871c4a553840f6eb205d3910b4999b85ca9d86"
+   },
+   "specs": {
+    "sha256": "93edbc53ad050eaf3e899076ff3a5aebf37f8a61e6276aa8f0b90592db2df26b",
+    "lines": 1
+   },
+   "keyMode": "credential",
+   "keys": "off",
+   "privileged": {
+    "sudoers": "# The Home Hub push agent's privileged reads (docs/agent.md section 5), rendered from server/agent-privileged.mjs.\n# Written by scripts/install-host-agent.mjs --core: one exact command line each, no wildcard. Do not edit: install again.\nDefaults:home-hub-agent !requiretty\nhome-hub-agent ALL=(root) NOPASSWD: /usr/sbin/sshd -T\nhome-hub-agent ALL=(root) NOPASSWD: /usr/sbin/nft list ruleset\nhome-hub-agent ALL=(root) NOPASSWD: /usr/bin/ss -Htlnp\nhome-hub-agent ALL=(root) NOPASSWD: /usr/sbin/ss -Htlnp\nhome-hub-agent ALL=(root) NOPASSWD: /bin/ss -Htlnp\n",
+    "probeCopy": false
+   }
+  },
+  "files": [
+   "package.json",
+   "scripts/agent/agent.mjs",
+   "scripts/agent/config.mjs",
+   "scripts/agent/probes.mjs",
+   "scripts/agent/runtimes.mjs",
+   "scripts/agent/transport.mjs",
+   "scripts/security/ssh-probe.sh",
+   "scripts/systems/linux-probe.sh",
+   "scripts/systems/mac-probe.sh",
+   "server/agent-privileged.mjs",
+   "server/agent-report.mjs",
+   "server/endpoint-http.mjs",
+   "server/runtime-adapters.mjs",
+   "server/runtime-kinds.mjs",
+   "server/secret-patterns.mjs",
+   "server/semver.mjs",
+   "server/ssh-lines.mjs",
+   "server/watch-rules.mjs"
+  ],
+  "sudoers": "# The Home Hub push agent's privileged reads (docs/agent.md section 5), rendered from server/agent-privileged.mjs.\n# Written by scripts/install-host-agent.mjs --core: one exact command line each, no wildcard. Do not edit: install again.\nDefaults:home-hub-agent !requiretty\nhome-hub-agent ALL=(root) NOPASSWD: /usr/sbin/sshd -T\nhome-hub-agent ALL=(root) NOPASSWD: /usr/sbin/nft list ruleset\nhome-hub-agent ALL=(root) NOPASSWD: /usr/bin/ss -Htlnp\nhome-hub-agent ALL=(root) NOPASSWD: /usr/sbin/ss -Htlnp\nhome-hub-agent ALL=(root) NOPASSWD: /bin/ss -Htlnp\n",
+  "configText": "{\n \"$comment\": \"Written by scripts/install-host-agent.mjs --core. Do not edit: install again.\",\n \"schema\": 1,\n \"hub\": \"https://hub.example.lan\",\n \"trust\": {\n  \"pins\": [\n   \"abababababababababababababababababababababababababababababababab\"\n  ]\n },\n \"keys\": \"off\",\n \"runtimes\": [\n  {\n   \"id\": \"ollama\",\n   \"kind\": \"ollama\",\n   \"url\": \"http://127.0.0.1:11434\"\n  }\n ]\n}\n"
+ }
+}

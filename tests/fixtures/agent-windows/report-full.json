@@ -1,0 +1,68 @@
+{
+ "v": 1,
+ "agentVersion": "1.4.0",
+ "platform": "windows",
+ "sentAt": "2026-11-13T10:01:12.000Z",
+ "parts": {
+  "heartbeat": {
+   "schema": 1,
+   "interval": 60
+  },
+  "os": {
+   "schema": 1,
+   "collectedAt": "2026-11-13T10:00:00.000Z",
+   "interval": 21600,
+   "records": [
+    "HOST\twinbox\tWindows\tLOCAL SERVICE\t0\t2026-11-13T10:00:00Z",
+    "OS\tWindows 11 Pro\t24H2\t26100.2605\t10.0.26100\tx64",
+    "HW\tExample Corp Example Desktop\tIntel(R) Core(TM) i5-12400\t17179869184\t12",
+    "UPTIME\t86400",
+    "DEFENDER\ton\t1",
+    "BITLOCKER\tC:\ton",
+    "BITLOCKER\tD:\toff",
+    "WINFW\tdomain\ton",
+    "WINFW\tprivate\ton",
+    "WINFW\tpublic\ton",
+    "RDP\toff",
+    "LISTEN\tsvchost\t\t0.0.0.0:135",
+    "LISTEN\tSystem\t\t0.0.0.0:445",
+    "LISTEN\tsshd\t\t[::]:22",
+    "LISTEN\tlsass\t\t127.0.0.1:49664",
+    "END\tok"
+   ]
+  },
+  "updates": {
+   "schema": 1,
+   "collectedAt": "2026-11-13T10:00:00.000Z",
+   "interval": 21600,
+   "records": [
+    "WINUP\tKB5044284\t2024-10 Cumulative Update for Windows 11 Version 24H2 for x64-based Systems (KB5044284)\tCritical\t1",
+    "WINUP\tKB2267602\tSecurity Intelligence Update for Microsoft Defender Antivirus - KB2267602 (Version 1.421.123.0)\tUnspecified\t0"
+   ],
+   "withheld": [
+    {
+     "tag": "WINUP",
+     "field": 1,
+     "reason": "invalid",
+     "count": 1
+    }
+   ]
+  },
+  "packages": {
+   "schema": 1,
+   "collectedAt": "2026-11-13T10:00:00.000Z",
+   "interval": 21600,
+   "records": [
+    "SW\tgit\tapp\t2.47.1\tGit\tx64",
+    "SW\t7zip\tapp\t24.08\t7-Zip 24.08 (x64)\tx64",
+    "SW\tnode\tmissing\t\tNode.js",
+    "SW\texample-agent\tapp\t1.2.0\tExample Agent\tx86",
+    "SW\texample-agent\tapp\t1.10.0\tExample Agent (x64)\tx64",
+    "RUN\texample-agent\t4242\tExampleSvc",
+    "SW\texample-tool\tapp\t3.1\tExample Tool\tx64",
+    "RUN\texample-tool\tloaded\tExampleToolSvc",
+    "SPECS\tadf76e9406fd7f364150b84abafd3f5c4d5950230291adb3e15fa9d40f2a9562"
+   ]
+  }
+ }
+}

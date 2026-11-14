@@ -1,0 +1,63 @@
+{
+ "categories": {
+  "ai": "AI runtimes",
+  "infra": "Servers"
+ },
+ "items": [
+  {
+   "id": "llama.cpp",
+   "name": "llama.cpp",
+   "category": "ai",
+   "scheme": "llamacpp",
+   "upstream": {
+    "type": "github",
+    "repo": "ggml-org/llama.cpp"
+   },
+   "detect": {
+    "mini": {
+     "kind": "cmd",
+     "path": "~/x/llama-b*/llama-server",
+     "args": "--version",
+     "match": "version: (\\S+)",
+     "launchd": "com.example.embeddings"
+    }
+   }
+  },
+  {
+   "id": "node",
+   "name": "Node.js",
+   "category": "infra",
+   "scheme": "node",
+   "upstream": {
+    "type": "node"
+   },
+   "detect": {
+    "mini": {
+     "kind": "cmd",
+     "path": "~/.local/bin/node",
+     "args": "--version"
+    },
+    "mini_server": {
+     "kind": "cmd",
+     "path": "~/.local/bin/node",
+     "args": "--version"
+    }
+   }
+  },
+  {
+   "id": "thermo",
+   "name": "Thermo",
+   "category": "infra",
+   "upstream": {
+    "type": "thermo-feed",
+    "url": "https://feed.example/stable.json"
+   },
+   "detect": {
+    "mini": {
+     "kind": "app",
+     "path": "/Applications/Thermo.app"
+    }
+   }
+  }
+ ]
+}

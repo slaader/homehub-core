@@ -1,0 +1,16 @@
+HOST	alice-pi	Linux	alice	0	2026-11-13T10:05:41Z
+OS	Alpine Linux	3.20.3	Alpine Linux v3.20	6.6.52-0-rpi	aarch64
+HW	Raspberry Pi 4 Model B Rev 1.5		4294967296	4
+UPTIME	302114
+PRIV	sshd	denied
+SSHD	effective	unknown
+PRIV	listen	denied
+LISTEN	?	?	0.0.0.0:22
+LISTEN	?	?	[::]:22
+LISTEN	?	?	0.0.0.0:8123
+PRIV	nft	denied
+NFT	unknown
+SW	node	cmd	v22.13.0	/usr/bin/node
+SW	llama-server	cmd	version: 4521 (a1b2c3d)	/opt/llama/bin/llama-server
+SW	example-app	missing		/opt/example-app/package.json
+END	ok

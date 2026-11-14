@@ -1,0 +1,585 @@
+{
+ "schemaVersion": 1,
+ "collectedAt": "2026-11-08T12:00:00Z",
+ "collectedFrom": "studio",
+ "machines": {
+  "mini": {
+   "host": "mini",
+   "platform": "mac",
+   "user": "alice",
+   "root": true,
+   "collectedAt": "2026-11-08T12:00:00Z",
+   "os": {
+    "name": "macOS",
+    "version": "26.7.1",
+    "build": "25G241",
+    "kernel": "25.6.0",
+    "arch": "arm64"
+   },
+   "hw": {
+    "model": "Macmini9,1",
+    "cpu": "Apple M1",
+    "memBytes": 17179869184,
+    "cpus": 8
+   },
+   "uptimeSeconds": 7200,
+   "osUpdates": {
+    "checked": true,
+    "items": [
+     {
+      "label": "Safari27.2TahoeAuto-27.2",
+      "title": "Safari",
+      "version": "27.2",
+      "recommended": true,
+      "restart": false
+     },
+     {
+      "label": "macOS Tahoe 26.7.2-25G332",
+      "title": "macOS Tahoe 26.7.2",
+      "version": "26.7.2",
+      "recommended": true,
+      "restart": true
+     }
+    ],
+    "error": null
+   },
+   "autoUpdate": {
+    "CriticalUpdateInstall": null,
+    "ConfigDataInstall": "1",
+    "AutomaticallyInstallMacOSUpdates": null
+   },
+   "firewall": {
+    "global": "0",
+    "stealth": "off"
+   },
+   "pf": {
+    "status": "disabled",
+    "rules": 2
+   },
+   "fileVault": "on",
+   "sip": "on",
+   "gatekeeper": "on",
+   "sshd": {
+    "allowUsers": [
+     "alice@10.0.0.151"
+    ],
+    "remotelogin": "on",
+    "passwordauthentication": "yes",
+    "kbdinteractiveauthentication": "yes"
+   },
+   "sharing": {
+    "com.apple.screensharing": true,
+    "com.apple.smbd": false
+   },
+   "listening": [
+    {
+     "proc": "launchd",
+     "user": "root",
+     "host": "*",
+     "port": 22,
+     "scope": "all"
+    },
+    {
+     "proc": "Python",
+     "user": "alice",
+     "host": "127.0.0.1",
+     "port": 8000,
+     "scope": "loopback"
+    }
+   ],
+   "software": {
+    "llama.cpp": [
+     {
+      "kind": "cmd",
+      "value": "version: 0.5.0-dev (build 11200, commit 81bc6b83f)",
+      "detail": "/u/llama-b11200/llama-server",
+      "extra": "running"
+     }
+    ],
+    "node": [
+     {
+      "kind": "cmd",
+      "value": "v25.9.0",
+      "detail": "/u/node",
+      "extra": ""
+     }
+    ],
+    "thermo": [
+     {
+      "kind": "app",
+      "value": "0.8.1",
+      "detail": "/Applications/Thermo.app",
+      "extra": "103"
+     }
+    ]
+   },
+   "running": {
+    "llama.cpp": {
+     "state": "running",
+     "pid": 4711,
+     "label": "com.example.embeddings"
+    }
+   },
+   "brewOutdated": [
+    {
+     "name": "fmt",
+     "installed": "12.2.0",
+     "latest": "12.2.1"
+    }
+   ],
+   "docker": [
+    {
+     "name": "open-design",
+     "image": "example/open-design:latest",
+     "status": "Up 2 days (healthy)",
+     "created": "2026-05-08T10:00:00Z"
+    }
+   ],
+   "truenasUpdate": null,
+   "apps": [],
+   "services": [],
+   "ftp": null,
+   "nft": null,
+   "errors": [],
+   "complete": true,
+   "alias": "mini",
+   "stale": false,
+   "lastError": null
+  },
+  "nas": {
+   "host": "nas",
+   "platform": "linux",
+   "user": "svc_hub",
+   "root": true,
+   "collectedAt": "2026-11-08T12:00:00Z",
+   "os": {
+    "name": "TrueNAS",
+    "version": "25.10.7",
+    "base": "Debian GNU/Linux 12 (bookworm)",
+    "kernel": "6.12.105-production+truenas",
+    "arch": "x86_64"
+   },
+   "hw": {
+    "model": "MS-7D73",
+    "cpu": "AMD Ryzen 9 7900 12-Core Processor",
+    "memBytes": 100388098048,
+    "cpus": 24
+   },
+   "uptimeSeconds": 1394522,
+   "osUpdates": {
+    "checked": false,
+    "items": [],
+    "error": null
+   },
+   "autoUpdate": {},
+   "firewall": {},
+   "pf": null,
+   "fileVault": null,
+   "sip": null,
+   "gatekeeper": null,
+   "sshd": {
+    "allowUsers": [],
+    "passwordauthentication": "no",
+    "kbdinteractiveauthentication": "no",
+    "permitrootlogin": "without-password",
+    "allowtcpforwarding": "no"
+   },
+   "sharing": {},
+   "listening": [
+    {
+     "proc": "proftpd",
+     "user": "root",
+     "host": "*",
+     "port": 21,
+     "scope": "all"
+    },
+    {
+     "proc": "smbd",
+     "user": "root",
+     "host": "0.0.0.0",
+     "port": 445,
+     "scope": "all"
+    }
+   ],
+   "software": {},
+   "running": {},
+   "brewOutdated": [],
+   "docker": [],
+   "truenasUpdate": {
+    "code": "NORMAL",
+    "train": "TrueNAS-SCALE-Goldeye",
+    "profile": "MISSION_CRITICAL",
+    "version": "25.10.8",
+    "date": "2026-11-03",
+    "notes": "Updates the Linux kernel to address upstream CVEs."
+   },
+   "apps": [
+    {
+     "name": "immich",
+     "state": "RUNNING",
+     "version": "1.14.58",
+     "human": "v3.3.5_1.14.58",
+     "upgrade": true,
+     "image": false,
+     "custom": false,
+     "train": "community",
+     "catalogApp": "immich",
+     "latest": "1.14.62",
+     "latestHuman": "v3.3.6_1.14.62"
+    }
+   ],
+   "services": [
+    {
+     "name": "ftp",
+     "state": "RUNNING",
+     "enabled": true
+    },
+    {
+     "name": "cifs",
+     "state": "RUNNING",
+     "enabled": true
+    }
+   ],
+   "ftp": {
+    "port": 21,
+    "tls": false,
+    "onlyAnonymous": false,
+    "onlyLocal": false
+   },
+   "nft": {
+    "inputPolicies": [
+     {
+      "policy": "accept",
+      "chains": 1
+     }
+    ],
+    "inputHooks": 1,
+    "rules": 141,
+    "tables": [
+     "ip nat",
+     "ip filter"
+    ]
+   },
+   "errors": [],
+   "complete": true,
+   "alias": "nas-admin",
+   "stale": false,
+   "lastError": null
+  },
+  "mini_server": {
+   "host": "mini-server",
+   "platform": "mac",
+   "user": "alice",
+   "root": true,
+   "collectedAt": "2026-11-08T12:00:00Z",
+   "os": {
+    "name": "macOS",
+    "version": "26.7.1",
+    "build": "25G241",
+    "kernel": "25.6.0",
+    "arch": "arm64"
+   },
+   "hw": {
+    "model": "Macmini9,1",
+    "cpu": "Apple M1",
+    "memBytes": 17179869184,
+    "cpus": 8
+   },
+   "uptimeSeconds": 7200,
+   "osUpdates": {
+    "checked": true,
+    "items": [
+     {
+      "label": "Safari27.2TahoeAuto-27.2",
+      "title": "Safari",
+      "version": "27.2",
+      "recommended": true,
+      "restart": false
+     },
+     {
+      "label": "macOS Tahoe 26.7.2-25G332",
+      "title": "macOS Tahoe 26.7.2",
+      "version": "26.7.2",
+      "recommended": true,
+      "restart": true
+     }
+    ],
+    "error": null
+   },
+   "autoUpdate": {
+    "CriticalUpdateInstall": null,
+    "ConfigDataInstall": "1",
+    "AutomaticallyInstallMacOSUpdates": null
+   },
+   "firewall": {
+    "global": "0",
+    "stealth": "off"
+   },
+   "pf": {
+    "status": "disabled",
+    "rules": 2
+   },
+   "fileVault": "on",
+   "sip": "on",
+   "gatekeeper": "on",
+   "sshd": {
+    "allowUsers": [
+     "alice@10.0.0.151"
+    ],
+    "remotelogin": "on",
+    "passwordauthentication": "yes",
+    "kbdinteractiveauthentication": "yes"
+   },
+   "sharing": {
+    "com.apple.screensharing": true,
+    "com.apple.smbd": false
+   },
+   "listening": [
+    {
+     "proc": "launchd",
+     "user": "root",
+     "host": "*",
+     "port": 22,
+     "scope": "all"
+    },
+    {
+     "proc": "Python",
+     "user": "alice",
+     "host": "127.0.0.1",
+     "port": 8000,
+     "scope": "loopback"
+    }
+   ],
+   "software": {
+    "llama.cpp": [
+     {
+      "kind": "cmd",
+      "value": "version: 0.5.0-dev (build 11200, commit 81bc6b83f)",
+      "detail": "/u/llama-b11200/llama-server",
+      "extra": "running"
+     }
+    ],
+    "node": [
+     {
+      "kind": "cmd",
+      "value": "v25.9.0",
+      "detail": "/u/node",
+      "extra": ""
+     }
+    ],
+    "thermo": [
+     {
+      "kind": "app",
+      "value": "0.8.1",
+      "detail": "/Applications/Thermo.app",
+      "extra": "103"
+     }
+    ]
+   },
+   "running": {
+    "llama.cpp": {
+     "state": "running",
+     "pid": 4711,
+     "label": "com.example.embeddings"
+    }
+   },
+   "brewOutdated": [
+    {
+     "name": "fmt",
+     "installed": "12.2.0",
+     "latest": "12.2.1"
+    }
+   ],
+   "docker": [
+    {
+     "name": "open-design",
+     "image": "example/open-design:latest",
+     "status": "Up 2 days (healthy)",
+     "created": "2026-05-08T10:00:00Z"
+    }
+   ],
+   "truenasUpdate": null,
+   "apps": [],
+   "services": [],
+   "ftp": null,
+   "nft": null,
+   "errors": [],
+   "complete": true,
+   "alias": "mini_server",
+   "stale": true,
+   "lastError": "ssh: connect timed out",
+   "lastAttemptAt": "2026-11-08T12:00:00Z"
+  },
+  "studio": {
+   "host": "studio",
+   "alias": "local",
+   "complete": false,
+   "stale": false,
+   "lastError": "probe failed",
+   "lastAttemptAt": "2026-11-08T12:00:00Z",
+   "os": {},
+   "hw": {},
+   "osUpdates": {
+    "checked": false,
+    "items": []
+   },
+   "autoUpdate": {},
+   "firewall": {},
+   "sshd": {
+    "allowUsers": []
+   },
+   "sharing": {},
+   "listening": [],
+   "software": {},
+   "running": {},
+   "brewOutdated": [],
+   "docker": [],
+   "apps": [],
+   "services": [],
+   "errors": []
+  },
+  "retired": {
+   "host": "retired",
+   "platform": "mac",
+   "user": "alice",
+   "root": true,
+   "collectedAt": "2026-11-08T12:00:00Z",
+   "os": {
+    "name": "macOS",
+    "version": "26.7.1",
+    "build": "25G241",
+    "kernel": "25.6.0",
+    "arch": "arm64"
+   },
+   "hw": {
+    "model": "Macmini9,1",
+    "cpu": "Apple M1",
+    "memBytes": 17179869184,
+    "cpus": 8
+   },
+   "uptimeSeconds": 7200,
+   "osUpdates": {
+    "checked": true,
+    "items": [
+     {
+      "label": "Safari27.2TahoeAuto-27.2",
+      "title": "Safari",
+      "version": "27.2",
+      "recommended": true,
+      "restart": false
+     },
+     {
+      "label": "macOS Tahoe 26.7.2-25G332",
+      "title": "macOS Tahoe 26.7.2",
+      "version": "26.7.2",
+      "recommended": true,
+      "restart": true
+     }
+    ],
+    "error": null
+   },
+   "autoUpdate": {
+    "CriticalUpdateInstall": null,
+    "ConfigDataInstall": "1",
+    "AutomaticallyInstallMacOSUpdates": null
+   },
+   "firewall": {
+    "global": "0",
+    "stealth": "off"
+   },
+   "pf": {
+    "status": "disabled",
+    "rules": 2
+   },
+   "fileVault": "on",
+   "sip": "on",
+   "gatekeeper": "on",
+   "sshd": {
+    "allowUsers": [
+     "alice@10.0.0.151"
+    ],
+    "remotelogin": "on",
+    "passwordauthentication": "yes",
+    "kbdinteractiveauthentication": "yes"
+   },
+   "sharing": {
+    "com.apple.screensharing": true,
+    "com.apple.smbd": false
+   },
+   "listening": [
+    {
+     "proc": "launchd",
+     "user": "root",
+     "host": "*",
+     "port": 22,
+     "scope": "all"
+    },
+    {
+     "proc": "Python",
+     "user": "alice",
+     "host": "127.0.0.1",
+     "port": 8000,
+     "scope": "loopback"
+    }
+   ],
+   "software": {
+    "llama.cpp": [
+     {
+      "kind": "cmd",
+      "value": "version: 0.5.0-dev (build 11200, commit 81bc6b83f)",
+      "detail": "/u/llama-b11200/llama-server",
+      "extra": "running"
+     }
+    ],
+    "node": [
+     {
+      "kind": "cmd",
+      "value": "v25.9.0",
+      "detail": "/u/node",
+      "extra": ""
+     }
+    ],
+    "thermo": [
+     {
+      "kind": "app",
+      "value": "0.8.1",
+      "detail": "/Applications/Thermo.app",
+      "extra": "103"
+     }
+    ]
+   },
+   "running": {
+    "llama.cpp": {
+     "state": "running",
+     "pid": 4711,
+     "label": "com.example.embeddings"
+    }
+   },
+   "brewOutdated": [
+    {
+     "name": "fmt",
+     "installed": "12.2.0",
+     "latest": "12.2.1"
+    }
+   ],
+   "docker": [
+    {
+     "name": "open-design",
+     "image": "example/open-design:latest",
+     "status": "Up 2 days (healthy)",
+     "created": "2026-05-08T10:00:00Z"
+    }
+   ],
+   "truenasUpdate": null,
+   "apps": [],
+   "services": [],
+   "ftp": null,
+   "nft": null,
+   "errors": [],
+   "complete": true,
+   "alias": "retired",
+   "stale": false,
+   "lastError": null
+  }
+ }
+}

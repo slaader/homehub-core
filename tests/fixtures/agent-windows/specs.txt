@@ -1,0 +1,5 @@
+git|winreg|Git||
+7zip|winreg|7-Zip*||
+node|winreg|Node.js||
+example-agent|winreg|Example Agent*||ExampleSvc
+example-tool|winreg|Example Tool||ExampleToolSvc

@@ -1,0 +1,10 @@
+HOST	studio	Darwin	alice	1	2026-11-08T12:00:00Z
+NET	10.0.0.151
+LISTEN	on
+SSHD	passwordauthentication	yes
+SSHD	allowusers	alice@10.0.0.25
+USER	alice	501	/Users/alice	/bin/zsh	1
+SUDO	alice	rule	(ALL) NOPASSWD: ALL
+CFG	alice	nas	10.0.0.74	22	admin	~/.ssh/id_a|		yes
+KEY	/Users/alice/.ssh/id_a	600	alice	1793480361	OPENSSH	no	256 SHA256:hw9LTx1XLrOYQQmR5CvKNvxy8zEUy+t8ZjYo44mM6zg studio->nas (ED25519)
+END	ok

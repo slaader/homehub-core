@@ -1,0 +1,35 @@
+HOST	alice-server	Linux	alice	0	2026-11-13T09:40:12Z
+OS	Ubuntu	24.04	Ubuntu 24.04.1 LTS	6.8.0-45-generic	x86_64
+HW	ProLiant MicroServer Gen10	Intel(R) Xeon(R) E-2224 CPU @ 3.40GHz	16657846272	4
+UPTIME	864213
+AUTO	unattended-upgrade	1
+PRIV	sshd	ok
+SSHD	passwordauthentication	no
+SSHD	kbdinteractiveauthentication	no
+SSHD	permitrootlogin	no
+SSHD	pubkeyauthentication	yes
+SSHD	allowusers	alice
+SSHD	allowtcpforwarding	no
+PRIV	listen	ok
+LISTEN	sshd	?	0.0.0.0:22
+LISTEN	sshd	?	[::]:22
+LISTEN	nginx	?	127.0.0.1:8080
+LISTEN	?	?	10.0.0.20:53
+PRIV	nft	ok
+NFT	drop:1	14	inet filter,ip nat
+PKGUP	apt	openssl	3.0.13-0ubuntu3.4	3.0.13-0ubuntu3.5	1
+PKGUP	apt	curl	8.5.0-2ubuntu10.5	8.5.0-2ubuntu10.6	0
+PKGUP	apt	tzdata	2025a-0ubuntu0.24.04.1	2025b-0ubuntu0.24.04.1	0
+SW	node	cmd	v22.13.0	/usr/bin/node
+SW	ollama	cmd	ollama version is 0.5.4	/usr/local/bin/ollama
+SW	python-requests	pydist	2.32.3	/usr/lib/python3/dist-packages
+SW	example-app	json	1.4.0	/opt/example-app/package.json
+SW	nginx	cmd	nginx version: nginx/1.24.0	/usr/sbin/nginx
+RUN	nginx	4242	nginx.service
+SW	backup	cmd	restic 0.17.3 compiled with go1.23.2	/usr/bin/restic
+RUN	backup	loaded	backup.service
+SW	watch-brew	unsupported		brew
+SW	old-tool	missing		/usr/local/bin/old-tool
+RUN	old-app	absent	old-app.service
+DOCKER	immich-server	ghcr.io/immich-app/immich-server:release	Up 3 days (healthy)	2026-11-01T08:12:44.117234Z
+END	ok

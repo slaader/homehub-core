@@ -1,0 +1,14 @@
+HOST	alice-box	Linux	alice	0	2026-11-13T11:17:30Z
+OS	Debian GNU/Linux	12	Debian GNU/Linux 12 (bookworm)	6.1.0-28-amd64	x86_64
+HW			2147483648	2
+UPTIME	55
+AUTO	unattended-upgrade	unset
+PRIV	sshd	denied
+SSHD	effective	unknown
+PRIV	listen	denied
+LISTEN	?	?	127.0.0.1:53
+PRIV	nft	denied
+NFT	unknown
+PKGUP_ERR	apt	no package index readable (apt-cache stats)
+SW	example-app	missing		/opt/example-app/package.json
+END	ok

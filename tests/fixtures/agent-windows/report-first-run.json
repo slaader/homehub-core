@@ -1,0 +1,60 @@
+{
+ "v": 1,
+ "agentVersion": "1.5.0",
+ "platform": "windows",
+ "sentAt": "2026-11-13T10:01:12.000Z",
+ "parts": {
+  "heartbeat": {
+   "schema": 1,
+   "interval": 60
+  },
+  "os": {
+   "schema": 1,
+   "collectedAt": "2026-11-13T10:00:00.000Z",
+   "interval": 21600,
+   "records": [
+    "HOST\tWINBOX\tWindows\tLOCAL SERVICE\t0\t2026-11-13T10:00:00Z",
+    "OS\tWindows 11 Pro\t25H2\t26200.7171\t10.0.26200\tx64",
+    "HW\tExample Corp Example Desktop\tExample CPU 8-Core Processor\t34359738368\t16",
+    "UPTIME\t172800",
+    "DEFENDER\ton\t0",
+    "BITLOCKER\tC:\toff",
+    "WINFW\tdomain\ton",
+    "WINFW\tprivate\ton",
+    "WINFW\tpublic\ton",
+    "RDP\toff",
+    "LISTEN\tsshd\t\t[::]:22",
+    "LISTEN\tsshd\t\t0.0.0.0:22",
+    "LISTEN\tsvchost\t\t[::]:135",
+    "LISTEN\tsvchost\t\t0.0.0.0:135",
+    "LISTEN\tSystem\t\t10.0.0.61:139",
+    "LISTEN\tSystem\t\t[::]:445",
+    "LISTEN\tSystem\t\t[::]:5985",
+    "LISTEN\tlsass\t\t[::]:49664",
+    "LISTEN\tlsass\t\t0.0.0.0:49664",
+    "LISTEN\twininit\t\t0.0.0.0:49665",
+    "LISTEN\tspoolsv\t\t[::]:49669",
+    "LISTEN\tservices\t\t0.0.0.0:49674",
+    "LISTEN\tExampleSvc\t\t127.0.0.1:50000",
+    "LISTEN\tExampleSync\t\t[::1]:50001",
+    "END\tok"
+   ]
+  },
+  "updates": {
+   "schema": 1,
+   "collectedAt": "2026-11-13T10:00:00.000Z",
+   "interval": 21600,
+   "records": [
+    "WINUP_ERR\tsearch failed (0x80070005)"
+   ]
+  },
+  "packages": {
+   "schema": 1,
+   "collectedAt": "2026-11-13T10:00:00.000Z",
+   "interval": 21600,
+   "records": [
+    "SPECS\te3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+   ]
+  }
+ }
+}

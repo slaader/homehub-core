@@ -1,0 +1,30 @@
+# {{label}}: the Home Hub push agent (docs/agent.md section 5), written by scripts/install-host-agent.mjs --core.
+# Do not edit: run the installer again. It runs as the system account {{account}}, never as root; its privileged
+# reads go through the fixed lines of /etc/sudoers.d/home-hub-agent.
+[Unit]
+Description=Home Hub push agent
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User={{account}}
+Group={{account}}
+ExecStart={{exec}}
+WorkingDirectory={{target}}
+Environment="HOME={{state}}"
+{{credential}}StateDirectory={{stateName}}
+StateDirectoryMode=0700
+Restart=always
+RestartSec=30
+# 78: agent.json or specs.txt failed its check at start; the agent stays stopped until the installer runs again.
+RestartPreventExitStatus=78
+# Only sandboxing that leaves sudo working: for a unit with User= (no CAP_SYS_ADMIN), PrivateDevices=,
+# ProtectKernelTunables=, ProtectKernelModules=, LockPersonality=, RestrictRealtime=, RestrictAddressFamilies= and the
+# other seccomp-based settings imply NoNewPrivileges=yes, and the setuid sudo could then never become root.
+ProtectSystem=strict
+ReadWritePaths={{state}}
+ProtectControlGroups=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,1037 @@
+{
+ "$comment": "Shared by tests/agent-windows-fixtures.test.mjs (against validateSpecs, validateWindowsSpecs, parseHub, checkLine and matchDisplayName) and by home-hub-agent.ps1 -SelfTest (scripts/agent/windows/check-scripts.ps1). Placeholders only.",
+ "specs": [
+  {
+   "case": "empty list",
+   "platform": "windows",
+   "text": "",
+   "ok": true
+  },
+  {
+   "case": "empty list",
+   "platform": "macos",
+   "text": "",
+   "ok": true
+  },
+  {
+   "case": "one line",
+   "platform": "windows",
+   "text": "git|winreg|Git||\n",
+   "ok": true
+  },
+  {
+   "case": "a service",
+   "platform": "windows",
+   "text": "example-agent|winreg|Example Agent*||ExampleSvc\n",
+   "ok": true
+  },
+  {
+   "case": "wildcards and punctuation",
+   "platform": "windows",
+   "text": "vcredist|winreg|Microsoft Visual C++ 2015-2022 Redistributable*||\nexample|winreg|Example, Inc. Tool 1.2_b||\n",
+   "ok": true
+  },
+  {
+   "case": "no final newline",
+   "platform": "windows",
+   "text": "git|winreg|Git||",
+   "ok": false,
+   "line": 0,
+   "reason": "the file must end with a newline"
+  },
+  {
+   "case": "no final newline",
+   "platform": "macos",
+   "text": "git|cmd|/usr/bin/git|--version|",
+   "ok": false,
+   "line": 0,
+   "reason": "the file must end with a newline"
+  },
+  {
+   "case": "four fields",
+   "platform": "windows",
+   "text": "git|winreg|Git|\n",
+   "ok": false,
+   "line": 1,
+   "reason": "a line is id|kind|a|b|label"
+  },
+  {
+   "case": "four fields",
+   "platform": "macos",
+   "text": "git|cmd|/usr/bin/git|--version\n",
+   "ok": false,
+   "line": 1,
+   "reason": "a line is id|kind|a|b|label"
+  },
+  {
+   "case": "six fields",
+   "platform": "windows",
+   "text": "git|winreg|Git|||x\n",
+   "ok": false,
+   "line": 1,
+   "reason": "a line is id|kind|a|b|label"
+  },
+  {
+   "case": "six fields",
+   "platform": "macos",
+   "text": "git|cmd|/usr/bin/git|--version||x\n",
+   "ok": false,
+   "line": 1,
+   "reason": "a line is id|kind|a|b|label"
+  },
+  {
+   "case": "an empty line",
+   "platform": "windows",
+   "text": "git|winreg|Git||\n\n",
+   "ok": false,
+   "line": 2,
+   "reason": "a line is id|kind|a|b|label"
+  },
+  {
+   "case": "an empty line",
+   "platform": "linux",
+   "text": "git|cmd|/usr/bin/git|--version|\n\n",
+   "ok": false,
+   "line": 2,
+   "reason": "a line is id|kind|a|b|label"
+  },
+  {
+   "case": "id with a space",
+   "platform": "windows",
+   "text": "git tool|winreg|Git||\n",
+   "ok": false,
+   "line": 1,
+   "reason": "id"
+  },
+  {
+   "case": "id with a space",
+   "platform": "macos",
+   "text": "git tool|cmd|/usr/bin/git|--version|\n",
+   "ok": false,
+   "line": 1,
+   "reason": "id"
+  },
+  {
+   "case": "id too long",
+   "platform": "windows",
+   "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|winreg|Git||\n",
+   "ok": false,
+   "line": 1,
+   "reason": "id"
+  },
+  {
+   "case": "id too long",
+   "platform": "linux",
+   "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|cmd|/usr/bin/git|--version|\n",
+   "ok": false,
+   "line": 1,
+   "reason": "id"
+  },
+  {
+   "case": "id with a dollar",
+   "platform": "windows",
+   "text": "g$it|winreg|Git||\n",
+   "ok": false,
+   "line": 1,
+   "reason": "id"
+  },
+  {
+   "case": "id with a dollar",
+   "platform": "linux",
+   "text": "g$it|cmd|/usr/bin/git|--version|\n",
+   "ok": false,
+   "line": 1,
+   "reason": "id"
+  },
+  {
+   "case": "kind of another platform",
+   "platform": "windows",
+   "text": "git|cmd|/usr/bin/git|--version|\n",
+   "ok": false,
+   "line": 1,
+   "reason": "kind"
+  },
+  {
+   "case": "kind of another platform",
+   "platform": "linux",
+   "text": "uv|brew|uv||\n",
+   "ok": false,
+   "line": 1,
+   "reason": "kind"
+  },
+  {
+   "case": "kind of another platform",
+   "platform": "macos",
+   "text": "git|winreg|Git||\n",
+   "ok": false,
+   "line": 1,
+   "reason": "kind"
+  },
+  {
+   "case": "label system/",
+   "platform": "windows",
+   "text": "git|winreg|Git||system/ExampleSvc\n",
+   "ok": false,
+   "line": 1,
+   "reason": "label"
+  },
+  {
+   "case": "label system/",
+   "platform": "linux",
+   "text": "x|cmd|/bin/x|--version|system/com.example.x\n",
+   "ok": false,
+   "line": 1,
+   "reason": "label"
+  },
+  {
+   "case": "label with a space",
+   "platform": "windows",
+   "text": "git|winreg|Git||Example Svc\n",
+   "ok": false,
+   "line": 1,
+   "reason": "label"
+  },
+  {
+   "case": "label with a space",
+   "platform": "linux",
+   "text": "x|cmd|/bin/x|--version|a b\n",
+   "ok": false,
+   "line": 1,
+   "reason": "label"
+  },
+  {
+   "case": "CRLF line ends",
+   "platform": "windows",
+   "text": "git|winreg|Git||\r\n",
+   "ok": false,
+   "line": 1,
+   "reason": "label"
+  },
+  {
+   "case": "CRLF line ends",
+   "platform": "linux",
+   "text": "x|cmd|/bin/x|--version|\r\n",
+   "ok": false,
+   "line": 1,
+   "reason": "label"
+  },
+  {
+   "case": "display name with a dollar",
+   "platform": "windows",
+   "text": "git|winreg|Git$(x)||\n",
+   "ok": false,
+   "line": 1,
+   "reason": "arguments"
+  },
+  {
+   "case": "display name with a quote",
+   "platform": "windows",
+   "text": "git|winreg|Git'||\n",
+   "ok": false,
+   "line": 1,
+   "reason": "arguments"
+  },
+  {
+   "case": "display name with a backquote",
+   "platform": "windows",
+   "text": "git|winreg|Git`||\n",
+   "ok": false,
+   "line": 1,
+   "reason": "arguments"
+  },
+  {
+   "case": "display name with a semicolon",
+   "platform": "windows",
+   "text": "git|winreg|Git;x||\n",
+   "ok": false,
+   "line": 1,
+   "reason": "arguments"
+  },
+  {
+   "case": "display name with parentheses",
+   "platform": "windows",
+   "text": "7zip|winreg|7-Zip (x64)||\n",
+   "ok": false,
+   "line": 1,
+   "reason": "arguments"
+  },
+  {
+   "case": "display name with a bracket",
+   "platform": "windows",
+   "text": "x|winreg|Example [x]||\n",
+   "ok": false,
+   "line": 1,
+   "reason": "arguments"
+  },
+  {
+   "case": "display name with a question mark",
+   "platform": "windows",
+   "text": "x|winreg|Exampl?||\n",
+   "ok": false,
+   "line": 1,
+   "reason": "arguments"
+  },
+  {
+   "case": "display name of stars only",
+   "platform": "windows",
+   "text": "x|winreg|**||\n",
+   "ok": false,
+   "line": 1,
+   "reason": "arguments"
+  },
+  {
+   "case": "display name with a leading space",
+   "platform": "windows",
+   "text": "x|winreg| Git||\n",
+   "ok": false,
+   "line": 1,
+   "reason": "arguments"
+  },
+  {
+   "case": "display name with a trailing space",
+   "platform": "windows",
+   "text": "x|winreg|Git ||\n",
+   "ok": false,
+   "line": 1,
+   "reason": "arguments"
+  },
+  {
+   "case": "display name too long",
+   "platform": "windows",
+   "text": "x|winreg|AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA||\n",
+   "ok": false,
+   "line": 1,
+   "reason": "arguments"
+  },
+  {
+   "case": "empty display name",
+   "platform": "windows",
+   "text": "x|winreg|||\n",
+   "ok": false,
+   "line": 1,
+   "reason": "arguments"
+  },
+  {
+   "case": "a second argument",
+   "platform": "windows",
+   "text": "git|winreg|Git|x|\n",
+   "ok": false,
+   "line": 1,
+   "reason": "arguments"
+  },
+  {
+   "case": "shell in a cmd argument",
+   "platform": "macos",
+   "text": "x|cmd|/bin/sh|-c id|\n",
+   "ok": false,
+   "line": 1,
+   "reason": "arguments"
+  },
+  {
+   "case": "the second line is wrong",
+   "platform": "windows",
+   "text": "git|winreg|Git||\nbad id|winreg|X||\n",
+   "ok": false,
+   "line": 2,
+   "reason": "id"
+  },
+  {
+   "case": "the second line is wrong",
+   "platform": "macos",
+   "text": "git|cmd|/usr/bin/git|--version|\nbad id|cmd|/bin/x|--version|\n",
+   "ok": false,
+   "line": 2,
+   "reason": "id"
+  },
+  {
+   "case": "four stars",
+   "platform": "windows",
+   "text": "x|winreg|*a*b*c*||\n",
+   "ok": true
+  },
+  {
+   "case": "five stars",
+   "platform": "windows",
+   "text": "x|winreg|*a*a*a*a*b||\n",
+   "ok": false,
+   "line": 1,
+   "reason": "arguments"
+  }
+ ],
+ "hubs": [
+  {
+   "origin": "https://hub.example.lan",
+   "ok": true,
+   "normalized": "https://hub.example.lan"
+  },
+  {
+   "origin": "https://hub.example.lan/",
+   "ok": true,
+   "normalized": "https://hub.example.lan"
+  },
+  {
+   "origin": "https://hub.example.lan:8781",
+   "ok": true,
+   "normalized": "https://hub.example.lan:8781"
+  },
+  {
+   "origin": "https://10.0.0.5:8443",
+   "ok": true,
+   "normalized": "https://10.0.0.5:8443"
+  },
+  {
+   "origin": "https://10.0.0.5",
+   "ok": true,
+   "normalized": "https://10.0.0.5"
+  },
+  {
+   "origin": "http://127.0.0.1:8781",
+   "ok": true,
+   "normalized": "http://127.0.0.1:8781"
+  },
+  {
+   "origin": "http://127.0.0.1",
+   "ok": true,
+   "normalized": "http://127.0.0.1"
+  },
+  {
+   "origin": "http://hub.example.lan",
+   "ok": false
+  },
+  {
+   "origin": "http://10.0.0.5:8781",
+   "ok": false
+  },
+  {
+   "origin": "http://localhost:8781",
+   "ok": false
+  },
+  {
+   "origin": "https://[::1]:8781",
+   "ok": false
+  },
+  {
+   "origin": "http://[::1]:8781",
+   "ok": false
+  },
+  {
+   "origin": "https://Hub.example.lan",
+   "ok": false
+  },
+  {
+   "origin": "https://hub.example.lan:443",
+   "ok": false
+  },
+  {
+   "origin": "http://127.0.0.1:80",
+   "ok": false
+  },
+  {
+   "origin": "https://hub.example.lan/x",
+   "ok": false
+  },
+  {
+   "origin": "https://hub.example.lan?x",
+   "ok": false
+  },
+  {
+   "origin": "https://hub.example.lan#",
+   "ok": false
+  },
+  {
+   "origin": "https://alice@hub.example.lan",
+   "ok": false
+  },
+  {
+   "origin": "https://hub.example.lan:65536",
+   "ok": false
+  },
+  {
+   "origin": "https://hub.example.lan:08781",
+   "ok": false
+  },
+  {
+   "origin": "https://1.2.3",
+   "ok": false
+  },
+  {
+   "origin": "https://hub.123",
+   "ok": false
+  },
+  {
+   "origin": "https://010.0.0.5",
+   "ok": false
+  },
+  {
+   "origin": "https://0x0a.0.0.5",
+   "ok": false
+  },
+  {
+   "origin": "https://hub_x.example.lan",
+   "ok": false
+  },
+  {
+   "origin": "ftp://hub.example.lan",
+   "ok": false
+  },
+  {
+   "origin": "HTTPS://hub.example.lan",
+   "ok": false
+  },
+  {
+   "origin": " https://hub.example.lan",
+   "ok": false
+  },
+  {
+   "origin": "https://hub.example.lan\n",
+   "ok": false
+  },
+  {
+   "origin": "https://hub.example.lan.",
+   "ok": false
+  },
+  {
+   "origin": "https://",
+   "ok": false
+  },
+  {
+   "origin": "hub.example.lan",
+   "ok": false
+  }
+ ],
+ "lines": [
+  {
+   "case": "HOST",
+   "part": "os",
+   "line": "HOST\twinbox\tWindows\tLOCAL SERVICE\t0\t2026-11-13T10:00:00Z",
+   "ok": true
+  },
+  {
+   "case": "HOST root 2",
+   "part": "os",
+   "line": "HOST\twinbox\tWindows\tLOCAL SERVICE\t2\t2026-11-13T10:00:00Z",
+   "ok": false,
+   "code": "invalid",
+   "tag": "HOST",
+   "field": 4
+  },
+  {
+   "case": "HOST month 13",
+   "part": "os",
+   "line": "HOST\twinbox\tWindows\tLOCAL SERVICE\t0\t2026-13-01T00:00:00Z",
+   "ok": false,
+   "code": "invalid",
+   "tag": "HOST",
+   "field": 5
+  },
+  {
+   "case": "HOST time with milliseconds",
+   "part": "os",
+   "line": "HOST\twinbox\tWindows\tLOCAL SERVICE\t0\t2026-11-13T10:00:00.000Z",
+   "ok": false,
+   "code": "invalid",
+   "tag": "HOST",
+   "field": 5
+  },
+  {
+   "case": "OS",
+   "part": "os",
+   "line": "OS\tWindows 11 Pro\t24H2\t26100.2605\t10.0.26100\tx64",
+   "ok": true
+  },
+  {
+   "case": "OS name too long",
+   "part": "os",
+   "line": "OS\tWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW\t24H2\t26100.2605\t10.0.26100\tx64",
+   "ok": false,
+   "code": "invalid",
+   "tag": "OS",
+   "field": 1
+  },
+  {
+   "case": "DEFENDER unknown, no age",
+   "part": "os",
+   "line": "DEFENDER\tunknown\t",
+   "ok": true
+  },
+  {
+   "case": "DEFENDER maybe",
+   "part": "os",
+   "line": "DEFENDER\tmaybe\t1",
+   "ok": false,
+   "code": "invalid",
+   "tag": "DEFENDER",
+   "field": 1
+  },
+  {
+   "case": "DEFENDER age not a number",
+   "part": "os",
+   "line": "DEFENDER\ton\t1a",
+   "ok": false,
+   "code": "invalid",
+   "tag": "DEFENDER",
+   "field": 2
+  },
+  {
+   "case": "DEFENDER age in other digits",
+   "part": "os",
+   "line": "DEFENDER\ton\t١",
+   "ok": false,
+   "code": "invalid",
+   "tag": "DEFENDER",
+   "field": 2
+  },
+  {
+   "case": "BITLOCKER volume too long",
+   "part": "os",
+   "line": "BITLOCKER\tC:\\Volume1\ton",
+   "ok": false,
+   "code": "invalid",
+   "tag": "BITLOCKER",
+   "field": 1
+  },
+  {
+   "case": "WINFW profile is lower case",
+   "part": "os",
+   "line": "WINFW\tPublic\ton",
+   "ok": false,
+   "code": "invalid",
+   "tag": "WINFW",
+   "field": 1
+  },
+  {
+   "case": "RDP with a field too many",
+   "part": "os",
+   "line": "RDP\ton\tx",
+   "ok": false,
+   "code": "invalid",
+   "tag": "RDP"
+  },
+  {
+   "case": "LISTEN without a user",
+   "part": "os",
+   "line": "LISTEN\tsvchost\t\t0.0.0.0:135",
+   "ok": true
+  },
+  {
+   "case": "a control character",
+   "part": "os",
+   "line": "OS\tWindows\u0001\t24H2\tb\tk\tx64",
+   "ok": false,
+   "code": "invalid",
+   "tag": "OS"
+  },
+  {
+   "case": "a C1 control character",
+   "part": "os",
+   "line": "OS\tWindows\t24H2\tb\tk\tx64",
+   "ok": false,
+   "code": "invalid",
+   "tag": "OS"
+  },
+  {
+   "case": "a line over 4096 bytes",
+   "part": "os",
+   "line": "ERROR\txxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "ok": false,
+   "code": "invalid",
+   "tag": "ERROR"
+  },
+  {
+   "case": "an unknown tag",
+   "part": "os",
+   "line": "FOO\tx",
+   "ok": false,
+   "code": "invalid",
+   "tag": "FOO"
+  },
+  {
+   "case": "an inherited name",
+   "part": "os",
+   "line": "constructor\tx",
+   "ok": false,
+   "code": "invalid"
+  },
+  {
+   "case": "another part's tag",
+   "part": "os",
+   "line": "WINUP\tKB1\tx\tLow\t0",
+   "ok": false,
+   "code": "invalid",
+   "tag": "WINUP"
+  },
+  {
+   "case": "END ok",
+   "part": "os",
+   "line": "END\tok",
+   "ok": true
+  },
+  {
+   "case": "WINUP",
+   "part": "updates",
+   "line": "WINUP\tKB5044284\t2024-10 Cumulative Update\tCritical\t1",
+   "ok": true
+  },
+  {
+   "case": "WINUP severity Urgent",
+   "part": "updates",
+   "line": "WINUP\tKB5044284\tTitle\tUrgent\t1",
+   "ok": false,
+   "code": "invalid",
+   "tag": "WINUP",
+   "field": 3
+  },
+  {
+   "case": "WINUP without a KB",
+   "part": "updates",
+   "line": "WINUP\t\tExample driver update\tUnspecified\t0",
+   "ok": false,
+   "code": "invalid",
+   "tag": "WINUP",
+   "field": 1
+  },
+  {
+   "case": "WINUP title with a secret",
+   "part": "updates",
+   "line": "WINUP\tKB123\tpassword=example-secret-value\tLow\t0",
+   "ok": false,
+   "code": "secret",
+   "tag": "WINUP",
+   "field": 2
+  },
+  {
+   "case": "WINUP_NONE",
+   "part": "updates",
+   "line": "WINUP_NONE",
+   "ok": true
+  },
+  {
+   "case": "WINUP_NONE with a field",
+   "part": "updates",
+   "line": "WINUP_NONE\tx",
+   "ok": false,
+   "code": "invalid",
+   "tag": "WINUP_NONE"
+  },
+  {
+   "case": "WINUP_ERR",
+   "part": "updates",
+   "line": "WINUP_ERR\tsearch failed (0x80070005)",
+   "ok": true
+  },
+  {
+   "case": "SW app",
+   "part": "packages",
+   "line": "SW\tgit\tapp\t2.47.1\tGit\tx64",
+   "ok": true
+  },
+  {
+   "case": "SW missing",
+   "part": "packages",
+   "line": "SW\tnode\tmissing\t\tNode.js",
+   "ok": true
+  },
+  {
+   "case": "SW kind winreg is not in the field table",
+   "part": "packages",
+   "line": "SW\tgit\twinreg\t2.47.1\tGit\tx64",
+   "ok": false,
+   "code": "invalid",
+   "tag": "SW",
+   "field": 2
+  },
+  {
+   "case": "SW value with a commit hash (named)",
+   "part": "packages",
+   "line": "SW\tx\tapp\t0123456789abcdef0123456789abcdef01234567\tName\tx64",
+   "ok": true
+  },
+  {
+   "case": "SW detail with a long hex string (all)",
+   "part": "packages",
+   "line": "SW\tx\tapp\t1.0\t0123456789abcdef0123456789abcdef01234567\tx64",
+   "ok": false,
+   "code": "secret",
+   "tag": "SW",
+   "field": 4
+  },
+  {
+   "case": "RUN pid",
+   "part": "packages",
+   "line": "RUN\tx\t4242\tExampleSvc",
+   "ok": true
+  },
+  {
+   "case": "RUN running",
+   "part": "packages",
+   "line": "RUN\tx\trunning\tExampleSvc",
+   "ok": false,
+   "code": "invalid",
+   "tag": "RUN",
+   "field": 2
+  },
+  {
+   "case": "SPECS",
+   "part": "packages",
+   "line": "SPECS\te3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "ok": true
+  },
+  {
+   "case": "SPECS upper case",
+   "part": "packages",
+   "line": "SPECS\tAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+   "ok": false,
+   "code": "invalid",
+   "tag": "SPECS",
+   "field": 1
+  },
+  {
+   "case": "SW detail with a key right after a non-ASCII letter",
+   "part": "packages",
+   "line": "SW\tgit\tapp\t2.47.1\tGitčhha_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\tx64",
+   "ok": false,
+   "code": "secret",
+   "tag": "SW",
+   "field": 4
+  },
+  {
+   "case": "SW detail with a key right after a Kelvin sign",
+   "part": "packages",
+   "line": "SW\tgit\tapp\t2.47.1\tGitKhha_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\tx64",
+   "ok": false,
+   "code": "secret",
+   "tag": "SW",
+   "field": 4
+  },
+  {
+   "case": "SW detail with an assignment after a non-ASCII letter",
+   "part": "packages",
+   "line": "SW\tgit\tapp\t2.47.1\tétoken=abcdef123\tx64",
+   "ok": false,
+   "code": "secret",
+   "tag": "SW",
+   "field": 4
+  }
+ ],
+ "configs": [
+  {
+   "case": "the system store",
+   "text": "{\"schema\":1,\"hub\":\"https://hub.example.lan\"}",
+   "ok": true
+  },
+  {
+   "case": "two pins",
+   "text": "{\"schema\":1,\"hub\":\"https://hub.example.lan\",\"trust\":{\"pins\":[\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"]}}",
+   "ok": true
+  },
+  {
+   "case": "a CA file",
+   "text": "{\"schema\":1,\"hub\":\"https://hub.example.lan:8781\",\"trust\":{\"ca\":\"C:\\\\ProgramData\\\\Home Hub Agent\\\\config\\\\hub-ca.pem\"}}",
+   "ok": true
+  },
+  {
+   "case": "intervals",
+   "text": "{\"schema\":1,\"hub\":\"https://hub.example.lan\",\"intervals\":{\"heartbeat\":120,\"os\":3600}}",
+   "ok": true
+  },
+  {
+   "case": "the hub on this machine",
+   "text": "{\"schema\":1,\"hub\":\"http://127.0.0.1:8781\"}",
+   "ok": true
+  },
+  {
+   "case": "a comment",
+   "text": "{\"$comment\":\"written by install-agent.ps1\",\"schema\":1,\"hub\":\"https://hub.example.lan\"}",
+   "ok": true
+  },
+  {
+   "case": "a machine field",
+   "text": "{\"schema\":1,\"hub\":\"https://hub.example.lan\",\"machine\":\"winbox\"}",
+   "ok": false
+  },
+  {
+   "case": "keys",
+   "text": "{\"schema\":1,\"hub\":\"https://hub.example.lan\",\"keys\":\"own\"}",
+   "ok": false
+  },
+  {
+   "case": "schema 2",
+   "text": "{\"schema\":2,\"hub\":\"https://hub.example.lan\"}",
+   "ok": false
+  },
+  {
+   "case": "schema as text",
+   "text": "{\"schema\":\"1\",\"hub\":\"https://hub.example.lan\"}",
+   "ok": false
+  },
+  {
+   "case": "three pins",
+   "text": "{\"schema\":1,\"hub\":\"https://hub.example.lan\",\"trust\":{\"pins\":[\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"]}}",
+   "ok": false
+  },
+  {
+   "case": "a pin in upper case",
+   "text": "{\"schema\":1,\"hub\":\"https://hub.example.lan\",\"trust\":{\"pins\":[\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"]}}",
+   "ok": false
+  },
+  {
+   "case": "one pin twice",
+   "text": "{\"schema\":1,\"hub\":\"https://hub.example.lan\",\"trust\":{\"pins\":[\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]}}",
+   "ok": false
+  },
+  {
+   "case": "pins and a CA",
+   "text": "{\"schema\":1,\"hub\":\"https://hub.example.lan\",\"trust\":{\"pins\":[\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],\"ca\":\"C:\\\\x.pem\"}}",
+   "ok": false
+  },
+  {
+   "case": "trust over http",
+   "text": "{\"schema\":1,\"hub\":\"http://127.0.0.1:8781\",\"trust\":{\"pins\":[\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]}}",
+   "ok": false
+  },
+  {
+   "case": "a relative CA path",
+   "text": "{\"schema\":1,\"hub\":\"https://hub.example.lan\",\"trust\":{\"ca\":\"hub-ca.pem\"}}",
+   "ok": false
+  },
+  {
+   "case": "an sshkeys interval",
+   "text": "{\"schema\":1,\"hub\":\"https://hub.example.lan\",\"intervals\":{\"sshkeys\":21600}}",
+   "ok": false
+  },
+  {
+   "case": "a part name in another case",
+   "text": "{\"schema\":1,\"hub\":\"https://hub.example.lan\",\"intervals\":{\"Heartbeat\":120}}",
+   "ok": false
+  },
+  {
+   "case": "a heartbeat too often",
+   "text": "{\"schema\":1,\"hub\":\"https://hub.example.lan\",\"intervals\":{\"heartbeat\":10}}",
+   "ok": false
+  },
+  {
+   "case": "updates apart from os",
+   "text": "{\"schema\":1,\"hub\":\"https://hub.example.lan\",\"intervals\":{\"os\":3600,\"updates\":7200}}",
+   "ok": false
+  },
+  {
+   "case": "http to the LAN",
+   "text": "{\"schema\":1,\"hub\":\"http://10.0.0.5:8781\"}",
+   "ok": false
+  },
+  {
+   "case": "not JSON",
+   "text": "{\"schema\": 1,",
+   "ok": false
+  },
+  {
+   "case": "a list",
+   "text": "[]",
+   "ok": false
+  }
+ ],
+ "names": [
+  {
+   "case": "exact",
+   "pattern": "Git",
+   "name": "Git",
+   "match": true
+  },
+  {
+   "case": "exact, other case",
+   "pattern": "Git",
+   "name": "GIT",
+   "match": true
+  },
+  {
+   "case": "exact is the whole name",
+   "pattern": "Git",
+   "name": "Git LFS",
+   "match": false
+  },
+  {
+   "case": "a trailing star",
+   "pattern": "7-Zip*",
+   "name": "7-Zip 24.08 (x64)",
+   "match": true
+  },
+  {
+   "case": "a trailing star, nothing after",
+   "pattern": "7-Zip*",
+   "name": "7-Zip",
+   "match": true
+  },
+  {
+   "case": "a leading star",
+   "pattern": "*Agent",
+   "name": "Example Agent",
+   "match": true
+  },
+  {
+   "case": "a star in the middle",
+   "pattern": "Example*Tool",
+   "name": "Example Build Tool",
+   "match": true
+  },
+  {
+   "case": "pieces in order",
+   "pattern": "*b*a*",
+   "name": "ab",
+   "match": false
+  },
+  {
+   "case": "pieces may not overlap the end",
+   "pattern": "a*ab",
+   "name": "ab",
+   "match": false
+  },
+  {
+   "case": "the last piece is at the end",
+   "pattern": "*a*b",
+   "name": "aab",
+   "match": true
+  },
+  {
+   "case": "a later piece after the leftmost",
+   "pattern": "*ab*ab",
+   "name": "xabyab",
+   "match": true
+  },
+  {
+   "case": "the last piece cannot reuse a middle one",
+   "pattern": "*ab*ab",
+   "name": "xab",
+   "match": false
+  },
+  {
+   "case": "a dot is a dot",
+   "pattern": "Node.js",
+   "name": "NodeXjs",
+   "match": false
+  },
+  {
+   "case": "a plus is a plus",
+   "pattern": "Notepad++",
+   "name": "Notepad++",
+   "match": true
+  },
+  {
+   "case": "four stars, a long name that does not match",
+   "pattern": "*a*a*a*b",
+   "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "match": false
+  },
+  {
+   "case": "four stars, a long name that matches",
+   "pattern": "*a*a*a*b",
+   "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab",
+   "match": true
+  },
+  {
+   "case": "a non-ASCII name",
+   "pattern": "Example*",
+   "name": "Example Čeština",
+   "match": true
+  }
+ ]
+}

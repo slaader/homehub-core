@@ -1,0 +1,9 @@
+HOST	nas	Linux	admin	1	2026-11-08T12:00:00Z
+NET	10.0.0.74	172.16.0.1
+LISTEN	on
+SSHD	passwordauthentication	no
+USER	admin	3003	/mnt/home/admin	/usr/bin/zsh	1
+SUDO	admin	rule	(ALL) ALL, NOPASSWD: ALL
+AUTH	admin	/mnt/home/admin/.ssh/authorized_keys	from="10.0.0.151" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFfQ8Wbh6Bm3L2SvIBI8IhN2Z4+/6xWmUrll9fX44L6N studio->nas
+AUTH	admin	/mnt/home/admin/.ssh/authorized_keys	ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDia2/QPcp+YZqgHSzGzCRJgmOljAYsfVR2qjoJPDego phone
+END	ok

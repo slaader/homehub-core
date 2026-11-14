@@ -1,0 +1,30 @@
+{
+ "checkedAt": "2026-11-08T12:00:00Z",
+ "results": {
+  "github:ggml-org/llama.cpp": {
+   "ok": true,
+   "version": "0.9.0",
+   "url": "https://github.com/ggml-org/llama.cpp/releases/tag/v0.9.0"
+  },
+  "node": {
+   "ok": true,
+   "version": "26.13.0",
+   "ltsMajor": 26,
+   "ltsMajors": [
+    22,
+    24,
+    26
+   ],
+   "latestByMajor": {
+    "24": "24.22.2",
+    "25": "25.9.0",
+    "26": "26.13.0"
+   }
+  },
+  "thermo-feed:https://feed.example/stable.json": {
+   "ok": true,
+   "version": "0.8.1",
+   "build": 104
+  }
+ }
+}

@@ -1,0 +1,1644 @@
+{
+ "systems": {
+  "status": 200,
+  "body": {
+   "schemaVersion": 1,
+   "generatedAt": "<moving>",
+   "collectedAt": "2026-11-08T12:00:00Z",
+   "oldestCollectedAt": "2026-11-08T12:00:00Z",
+   "collectedFrom": "studio",
+   "upstreamCheckedAt": "2026-11-08T12:00:00Z",
+   "upstreamFailed": 0,
+   "categories": {
+    "ai": "AI runtimes",
+    "infra": "Servers",
+    "nas-apps": "Aplikace na NAS",
+    "containers": "Kontejnery (Docker)"
+   },
+   "machines": [
+    {
+     "id": "mini",
+     "name": "Mac mini",
+     "kind": "mac",
+     "reachable": true,
+     "stale": false,
+     "error": null,
+     "collectedAt": "2026-11-08T12:00:00Z",
+     "hw": {
+      "model": "Macmini9,1",
+      "cpu": "Apple M1",
+      "ramGb": 17,
+      "cpus": 8
+     },
+     "uptimeSeconds": 7200,
+     "os": {
+      "name": "macOS",
+      "version": "26.7.1",
+      "build": "25G241",
+      "kernel": "Darwin 25.6.0",
+      "updates": [
+       {
+        "title": "Safari",
+        "version": "27.2",
+        "recommended": true,
+        "restart": false,
+        "kind": "app"
+       },
+       {
+        "title": "macOS Tahoe 26.7.2",
+        "version": "26.7.2",
+        "recommended": true,
+        "restart": true,
+        "kind": "minor"
+       }
+      ],
+      "status": "update",
+      "error": null
+     },
+     "checks": [
+      {
+       "id": "firewall",
+       "label": "Firewall (aplikační)",
+       "state": "warn",
+       "value": "vypnutý",
+       "detail": "Příchozí spojení k aplikacím nic nefiltruje; spoléhá se na router."
+      },
+      {
+       "id": "stealth",
+       "label": "Stealth mode",
+       "state": "info",
+       "value": "vypnutý",
+       "detail": "Neodpovídá na ping a sondy zavřených portů."
+      },
+      {
+       "id": "pf",
+       "label": "Packet filter (pf)",
+       "state": "info",
+       "value": "vypnutý",
+       "detail": "Výchozí kotvy Apple; vlastní pravidla žádná."
+      },
+      {
+       "id": "filevault",
+       "label": "FileVault (šifrování disku)",
+       "state": "ok",
+       "value": "zapnutý",
+       "detail": ""
+      },
+      {
+       "id": "sip",
+       "label": "System Integrity Protection",
+       "state": "ok",
+       "value": "zapnutá",
+       "detail": ""
+      },
+      {
+       "id": "gatekeeper",
+       "label": "Gatekeeper",
+       "state": "ok",
+       "value": "zapnutý",
+       "detail": ""
+      },
+      {
+       "id": "security-responses",
+       "label": "Automatické bezpečnostní opravy",
+       "state": "ok",
+       "value": "zapnuté",
+       "detail": "Rapid Security Responses a systémové datové soubory."
+      },
+      {
+       "id": "auto-macos",
+       "label": "Automatická instalace macOS",
+       "state": "info",
+       "value": "ručně",
+       "detail": ""
+      },
+      {
+       "id": "os-update",
+       "label": "Aktualizace systému",
+       "state": "warn",
+       "value": "macOS Tahoe 26.7.2",
+       "detail": "Čeká instalace ve stejné hlavní verzi. Další: Safari 27.2.",
+       "detailT": [
+        {
+         "key": "Čeká instalace ve stejné hlavní verzi.",
+         "params": {}
+        },
+        {
+         "key": "Další: {others}.",
+         "params": {
+          "others": "Safari 27.2"
+         }
+        }
+       ]
+      },
+      {
+       "id": "ssh-password",
+       "label": "SSH přihlášení heslem",
+       "state": "warn",
+       "value": "povolené",
+       "detail": "Jen z adres v AllowUsers: 10.0.0.151.",
+       "detailT": [
+        {
+         "key": "Jen z adres v AllowUsers: {from}.",
+         "params": {
+          "from": "10.0.0.151"
+         }
+        }
+       ]
+      },
+      {
+       "id": "sharing",
+       "label": "Sdílení zapnuté",
+       "state": "info",
+       "value": "Sdílení obrazovky",
+       "detail": "",
+       "valueT": [
+        {
+         "key": "{items}",
+         "params": {
+          "items": [
+           "Sdílení obrazovky"
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "id": "exposed",
+       "label": "Porty otevřené do sítě",
+       "state": "info",
+       "value": "1 portů",
+       "detail": "22 launchd",
+       "valueT": [
+        {
+         "key": "Portů: {n}",
+         "params": {
+          "n": 1
+         }
+        }
+       ]
+      }
+     ],
+     "listening": [
+      {
+       "proc": "launchd",
+       "user": "root",
+       "host": "*",
+       "port": 22,
+       "scope": "all"
+      },
+      {
+       "proc": "Python",
+       "user": "alice",
+       "host": "127.0.0.1",
+       "port": 8000,
+       "scope": "loopback"
+      }
+     ],
+     "brewOutdated": [
+      {
+       "name": "fmt",
+       "installed": "12.2.0",
+       "latest": "12.2.1"
+      }
+     ],
+     "summary": {
+      "osUpdate": 1,
+      "softwareUpdates": 3,
+      "appUpdates": 0,
+      "unknown": 0,
+      "checks": {
+       "ok": 4,
+       "warn": 3,
+       "crit": 0,
+       "info": 5,
+       "unknown": 0
+      }
+     }
+    },
+    {
+     "id": "studio",
+     "name": "Mac Studio",
+     "kind": "mac",
+     "reachable": false,
+     "stale": false,
+     "error": "probe failed",
+     "hw": {
+      "model": null,
+      "cpu": null,
+      "ramGb": null
+     },
+     "uptimeSeconds": null,
+     "os": {
+      "name": "macOS",
+      "version": null,
+      "build": null,
+      "kernel": null,
+      "updates": [],
+      "status": "unknown",
+      "error": null
+     },
+     "checks": [
+      {
+       "id": "firewall",
+       "label": "Firewall (aplikační)",
+       "state": "unknown",
+       "value": "neověřeno",
+       "detail": ""
+      },
+      {
+       "id": "stealth",
+       "label": "Stealth mode",
+       "state": "info",
+       "value": "vypnutý",
+       "detail": "Neodpovídá na ping a sondy zavřených portů."
+      },
+      {
+       "id": "pf",
+       "label": "Packet filter (pf)",
+       "state": "unknown",
+       "value": "neověřeno",
+       "detail": "pfctl potřebuje sudo."
+      },
+      {
+       "id": "filevault",
+       "label": "FileVault (šifrování disku)",
+       "state": "unknown",
+       "value": "neověřeno",
+       "detail": ""
+      },
+      {
+       "id": "sip",
+       "label": "System Integrity Protection",
+       "state": "unknown",
+       "value": "neověřeno",
+       "detail": ""
+      },
+      {
+       "id": "gatekeeper",
+       "label": "Gatekeeper",
+       "state": "unknown",
+       "value": "neověřeno",
+       "detail": ""
+      },
+      {
+       "id": "security-responses",
+       "label": "Automatické bezpečnostní opravy",
+       "state": "ok",
+       "value": "výchozí (zapnuté)",
+       "detail": "Rapid Security Responses a systémové datové soubory."
+      },
+      {
+       "id": "auto-macos",
+       "label": "Automatická instalace macOS",
+       "state": "info",
+       "value": "ručně",
+       "detail": ""
+      },
+      {
+       "id": "os-update",
+       "label": "Aktualizace systému",
+       "state": "unknown",
+       "value": "neověřeno",
+       "detail": ""
+      },
+      {
+       "id": "ssh-password",
+       "label": "SSH přihlášení heslem",
+       "state": "unknown",
+       "value": "neověřeno",
+       "detail": "sshd -T potřebuje sudo."
+      },
+      {
+       "id": "sharing",
+       "label": "Sdílení zapnuté",
+       "state": "ok",
+       "value": "nic",
+       "detail": ""
+      },
+      {
+       "id": "exposed",
+       "label": "Porty otevřené do sítě",
+       "state": "ok",
+       "value": "0 portů",
+       "detail": "",
+       "valueT": [
+        {
+         "key": "Portů: {n}",
+         "params": {
+          "n": 0
+         }
+        }
+       ]
+      }
+     ],
+     "listening": [],
+     "brewOutdated": [],
+     "summary": {
+      "osUpdate": 0,
+      "softwareUpdates": 0,
+      "appUpdates": 0,
+      "unknown": 0,
+      "checks": {
+       "ok": 3,
+       "warn": 0,
+       "crit": 0,
+       "info": 2,
+       "unknown": 7
+      }
+     }
+    },
+    {
+     "id": "mini_server",
+     "name": "mini_server",
+     "kind": "mac",
+     "reachable": true,
+     "stale": true,
+     "error": "ssh: connect timed out",
+     "collectedAt": "2026-11-08T12:00:00Z",
+     "hw": {
+      "model": "Macmini9,1",
+      "cpu": "Apple M1",
+      "ramGb": 17,
+      "cpus": 8
+     },
+     "uptimeSeconds": 7200,
+     "os": {
+      "name": "macOS",
+      "version": "26.7.1",
+      "build": "25G241",
+      "kernel": "Darwin 25.6.0",
+      "updates": [
+       {
+        "title": "Safari",
+        "version": "27.2",
+        "recommended": true,
+        "restart": false,
+        "kind": "app"
+       },
+       {
+        "title": "macOS Tahoe 26.7.2",
+        "version": "26.7.2",
+        "recommended": true,
+        "restart": true,
+        "kind": "minor"
+       }
+      ],
+      "status": "update",
+      "error": null
+     },
+     "checks": [
+      {
+       "id": "firewall",
+       "label": "Firewall (aplikační)",
+       "state": "warn",
+       "value": "vypnutý",
+       "detail": "Příchozí spojení k aplikacím nic nefiltruje; spoléhá se na router."
+      },
+      {
+       "id": "stealth",
+       "label": "Stealth mode",
+       "state": "info",
+       "value": "vypnutý",
+       "detail": "Neodpovídá na ping a sondy zavřených portů."
+      },
+      {
+       "id": "pf",
+       "label": "Packet filter (pf)",
+       "state": "info",
+       "value": "vypnutý",
+       "detail": "Výchozí kotvy Apple; vlastní pravidla žádná."
+      },
+      {
+       "id": "filevault",
+       "label": "FileVault (šifrování disku)",
+       "state": "ok",
+       "value": "zapnutý",
+       "detail": ""
+      },
+      {
+       "id": "sip",
+       "label": "System Integrity Protection",
+       "state": "ok",
+       "value": "zapnutá",
+       "detail": ""
+      },
+      {
+       "id": "gatekeeper",
+       "label": "Gatekeeper",
+       "state": "ok",
+       "value": "zapnutý",
+       "detail": ""
+      },
+      {
+       "id": "security-responses",
+       "label": "Automatické bezpečnostní opravy",
+       "state": "ok",
+       "value": "zapnuté",
+       "detail": "Rapid Security Responses a systémové datové soubory."
+      },
+      {
+       "id": "auto-macos",
+       "label": "Automatická instalace macOS",
+       "state": "info",
+       "value": "ručně",
+       "detail": ""
+      },
+      {
+       "id": "os-update",
+       "label": "Aktualizace systému",
+       "state": "warn",
+       "value": "macOS Tahoe 26.7.2",
+       "detail": "Čeká instalace ve stejné hlavní verzi. Další: Safari 27.2.",
+       "detailT": [
+        {
+         "key": "Čeká instalace ve stejné hlavní verzi.",
+         "params": {}
+        },
+        {
+         "key": "Další: {others}.",
+         "params": {
+          "others": "Safari 27.2"
+         }
+        }
+       ]
+      },
+      {
+       "id": "ssh-password",
+       "label": "SSH přihlášení heslem",
+       "state": "warn",
+       "value": "povolené",
+       "detail": "Jen z adres v AllowUsers: 10.0.0.151.",
+       "detailT": [
+        {
+         "key": "Jen z adres v AllowUsers: {from}.",
+         "params": {
+          "from": "10.0.0.151"
+         }
+        }
+       ]
+      },
+      {
+       "id": "sharing",
+       "label": "Sdílení zapnuté",
+       "state": "info",
+       "value": "Sdílení obrazovky",
+       "detail": "",
+       "valueT": [
+        {
+         "key": "{items}",
+         "params": {
+          "items": [
+           "Sdílení obrazovky"
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "id": "exposed",
+       "label": "Porty otevřené do sítě",
+       "state": "info",
+       "value": "1 portů",
+       "detail": "22 launchd",
+       "valueT": [
+        {
+         "key": "Portů: {n}",
+         "params": {
+          "n": 1
+         }
+        }
+       ]
+      }
+     ],
+     "listening": [
+      {
+       "proc": "launchd",
+       "user": "root",
+       "host": "*",
+       "port": 22,
+       "scope": "all"
+      },
+      {
+       "proc": "Python",
+       "user": "alice",
+       "host": "127.0.0.1",
+       "port": 8000,
+       "scope": "loopback"
+      }
+     ],
+     "brewOutdated": [
+      {
+       "name": "fmt",
+       "installed": "12.2.0",
+       "latest": "12.2.1"
+      }
+     ],
+     "summary": {
+      "osUpdate": 1,
+      "softwareUpdates": 1,
+      "appUpdates": 0,
+      "unknown": 0,
+      "checks": {
+       "ok": 4,
+       "warn": 3,
+       "crit": 0,
+       "info": 5,
+       "unknown": 0
+      }
+     }
+    },
+    {
+     "id": "nas",
+     "name": "NAS",
+     "kind": "nas",
+     "reachable": true,
+     "stale": false,
+     "error": null,
+     "collectedAt": "2026-11-08T12:00:00Z",
+     "hw": {
+      "model": "MS-7D73",
+      "cpu": "AMD Ryzen 9 7900 12-Core Processor",
+      "ramGb": 100,
+      "cpus": 24
+     },
+     "uptimeSeconds": 1394522,
+     "os": {
+      "name": "TrueNAS",
+      "version": "25.10.7",
+      "build": null,
+      "base": "Debian GNU/Linux 12 (bookworm)",
+      "kernel": "6.12.105-production+truenas",
+      "updates": [
+       {
+        "title": "TrueNAS 25.10.8",
+        "version": "25.10.8",
+        "date": "2026-11-03",
+        "notes": "Updates the Linux kernel to address upstream CVEs.",
+        "kind": "minor",
+        "restart": true
+       }
+      ],
+      "status": "update",
+      "channel": "TrueNAS-SCALE-Goldeye"
+     },
+     "checks": [
+      {
+       "id": "firewall",
+       "label": "Firewall (nftables)",
+       "state": "warn",
+       "value": "vstup povolen (accept)",
+       "detail": "Jen pravidla Dockeru a tabulky —; TrueNAS vlastní firewall nemá.",
+       "detailT": [
+        {
+         "key": "Jen pravidla Dockeru a tabulky {tables}; TrueNAS vlastní firewall nemá.",
+         "params": {
+          "tables": "—"
+         }
+        }
+       ]
+      },
+      {
+       "id": "ftp",
+       "label": "FTP",
+       "state": "warn",
+       "value": "zapnuté bez šifrování",
+       "detail": "Port 21 na všech rozhraních, místní účty s heslem.",
+       "detailT": [
+        {
+         "key": "Port {port} na všech rozhraních, místní účty s heslem.",
+         "params": {
+          "port": 21
+         }
+        }
+       ]
+      },
+      {
+       "id": "ssh-password",
+       "label": "SSH přihlášení heslem",
+       "state": "ok",
+       "value": "jen klíče",
+       "detail": ""
+      },
+      {
+       "id": "ssh-root",
+       "label": "SSH jako root",
+       "state": "info",
+       "value": "jen klíčem",
+       "detail": ""
+      },
+      {
+       "id": "ssh-forwarding",
+       "label": "SSH přesměrování portů",
+       "state": "ok",
+       "value": "zakázáno",
+       "detail": ""
+      },
+      {
+       "id": "os-update",
+       "label": "Aktualizace TrueNAS",
+       "state": "warn",
+       "value": "25.10.8",
+       "detail": "Bezpečnostní vydání: Updates the Linux kernel to address upstream CVEs.",
+       "detailT": [
+        {
+         "key": "Bezpečnostní vydání: {notes}",
+         "params": {
+          "notes": "Updates the Linux kernel to address upstream CVEs."
+         }
+        }
+       ]
+      },
+      {
+       "id": "sharing",
+       "label": "Sdílení zapnuté",
+       "state": "info",
+       "value": "SMB",
+       "detail": ""
+      },
+      {
+       "id": "exposed",
+       "label": "Porty otevřené do sítě",
+       "state": "info",
+       "value": "2 portů",
+       "detail": "21 proftpd · 445 smbd",
+       "valueT": [
+        {
+         "key": "Portů: {n}",
+         "params": {
+          "n": 2
+         }
+        }
+       ]
+      }
+     ],
+     "listening": [
+      {
+       "proc": "proftpd",
+       "user": "root",
+       "host": "*",
+       "port": 21,
+       "scope": "all"
+      },
+      {
+       "proc": "smbd",
+       "user": "root",
+       "host": "0.0.0.0",
+       "port": 445,
+       "scope": "all"
+      }
+     ],
+     "brewOutdated": [],
+     "summary": {
+      "osUpdate": 1,
+      "softwareUpdates": 0,
+      "appUpdates": 1,
+      "unknown": 0,
+      "checks": {
+       "ok": 2,
+       "warn": 3,
+       "crit": 0,
+       "info": 3,
+       "unknown": 0
+      }
+     }
+    }
+   ],
+   "software": [
+    {
+     "id": "llama.cpp",
+     "name": "llama.cpp",
+     "category": "ai",
+     "machine": "mini",
+     "installed": "0.5.0-dev",
+     "raw": "version: 0.5.0-dev (build 11200, commit 81bc6b83f)",
+     "build": null,
+     "path": "/u/llama-b11200/llama-server",
+     "others": [],
+     "source": {
+      "label": "cmd",
+      "url": null
+     },
+     "latest": "0.9.0",
+     "latestUrl": "https://github.com/ggml-org/llama.cpp/releases/tag/v0.9.0",
+     "publishedAt": null,
+     "upstreamType": "github",
+     "status": "update",
+     "note": null,
+     "running": "running",
+     "runLabel": "com.example.embeddings",
+     "stale": false,
+     "inventory": [],
+     "upstreamStale": false,
+     "upstreamError": null,
+     "upstreamCheckedAt": null,
+     "upstreamFailedAt": null
+    },
+    {
+     "id": "node",
+     "name": "Node.js",
+     "category": "infra",
+     "machine": "mini",
+     "installed": "25.9.0",
+     "raw": "v25.9.0",
+     "build": null,
+     "path": "/u/node",
+     "others": [],
+     "source": {
+      "label": "cmd",
+      "url": null
+     },
+     "latest": "26.13.0",
+     "latestUrl": null,
+     "publishedAt": null,
+     "upstreamType": "node",
+     "status": "update",
+     "note": "Řada Node 25 není LTS; aktuální LTS je 26.13.0.",
+     "noteT": [
+      {
+       "key": "Řada Node {major} není LTS; aktuální LTS je {lts}.",
+       "params": {
+        "major": 25,
+        "lts": "26.13.0"
+       }
+      }
+     ],
+     "running": null,
+     "runLabel": null,
+     "stale": false,
+     "inventory": [],
+     "upstreamStale": false,
+     "upstreamError": null,
+     "upstreamCheckedAt": null,
+     "upstreamFailedAt": null
+    },
+    {
+     "id": "node",
+     "name": "Node.js",
+     "category": "infra",
+     "machine": "mini_server",
+     "installed": "25.9.0",
+     "raw": "v25.9.0",
+     "build": null,
+     "path": "/u/node",
+     "others": [],
+     "source": {
+      "label": "cmd",
+      "url": null
+     },
+     "latest": "26.13.0",
+     "latestUrl": null,
+     "publishedAt": null,
+     "upstreamType": "node",
+     "status": "update",
+     "note": "Řada Node 25 není LTS; aktuální LTS je 26.13.0.",
+     "noteT": [
+      {
+       "key": "Řada Node {major} není LTS; aktuální LTS je {lts}.",
+       "params": {
+        "major": 25,
+        "lts": "26.13.0"
+       }
+      }
+     ],
+     "running": null,
+     "runLabel": null,
+     "stale": true,
+     "inventory": [],
+     "upstreamStale": false,
+     "upstreamError": null,
+     "upstreamCheckedAt": null,
+     "upstreamFailedAt": null
+    },
+    {
+     "id": "thermo",
+     "name": "Thermo",
+     "category": "infra",
+     "machine": "mini",
+     "installed": "0.8.1",
+     "raw": "0.8.1",
+     "build": "103",
+     "path": "/Applications/Thermo.app",
+     "others": [],
+     "source": {
+      "label": "app",
+      "url": null
+     },
+     "latest": "0.8.1",
+     "latestUrl": null,
+     "publishedAt": null,
+     "upstreamType": "thermo-feed",
+     "status": "update",
+     "note": null,
+     "running": null,
+     "runLabel": null,
+     "stale": false,
+     "inventory": [],
+     "upstreamStale": false,
+     "upstreamError": null,
+     "upstreamCheckedAt": null,
+     "upstreamFailedAt": null
+    },
+    {
+     "id": "docker:open-design",
+     "name": "open-design",
+     "category": "containers",
+     "machine": "mini",
+     "installed": "latest",
+     "raw": "example/open-design:latest",
+     "path": null,
+     "others": [],
+     "source": {
+      "label": "Docker obraz example/open-design",
+      "labelT": [
+       {
+        "key": "Docker obraz {image}",
+        "params": {
+         "image": "example/open-design"
+        }
+       }
+      ],
+      "url": "https://hub.docker.com/r/example/open-design"
+     },
+     "latest": null,
+     "latestUrl": null,
+     "publishedAt": "2026-05-08T10:00:00Z",
+     "upstreamType": "docker",
+     "status": "floating",
+     "note": "Plovoucí tag :latest, obraz z 2026-05-08; novější verze se pozná až podle digestu.",
+     "noteT": [
+      {
+       "key": "Plovoucí tag :latest, obraz z {date}; novější verze se pozná až podle digestu.",
+       "params": {
+        "date": "2026-05-08"
+       }
+      }
+     ],
+     "running": "running",
+     "runLabel": "Up 2 days (healthy)",
+     "stale": false
+    },
+    {
+     "id": "app:immich",
+     "name": "immich",
+     "category": "nas-apps",
+     "machine": "nas",
+     "installed": "v3.3.5_1.14.58",
+     "raw": "1.14.58",
+     "path": null,
+     "others": [],
+     "source": {
+      "label": "TrueNAS katalog · community",
+      "labelT": [
+       {
+        "key": "TrueNAS katalog · {train}",
+        "params": {
+         "train": "community"
+        }
+       }
+      ],
+      "url": "https://apps.truenas.com/catalog/immich/"
+     },
+     "latest": "v3.3.6_1.14.62",
+     "latestUrl": null,
+     "publishedAt": null,
+     "upstreamType": "truenas-app",
+     "status": "update",
+     "note": null,
+     "running": "running",
+     "runLabel": "RUNNING",
+     "stale": false
+    },
+    {
+     "id": "docker:open-design",
+     "name": "open-design",
+     "category": "containers",
+     "machine": "mini_server",
+     "installed": "latest",
+     "raw": "example/open-design:latest",
+     "path": null,
+     "others": [],
+     "source": {
+      "label": "Docker obraz example/open-design",
+      "labelT": [
+       {
+        "key": "Docker obraz {image}",
+        "params": {
+         "image": "example/open-design"
+        }
+       }
+      ],
+      "url": "https://hub.docker.com/r/example/open-design"
+     },
+     "latest": null,
+     "latestUrl": null,
+     "publishedAt": "2026-05-08T10:00:00Z",
+     "upstreamType": "docker",
+     "status": "floating",
+     "note": "Plovoucí tag :latest, obraz z 2026-05-08; novější verze se pozná až podle digestu.",
+     "noteT": [
+      {
+       "key": "Plovoucí tag :latest, obraz z {date}; novější verze se pozná až podle digestu.",
+       "params": {
+        "date": "2026-05-08"
+       }
+      }
+     ],
+     "running": "running",
+     "runLabel": "Up 2 days (healthy)",
+     "stale": true
+    },
+    {
+     "id": "docker:open-design",
+     "name": "open-design",
+     "category": "containers",
+     "machine": "retired",
+     "installed": "latest",
+     "raw": "example/open-design:latest",
+     "path": null,
+     "others": [],
+     "source": {
+      "label": "Docker obraz example/open-design",
+      "labelT": [
+       {
+        "key": "Docker obraz {image}",
+        "params": {
+         "image": "example/open-design"
+        }
+       }
+      ],
+      "url": "https://hub.docker.com/r/example/open-design"
+     },
+     "latest": null,
+     "latestUrl": null,
+     "publishedAt": "2026-05-08T10:00:00Z",
+     "upstreamType": "docker",
+     "status": "floating",
+     "note": "Plovoucí tag :latest, obraz z 2026-05-08; novější verze se pozná až podle digestu.",
+     "noteT": [
+      {
+       "key": "Plovoucí tag :latest, obraz z {date}; novější verze se pozná až podle digestu.",
+       "params": {
+        "date": "2026-05-08"
+       }
+      }
+     ],
+     "running": "running",
+     "runLabel": "Up 2 days (healthy)",
+     "stale": false
+    }
+   ],
+   "collector": {
+    "state": "stale",
+    "configured": true,
+    "collectedAt": "2026-11-08T12:00:00Z",
+    "ageSeconds": "<moving>",
+    "intervalSeconds": 21600,
+    "staleAfterSeconds": 27000,
+    "script": "scripts/collect-systems.mjs",
+    "upstream": {
+     "state": "stale",
+     "configured": true,
+     "collectedAt": "2026-11-08T12:00:00Z",
+     "ageSeconds": "<moving>",
+     "intervalSeconds": 43200,
+     "staleAfterSeconds": 54000,
+     "script": "scripts/check-upstream.mjs"
+    },
+    "watch": {
+     "source": "local",
+     "items": 3
+    }
+   },
+   "provenance": {
+    "kind": "mixed",
+    "kinds": [
+     {
+      "kind": "collector",
+      "id": "systems",
+      "source": "scripts/collect-systems.mjs",
+      "host": "studio",
+      "state": "stale",
+      "count": 3,
+      "intervalSeconds": 21600,
+      "unit": "machines",
+      "lastAt": "2026-11-08T12:00:00Z"
+     },
+     {
+      "kind": "collector",
+      "id": "upstream",
+      "source": "scripts/check-upstream.mjs",
+      "state": "stale",
+      "count": 3,
+      "intervalSeconds": 43200,
+      "unit": "sources",
+      "lastAt": "2026-11-08T12:00:00Z"
+     },
+     {
+      "kind": "config",
+      "id": "watch",
+      "source": "tests/fixtures/readers/watch.json",
+      "count": 3,
+      "unit": "items"
+     }
+    ],
+    "lastAt": "2026-11-08T12:00:00Z",
+    "summary": "Collected by a job (scripts/collect-systems.mjs), 3 machines, stale, last 2026-11-08T12:00:00Z; collected by a job (scripts/check-upstream.mjs), 3 sources, stale, last 2026-11-08T12:00:00Z; read from configuration (tests/fixtures/readers/watch.json), 3 items."
+   }
+  }
+ },
+ "security": {
+  "status": 200,
+  "body": {
+   "schemaVersion": 1,
+   "collectedAt": "2026-11-08T12:00:00.000Z",
+   "collectedFrom": "studio",
+   "machines": [
+    {
+     "id": "studio",
+     "name": "Mac Studio",
+     "ips": [
+      "10.0.0.151"
+     ],
+     "hostname": "studio.example.lan",
+     "reachable": true,
+     "os": "Darwin",
+     "probedAs": "alice",
+     "complete": true,
+     "collectedAt": "2026-11-08T12:00:00Z",
+     "ssh": {
+      "listening": true,
+      "passwordAuth": true,
+      "kbdInteractive": false,
+      "rootLogin": null,
+      "allowUsers": [
+       "alice@10.0.0.25"
+      ],
+      "accessGroup": null
+     },
+     "accounts": [
+      {
+       "user": "alice",
+       "uid": 501,
+       "home": "/Users/alice",
+       "shell": "/bin/zsh",
+       "sudo": {
+        "level": "nopasswd",
+        "commands": [],
+        "expired": []
+       },
+       "authorizedKeys": []
+      }
+     ]
+    },
+    {
+     "id": "mini",
+     "name": "Mac mini",
+     "ips": [
+      "10.0.0.25"
+     ],
+     "hostname": "mini.example.lan",
+     "reachable": false,
+     "error": "ssh: connect timed out",
+     "accounts": [],
+     "ssh": null
+    },
+    {
+     "id": "nas",
+     "name": "NAS",
+     "ips": [
+      "10.0.0.74"
+     ],
+     "hostname": "nas.example.lan",
+     "reachable": true,
+     "os": "Linux",
+     "probedAs": "admin",
+     "complete": true,
+     "collectedAt": "2026-11-08T12:00:00Z",
+     "ssh": {
+      "listening": true,
+      "passwordAuth": false,
+      "kbdInteractive": false,
+      "rootLogin": null,
+      "allowUsers": [],
+      "accessGroup": null
+     },
+     "accounts": [
+      {
+       "user": "admin",
+       "uid": 3003,
+       "home": "/mnt/home/admin",
+       "shell": "/usr/bin/zsh",
+       "sudo": {
+        "level": "nopasswd",
+        "commands": [],
+        "expired": []
+       },
+       "authorizedKeys": [
+        {
+         "fingerprint": "SHA256:hw9LTx1XLrOYQQmR5CvKNvxy8zEUy+t8ZjYo44mM6zg",
+         "type": "ssh-ed25519",
+         "comment": "studio->nas",
+         "from": [
+          "10.0.0.151"
+         ],
+         "command": null,
+         "restricted": false,
+         "noForwarding": false,
+         "permitOpen": [],
+         "flags": [],
+         "file": "/mnt/home/admin/.ssh/authorized_keys",
+         "known": true
+        },
+        {
+         "fingerprint": "SHA256:8bX+tphjMek330TUGqiYcVLJAp/KUNNHcg7EImOoLBM",
+         "type": "ssh-ed25519",
+         "comment": "phone",
+         "from": [],
+         "command": null,
+         "restricted": false,
+         "noForwarding": false,
+         "permitOpen": [],
+         "flags": [],
+         "file": "/mnt/home/admin/.ssh/authorized_keys",
+         "known": false
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "router",
+     "name": "Router",
+     "ips": [
+      "10.0.0.1"
+     ],
+     "hostname": "10.0.0.1",
+     "reachable": false,
+     "sshOpen": false,
+     "note": "SSH off",
+     "accounts": [],
+     "ssh": null
+    }
+   ],
+   "keys": [
+    {
+     "id": "SHA256:hw9LTx1XLrOYQQmR5CvKNvxy8zEUy+t8ZjYo44mM6zg",
+     "fingerprint": "SHA256:hw9LTx1XLrOYQQmR5CvKNvxy8zEUy+t8ZjYo44mM6zg",
+     "type": "ED25519",
+     "bits": 256,
+     "name": "id_a",
+     "comment": "studio->nas",
+     "copies": [
+      {
+       "machine": "studio",
+       "owner": "alice",
+       "path": "/Users/alice/.ssh/id_a",
+       "mode": "600",
+       "mtime": "2026-10-31T20:59:21.000Z",
+       "encrypted": false,
+       "backup": false
+      }
+     ],
+     "access": [
+      {
+       "target": {
+        "kind": "host",
+        "machine": "nas",
+        "user": "admin",
+        "ips": [
+         "10.0.0.74"
+        ]
+       },
+       "entryComment": "studio->nas",
+       "from": [
+        "10.0.0.151"
+       ],
+       "command": null,
+       "restricted": false,
+       "noForwarding": false,
+       "permitOpen": [],
+       "sudo": "nopasswd",
+       "via": "authorized_keys"
+      }
+     ],
+     "routes": [
+      {
+       "machine": "studio",
+       "user": "alice",
+       "alias": "nas",
+       "hostname": "10.0.0.74",
+       "port": 22,
+       "remoteUser": "admin",
+       "proxyJump": null,
+       "target": {
+        "kind": "host",
+        "machine": "nas"
+       },
+       "accepted": true,
+       "alsoGit": false,
+       "keyPath": "/Users/alice/.ssh/id_a"
+      }
+     ]
+    }
+   ],
+   "otherKeys": [],
+   "unknownAuthorized": [
+    {
+     "machine": "nas",
+     "user": "admin",
+     "fingerprint": "SHA256:8bX+tphjMek330TUGqiYcVLJAp/KUNNHcg7EImOoLBM",
+     "type": "ssh-ed25519",
+     "comment": "phone",
+     "from": [],
+     "command": null,
+     "restricted": false,
+     "noForwarding": false,
+     "permitOpen": [],
+     "flags": [],
+     "file": "/mnt/home/admin/.ssh/authorized_keys",
+     "known": false
+    }
+   ],
+   "forgejo": null,
+   "findings": [
+    {
+     "level": "warn",
+     "title": "1 klíčů bez passphrase otevírá účet se sudo bez hesla, tedy root",
+     "detail": "Kdo získá soubor klíče, je root na cílovém stroji. Jde o záměr pro agenty, ochranu dělají jen from= a AllowUsers. id_a (studio->nas) (Mac Studio) → NAS (admin)",
+     "titleT": [
+      {
+       "key": "Klíče bez passphrase, které otevírají účet se sudo bez hesla, tedy root: {n}",
+       "params": {
+        "n": 1
+       }
+      }
+     ],
+     "detailT": [
+      {
+       "key": "Kdo získá soubor klíče, je root na cílovém stroji. Jde o záměr pro agenty, ochranu dělají jen from= a AllowUsers. {keys}",
+       "params": {
+        "keys": "id_a (studio->nas) (Mac Studio) → NAS (admin)"
+       }
+      }
+     ]
+    },
+    {
+     "level": "warn",
+     "title": "Na NAS (admin) je povolený cizí klíč „phone“",
+     "detail": "Jeho privátní část není na žádném z prověřených strojů (jiné zařízení nebo zapomenutý klíč). Bez omezení adresy.",
+     "titleT": [
+      {
+       "key": "Na {machine} ({user}) je povolený cizí klíč „{key}“",
+       "params": {
+        "machine": "NAS",
+        "user": "admin",
+        "key": "phone"
+       }
+      }
+     ],
+     "detailT": [
+      {
+       "key": "Jeho privátní část není na žádném z prověřených strojů (jiné zařízení nebo zapomenutý klíč).",
+       "params": {}
+      },
+      {
+       "key": "Bez omezení adresy.",
+       "params": {}
+      }
+     ]
+    },
+    {
+     "level": "warn",
+     "title": "Mac Studio: SSH přijímá i heslo",
+     "detail": "Omezeno přes AllowUsers na alice@10.0.0.25.",
+     "titleT": [
+      {
+       "key": "{machine}: SSH přijímá i heslo",
+       "params": {
+        "machine": "Mac Studio"
+       }
+      }
+     ],
+     "detailT": [
+      {
+       "key": "Omezeno přes AllowUsers na {users}.",
+       "params": {
+        "users": "alice@10.0.0.25"
+       }
+      }
+     ]
+    },
+    {
+     "level": "warn",
+     "title": "NAS (admin): klíč „phone“ bez omezení adresy",
+     "detail": "Účet má sudo bez hesla a ani from= ani AllowUsers neomezují, odkud se klíč smí použít.",
+     "titleT": [
+      {
+       "key": "{machine} ({user}): klíč „{key}“ bez omezení adresy",
+       "params": {
+        "machine": "NAS",
+        "user": "admin",
+        "key": "phone"
+       }
+      }
+     ]
+    }
+   ],
+   "collector": {
+    "state": "stale",
+    "configured": true,
+    "collectedAt": "2026-11-08T12:00:00.000Z",
+    "ageSeconds": "<moving>",
+    "intervalSeconds": 86400,
+    "staleAfterSeconds": 108000,
+    "script": "scripts/collect-security.mjs",
+    "machines": [
+     {
+      "id": "mini",
+      "name": "Mac mini"
+     },
+     {
+      "id": "studio",
+      "name": "Mac Studio"
+     },
+     {
+      "id": "mini_server",
+      "name": "mini_server"
+     },
+     {
+      "id": "nas",
+      "name": "NAS"
+     }
+    ],
+    "siteMachines": 5,
+    "gitHost": "git.example.lan"
+   },
+   "provenance": {
+    "kind": "collector",
+    "kinds": [
+     {
+      "kind": "collector",
+      "id": "security",
+      "source": "scripts/collect-security.mjs",
+      "host": "studio",
+      "state": "stale",
+      "count": 2,
+      "intervalSeconds": 86400,
+      "unit": "machines",
+      "lastAt": "2026-11-08T12:00:00.000Z"
+     }
+    ],
+    "lastAt": "2026-11-08T12:00:00.000Z",
+    "summary": "Collected by a job (scripts/collect-security.mjs), 2 machines, stale, last 2026-11-08T12:00:00.000Z."
+   }
+  }
+ },
+ "endpoints": {
+  "status": 200,
+  "body": {
+   "endpoints": [],
+   "kinds": [
+    "auto",
+    "llama-swap",
+    "ollama",
+    "lmstudio",
+    "llama-cpp",
+    "vllm",
+    "sglang",
+    "omlx",
+    "mlx-serve",
+    "openai"
+   ],
+   "readPaths": [
+    "/v1/models",
+    "/running",
+    "/api/version",
+    "/api/metrics/stats",
+    "/api/metrics/activity",
+    "/api/metrics",
+    "/metrics",
+    "/api/tags",
+    "/api/ps",
+    "/api/v0/models",
+    "/health",
+    "/props",
+    "/version",
+    "/v1/models/status",
+    "/admin/api/stats"
+   ],
+   "historyReadPaths": [
+    "/api/metrics/activity?page=<1-10>&limit=200",
+    "/logs/stream/http?no-history"
+   ],
+   "limits": {
+    "endpoints": 40
+   },
+   "intervalSeconds": 30
+  }
+ },
+ "models": {
+  "status": 200,
+  "body": {
+   "schemaVersion": 1,
+   "generatedAt": "<moving>",
+   "range": "24h",
+   "empty": true,
+   "providers": {
+    "runtimes": [
+     {
+      "module": "runtimes",
+      "source": "runtimes",
+      "machines": 0,
+      "lastAt": null,
+      "failed": false
+     }
+    ],
+    "requests": []
+   },
+   "overview": {
+    "machines": 0,
+    "runtimes": {
+     "total": 0,
+     "up": 0,
+     "down": 0,
+     "unknown": 0
+    },
+    "models": {
+     "total": 0,
+     "loaded": 0,
+     "loading": 0,
+     "generating": 0,
+     "queued": 0,
+     "byKind": {}
+    },
+    "memory": [],
+    "range": "24h",
+    "requests": 0,
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "medianTps": null,
+    "attributed": 0,
+    "lastRequestAt": null,
+    "observedAt": null,
+    "generatedAt": "<moving>"
+   },
+   "machines": [],
+   "models": [],
+   "work": {
+    "items": [],
+    "active": 0,
+    "queued": 0,
+    "watching": [],
+    "blind": []
+   },
+   "clients": [],
+   "graph": {
+    "lanes": [],
+    "nodes": [],
+    "edges": [],
+    "maxRequests": 0,
+    "maxRecent": 0,
+    "crossRequests": 0,
+    "recentMinutes": 15,
+    "truncated": 0
+   },
+   "known": [
+    {
+     "machine": "mini",
+     "machineName": "Mac mini",
+     "role": "client",
+     "title": "AI Gateway",
+     "description": "Front door.",
+     "state": "on",
+     "source": "site",
+     "models": [],
+     "kind": null
+    },
+    {
+     "machine": "mini",
+     "machineName": "Mac mini",
+     "role": "runtime",
+     "title": "llama-swap",
+     "description": "Model router.",
+     "state": "on",
+     "source": "site",
+     "models": [],
+     "kind": "llm"
+    },
+    {
+     "machine": "mini",
+     "machineName": "Mac mini",
+     "role": "runtime",
+     "title": "oMLX",
+     "description": "MLX server.",
+     "state": "on",
+     "source": "site",
+     "models": [
+      "gemma-4-26B-A4B-it-OptiQ-4bit"
+     ],
+     "kind": "llm"
+    },
+    {
+     "machine": "studio",
+     "machineName": "Mac Studio",
+     "role": "runtime",
+     "title": "llama-swap",
+     "description": "Model router.",
+     "state": "on",
+     "source": "site",
+     "models": [],
+     "kind": "llm"
+    },
+    {
+     "machine": "studio",
+     "machineName": "Mac Studio",
+     "role": "runtime",
+     "title": "oMLX",
+     "description": "MLX server.",
+     "state": "on",
+     "source": "site",
+     "models": [],
+     "kind": "other"
+    },
+    {
+     "machine": "studio",
+     "machineName": "Mac Studio",
+     "role": "runtime",
+     "title": "mlx-serve",
+     "description": "Diffusion packs.",
+     "state": "on",
+     "source": "site",
+     "models": [],
+     "kind": "image"
+    },
+    {
+     "machine": "studio",
+     "machineName": "Mac Studio",
+     "role": "runtime",
+     "title": "llama-server",
+     "description": "Installed, not running.",
+     "state": "off",
+     "source": "site",
+     "models": [],
+     "kind": "llm"
+    },
+    {
+     "machine": "nas",
+     "machineName": "NAS",
+     "role": "client",
+     "title": "Apps",
+     "description": "NAS apps.",
+     "state": "on",
+     "source": "site",
+     "models": [],
+     "kind": null
+    }
+   ],
+   "provenance": {
+    "kind": "config",
+    "kinds": [
+     {
+      "kind": "config",
+      "id": "stack",
+      "source": "site.json / runtime_publish",
+      "count": 8,
+      "unit": "items"
+     }
+    ],
+    "lastAt": null,
+    "summary": "Read from configuration (site.json / runtime_publish), 8 items."
+   }
+  }
+ },
+ "homeRuntimes": {
+  "status": 200,
+  "body": [
+   {
+    "id": "mini",
+    "runtimes": null,
+    "work": null
+   },
+   {
+    "id": "studio",
+    "runtimes": null,
+    "work": null
+   },
+   {
+    "id": "mini_server",
+    "runtimes": null,
+    "work": null
+   },
+   {
+    "id": "nas",
+    "runtimes": null,
+    "work": null
+   },
+   {
+    "id": "router",
+    "runtimes": null,
+    "work": null
+   }
+  ]
+ }
+}

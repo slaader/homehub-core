@@ -1,0 +1,12 @@
+data/
+private/
+state/
+router-private/
+backups/
+local/
+*.pem
+*.key
+!tests/fixtures/tls-*.key
+node_modules/
+.DS_Store
+__pycache__/

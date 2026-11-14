@@ -1,0 +1,12 @@
+{
+ "v": 1,
+ "agentVersion": "1.4.0",
+ "platform": "windows",
+ "sentAt": "2026-11-13T10:01:12.000Z",
+ "parts": {
+  "heartbeat": {
+   "schema": 1,
+   "interval": 60
+  }
+ }
+}

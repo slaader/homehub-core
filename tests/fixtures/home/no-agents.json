@@ -1,0 +1,3413 @@
+{
+ "home": {
+  "status": 200,
+  "body": {
+   "poll": {
+    "intervalSeconds": 15,
+    "lastPollAt": null
+   },
+   "schemaVersion": 1,
+   "generatedAt": "<moving>",
+   "machines": [
+    {
+     "id": "mini",
+     "name": "Mac mini",
+     "hostname": "mini.example.lan",
+     "ip": "10.0.0.25",
+     "picture": "/images/desktop.png",
+     "props": {
+      "cpu": "14j (10P+4E) M4 Pro",
+      "gpu": "20c",
+      "ramGb": 64,
+      "diskTotalBytes": 3996000000000
+     },
+     "thermo": null,
+     "kind": "thermo",
+     "role": "computer",
+     "source": "site",
+     "readOnly": true,
+     "telemetryBinding": null,
+     "telemetryEditable": false,
+     "image": null,
+     "siteOverride": {
+      "fields": [],
+      "hash": "<moving>",
+      "image": false,
+      "updatedAt": null,
+      "updatedBy": null
+     },
+     "siteDefaults": {
+      "name": "Mac mini",
+      "hostname": "mini.example.lan",
+      "ip": "10.0.0.25",
+      "hardware": {
+       "cpu": "14j (10P+4E) M4 Pro",
+       "gpu": "20c",
+       "ramGb": 64,
+       "diskTotalBytes": 3996000000000
+      },
+      "picture": "/images/desktop.png",
+      "image": null
+     },
+     "online": "offline",
+     "lastSeen": null,
+     "reachability": {
+      "state": "unknown",
+      "checkedAt": null,
+      "port": null
+     },
+     "bridge": null,
+     "quad": null,
+     "volumes": [],
+     "memoryUsedBytes": null,
+     "memoryTotalBytes": 68719476736,
+     "uptimeSeconds": null,
+     "services": [],
+     "collectedAt": null,
+     "reviewNeeded": [],
+     "telemetry": {
+      "state": "unreachable",
+      "thermoId": "mini",
+      "lastSampleAt": null,
+      "ageSeconds": null,
+      "reason": "no-login"
+     },
+     "platform": null,
+     "native": null,
+     "runtimes": null,
+     "work": null,
+     "gpuProcesses": null,
+     "spark": null,
+     "stack": {
+      "layers": [
+       "INPUT",
+       "RUNTIME",
+       "HARDWARE"
+      ],
+      "cols": [
+       "gguf",
+       "mlx"
+      ],
+      "engines": {
+       "gguf": "llama.cpp",
+       "mlx": "Apple MLX"
+      },
+      "blocks": [
+       {
+        "id": "gw",
+        "layer": 0,
+        "col0": 0,
+        "col1": 1,
+        "title": "AI Gateway",
+        "port": ":8789",
+        "desc": "Front door."
+       },
+       {
+        "id": "lswap",
+        "layer": 1,
+        "col0": 0,
+        "col1": 0,
+        "title": "llama-swap",
+        "port": ":8081",
+        "service": "llama-swap",
+        "desc": "Model router. — služba teď nedosaditelná.",
+        "state": "off",
+        "models": [],
+        "stats": null,
+        "pool": null,
+        "descT": [
+         {
+          "key": "Model router.",
+          "params": {}
+         },
+         {
+          "key": "— služba teď nedosaditelná.",
+          "params": {}
+         }
+        ]
+       },
+       {
+        "id": "omlx",
+        "layer": 1,
+        "col0": 1,
+        "col1": 1,
+        "title": "oMLX",
+        "port": ":8000",
+        "service": "omlx",
+        "desc": "MLX server. — služba teď nedosaditelná.",
+        "models": [],
+        "state": "off",
+        "stats": null,
+        "pool": null,
+        "descT": [
+         {
+          "key": "MLX server.",
+          "params": {}
+         },
+         {
+          "key": "— služba teď nedosaditelná.",
+          "params": {}
+         }
+        ]
+       },
+       {
+        "id": "hw",
+        "layer": 2,
+        "col0": 0,
+        "col1": 1,
+        "title": "M4 Pro",
+        "port": "64 GB",
+        "hw": true
+       }
+      ]
+     }
+    },
+    {
+     "id": "studio",
+     "name": "Mac Studio",
+     "hostname": "studio.example.lan",
+     "ip": "10.0.0.151",
+     "picture": "/images/desktop.png",
+     "props": {
+      "cpu": "36j (12P+24E) M5 Ultra",
+      "gpu": "36c",
+      "ramGb": 256,
+      "diskTotalBytes": 3996000000000
+     },
+     "thermo": null,
+     "kind": "thermo",
+     "role": "computer",
+     "source": "site",
+     "readOnly": true,
+     "telemetryBinding": null,
+     "telemetryEditable": false,
+     "image": null,
+     "siteOverride": {
+      "fields": [],
+      "hash": "<moving>",
+      "image": false,
+      "updatedAt": null,
+      "updatedBy": null
+     },
+     "siteDefaults": {
+      "name": "Mac Studio",
+      "hostname": "studio.example.lan",
+      "ip": "10.0.0.151",
+      "hardware": {
+       "cpu": "36j (12P+24E) M5 Ultra",
+       "gpu": "36c",
+       "ramGb": 256,
+       "diskTotalBytes": 3996000000000
+      },
+      "picture": "/images/desktop.png",
+      "image": null
+     },
+     "online": "offline",
+     "lastSeen": null,
+     "reachability": {
+      "state": "unknown",
+      "checkedAt": null,
+      "port": null
+     },
+     "bridge": null,
+     "quad": null,
+     "volumes": [],
+     "memoryUsedBytes": null,
+     "memoryTotalBytes": 274877906944,
+     "uptimeSeconds": null,
+     "services": [],
+     "collectedAt": null,
+     "reviewNeeded": [],
+     "telemetry": {
+      "state": "unreachable",
+      "thermoId": "studio",
+      "lastSampleAt": null,
+      "ageSeconds": null,
+      "reason": "no-login"
+     },
+     "platform": null,
+     "native": null,
+     "runtimes": null,
+     "work": null,
+     "gpuProcesses": null,
+     "spark": null,
+     "stack": {
+      "layers": [
+       "INPUT",
+       "TOOL",
+       "RUNTIME",
+       "ENGINE",
+       "HARDWARE"
+      ],
+      "cols": [
+       "gguf",
+       "mlx",
+       "mlx",
+       "mlx",
+       "torch",
+       "torch"
+      ],
+      "engines": {
+       "gguf": "llama.cpp",
+       "mlx": "Apple MLX",
+       "torch": "PyTorch MPS"
+      },
+      "blocks": [
+       {
+        "id": "lswap",
+        "layer": 1,
+        "col0": 0,
+        "col1": 3,
+        "title": "llama-swap",
+        "port": ":8081",
+        "engine": "mlx",
+        "service": "llama-swap",
+        "desc": "Model router. — služba teď nedosaditelná.",
+        "state": "off",
+        "models": [],
+        "stats": null,
+        "pool": null,
+        "descT": [
+         {
+          "key": "Model router.",
+          "params": {}
+         },
+         {
+          "key": "— služba teď nedosaditelná.",
+          "params": {}
+         }
+        ]
+       },
+       {
+        "id": "omlx",
+        "layer": 2,
+        "col0": 1,
+        "col1": 2,
+        "title": "oMLX",
+        "port": ":8000",
+        "service": "omlx",
+        "desc": "MLX server. — služba teď nedosaditelná.",
+        "state": "off",
+        "models": [],
+        "stats": null,
+        "pool": null,
+        "descT": [
+         {
+          "key": "MLX server.",
+          "params": {}
+         },
+         {
+          "key": "— služba teď nedosaditelná.",
+          "params": {}
+         }
+        ]
+       },
+       {
+        "id": "mlxserve",
+        "layer": 2,
+        "col0": 3,
+        "col1": 3,
+        "title": "mlx-serve",
+        "port": ":11234",
+        "service": "mlx-serve",
+        "desc": "Diffusion packs. — služba teď nedosaditelná.",
+        "state": "off",
+        "models": [],
+        "stats": null,
+        "pool": null,
+        "descT": [
+         {
+          "key": "Diffusion packs.",
+          "params": {}
+         },
+         {
+          "key": "— služba teď nedosaditelná.",
+          "params": {}
+         }
+        ]
+       },
+       {
+        "id": "lserver",
+        "layer": 2,
+        "col0": 0,
+        "col1": 0,
+        "title": "llama-server",
+        "port": "off",
+        "state": "off",
+        "models": [],
+        "desc": "Installed, not running."
+       },
+       {
+        "id": "hw",
+        "layer": 4,
+        "col0": 0,
+        "col1": 5,
+        "title": "M5 Ultra",
+        "port": "256 GB",
+        "hw": true,
+        "desc": "Unified memory."
+       }
+      ]
+     }
+    },
+    {
+     "id": "mini_server",
+     "name": "mini_server",
+     "hostname": "mini-server.example.lan",
+     "ip": "10.0.0.64",
+     "picture": "/images/desktop.png",
+     "props": {
+      "cpu": "8j M1",
+      "gpu": "8c",
+      "ramGb": 16,
+      "diskTotalBytes": 245000000000
+     },
+     "thermo": null,
+     "kind": "thermo",
+     "role": "computer",
+     "source": "site",
+     "readOnly": true,
+     "telemetryBinding": null,
+     "telemetryEditable": false,
+     "image": null,
+     "siteOverride": {
+      "fields": [],
+      "hash": "<moving>",
+      "image": false,
+      "updatedAt": null,
+      "updatedBy": null
+     },
+     "siteDefaults": {
+      "name": "mini_server",
+      "hostname": "mini-server.example.lan",
+      "ip": "10.0.0.64",
+      "hardware": {
+       "cpu": "8j M1",
+       "gpu": "8c",
+       "ramGb": 16,
+       "diskTotalBytes": 245000000000
+      },
+      "picture": "/images/desktop.png",
+      "image": null
+     },
+     "online": "offline",
+     "lastSeen": null,
+     "reachability": {
+      "state": "unknown",
+      "checkedAt": null,
+      "port": null
+     },
+     "bridge": null,
+     "quad": null,
+     "volumes": [],
+     "memoryUsedBytes": null,
+     "memoryTotalBytes": 17179869184,
+     "uptimeSeconds": null,
+     "services": [],
+     "collectedAt": null,
+     "reviewNeeded": [],
+     "telemetry": {
+      "state": "unreachable",
+      "thermoId": "mini_server",
+      "lastSampleAt": null,
+      "ageSeconds": null,
+      "reason": "no-login"
+     },
+     "platform": null,
+     "native": null,
+     "runtimes": null,
+     "work": null,
+     "gpuProcesses": null,
+     "spark": null,
+     "stack": null
+    },
+    {
+     "id": "nas",
+     "name": "NAS",
+     "hostname": "nas.example.lan",
+     "ip": "10.0.0.74",
+     "picture": "/images/nas.png",
+     "props": {
+      "cpu": "Ryzen 9 7900",
+      "gpu": "—",
+      "ramGb": 64,
+      "pools": 3,
+      "diskTotalBytes": 66000000000000
+     },
+     "kind": "nas",
+     "role": "nas",
+     "source": "site",
+     "readOnly": true,
+     "telemetryBinding": null,
+     "telemetryEditable": true,
+     "image": null,
+     "siteOverride": {
+      "fields": [],
+      "hash": "<moving>",
+      "image": false,
+      "updatedAt": null,
+      "updatedBy": null
+     },
+     "siteDefaults": {
+      "name": "NAS",
+      "hostname": "nas.example.lan",
+      "ip": "10.0.0.74",
+      "hardware": {
+       "cpu": "Ryzen 9 7900",
+       "gpu": "—",
+       "ramGb": 64,
+       "diskTotalBytes": 66000000000000
+      },
+      "picture": "/images/nas.png",
+      "image": null
+     },
+     "online": "unknown",
+     "lastSeen": null,
+     "reachability": {
+      "state": "unknown",
+      "checkedAt": null,
+      "port": null
+     },
+     "thermo": null,
+     "bridge": null,
+     "quad": null,
+     "volumes": [],
+     "memoryUsedBytes": null,
+     "memoryTotalBytes": 68719476736,
+     "uptimeSeconds": null,
+     "services": [],
+     "collectedAt": null,
+     "reviewNeeded": [],
+     "telemetry": {
+      "state": "not-installed",
+      "thermoId": null,
+      "lastSampleAt": null,
+      "ageSeconds": null,
+      "reason": null
+     },
+     "platform": null,
+     "native": null,
+     "runtimes": null,
+     "work": null,
+     "gpuProcesses": null,
+     "spark": null,
+     "stack": {
+      "layers": [
+       "INPUT",
+       "RUNTIME",
+       "HARDWARE"
+      ],
+      "cols": [
+       "app"
+      ],
+      "engines": {},
+      "blocks": [
+       {
+        "id": "apps",
+        "layer": 0,
+        "col0": 0,
+        "col1": 0,
+        "title": "Apps",
+        "port": "wiki",
+        "desc": "NAS apps."
+       },
+       {
+        "id": "zfs",
+        "layer": 1,
+        "col0": 0,
+        "col1": 0,
+        "title": "ZFS",
+        "port": "3× pool",
+        "hw": true,
+        "desc": "Pools."
+       },
+       {
+        "id": "hw",
+        "layer": 2,
+        "col0": 0,
+        "col1": 0,
+        "title": "Ryzen 9 7900",
+        "port": "64 GB ECC",
+        "hw": true
+       }
+      ]
+     }
+    },
+    {
+     "id": "router",
+     "name": "Router",
+     "hostname": "10.0.0.1",
+     "ip": "10.0.0.1",
+     "picture": "/images/desktop.png",
+     "props": {
+      "cpu": "4× GbE",
+      "gpu": "—",
+      "ramGb": null,
+      "wifi": "Wi-Fi 7"
+     },
+     "kind": "router",
+     "role": "router",
+     "source": "site",
+     "readOnly": true,
+     "telemetryBinding": null,
+     "telemetryEditable": false,
+     "image": null,
+     "siteOverride": {
+      "fields": [],
+      "hash": "<moving>",
+      "image": false,
+      "updatedAt": null,
+      "updatedBy": null
+     },
+     "siteDefaults": {
+      "name": "Router",
+      "hostname": "10.0.0.1",
+      "ip": "10.0.0.1",
+      "hardware": {
+       "cpu": "4× GbE",
+       "gpu": "—",
+       "ramGb": null,
+       "diskTotalBytes": null
+      },
+      "picture": "/images/desktop.png",
+      "image": null
+     },
+     "online": "offline",
+     "lastSeen": null,
+     "reachability": {
+      "state": "unknown",
+      "checkedAt": null,
+      "port": null
+     },
+     "thermo": null,
+     "bridge": null,
+     "quad": null,
+     "volumes": [],
+     "memoryUsedBytes": null,
+     "memoryTotalBytes": null,
+     "uptimeSeconds": null,
+     "services": [],
+     "collectedAt": null,
+     "reviewNeeded": [],
+     "telemetry": {
+      "state": "not-applicable",
+      "thermoId": null,
+      "lastSampleAt": null,
+      "ageSeconds": null,
+      "reason": null
+     },
+     "platform": null,
+     "native": null,
+     "runtimes": null,
+     "work": null,
+     "gpuProcesses": null,
+     "spark": null,
+     "stack": {
+      "layers": [
+       "HARDWARE"
+      ],
+      "cols": [
+       "net"
+      ],
+      "engines": {},
+      "blocks": [
+       {
+        "id": "hw",
+        "layer": 0,
+        "col0": 0,
+        "col1": 0,
+        "title": "Router",
+        "port": "4× GbE",
+        "hw": true
+       }
+      ]
+     }
+    },
+    {
+     "id": "pi-box",
+     "name": "Pi box",
+     "hostname": "pi.example.lan",
+     "ip": "10.0.0.40",
+     "kind": "other",
+     "added": true,
+     "platform": "linux",
+     "image": null,
+     "picture": "/images/generic/desktop.svg",
+     "pictureId": null,
+     "props": {
+      "cpu": "4c",
+      "gpu": "—",
+      "ramGb": 8
+     },
+     "role": "computer",
+     "source": "agent",
+     "readOnly": false,
+     "hash": "<moving>",
+     "createdAt": "<moving>",
+     "createdBy": "writer",
+     "updatedAt": null,
+     "updatedBy": null,
+     "telemetryEditable": true,
+     "online": "unknown",
+     "lastSeen": null,
+     "reachability": {
+      "state": "unknown",
+      "checkedAt": null,
+      "port": null
+     },
+     "thermo": null,
+     "bridge": null,
+     "quad": null,
+     "volumes": [],
+     "memoryUsedBytes": null,
+     "memoryTotalBytes": 8589934592,
+     "uptimeSeconds": null,
+     "services": [],
+     "collectedAt": null,
+     "reviewNeeded": [],
+     "telemetry": {
+      "state": "not-installed",
+      "thermoId": null,
+      "lastSampleAt": null,
+      "ageSeconds": null,
+      "reason": null
+     },
+     "native": null,
+     "runtimes": null,
+     "work": null,
+     "gpuProcesses": null,
+     "spark": null,
+     "stack": null
+    }
+   ],
+   "telemetry": {
+    "agent": "Thermo",
+    "repoUrl": "https://github.com/OWNER/home-hub-telemetry",
+    "staleAfterSeconds": 180,
+    "adapters": [
+     {
+      "id": "thermo",
+      "name": "Thermo",
+      "repoUrl": "https://github.com/OWNER/home-hub-telemetry",
+      "connect": "account",
+      "platform": "macos",
+      "defaultPort": 49286,
+      "summary": "CPU, GPU, paměť, příkon, teploty a disky"
+     },
+     {
+      "id": "windows",
+      "name": "Windows (SSH)",
+      "repoUrl": null,
+      "connect": "ssh",
+      "platform": "windows",
+      "defaultPort": 22,
+      "minIntervalSeconds": 30,
+      "summary": "CPU a jádra, GPU, paměť, disky a síť přes SSH a PowerShell, bez agenta; teploty a příkon Windows nehlásí"
+     },
+     {
+      "id": "winrm",
+      "name": "Windows (WinRM)",
+      "repoUrl": null,
+      "connect": "endpoint",
+      "platform": "windows",
+      "defaultPort": 5986,
+      "minIntervalSeconds": 30,
+      "summary": "stejné čítače Windows přes WinRM HTTPS (WMI jen ke čtení), přihlášení Basic místním účtem po ověření certifikátu"
+     },
+     {
+      "id": "node-exporter",
+      "name": "Linux (Node Exporter)",
+      "repoUrl": "https://github.com/prometheus/node_exporter",
+      "connect": "endpoint",
+      "platform": "linux",
+      "recommended": true,
+      "defaultPort": 9100,
+      "minIntervalSeconds": 30,
+      "summary": "CPU a jádra, paměť, svazky, disky, síť a teploty z /metrics Node Exporteru; Prometheus server není potřeba"
+     },
+     {
+      "id": "prometheus",
+      "name": "Linux (Prometheus)",
+      "repoUrl": "https://prometheus.io/docs/prometheus/latest/installation/",
+      "connect": "endpoint",
+      "platform": "linux",
+      "defaultPort": 9090,
+      "minIntervalSeconds": 30,
+      "summary": "metriky Linuxu jednoho cíle node_exporter z Prometheu, který už máš (API jen ke čtení)"
+     },
+     {
+      "id": "linux-ssh",
+      "name": "Linux (SSH)",
+      "repoUrl": null,
+      "connect": "ssh",
+      "platform": "linux",
+      "defaultPort": 22,
+      "minIntervalSeconds": 30,
+      "summary": "bez agenta: pevný skript, který jen čte /proc, /sys a df, přes SSH klíčem Home Hubu"
+     }
+    ]
+   },
+   "router": {
+    "status": "not-configured",
+    "freshness": "unknown",
+    "observedAt": null,
+    "model": "",
+    "firmware": "",
+    "clients": 0
+   },
+   "integrations": {
+    "disabled": []
+   }
+  }
+ },
+ "machines": {
+  "status": 200,
+  "body": {
+   "machines": [
+    {
+     "id": "mini",
+     "name": "Mac mini",
+     "hostname": "mini.example.lan",
+     "ip": "10.0.0.25",
+     "role": "computer",
+     "hardware": {
+      "cpu": "14j (10P+4E) M4 Pro",
+      "gpu": "20c",
+      "ramGb": 64,
+      "diskTotalBytes": 3996000000000
+     },
+     "thermoId": "mini",
+     "picture": "/images/desktop.png",
+     "platform": null,
+     "source": "site",
+     "readOnly": true,
+     "hash": null,
+     "customPicture": false,
+     "siteOverride": null,
+     "telemetry": {
+      "state": "unreachable",
+      "thermoId": "mini",
+      "lastSampleAt": null,
+      "ageSeconds": null,
+      "reason": "no-login"
+     },
+     "reachability": {
+      "state": "unknown",
+      "checkedAt": null,
+      "port": null
+     },
+     "runtime": {
+      "source": "site",
+      "publishedAt": null,
+      "publishedBy": null,
+      "hash": null
+     }
+    },
+    {
+     "id": "studio",
+     "name": "Mac Studio",
+     "hostname": "studio.example.lan",
+     "ip": "10.0.0.151",
+     "role": "computer",
+     "hardware": {
+      "cpu": "36j (12P+24E) M5 Ultra",
+      "gpu": "36c",
+      "ramGb": 256,
+      "diskTotalBytes": 3996000000000
+     },
+     "thermoId": "studio",
+     "picture": "/images/desktop.png",
+     "platform": null,
+     "source": "site",
+     "readOnly": true,
+     "hash": null,
+     "customPicture": false,
+     "siteOverride": null,
+     "telemetry": {
+      "state": "unreachable",
+      "thermoId": "studio",
+      "lastSampleAt": null,
+      "ageSeconds": null,
+      "reason": "no-login"
+     },
+     "reachability": {
+      "state": "unknown",
+      "checkedAt": null,
+      "port": null
+     },
+     "runtime": {
+      "source": "site",
+      "publishedAt": null,
+      "publishedBy": null,
+      "hash": null
+     }
+    },
+    {
+     "id": "mini_server",
+     "name": "mini_server",
+     "hostname": "mini-server.example.lan",
+     "ip": "10.0.0.64",
+     "role": "computer",
+     "hardware": {
+      "cpu": "8j M1",
+      "gpu": "8c",
+      "ramGb": 16,
+      "diskTotalBytes": 245000000000
+     },
+     "thermoId": "mini_server",
+     "picture": "/images/desktop.png",
+     "platform": null,
+     "source": "site",
+     "readOnly": true,
+     "hash": null,
+     "customPicture": false,
+     "siteOverride": null,
+     "telemetry": {
+      "state": "unreachable",
+      "thermoId": "mini_server",
+      "lastSampleAt": null,
+      "ageSeconds": null,
+      "reason": "no-login"
+     },
+     "reachability": {
+      "state": "unknown",
+      "checkedAt": null,
+      "port": null
+     },
+     "runtime": {
+      "source": null,
+      "publishedAt": null,
+      "publishedBy": null,
+      "hash": null
+     }
+    },
+    {
+     "id": "nas",
+     "name": "NAS",
+     "hostname": "nas.example.lan",
+     "ip": "10.0.0.74",
+     "role": "nas",
+     "hardware": {
+      "cpu": "Ryzen 9 7900",
+      "gpu": "—",
+      "ramGb": 64,
+      "pools": 3,
+      "diskTotalBytes": 66000000000000
+     },
+     "thermoId": null,
+     "picture": "/images/nas.png",
+     "platform": null,
+     "source": "site",
+     "readOnly": true,
+     "hash": null,
+     "customPicture": false,
+     "siteOverride": null,
+     "telemetry": {
+      "state": "not-installed",
+      "thermoId": null,
+      "lastSampleAt": null,
+      "ageSeconds": null,
+      "reason": null
+     },
+     "reachability": {
+      "state": "unknown",
+      "checkedAt": null,
+      "port": null
+     },
+     "runtime": {
+      "source": "site",
+      "publishedAt": null,
+      "publishedBy": null,
+      "hash": null
+     }
+    },
+    {
+     "id": "router",
+     "name": "Router",
+     "hostname": "10.0.0.1",
+     "ip": "10.0.0.1",
+     "role": "router",
+     "hardware": {
+      "cpu": "4× GbE",
+      "gpu": "—",
+      "ramGb": null,
+      "wifi": "Wi-Fi 7"
+     },
+     "thermoId": null,
+     "picture": "/images/desktop.png",
+     "platform": null,
+     "source": "site",
+     "readOnly": true,
+     "hash": null,
+     "customPicture": false,
+     "siteOverride": null,
+     "telemetry": {
+      "state": "not-applicable",
+      "thermoId": null,
+      "lastSampleAt": null,
+      "ageSeconds": null,
+      "reason": null
+     },
+     "reachability": {
+      "state": "unknown",
+      "checkedAt": null,
+      "port": null
+     },
+     "runtime": {
+      "source": "site",
+      "publishedAt": null,
+      "publishedBy": null,
+      "hash": null
+     }
+    },
+    {
+     "id": "pi-box",
+     "name": "Pi box",
+     "hostname": "pi.example.lan",
+     "ip": "10.0.0.40",
+     "role": "computer",
+     "hardware": {
+      "cpu": "4c",
+      "gpu": "—",
+      "ramGb": 8,
+      "diskTotalBytes": null
+     },
+     "thermoId": null,
+     "picture": null,
+     "platform": "linux",
+     "source": "agent",
+     "readOnly": false,
+     "hash": "<moving>",
+     "customPicture": false,
+     "createdAt": "<moving>",
+     "createdBy": "writer",
+     "updatedAt": null,
+     "updatedBy": null,
+     "telemetry": {
+      "state": "not-installed",
+      "thermoId": null,
+      "lastSampleAt": null,
+      "ageSeconds": null,
+      "reason": null
+     },
+     "reachability": {
+      "state": "unknown",
+      "checkedAt": null,
+      "port": null
+     },
+     "runtime": {
+      "source": null,
+      "publishedAt": null,
+      "publishedBy": null,
+      "hash": null
+     }
+    }
+   ],
+   "pictures": [
+    {
+     "id": "desktop",
+     "url": "/images/generic/desktop.svg"
+    },
+    {
+     "id": "laptop",
+     "url": "/images/generic/laptop.svg"
+    },
+    {
+     "id": "mini",
+     "url": "/images/generic/mini.svg"
+    },
+    {
+     "id": "tower",
+     "url": "/images/generic/tower.svg"
+    },
+    {
+     "id": "server",
+     "url": "/images/generic/server.svg"
+    },
+    {
+     "id": "nas",
+     "url": "/images/generic/nas.svg"
+    },
+    {
+     "id": "router",
+     "url": "/images/generic/router.svg"
+    },
+    {
+     "id": "board",
+     "url": "/images/generic/board.svg"
+    },
+    {
+     "id": "printer",
+     "url": "/images/generic/printer.svg"
+    },
+    {
+     "id": "generic",
+     "url": "/images/generic/generic.svg"
+    }
+   ],
+   "roles": [
+    "computer",
+    "nas",
+    "router",
+    "other"
+   ],
+   "platforms": [
+    "macos",
+    "windows",
+    "linux",
+    "other"
+   ],
+   "runtimeLayers": [
+    "input",
+    "tool",
+    "runtime",
+    "engine",
+    "hardware"
+   ],
+   "lanCidrs": [
+    "10.0.0.0/24"
+   ],
+   "limits": {
+    "machines": 20
+   },
+   "telemetry": {
+    "agent": "Thermo",
+    "repoUrl": "https://github.com/OWNER/home-hub-telemetry",
+    "staleAfterSeconds": 180,
+    "adapters": [
+     {
+      "id": "thermo",
+      "name": "Thermo",
+      "repoUrl": "https://github.com/OWNER/home-hub-telemetry",
+      "connect": "account",
+      "platform": "macos",
+      "defaultPort": 49286,
+      "summary": "CPU, GPU, paměť, příkon, teploty a disky"
+     },
+     {
+      "id": "windows",
+      "name": "Windows (SSH)",
+      "repoUrl": null,
+      "connect": "ssh",
+      "platform": "windows",
+      "defaultPort": 22,
+      "minIntervalSeconds": 30,
+      "summary": "CPU a jádra, GPU, paměť, disky a síť přes SSH a PowerShell, bez agenta; teploty a příkon Windows nehlásí"
+     },
+     {
+      "id": "winrm",
+      "name": "Windows (WinRM)",
+      "repoUrl": null,
+      "connect": "endpoint",
+      "platform": "windows",
+      "defaultPort": 5986,
+      "minIntervalSeconds": 30,
+      "summary": "stejné čítače Windows přes WinRM HTTPS (WMI jen ke čtení), přihlášení Basic místním účtem po ověření certifikátu"
+     },
+     {
+      "id": "node-exporter",
+      "name": "Linux (Node Exporter)",
+      "repoUrl": "https://github.com/prometheus/node_exporter",
+      "connect": "endpoint",
+      "platform": "linux",
+      "recommended": true,
+      "defaultPort": 9100,
+      "minIntervalSeconds": 30,
+      "summary": "CPU a jádra, paměť, svazky, disky, síť a teploty z /metrics Node Exporteru; Prometheus server není potřeba"
+     },
+     {
+      "id": "prometheus",
+      "name": "Linux (Prometheus)",
+      "repoUrl": "https://prometheus.io/docs/prometheus/latest/installation/",
+      "connect": "endpoint",
+      "platform": "linux",
+      "defaultPort": 9090,
+      "minIntervalSeconds": 30,
+      "summary": "metriky Linuxu jednoho cíle node_exporter z Prometheu, který už máš (API jen ke čtení)"
+     },
+     {
+      "id": "linux-ssh",
+      "name": "Linux (SSH)",
+      "repoUrl": null,
+      "connect": "ssh",
+      "platform": "linux",
+      "defaultPort": 22,
+      "minIntervalSeconds": 30,
+      "summary": "bez agenta: pevný skript, který jen čte /proc, /sys a df, přes SSH klíčem Home Hubu"
+     }
+    ]
+   }
+  }
+ },
+ "machineList": {
+  "status": 200,
+  "body": {
+   "machines": [
+    {
+     "id": "mini",
+     "name": "Mac mini",
+     "hostname": "mini.example.lan",
+     "ip": "10.0.0.25",
+     "role": "computer",
+     "hardware": {
+      "cpu": "14j (10P+4E) M4 Pro",
+      "gpu": "20c",
+      "ramGb": 64,
+      "diskTotalBytes": 3996000000000
+     },
+     "thermoId": "mini",
+     "picture": "/images/desktop.png",
+     "platform": null,
+     "source": "site",
+     "readOnly": true,
+     "hash": null,
+     "customPicture": false,
+     "siteOverride": null,
+     "telemetry": {
+      "state": "unreachable",
+      "thermoId": "mini",
+      "lastSampleAt": null,
+      "ageSeconds": null,
+      "reason": "no-login"
+     },
+     "reachability": {
+      "state": "unknown",
+      "checkedAt": null,
+      "port": null
+     },
+     "runtime": {
+      "source": "site",
+      "publishedAt": null,
+      "publishedBy": null,
+      "hash": null
+     }
+    },
+    {
+     "id": "studio",
+     "name": "Mac Studio",
+     "hostname": "studio.example.lan",
+     "ip": "10.0.0.151",
+     "role": "computer",
+     "hardware": {
+      "cpu": "36j (12P+24E) M5 Ultra",
+      "gpu": "36c",
+      "ramGb": 256,
+      "diskTotalBytes": 3996000000000
+     },
+     "thermoId": "studio",
+     "picture": "/images/desktop.png",
+     "platform": null,
+     "source": "site",
+     "readOnly": true,
+     "hash": null,
+     "customPicture": false,
+     "siteOverride": null,
+     "telemetry": {
+      "state": "unreachable",
+      "thermoId": "studio",
+      "lastSampleAt": null,
+      "ageSeconds": null,
+      "reason": "no-login"
+     },
+     "reachability": {
+      "state": "unknown",
+      "checkedAt": null,
+      "port": null
+     },
+     "runtime": {
+      "source": "site",
+      "publishedAt": null,
+      "publishedBy": null,
+      "hash": null
+     }
+    },
+    {
+     "id": "mini_server",
+     "name": "mini_server",
+     "hostname": "mini-server.example.lan",
+     "ip": "10.0.0.64",
+     "role": "computer",
+     "hardware": {
+      "cpu": "8j M1",
+      "gpu": "8c",
+      "ramGb": 16,
+      "diskTotalBytes": 245000000000
+     },
+     "thermoId": "mini_server",
+     "picture": "/images/desktop.png",
+     "platform": null,
+     "source": "site",
+     "readOnly": true,
+     "hash": null,
+     "customPicture": false,
+     "siteOverride": null,
+     "telemetry": {
+      "state": "unreachable",
+      "thermoId": "mini_server",
+      "lastSampleAt": null,
+      "ageSeconds": null,
+      "reason": "no-login"
+     },
+     "reachability": {
+      "state": "unknown",
+      "checkedAt": null,
+      "port": null
+     },
+     "runtime": {
+      "source": null,
+      "publishedAt": null,
+      "publishedBy": null,
+      "hash": null
+     }
+    },
+    {
+     "id": "nas",
+     "name": "NAS",
+     "hostname": "nas.example.lan",
+     "ip": "10.0.0.74",
+     "role": "nas",
+     "hardware": {
+      "cpu": "Ryzen 9 7900",
+      "gpu": "—",
+      "ramGb": 64,
+      "pools": 3,
+      "diskTotalBytes": 66000000000000
+     },
+     "thermoId": null,
+     "picture": "/images/nas.png",
+     "platform": null,
+     "source": "site",
+     "readOnly": true,
+     "hash": null,
+     "customPicture": false,
+     "siteOverride": null,
+     "telemetry": {
+      "state": "not-installed",
+      "thermoId": null,
+      "lastSampleAt": null,
+      "ageSeconds": null,
+      "reason": null
+     },
+     "reachability": {
+      "state": "unknown",
+      "checkedAt": null,
+      "port": null
+     },
+     "runtime": {
+      "source": "site",
+      "publishedAt": null,
+      "publishedBy": null,
+      "hash": null
+     }
+    },
+    {
+     "id": "router",
+     "name": "Router",
+     "hostname": "10.0.0.1",
+     "ip": "10.0.0.1",
+     "role": "router",
+     "hardware": {
+      "cpu": "4× GbE",
+      "gpu": "—",
+      "ramGb": null,
+      "wifi": "Wi-Fi 7"
+     },
+     "thermoId": null,
+     "picture": "/images/desktop.png",
+     "platform": null,
+     "source": "site",
+     "readOnly": true,
+     "hash": null,
+     "customPicture": false,
+     "siteOverride": null,
+     "telemetry": {
+      "state": "not-applicable",
+      "thermoId": null,
+      "lastSampleAt": null,
+      "ageSeconds": null,
+      "reason": null
+     },
+     "reachability": {
+      "state": "unknown",
+      "checkedAt": null,
+      "port": null
+     },
+     "runtime": {
+      "source": "site",
+      "publishedAt": null,
+      "publishedBy": null,
+      "hash": null
+     }
+    },
+    {
+     "id": "pi-box",
+     "name": "Pi box",
+     "hostname": "pi.example.lan",
+     "ip": "10.0.0.40",
+     "role": "computer",
+     "hardware": {
+      "cpu": "4c",
+      "gpu": "—",
+      "ramGb": 8,
+      "diskTotalBytes": null
+     },
+     "thermoId": null,
+     "picture": null,
+     "platform": "linux",
+     "source": "agent",
+     "readOnly": false,
+     "hash": "<moving>",
+     "customPicture": false,
+     "createdAt": "<moving>",
+     "createdBy": "writer",
+     "updatedAt": null,
+     "updatedBy": null,
+     "telemetry": {
+      "state": "not-installed",
+      "thermoId": null,
+      "lastSampleAt": null,
+      "ageSeconds": null,
+      "reason": null
+     },
+     "reachability": {
+      "state": "unknown",
+      "checkedAt": null,
+      "port": null
+     },
+     "runtime": {
+      "source": null,
+      "publishedAt": null,
+      "publishedBy": null,
+      "hash": null
+     }
+    }
+   ],
+   "pictures": [
+    {
+     "id": "desktop",
+     "url": "/images/generic/desktop.svg"
+    },
+    {
+     "id": "laptop",
+     "url": "/images/generic/laptop.svg"
+    },
+    {
+     "id": "mini",
+     "url": "/images/generic/mini.svg"
+    },
+    {
+     "id": "tower",
+     "url": "/images/generic/tower.svg"
+    },
+    {
+     "id": "server",
+     "url": "/images/generic/server.svg"
+    },
+    {
+     "id": "nas",
+     "url": "/images/generic/nas.svg"
+    },
+    {
+     "id": "router",
+     "url": "/images/generic/router.svg"
+    },
+    {
+     "id": "board",
+     "url": "/images/generic/board.svg"
+    },
+    {
+     "id": "printer",
+     "url": "/images/generic/printer.svg"
+    },
+    {
+     "id": "generic",
+     "url": "/images/generic/generic.svg"
+    }
+   ],
+   "roles": [
+    "computer",
+    "nas",
+    "router",
+    "other"
+   ],
+   "platforms": [
+    "macos",
+    "windows",
+    "linux",
+    "other"
+   ],
+   "runtimeLayers": [
+    "input",
+    "tool",
+    "runtime",
+    "engine",
+    "hardware"
+   ],
+   "lanCidrs": [
+    "10.0.0.0/24"
+   ],
+   "limits": {
+    "machines": 20
+   },
+   "telemetry": {
+    "agent": "Thermo",
+    "repoUrl": "https://github.com/OWNER/home-hub-telemetry",
+    "staleAfterSeconds": 180,
+    "adapters": [
+     {
+      "id": "thermo",
+      "name": "Thermo",
+      "repoUrl": "https://github.com/OWNER/home-hub-telemetry",
+      "connect": "account",
+      "platform": "macos",
+      "defaultPort": 49286,
+      "summary": "CPU, GPU, paměť, příkon, teploty a disky"
+     },
+     {
+      "id": "windows",
+      "name": "Windows (SSH)",
+      "repoUrl": null,
+      "connect": "ssh",
+      "platform": "windows",
+      "defaultPort": 22,
+      "minIntervalSeconds": 30,
+      "summary": "CPU a jádra, GPU, paměť, disky a síť přes SSH a PowerShell, bez agenta; teploty a příkon Windows nehlásí"
+     },
+     {
+      "id": "winrm",
+      "name": "Windows (WinRM)",
+      "repoUrl": null,
+      "connect": "endpoint",
+      "platform": "windows",
+      "defaultPort": 5986,
+      "minIntervalSeconds": 30,
+      "summary": "stejné čítače Windows přes WinRM HTTPS (WMI jen ke čtení), přihlášení Basic místním účtem po ověření certifikátu"
+     },
+     {
+      "id": "node-exporter",
+      "name": "Linux (Node Exporter)",
+      "repoUrl": "https://github.com/prometheus/node_exporter",
+      "connect": "endpoint",
+      "platform": "linux",
+      "recommended": true,
+      "defaultPort": 9100,
+      "minIntervalSeconds": 30,
+      "summary": "CPU a jádra, paměť, svazky, disky, síť a teploty z /metrics Node Exporteru; Prometheus server není potřeba"
+     },
+     {
+      "id": "prometheus",
+      "name": "Linux (Prometheus)",
+      "repoUrl": "https://prometheus.io/docs/prometheus/latest/installation/",
+      "connect": "endpoint",
+      "platform": "linux",
+      "defaultPort": 9090,
+      "minIntervalSeconds": 30,
+      "summary": "metriky Linuxu jednoho cíle node_exporter z Prometheu, který už máš (API jen ke čtení)"
+     },
+     {
+      "id": "linux-ssh",
+      "name": "Linux (SSH)",
+      "repoUrl": null,
+      "connect": "ssh",
+      "platform": "linux",
+      "defaultPort": 22,
+      "minIntervalSeconds": 30,
+      "summary": "bez agenta: pevný skript, který jen čte /proc, /sys a df, přes SSH klíčem Home Hubu"
+     }
+    ]
+   }
+  }
+ },
+ "integrations": {
+  "status": 200,
+  "body": {
+   "schemaVersion": 1,
+   "generatedAt": "<moving>",
+   "kinds": [
+    "telemetry",
+    "llm-runtimes",
+    "router",
+    "collector",
+    "upstream",
+    "storage",
+    "bridge",
+    "other"
+   ],
+   "integrations": [
+    {
+     "id": "home.thermo",
+     "module": "home",
+     "moduleTitle": "Overview",
+     "core": true,
+     "title": "Telemetrie Thermo",
+     "kind": "telemetry",
+     "description": "Živé CPU, GPU, paměť, příkon, teploty a disky strojů z aplikace Thermo. Vypnutá: hub zavře spojení, nic nečte a přehled ukáže stroje bez telemetrie.",
+     "howTo": "Na přehledu přidej zařízení s Thermo (Přidat zařízení), nebo zapiš hostitele do souboru private/thermo-hosts.json.",
+     "page": "overview",
+     "docs": "docs/plugins.md → Site configuration (thermoId)",
+     "toggle": true,
+     "enabled": true,
+     "test": true,
+     "settings": {
+      "schema": [
+       {
+        "key": "intervalSeconds",
+        "label": "Interval čtení",
+        "labelKey": null,
+        "type": "select",
+        "secret": false,
+        "options": [
+         {
+          "value": 15,
+          "label": "15 s"
+         },
+         {
+          "value": 30,
+          "label": "30 s"
+         },
+         {
+          "value": 60,
+          "label": "60 s"
+         }
+        ],
+        "help": "Jak často hub čte Thermo na strojích.",
+        "placeholder": null
+       }
+      ],
+      "values": {
+       "intervalSeconds": 15
+      }
+     },
+     "status": {
+      "state": "not-configured",
+      "summary": "Žádný stroj nemá přihlášení k Thermo.",
+      "lastSuccessAt": null,
+      "lastError": null,
+      "configuredBy": [
+       {
+        "source": "site.json",
+        "name": "machines[].thermoId"
+       }
+      ],
+      "items": []
+     }
+    },
+    {
+     "id": "home.windows",
+     "module": "home",
+     "moduleTitle": "Overview",
+     "core": true,
+     "title": "Telemetrie Windows (SSH)",
+     "kind": "telemetry",
+     "description": "CPU a jádra, GPU, paměť, disky a síť strojů s Windows, čtené přes SSH klíčem a pevným skriptem PowerShellu, který jen čte. Na Windows se nic neinstaluje. Vypnutá: hub se nepřipojuje a stroje s Windows jsou bez živých čísel.",
+     "howTo": "Na přehledu přidej zařízení (nebo uprav existující), zvol systém Windows a telemetrii Windows (SSH) a postupuj podle návodu v dialogu.",
+     "page": "overview",
+     "docs": "docs/API.md → Windows telemetry",
+     "toggle": true,
+     "enabled": true,
+     "test": true,
+     "settings": null,
+     "status": {
+      "state": "not-configured",
+      "summary": "Žádný stroj s Windows není připojený.",
+      "lastSuccessAt": null,
+      "lastError": null,
+      "configuredBy": [],
+      "items": []
+     }
+    },
+    {
+     "id": "home.reachability",
+     "module": "home",
+     "moduleTitle": "Overview",
+     "core": true,
+     "title": "Dosah strojů (TCP)",
+     "kind": "other",
+     "description": "Zda stroje ze site.json odpovídají na síti: hub se na jejich porty (ve výchozím stavu 22) připojí TCP a zapíše, jestli některý odpověděl. Je to jiný údaj než „online“, ten se tím nemění. Vypnutá: hub se na stroje nepřipojuje a jejich dosah je neznámý.",
+     "howTo": "Nic nastavovat není potřeba. Stroj, který se kontrolovat nemá, označ v site.json jako \"reach\": false; porty změníš v \"reach\": {\"ports\": [22]}.",
+     "page": "overview",
+     "docs": "docs/API.md → Home: the overview",
+     "toggle": true,
+     "enabled": true,
+     "test": true,
+     "settings": null,
+     "status": {
+      "state": "stale",
+      "summary": "Na síti odpovídá 0 z 5 strojů.",
+      "summaryT": [
+       {
+        "key": "Na síti odpovídá {ok} z {total} strojů.",
+        "params": {
+         "ok": 0,
+         "total": 5
+        }
+       }
+      ],
+      "lastSuccessAt": null,
+      "lastError": null,
+      "configuredBy": [
+       {
+        "source": "site.json",
+        "name": "machines[].reach"
+       }
+      ],
+      "items": [
+       {
+        "id": "mini",
+        "label": "Mac mini",
+        "state": "stale",
+        "summary": "Zatím nic nezkontrolováno.",
+        "lastSuccessAt": null
+       },
+       {
+        "id": "studio",
+        "label": "Mac Studio",
+        "state": "stale",
+        "summary": "Zatím nic nezkontrolováno.",
+        "lastSuccessAt": null
+       },
+       {
+        "id": "mini_server",
+        "label": "mini_server",
+        "state": "stale",
+        "summary": "Zatím nic nezkontrolováno.",
+        "lastSuccessAt": null
+       },
+       {
+        "id": "nas",
+        "label": "NAS",
+        "state": "stale",
+        "summary": "Zatím nic nezkontrolováno.",
+        "lastSuccessAt": null
+       },
+       {
+        "id": "router",
+        "label": "Router",
+        "state": "stale",
+        "summary": "Zatím nic nezkontrolováno.",
+        "lastSuccessAt": null
+       }
+      ]
+     }
+    },
+    {
+     "id": "home.winrm",
+     "module": "home",
+     "moduleTitle": "Overview",
+     "core": true,
+     "title": "Telemetrie Windows (WinRM)",
+     "kind": "telemetry",
+     "description": "Stejné čítače Windows jako přes SSH, čtené pevnými dotazy WMI přes WinRM HTTPS s ověřováním Basic místním účtem, až po ověření certifikátu. Vypnutá: hub se nepřipojuje.",
+     "howTo": "Na přehledu uprav zařízení s Windows, zvol Windows (WinRM) a postupuj podle návodu v dialogu.",
+     "page": "overview",
+     "docs": "docs/API.md → Agent-less telemetry",
+     "toggle": true,
+     "enabled": true,
+     "test": true,
+     "settings": null,
+     "status": {
+      "state": "not-configured",
+      "summary": "Přes Windows (WinRM) není připojený žádný stroj.",
+      "summaryT": [
+       {
+        "key": "Přes {name} není připojený žádný stroj.",
+        "params": {
+         "name": "Windows (WinRM)"
+        }
+       }
+      ],
+      "lastSuccessAt": null,
+      "lastError": null,
+      "configuredBy": [],
+      "items": []
+     }
+    },
+    {
+     "id": "home.node-exporter",
+     "module": "home",
+     "moduleTitle": "Overview",
+     "core": true,
+     "title": "Telemetrie Linuxu (Node Exporter)",
+     "kind": "telemetry",
+     "description": "CPU a jádra, paměť, svazky, disky, síť a teploty Linuxu z /metrics Prometheus Node Exporteru, bez Prometheus serveru. Vypnutá: hub nic nečte.",
+     "howTo": "Na přehledu přidej nebo uprav zařízení, zvol systém Linux a Linux (Node Exporter).",
+     "page": "overview",
+     "docs": "docs/API.md → Agent-less telemetry",
+     "toggle": true,
+     "enabled": true,
+     "test": true,
+     "settings": null,
+     "status": {
+      "state": "not-configured",
+      "summary": "Přes Linux (Node Exporter) není připojený žádný stroj.",
+      "summaryT": [
+       {
+        "key": "Přes {name} není připojený žádný stroj.",
+        "params": {
+         "name": "Linux (Node Exporter)"
+        }
+       }
+      ],
+      "lastSuccessAt": null,
+      "lastError": null,
+      "configuredBy": [],
+      "items": []
+     }
+    },
+    {
+     "id": "home.prometheus",
+     "module": "home",
+     "moduleTitle": "Overview",
+     "core": true,
+     "title": "Telemetrie Linuxu (Prometheus)",
+     "kind": "telemetry",
+     "description": "Metriky Linuxu jednoho cíle node_exporter z existujícího Prometheu přes jeho API jen ke čtení. Vypnutá: hub se Promethea neptá.",
+     "howTo": "Na přehledu přidej nebo uprav zařízení, zvol systém Linux a Linux (Prometheus), načti cíle a vyber stroj.",
+     "page": "overview",
+     "docs": "docs/API.md → Agent-less telemetry",
+     "toggle": true,
+     "enabled": true,
+     "test": true,
+     "settings": null,
+     "status": {
+      "state": "not-configured",
+      "summary": "Přes Linux (Prometheus) není připojený žádný stroj.",
+      "summaryT": [
+       {
+        "key": "Přes {name} není připojený žádný stroj.",
+        "params": {
+         "name": "Linux (Prometheus)"
+        }
+       }
+      ],
+      "lastSuccessAt": null,
+      "lastError": null,
+      "configuredBy": [],
+      "items": []
+     }
+    },
+    {
+     "id": "home.linux-ssh",
+     "module": "home",
+     "moduleTitle": "Overview",
+     "core": true,
+     "title": "Telemetrie Linuxu (SSH)",
+     "kind": "telemetry",
+     "description": "CPU, paměť, svazky, disky, síť a teploty Linuxu přes SSH klíčem Home Hubu a pevný skript, který jen čte /proc a /sys. Vypnutá: hub se nepřipojuje.",
+     "howTo": "Na přehledu přidej nebo uprav zařízení, zvol systém Linux a Linux (SSH).",
+     "page": "overview",
+     "docs": "docs/API.md → Agent-less telemetry",
+     "toggle": true,
+     "enabled": true,
+     "test": true,
+     "settings": null,
+     "status": {
+      "state": "not-configured",
+      "summary": "Přes Linux (SSH) není připojený žádný stroj.",
+      "summaryT": [
+       {
+        "key": "Přes {name} není připojený žádný stroj.",
+        "params": {
+         "name": "Linux (SSH)"
+        }
+       }
+      ],
+      "lastSuccessAt": null,
+      "lastError": null,
+      "configuredBy": [],
+      "items": []
+     }
+    },
+    {
+     "id": "runtimes.endpoints",
+     "module": "runtimes",
+     "moduleTitle": "LLM runtimes",
+     "core": true,
+     "title": "LLM runtimes",
+     "kind": "llm-runtimes",
+     "description": null,
+     "howTo": null,
+     "page": null,
+     "docs": null,
+     "toggle": true,
+     "enabled": true,
+     "test": true,
+     "settings": null,
+     "status": {
+      "state": "not-configured",
+      "summary": "Žádný endpoint: přidej ho v site.json → runtimes, přes API nebo nástrojem runtime_endpoint_upsert.",
+      "summaryT": [
+       {
+        "key": "Žádný endpoint: přidej ho v site.json → runtimes, přes API nebo nástrojem runtime_endpoint_upsert.",
+        "params": {}
+       }
+      ],
+      "lastSuccessAt": null,
+      "lastError": null,
+      "configuredBy": [],
+      "items": []
+     }
+    },
+    {
+     "id": "security.systems",
+     "module": "security",
+     "moduleTitle": "Security",
+     "core": true,
+     "title": "Sběr verzí a ochrany (collect-systems)",
+     "kind": "collector",
+     "description": "Verze systémů a softwaru, aktualizace a ochrana strojů ze snímku, který zapisuje scripts/collect-systems.mjs. Vypnutí jen skryje data v Home Hubu a hub přestane číst soubor se snímkem. Naplánovanou úlohu (launchd, systemd, cron) nezastaví: ta poběží dál.",
+     "howTo": "V local/site.json dej strojům ssh.alias a ssh.probe, spusť node scripts/collect-systems.mjs a naplánuj ho (sh scripts/systems/install-launchd.sh).",
+     "page": "versions",
+     "docs": "docs/API.md → Collectors",
+     "toggle": true,
+     "enabled": true,
+     "test": false,
+     "settings": null,
+     "status": {
+      "state": "stale",
+      "summary": "Je nastavený, ale ještě neproběhl.",
+      "lastSuccessAt": null,
+      "lastError": null,
+      "configuredBy": [
+       {
+        "source": "site.json",
+        "name": "machines[].ssh.probe (4)"
+       }
+      ],
+      "items": [
+       {
+        "id": "schedule",
+        "label": "Plán",
+        "state": "off",
+        "summary": "Plán neznámý (snímek to neříká) · má běžet každých 6 h",
+        "summaryT": [
+         {
+          "key": "Plán neznámý (snímek to neříká) · má běžet každých {every}",
+          "params": {
+           "every": "6 h"
+          }
+         }
+        ],
+        "lastSuccessAt": null
+       }
+      ]
+     }
+    },
+    {
+     "id": "security.upstream",
+     "module": "security",
+     "moduleTitle": "Security",
+     "core": true,
+     "title": "Kontrola vydání (check-upstream)",
+     "kind": "upstream",
+     "description": "Nejnovější vydání sledovaného softwaru (GitHub, PyPI, npm, Homebrew) ze souboru, který zapisuje scripts/check-upstream.mjs. Token pro GitHub čte ten skript; tady je vidět, co vidí proces hubu. Vypnutí jen skryje data v Home Hubu a hub přestane číst soubor se snímkem. Naplánovanou úlohu (launchd, systemd, cron) nezastaví: ta poběží dál.",
+     "howTo": "Přidej software do seznamu sledovaného softwaru (Verze a aktualizace → Sledovaný software) a spusť node scripts/check-upstream.mjs.",
+     "page": "versions",
+     "docs": "docs/API.md → Software watch list",
+     "toggle": true,
+     "enabled": true,
+     "test": false,
+     "settings": null,
+     "status": {
+      "state": "not-configured",
+      "summary": "Seznam sledovaného softwaru je prázdný.",
+      "lastSuccessAt": null,
+      "lastError": null,
+      "configuredBy": [],
+      "items": [
+       {
+        "id": "github-token",
+        "label": "GitHub token",
+        "state": "off",
+        "summary": "Nenastavený: GitHub dovolí 60 dotazů za hodinu.",
+        "lastSuccessAt": null
+       }
+      ]
+     }
+    },
+    {
+     "id": "security.keys",
+     "module": "security",
+     "moduleTitle": "Security",
+     "core": true,
+     "title": "Inventář SSH klíčů (collect-security)",
+     "kind": "collector",
+     "description": "Kde leží privátní SSH klíče a kam se s nimi dá přihlásit, ze snímku, který zapisuje scripts/collect-security.mjs. Vypnutí jen skryje data v Home Hubu a hub přestane číst soubor se snímkem. Naplánovanou úlohu (launchd, systemd, cron) nezastaví: ta poběží dál.",
+     "howTo": "V local/site.json dej strojům ssh.alias, spusť node scripts/collect-security.mjs a naplánuj ho (install-launchd.sh --with-security).",
+     "page": "security",
+     "docs": "docs/API.md → Collectors",
+     "toggle": true,
+     "enabled": true,
+     "test": false,
+     "settings": null,
+     "status": {
+      "state": "stale",
+      "summary": "Je nastavený, ale ještě neproběhl.",
+      "lastSuccessAt": null,
+      "lastError": null,
+      "configuredBy": [
+       {
+        "source": "site.json",
+        "name": "machines[].ssh (4)"
+       },
+       {
+        "source": "site.json",
+        "name": "security.gitHost"
+       }
+      ],
+      "items": [
+       {
+        "id": "schedule",
+        "label": "Plán",
+        "state": "off",
+        "summary": "Plán neznámý (snímek to neříká) · má běžet každých 24 h",
+        "summaryT": [
+         {
+          "key": "Plán neznámý (snímek to neříká) · má běžet každých {every}",
+          "params": {
+           "every": "24 h"
+          }
+         }
+        ],
+        "lastSuccessAt": null
+       }
+      ]
+     }
+    },
+    {
+     "id": "router.adapter",
+     "module": "router",
+     "moduleTitle": "Router",
+     "core": true,
+     "title": "Adaptér routeru",
+     "kind": "router",
+     "description": "Sčítání klientů v síti a stav routeru. Vestavěný adaptér UniFi čte soubor, který zapisuje sběr routeru; jiný router připojí plugin. Vypnutý: hub soubor ani adaptér nečte. Naplánovaný sběr (cron, launchd) to nezastaví.",
+     "howTo": "V local/site.json nastav router.adapter („unifi“) a host a spouštěj python3 scripts/collect-router-unifi.py každou minutu.",
+     "page": null,
+     "docs": "docs/plugins.md → The router adapter",
+     "toggle": true,
+     "enabled": true,
+     "test": false,
+     "settings": null,
+     "status": {
+      "state": "not-configured",
+      "summary": "Žádný adaptér routeru není nastavený.",
+      "lastSuccessAt": null,
+      "lastError": null,
+      "configuredBy": [],
+      "items": []
+     }
+    },
+    {
+     "id": "backup-jobs.runner",
+     "module": "backup-jobs",
+     "moduleTitle": "Backups",
+     "core": true,
+     "title": "Zálohování",
+     "kind": "storage",
+     "description": "Zálohy, které hub spouští sám: rsync přes SSH na cílový stroj (NAS, server), jeden snímek na běh. Vypnuté: plánovač nic nespustí, nic se nedohání a zálohu nejde spustit ručně; úlohy i snímky zůstanou.",
+     "howTo": "Založ úlohu v průvodci na stránce Zálohování.",
+     "page": "backup-jobs",
+     "docs": "docs/API.md → Backup jobs",
+     "toggle": true,
+     "enabled": true,
+     "test": false,
+     "settings": null,
+     "status": {
+      "state": "not-configured",
+      "summary": "Zatím žádná úloha zálohy.",
+      "lastSuccessAt": null,
+      "lastError": null,
+      "configuredBy": [
+       {
+        "source": "ui",
+        "name": "#backup-jobs"
+       },
+       {
+        "source": "file",
+        "name": "state/backup-jobs/jobs.json"
+       }
+      ],
+      "items": []
+     }
+    },
+    {
+     "id": "git-lfs.hosts",
+     "module": "git-lfs",
+     "moduleTitle": "Git LFS",
+     "core": true,
+     "title": "Git LFS (git hosty)",
+     "kind": "upstream",
+     "description": "Katalog LFS objektů repozitářů na GitHubu, Gitea a Forgejo přes jejich API a git (částečný mirror bez velkých souborů). Vypnutá: hub hosty nekontaktuje, katalog nečte a mazání odmítne.",
+     "howTo": "Na stránce Git LFS přidej připojení: druh hostu, adresu, token jen pro čtení a repozitáře.",
+     "page": "git-lfs",
+     "docs": "docs/git-lfs.md",
+     "toggle": true,
+     "enabled": true,
+     "test": false,
+     "settings": null,
+     "status": {
+      "state": "not-configured",
+      "summary": "Žádné připojení ke git hostu. Přidej ho na stránce Git LFS.",
+      "lastSuccessAt": null,
+      "lastError": null,
+      "configuredBy": [
+       {
+        "source": "ui",
+        "name": "Git LFS → připojení"
+       },
+       {
+        "source": "file",
+        "name": "private/git-lfs-tokens.json"
+       }
+      ],
+      "items": []
+     }
+    },
+    {
+     "id": "updates.check",
+     "module": "updates",
+     "moduleTitle": "Updates",
+     "core": true,
+     "title": "Kontrola aktualizací Home Hubu",
+     "kind": "upstream",
+     "description": "Zhruba dvakrát denně se zeptá GitHubu, jestli vyšlo novější vydání Home Hubu: dva dotazy GET na api.github.com, nic se neposílá. Jen oznamuje; aktualizaci nikdy neinstaluje sám. Vypnutá: Home Hub kvůli aktualizacím nekontaktuje nikoho.",
+     "howTo": null,
+     "page": null,
+     "docs": "docs/updating.md",
+     "toggle": true,
+     "toggleNote": "Vypnuto proměnnou prostředí HOME_HUB_UPDATE_CHECK=off. Zapnout jde jen tam.",
+     "enabled": true,
+     "test": true,
+     "settings": null,
+     "status": {
+      "state": "stale",
+      "summary": "Zatím se nekontrolovalo. První kontrola proběhne během několika minut.",
+      "summaryT": [
+       {
+        "key": "Zatím se nekontrolovalo. První kontrola proběhne během několika minut.",
+        "params": {}
+       }
+      ],
+      "lastSuccessAt": null,
+      "lastError": null,
+      "configuredBy": [
+       {
+        "source": "file",
+        "name": "package.json → homeHub.updates.repo = <updates repo>"
+       }
+      ],
+      "items": []
+     }
+    }
+   ],
+   "plugins": [],
+   "pluginsDirectory": null
+  }
+ },
+ "adminMachines": {
+  "status": 200,
+  "body": {
+   "schemaVersion": 1,
+   "generatedAt": "<moving>",
+   "telemetry": {
+    "agent": "Thermo",
+    "repoUrl": "https://github.com/OWNER/home-hub-telemetry",
+    "staleAfterSeconds": 180,
+    "adapters": [
+     {
+      "id": "thermo",
+      "name": "Thermo",
+      "repoUrl": "https://github.com/OWNER/home-hub-telemetry",
+      "connect": "account",
+      "platform": "macos",
+      "defaultPort": 49286,
+      "summary": "CPU, GPU, paměť, příkon, teploty a disky"
+     },
+     {
+      "id": "windows",
+      "name": "Windows (SSH)",
+      "repoUrl": null,
+      "connect": "ssh",
+      "platform": "windows",
+      "defaultPort": 22,
+      "minIntervalSeconds": 30,
+      "summary": "CPU a jádra, GPU, paměť, disky a síť přes SSH a PowerShell, bez agenta; teploty a příkon Windows nehlásí"
+     },
+     {
+      "id": "winrm",
+      "name": "Windows (WinRM)",
+      "repoUrl": null,
+      "connect": "endpoint",
+      "platform": "windows",
+      "defaultPort": 5986,
+      "minIntervalSeconds": 30,
+      "summary": "stejné čítače Windows přes WinRM HTTPS (WMI jen ke čtení), přihlášení Basic místním účtem po ověření certifikátu"
+     },
+     {
+      "id": "node-exporter",
+      "name": "Linux (Node Exporter)",
+      "repoUrl": "https://github.com/prometheus/node_exporter",
+      "connect": "endpoint",
+      "platform": "linux",
+      "recommended": true,
+      "defaultPort": 9100,
+      "minIntervalSeconds": 30,
+      "summary": "CPU a jádra, paměť, svazky, disky, síť a teploty z /metrics Node Exporteru; Prometheus server není potřeba"
+     },
+     {
+      "id": "prometheus",
+      "name": "Linux (Prometheus)",
+      "repoUrl": "https://prometheus.io/docs/prometheus/latest/installation/",
+      "connect": "endpoint",
+      "platform": "linux",
+      "defaultPort": 9090,
+      "minIntervalSeconds": 30,
+      "summary": "metriky Linuxu jednoho cíle node_exporter z Prometheu, který už máš (API jen ke čtení)"
+     },
+     {
+      "id": "linux-ssh",
+      "name": "Linux (SSH)",
+      "repoUrl": null,
+      "connect": "ssh",
+      "platform": "linux",
+      "defaultPort": 22,
+      "minIntervalSeconds": 30,
+      "summary": "bez agenta: pevný skript, který jen čte /proc, /sys a df, přes SSH klíčem Home Hubu"
+     }
+    ]
+   },
+   "facets": [
+    {
+     "id": "telemetry",
+     "title": "Telemetrie",
+     "icon": "pulse",
+     "page": "overview",
+     "howTo": "Telemetrie není připojená. Připoj ji na stránce stroje v Přehledu.",
+     "off": false
+    },
+    {
+     "id": "backups",
+     "title": "Zálohy",
+     "icon": "archive",
+     "page": "backup-jobs",
+     "howTo": "Žádná úloha záloh na tenhle stroj neukládá ani ho nezálohuje. Založ ji na stránce Zálohování.",
+     "off": false
+    },
+    {
+     "id": "versions",
+     "title": "Verze a aktualizace",
+     "icon": "versions",
+     "page": "versions",
+     "howTo": "Kolektor čte jen stroje, které mají v local/site.json ssh.probe (a běží na nich agent kolektoru).",
+     "off": false
+    },
+    {
+     "id": "protection",
+     "title": "Ochrana stroje",
+     "icon": "shield",
+     "page": "hardening",
+     "howTo": "Kolektor čte jen stroje, které mají v local/site.json ssh.probe (a běží na nich agent kolektoru).",
+     "off": false
+    },
+    {
+     "id": "ssh-keys",
+     "title": "SSH klíče",
+     "icon": "key",
+     "page": "security",
+     "howTo": "Kolektor SSH klíčů čte jen stroje, které mají v local/site.json ssh (a keys není false).",
+     "off": false
+    },
+    {
+     "id": "inventory",
+     "title": "Inventář",
+     "icon": "list",
+     "page": "inventory-map",
+     "howTo": "Stroj v inventáři není. Zapíše ho agent (MCP inventory_update) nebo ho přidáš na mapě inventáře.",
+     "off": false
+    },
+    {
+     "id": "runtimes",
+     "title": "LLM runtimy",
+     "icon": "cpu",
+     "page": "models",
+     "howTo": null,
+     "off": false
+    },
+    {
+     "id": "git-lfs",
+     "title": "Git LFS",
+     "icon": "archive",
+     "page": "git-lfs",
+     "howTo": null,
+     "off": false
+    },
+    {
+     "id": "int-router-adapter",
+     "title": "Adaptér routeru",
+     "icon": "globe",
+     "page": "integrations",
+     "howTo": null,
+     "off": false
+    }
+   ],
+   "machines": [
+    {
+     "id": "mini",
+     "name": "Mac mini",
+     "hostname": "mini.example.lan",
+     "ip": "10.0.0.25",
+     "kind": "thermo",
+     "role": "computer",
+     "platform": null,
+     "source": "site",
+     "online": "offline",
+     "lastSeen": null,
+     "state": "error",
+     "counts": {
+      "ok": 0,
+      "attention": 4,
+      "notConfigured": 2,
+      "off": 0
+     },
+     "facets": [
+      {
+       "id": "telemetry",
+       "title": "Telemetrie",
+       "icon": "pulse",
+       "how": {
+        "by": "source",
+        "text": "Home Hub data čte sám: z Thermo (macOS), node_exporter nebo Promethea (Linux), WinRM nebo SSH (Windows a Linux). Na stroji musí běžet zdroj; připojení nastavíš na stránce stroje v Přehledu."
+       },
+       "state": "error",
+       "summary": "Thermo: stroj neodpovídá.",
+       "summaryT": [
+        {
+         "key": "{provider}: stroj neodpovídá.",
+         "params": {
+          "provider": "Thermo"
+         }
+        }
+       ],
+       "details": [
+        {
+         "label": "Zdroj",
+         "value": "Thermo"
+        }
+       ],
+       "href": "#host-mini",
+       "prompt": "Připrav stroj „Mac mini“ (mini.example.lan) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo stroj přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce stroje.",
+       "promptT": [
+        {
+         "key": "Připrav stroj „{name}“ ({hostname}) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo stroj přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce stroje.",
+         "params": {
+          "id": "mini",
+          "name": "Mac mini",
+          "hostname": "mini.example.lan"
+         }
+        }
+       ]
+      },
+      {
+       "id": "backups",
+       "title": "Zálohy",
+       "icon": "archive",
+       "how": {
+        "by": "hub",
+        "text": "Home Hub zálohuje sám: rsync přes SSH s vlastním klíčem, plán, uchovávání a kontrola místa. Na cílovém stroji stačí účet s SSH, rsync a řádek do authorized_keys z průvodce."
+       },
+       "state": "not-configured",
+       "summary": "Žádná úloha záloh na tenhle stroj neukládá ani ho nezálohuje. Založ ji na stránce Zálohování.",
+       "href": "#backup-jobs",
+       "prompt": "Připrav stroj „Mac mini“ (mini.example.lan) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na stroji neměň.",
+       "promptT": [
+        {
+         "key": "Připrav stroj „{name}“ ({hostname}) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na stroji neměň.",
+         "params": {
+          "id": "mini",
+          "name": "Mac mini",
+          "hostname": "mini.example.lan"
+         }
+        }
+       ]
+      },
+      {
+       "id": "versions",
+       "title": "Verze a aktualizace",
+       "icon": "versions",
+       "how": {
+        "by": "collector",
+        "text": "Kolektor scripts/collect-systems.mjs běží na stroji hubu (launchd, každých 6 h), přihlásí se přes SSH a jen čte. Stroj musí být v local/site.json s ssh.alias a ssh.probe (mac nebo nas)."
+       },
+       "state": "stale",
+       "summary": "Kolektor verzí stroj ještě nepřečetl.",
+       "href": "#versions",
+       "prompt": "Zapoj stroj „Mac mini“ (mini.example.lan, id mini) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje mini nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only mini a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+       "promptT": [
+        {
+         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+         "params": {
+          "id": "mini",
+          "name": "Mac mini",
+          "hostname": "mini.example.lan"
+         }
+        }
+       ]
+      },
+      {
+       "id": "protection",
+       "title": "Ochrana stroje",
+       "icon": "shield",
+       "how": {
+        "by": "collector",
+        "text": "Stejný kolektor jako verze (collect-systems): firewall, šifrování disku, SSH heslem, otevřené porty. Jen čte."
+       },
+       "state": "stale",
+       "summary": "Kolektor verzí stroj ještě nepřečetl.",
+       "href": "#hardening",
+       "prompt": "Zapoj stroj „Mac mini“ (mini.example.lan, id mini) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje mini nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only mini a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+       "promptT": [
+        {
+         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+         "params": {
+          "id": "mini",
+          "name": "Mac mini",
+          "hostname": "mini.example.lan"
+         }
+        }
+       ]
+      },
+      {
+       "id": "ssh-keys",
+       "title": "SSH klíče",
+       "icon": "key",
+       "how": {
+        "by": "collector",
+        "text": "Kolektor scripts/collect-security.mjs běží na stroji hubu jednou denně a přes SSH přečte otisky klíčů a authorized_keys. Soukromé klíče nikdy neopustí stroj."
+       },
+       "state": "stale",
+       "summary": "Kolektor SSH klíčů stroj ještě nepřečetl.",
+       "href": "#security",
+       "prompt": "Zapoj stroj „Mac mini“ (mini.example.lan, id mini) do inventáře SSH klíčů Home Hubu. Na stroji, kde běží Home Hub: ověř, že se ssh alias stroje z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na stroji nic neměň.",
+       "promptT": [
+        {
+         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do inventáře SSH klíčů Home Hubu. Na stroji, kde běží Home Hub: ověř, že se ssh alias stroje z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na stroji nic neměň.",
+         "params": {
+          "id": "mini",
+          "name": "Mac mini",
+          "hostname": "mini.example.lan"
+         }
+        }
+       ]
+      },
+      {
+       "id": "inventory",
+       "title": "Inventář",
+       "icon": "list",
+       "how": {
+        "by": "agent",
+        "text": "Inventář sám nic nezjišťuje: zapíše ho agent přes MCP (inventory_update) nebo ty na mapě inventáře."
+       },
+       "state": "not-configured",
+       "summary": "Stroj v inventáři není. Zapíše ho agent (MCP inventory_update) nebo ho přidáš na mapě inventáře.",
+       "href": "#inventory-map",
+       "prompt": "Zapiš stroj „Mac mini“ (id mini, mini.example.lan) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind machine, id mini) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+       "promptT": [
+        {
+         "key": "Zapiš stroj „{name}“ (id {id}, {hostname}) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind machine, id {id}) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+         "params": {
+          "id": "mini",
+          "name": "Mac mini",
+          "hostname": "mini.example.lan"
+         }
+        }
+       ]
+      },
+      {
+       "id": "runtimes",
+       "title": "LLM runtimy",
+       "icon": "cpu",
+       "how": {
+        "by": "hub",
+        "text": "Home Hub runtimy čte sám přes jejich HTTP API (jen GET). Adresu zapíše agent přes MCP (runtime_endpoint_upsert) nebo local/site.json → runtimes."
+       },
+       "state": "not-applicable",
+       "summary": "Žádný LLM runtime.",
+       "href": "#models"
+      },
+      {
+       "id": "git-lfs",
+       "title": "Git LFS",
+       "icon": "archive",
+       "how": {
+        "by": "hub",
+        "text": "Home Hub čte git host přes jeho API a git; kde běží a kde leží LFS soubory, ví z inventáře."
+       },
+       "state": "not-applicable",
+       "summary": "Žádný připojený git host tu neběží ani tu neukládá LFS soubory.",
+       "href": "#git-lfs"
+      }
+     ]
+    },
+    {
+     "id": "studio",
+     "name": "Mac Studio",
+     "hostname": "studio.example.lan",
+     "ip": "10.0.0.151",
+     "kind": "thermo",
+     "role": "computer",
+     "platform": null,
+     "source": "site",
+     "online": "offline",
+     "lastSeen": null,
+     "state": "error",
+     "counts": {
+      "ok": 1,
+      "attention": 4,
+      "notConfigured": 1,
+      "off": 0
+     },
+     "facets": [
+      {
+       "id": "telemetry",
+       "title": "Telemetrie",
+       "icon": "pulse",
+       "how": {
+        "by": "source",
+        "text": "Home Hub data čte sám: z Thermo (macOS), node_exporter nebo Promethea (Linux), WinRM nebo SSH (Windows a Linux). Na stroji musí běžet zdroj; připojení nastavíš na stránce stroje v Přehledu."
+       },
+       "state": "error",
+       "summary": "Thermo: stroj neodpovídá.",
+       "summaryT": [
+        {
+         "key": "{provider}: stroj neodpovídá.",
+         "params": {
+          "provider": "Thermo"
+         }
+        }
+       ],
+       "details": [
+        {
+         "label": "Zdroj",
+         "value": "Thermo"
+        }
+       ],
+       "href": "#host-studio",
+       "prompt": "Připrav stroj „Mac Studio“ (studio.example.lan) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo stroj přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce stroje.",
+       "promptT": [
+        {
+         "key": "Připrav stroj „{name}“ ({hostname}) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo stroj přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce stroje.",
+         "params": {
+          "id": "studio",
+          "name": "Mac Studio",
+          "hostname": "studio.example.lan"
+         }
+        }
+       ]
+      },
+      {
+       "id": "backups",
+       "title": "Zálohy",
+       "icon": "archive",
+       "how": {
+        "by": "hub",
+        "text": "Home Hub zálohuje sám: rsync přes SSH s vlastním klíčem, plán, uchovávání a kontrola místa. Na cílovém stroji stačí účet s SSH, rsync a řádek do authorized_keys z průvodce."
+       },
+       "state": "not-configured",
+       "summary": "Žádná úloha záloh na tenhle stroj neukládá ani ho nezálohuje. Založ ji na stránce Zálohování.",
+       "href": "#backup-jobs",
+       "prompt": "Připrav stroj „Mac Studio“ (studio.example.lan) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na stroji neměň.",
+       "promptT": [
+        {
+         "key": "Připrav stroj „{name}“ ({hostname}) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na stroji neměň.",
+         "params": {
+          "id": "studio",
+          "name": "Mac Studio",
+          "hostname": "studio.example.lan"
+         }
+        }
+       ]
+      },
+      {
+       "id": "versions",
+       "title": "Verze a aktualizace",
+       "icon": "versions",
+       "how": {
+        "by": "collector",
+        "text": "Kolektor scripts/collect-systems.mjs běží na stroji hubu (launchd, každých 6 h), přihlásí se přes SSH a jen čte. Stroj musí být v local/site.json s ssh.alias a ssh.probe (mac nebo nas)."
+       },
+       "state": "stale",
+       "summary": "Kolektor verzí stroj ještě nepřečetl.",
+       "href": "#versions",
+       "prompt": "Zapoj stroj „Mac Studio“ (studio.example.lan, id studio) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje studio nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only studio a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+       "promptT": [
+        {
+         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+         "params": {
+          "id": "studio",
+          "name": "Mac Studio",
+          "hostname": "studio.example.lan"
+         }
+        }
+       ]
+      },
+      {
+       "id": "protection",
+       "title": "Ochrana stroje",
+       "icon": "shield",
+       "how": {
+        "by": "collector",
+        "text": "Stejný kolektor jako verze (collect-systems): firewall, šifrování disku, SSH heslem, otevřené porty. Jen čte."
+       },
+       "state": "stale",
+       "summary": "Kolektor verzí stroj ještě nepřečetl.",
+       "href": "#hardening",
+       "prompt": "Zapoj stroj „Mac Studio“ (studio.example.lan, id studio) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje studio nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only studio a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+       "promptT": [
+        {
+         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+         "params": {
+          "id": "studio",
+          "name": "Mac Studio",
+          "hostname": "studio.example.lan"
+         }
+        }
+       ]
+      },
+      {
+       "id": "ssh-keys",
+       "title": "SSH klíče",
+       "icon": "key",
+       "how": {
+        "by": "collector",
+        "text": "Kolektor scripts/collect-security.mjs běží na stroji hubu jednou denně a přes SSH přečte otisky klíčů a authorized_keys. Soukromé klíče nikdy neopustí stroj."
+       },
+       "state": "stale",
+       "summary": "Kolektor SSH klíčů stroj ještě nepřečetl.",
+       "href": "#security",
+       "prompt": "Zapoj stroj „Mac Studio“ (studio.example.lan, id studio) do inventáře SSH klíčů Home Hubu. Na stroji, kde běží Home Hub: ověř, že se ssh alias stroje z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na stroji nic neměň.",
+       "promptT": [
+        {
+         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do inventáře SSH klíčů Home Hubu. Na stroji, kde běží Home Hub: ověř, že se ssh alias stroje z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na stroji nic neměň.",
+         "params": {
+          "id": "studio",
+          "name": "Mac Studio",
+          "hostname": "studio.example.lan"
+         }
+        }
+       ]
+      },
+      {
+       "id": "inventory",
+       "title": "Inventář",
+       "icon": "list",
+       "how": {
+        "by": "agent",
+        "text": "Inventář sám nic nezjišťuje: zapíše ho agent přes MCP (inventory_update) nebo ty na mapě inventáře."
+       },
+       "state": "ok",
+       "summary": "V inventáři · 1 záznamů běží na něm.",
+       "summaryT": [
+        {
+         "key": "V inventáři · {n} záznamů běží na něm.",
+         "params": {
+          "n": 1
+         }
+        }
+       ],
+       "href": "#inventory-map"
+      },
+      {
+       "id": "runtimes",
+       "title": "LLM runtimy",
+       "icon": "cpu",
+       "how": {
+        "by": "hub",
+        "text": "Home Hub runtimy čte sám přes jejich HTTP API (jen GET). Adresu zapíše agent přes MCP (runtime_endpoint_upsert) nebo local/site.json → runtimes."
+       },
+       "state": "not-applicable",
+       "summary": "Žádný LLM runtime.",
+       "href": "#models"
+      },
+      {
+       "id": "git-lfs",
+       "title": "Git LFS",
+       "icon": "archive",
+       "how": {
+        "by": "hub",
+        "text": "Home Hub čte git host přes jeho API a git; kde běží a kde leží LFS soubory, ví z inventáře."
+       },
+       "state": "not-applicable",
+       "summary": "Žádný připojený git host tu neběží ani tu neukládá LFS soubory.",
+       "href": "#git-lfs"
+      }
+     ]
+    },
+    {
+     "id": "mini_server",
+     "name": "mini_server",
+     "hostname": "mini-server.example.lan",
+     "ip": "10.0.0.64",
+     "kind": "thermo",
+     "role": "computer",
+     "platform": null,
+     "source": "site",
+     "online": "offline",
+     "lastSeen": null,
+     "state": "error",
+     "counts": {
+      "ok": 0,
+      "attention": 4,
+      "notConfigured": 2,
+      "off": 0
+     },
+     "facets": [
+      {
+       "id": "telemetry",
+       "title": "Telemetrie",
+       "icon": "pulse",
+       "how": {
+        "by": "source",
+        "text": "Home Hub data čte sám: z Thermo (macOS), node_exporter nebo Promethea (Linux), WinRM nebo SSH (Windows a Linux). Na stroji musí běžet zdroj; připojení nastavíš na stránce stroje v Přehledu."
+       },
+       "state": "error",
+       "summary": "Thermo: stroj neodpovídá.",
+       "summaryT": [
+        {
+         "key": "{provider}: stroj neodpovídá.",
+         "params": {
+          "provider": "Thermo"
+         }
+        }
+       ],
+       "details": [
+        {
+         "label": "Zdroj",
+         "value": "Thermo"
+        }
+       ],
+       "href": "#host-mini_server",
+       "prompt": "Připrav stroj „mini_server“ (mini-server.example.lan) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo stroj přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce stroje.",
+       "promptT": [
+        {
+         "key": "Připrav stroj „{name}“ ({hostname}) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo stroj přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce stroje.",
+         "params": {
+          "id": "mini_server",
+          "name": "mini_server",
+          "hostname": "mini-server.example.lan"
+         }
+        }
+       ]
+      },
+      {
+       "id": "backups",
+       "title": "Zálohy",
+       "icon": "archive",
+       "how": {
+        "by": "hub",
+        "text": "Home Hub zálohuje sám: rsync přes SSH s vlastním klíčem, plán, uchovávání a kontrola místa. Na cílovém stroji stačí účet s SSH, rsync a řádek do authorized_keys z průvodce."
+       },
+       "state": "not-configured",
+       "summary": "Žádná úloha záloh na tenhle stroj neukládá ani ho nezálohuje. Založ ji na stránce Zálohování.",
+       "href": "#backup-jobs",
+       "prompt": "Připrav stroj „mini_server“ (mini-server.example.lan) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na stroji neměň.",
+       "promptT": [
+        {
+         "key": "Připrav stroj „{name}“ ({hostname}) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na stroji neměň.",
+         "params": {
+          "id": "mini_server",
+          "name": "mini_server",
+          "hostname": "mini-server.example.lan"
+         }
+        }
+       ]
+      },
+      {
+       "id": "versions",
+       "title": "Verze a aktualizace",
+       "icon": "versions",
+       "how": {
+        "by": "collector",
+        "text": "Kolektor scripts/collect-systems.mjs běží na stroji hubu (launchd, každých 6 h), přihlásí se přes SSH a jen čte. Stroj musí být v local/site.json s ssh.alias a ssh.probe (mac nebo nas)."
+       },
+       "state": "stale",
+       "summary": "Kolektor verzí stroj ještě nepřečetl.",
+       "href": "#versions",
+       "prompt": "Zapoj stroj „mini_server“ (mini-server.example.lan, id mini_server) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje mini_server nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only mini_server a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+       "promptT": [
+        {
+         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+         "params": {
+          "id": "mini_server",
+          "name": "mini_server",
+          "hostname": "mini-server.example.lan"
+         }
+        }
+       ]
+      },
+      {
+       "id": "protection",
+       "title": "Ochrana stroje",
+       "icon": "shield",
+       "how": {
+        "by": "collector",
+        "text": "Stejný kolektor jako verze (collect-systems): firewall, šifrování disku, SSH heslem, otevřené porty. Jen čte."
+       },
+       "state": "stale",
+       "summary": "Kolektor verzí stroj ještě nepřečetl.",
+       "href": "#hardening",
+       "prompt": "Zapoj stroj „mini_server“ (mini-server.example.lan, id mini_server) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje mini_server nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only mini_server a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+       "promptT": [
+        {
+         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+         "params": {
+          "id": "mini_server",
+          "name": "mini_server",
+          "hostname": "mini-server.example.lan"
+         }
+        }
+       ]
+      },
+      {
+       "id": "ssh-keys",
+       "title": "SSH klíče",
+       "icon": "key",
+       "how": {
+        "by": "collector",
+        "text": "Kolektor scripts/collect-security.mjs běží na stroji hubu jednou denně a přes SSH přečte otisky klíčů a authorized_keys. Soukromé klíče nikdy neopustí stroj."
+       },
+       "state": "stale",
+       "summary": "Kolektor SSH klíčů stroj ještě nepřečetl.",
+       "href": "#security",
+       "prompt": "Zapoj stroj „mini_server“ (mini-server.example.lan, id mini_server) do inventáře SSH klíčů Home Hubu. Na stroji, kde běží Home Hub: ověř, že se ssh alias stroje z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na stroji nic neměň.",
+       "promptT": [
+        {
+         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do inventáře SSH klíčů Home Hubu. Na stroji, kde běží Home Hub: ověř, že se ssh alias stroje z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na stroji nic neměň.",
+         "params": {
+          "id": "mini_server",
+          "name": "mini_server",
+          "hostname": "mini-server.example.lan"
+         }
+        }
+       ]
+      },
+      {
+       "id": "inventory",
+       "title": "Inventář",
+       "icon": "list",
+       "how": {
+        "by": "agent",
+        "text": "Inventář sám nic nezjišťuje: zapíše ho agent přes MCP (inventory_update) nebo ty na mapě inventáře."
+       },
+       "state": "not-configured",
+       "summary": "Stroj v inventáři není. Zapíše ho agent (MCP inventory_update) nebo ho přidáš na mapě inventáře.",
+       "href": "#inventory-map",
+       "prompt": "Zapiš stroj „mini_server“ (id mini_server, mini-server.example.lan) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind machine, id mini_server) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+       "promptT": [
+        {
+         "key": "Zapiš stroj „{name}“ (id {id}, {hostname}) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind machine, id {id}) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+         "params": {
+          "id": "mini_server",
+          "name": "mini_server",
+          "hostname": "mini-server.example.lan"
+         }
+        }
+       ]
+      },
+      {
+       "id": "runtimes",
+       "title": "LLM runtimy",
+       "icon": "cpu",
+       "how": {
+        "by": "hub",
+        "text": "Home Hub runtimy čte sám přes jejich HTTP API (jen GET). Adresu zapíše agent přes MCP (runtime_endpoint_upsert) nebo local/site.json → runtimes."
+       },
+       "state": "not-applicable",
+       "summary": "Žádný LLM runtime.",
+       "href": "#models"
+      },
+      {
+       "id": "git-lfs",
+       "title": "Git LFS",
+       "icon": "archive",
+       "how": {
+        "by": "hub",
+        "text": "Home Hub čte git host přes jeho API a git; kde běží a kde leží LFS soubory, ví z inventáře."
+       },
+       "state": "not-applicable",
+       "summary": "Žádný připojený git host tu neběží ani tu neukládá LFS soubory.",
+       "href": "#git-lfs"
+      }
+     ]
+    },
+    {
+     "id": "nas",
+     "name": "NAS",
+     "hostname": "nas.example.lan",
+     "ip": "10.0.0.74",
+     "kind": "nas",
+     "role": "nas",
+     "platform": null,
+     "source": "site",
+     "online": "unknown",
+     "lastSeen": null,
+     "state": "warn",
+     "counts": {
+      "ok": 0,
+      "attention": 3,
+      "notConfigured": 3,
+      "off": 0
+     },
+     "facets": [
+      {
+       "id": "telemetry",
+       "title": "Telemetrie",
+       "icon": "pulse",
+       "how": {
+        "by": "source",
+        "text": "Home Hub data čte sám: z Thermo (macOS), node_exporter nebo Promethea (Linux), WinRM nebo SSH (Windows a Linux). Na stroji musí běžet zdroj; připojení nastavíš na stránce stroje v Přehledu."
+       },
+       "state": "not-configured",
+       "summary": "Telemetrie není připojená. Připoj ji na stránce stroje v Přehledu.",
+       "href": "#host-nas",
+       "prompt": "Připrav stroj „NAS“ (nas.example.lan) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo stroj přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce stroje.",
+       "promptT": [
+        {
+         "key": "Připrav stroj „{name}“ ({hostname}) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo stroj přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce stroje.",
+         "params": {
+          "id": "nas",
+          "name": "NAS",
+          "hostname": "nas.example.lan"
+         }
+        }
+       ]
+      },
+      {
+       "id": "backups",
+       "title": "Zálohy",
+       "icon": "archive",
+       "how": {
+        "by": "hub",
+        "text": "Home Hub zálohuje sám: rsync přes SSH s vlastním klíčem, plán, uchovávání a kontrola místa. Na cílovém stroji stačí účet s SSH, rsync a řádek do authorized_keys z průvodce."
+       },
+       "state": "not-configured",
+       "summary": "Žádná úloha záloh na tenhle stroj neukládá ani ho nezálohuje. Založ ji na stránce Zálohování.",
+       "href": "#backup-jobs",
+       "prompt": "Připrav stroj „NAS“ (nas.example.lan) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na stroji neměň.",
+       "promptT": [
+        {
+         "key": "Připrav stroj „{name}“ ({hostname}) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na stroji neměň.",
+         "params": {
+          "id": "nas",
+          "name": "NAS",
+          "hostname": "nas.example.lan"
+         }
+        }
+       ]
+      },
+      {
+       "id": "versions",
+       "title": "Verze a aktualizace",
+       "icon": "versions",
+       "how": {
+        "by": "collector",
+        "text": "Kolektor scripts/collect-systems.mjs běží na stroji hubu (launchd, každých 6 h), přihlásí se přes SSH a jen čte. Stroj musí být v local/site.json s ssh.alias a ssh.probe (mac nebo nas)."
+       },
+       "state": "stale",
+       "summary": "Kolektor verzí stroj ještě nepřečetl.",
+       "href": "#versions",
+       "prompt": "Zapoj stroj „NAS“ (nas.example.lan, id nas) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje nas nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only nas a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+       "promptT": [
+        {
+         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+         "params": {
+          "id": "nas",
+          "name": "NAS",
+          "hostname": "nas.example.lan"
+         }
+        }
+       ]
+      },
+      {
+       "id": "protection",
+       "title": "Ochrana stroje",
+       "icon": "shield",
+       "how": {
+        "by": "collector",
+        "text": "Stejný kolektor jako verze (collect-systems): firewall, šifrování disku, SSH heslem, otevřené porty. Jen čte."
+       },
+       "state": "stale",
+       "summary": "Kolektor verzí stroj ještě nepřečetl.",
+       "href": "#hardening",
+       "prompt": "Zapoj stroj „NAS“ (nas.example.lan, id nas) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje nas nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only nas a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+       "promptT": [
+        {
+         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+         "params": {
+          "id": "nas",
+          "name": "NAS",
+          "hostname": "nas.example.lan"
+         }
+        }
+       ]
+      },
+      {
+       "id": "ssh-keys",
+       "title": "SSH klíče",
+       "icon": "key",
+       "how": {
+        "by": "collector",
+        "text": "Kolektor scripts/collect-security.mjs běží na stroji hubu jednou denně a přes SSH přečte otisky klíčů a authorized_keys. Soukromé klíče nikdy neopustí stroj."
+       },
+       "state": "stale",
+       "summary": "Kolektor SSH klíčů stroj ještě nepřečetl.",
+       "href": "#security",
+       "prompt": "Zapoj stroj „NAS“ (nas.example.lan, id nas) do inventáře SSH klíčů Home Hubu. Na stroji, kde běží Home Hub: ověř, že se ssh alias stroje z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na stroji nic neměň.",
+       "promptT": [
+        {
+         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do inventáře SSH klíčů Home Hubu. Na stroji, kde běží Home Hub: ověř, že se ssh alias stroje z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na stroji nic neměň.",
+         "params": {
+          "id": "nas",
+          "name": "NAS",
+          "hostname": "nas.example.lan"
+         }
+        }
+       ]
+      },
+      {
+       "id": "inventory",
+       "title": "Inventář",
+       "icon": "list",
+       "how": {
+        "by": "agent",
+        "text": "Inventář sám nic nezjišťuje: zapíše ho agent přes MCP (inventory_update) nebo ty na mapě inventáře."
+       },
+       "state": "not-configured",
+       "summary": "Stroj v inventáři není. Zapíše ho agent (MCP inventory_update) nebo ho přidáš na mapě inventáře.",
+       "href": "#inventory-map",
+       "prompt": "Zapiš stroj „NAS“ (id nas, nas.example.lan) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind machine, id nas) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+       "promptT": [
+        {
+         "key": "Zapiš stroj „{name}“ (id {id}, {hostname}) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind machine, id {id}) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+         "params": {
+          "id": "nas",
+          "name": "NAS",
+          "hostname": "nas.example.lan"
+         }
+        }
+       ]
+      },
+      {
+       "id": "runtimes",
+       "title": "LLM runtimy",
+       "icon": "cpu",
+       "how": {
+        "by": "hub",
+        "text": "Home Hub runtimy čte sám přes jejich HTTP API (jen GET). Adresu zapíše agent přes MCP (runtime_endpoint_upsert) nebo local/site.json → runtimes."
+       },
+       "state": "not-applicable",
+       "summary": "Žádný LLM runtime.",
+       "href": "#models"
+      },
+      {
+       "id": "git-lfs",
+       "title": "Git LFS",
+       "icon": "archive",
+       "how": {
+        "by": "hub",
+        "text": "Home Hub čte git host přes jeho API a git; kde běží a kde leží LFS soubory, ví z inventáře."
+       },
+       "state": "not-applicable",
+       "summary": "Žádný připojený git host tu neběží ani tu neukládá LFS soubory.",
+       "href": "#git-lfs"
+      }
+     ]
+    },
+    {
+     "id": "router",
+     "name": "Router",
+     "hostname": "10.0.0.1",
+     "ip": "10.0.0.1",
+     "kind": "router",
+     "role": "router",
+     "platform": null,
+     "source": "site",
+     "online": "offline",
+     "lastSeen": null,
+     "state": "not-configured",
+     "counts": {
+      "ok": 0,
+      "attention": 0,
+      "notConfigured": 6,
+      "off": 0
+     },
+     "facets": [
+      {
+       "id": "telemetry",
+       "title": "Telemetrie",
+       "icon": "pulse",
+       "how": {
+        "by": "source",
+        "text": "Home Hub data čte sám: z Thermo (macOS), node_exporter nebo Promethea (Linux), WinRM nebo SSH (Windows a Linux). Na stroji musí běžet zdroj; připojení nastavíš na stránce stroje v Přehledu."
+       },
+       "state": "not-applicable",
+       "summary": "Router čte adaptér routeru, ne telemetrie.",
+       "href": "#host-router"
+      },
+      {
+       "id": "backups",
+       "title": "Zálohy",
+       "icon": "archive",
+       "how": {
+        "by": "hub",
+        "text": "Home Hub zálohuje sám: rsync přes SSH s vlastním klíčem, plán, uchovávání a kontrola místa. Na cílovém stroji stačí účet s SSH, rsync a řádek do authorized_keys z průvodce."
+       },
+       "state": "not-configured",
+       "summary": "Žádná úloha záloh na tenhle stroj neukládá ani ho nezálohuje. Založ ji na stránce Zálohování.",
+       "href": "#backup-jobs",
+       "prompt": "Připrav stroj „Router“ (10.0.0.1) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na stroji neměň.",
+       "promptT": [
+        {
+         "key": "Připrav stroj „{name}“ ({hostname}) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na stroji neměň.",
+         "params": {
+          "id": "router",
+          "name": "Router",
+          "hostname": "10.0.0.1"
+         }
+        }
+       ]
+      },
+      {
+       "id": "versions",
+       "title": "Verze a aktualizace",
+       "icon": "versions",
+       "how": {
+        "by": "collector",
+        "text": "Kolektor scripts/collect-systems.mjs běží na stroji hubu (launchd, každých 6 h), přihlásí se přes SSH a jen čte. Stroj musí být v local/site.json s ssh.alias a ssh.probe (mac nebo nas)."
+       },
+       "state": "not-configured",
+       "summary": "Kolektor čte jen stroje, které mají v local/site.json ssh.probe (a běží na nich agent kolektoru).",
+       "href": "#versions",
+       "prompt": "Zapoj stroj „Router“ (10.0.0.1, id router) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje router nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only router a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+       "promptT": [
+        {
+         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+         "params": {
+          "id": "router",
+          "name": "Router",
+          "hostname": "10.0.0.1"
+         }
+        }
+       ]
+      },
+      {
+       "id": "protection",
+       "title": "Ochrana stroje",
+       "icon": "shield",
+       "how": {
+        "by": "collector",
+        "text": "Stejný kolektor jako verze (collect-systems): firewall, šifrování disku, SSH heslem, otevřené porty. Jen čte."
+       },
+       "state": "not-configured",
+       "summary": "Kolektor čte jen stroje, které mají v local/site.json ssh.probe (a běží na nich agent kolektoru).",
+       "href": "#hardening",
+       "prompt": "Zapoj stroj „Router“ (10.0.0.1, id router) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje router nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only router a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+       "promptT": [
+        {
+         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+         "params": {
+          "id": "router",
+          "name": "Router",
+          "hostname": "10.0.0.1"
+         }
+        }
+       ]
+      },
+      {
+       "id": "ssh-keys",
+       "title": "SSH klíče",
+       "icon": "key",
+       "how": {
+        "by": "collector",
+        "text": "Kolektor scripts/collect-security.mjs běží na stroji hubu jednou denně a přes SSH přečte otisky klíčů a authorized_keys. Soukromé klíče nikdy neopustí stroj."
+       },
+       "state": "not-configured",
+       "summary": "Kolektor SSH klíčů čte jen stroje, které mají v local/site.json ssh (a keys není false).",
+       "href": "#security",
+       "prompt": "Zapoj stroj „Router“ (10.0.0.1, id router) do inventáře SSH klíčů Home Hubu. Na stroji, kde běží Home Hub: ověř, že se ssh alias stroje z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na stroji nic neměň.",
+       "promptT": [
+        {
+         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do inventáře SSH klíčů Home Hubu. Na stroji, kde běží Home Hub: ověř, že se ssh alias stroje z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na stroji nic neměň.",
+         "params": {
+          "id": "router",
+          "name": "Router",
+          "hostname": "10.0.0.1"
+         }
+        }
+       ]
+      },
+      {
+       "id": "inventory",
+       "title": "Inventář",
+       "icon": "list",
+       "how": {
+        "by": "agent",
+        "text": "Inventář sám nic nezjišťuje: zapíše ho agent přes MCP (inventory_update) nebo ty na mapě inventáře."
+       },
+       "state": "not-configured",
+       "summary": "Stroj v inventáři není. Zapíše ho agent (MCP inventory_update) nebo ho přidáš na mapě inventáře.",
+       "href": "#inventory-map",
+       "prompt": "Zapiš stroj „Router“ (id router, 10.0.0.1) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind machine, id router) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+       "promptT": [
+        {
+         "key": "Zapiš stroj „{name}“ (id {id}, {hostname}) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind machine, id {id}) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+         "params": {
+          "id": "router",
+          "name": "Router",
+          "hostname": "10.0.0.1"
+         }
+        }
+       ]
+      },
+      {
+       "id": "runtimes",
+       "title": "LLM runtimy",
+       "icon": "cpu",
+       "how": {
+        "by": "hub",
+        "text": "Home Hub runtimy čte sám přes jejich HTTP API (jen GET). Adresu zapíše agent přes MCP (runtime_endpoint_upsert) nebo local/site.json → runtimes."
+       },
+       "state": "not-applicable",
+       "summary": "Žádný LLM runtime.",
+       "href": "#models"
+      },
+      {
+       "id": "git-lfs",
+       "title": "Git LFS",
+       "icon": "archive",
+       "how": {
+        "by": "hub",
+        "text": "Home Hub čte git host přes jeho API a git; kde běží a kde leží LFS soubory, ví z inventáře."
+       },
+       "state": "not-applicable",
+       "summary": "Žádný připojený git host tu neběží ani tu neukládá LFS soubory.",
+       "href": "#git-lfs"
+      },
+      {
+       "id": "int-router-adapter",
+       "title": "Adaptér routeru",
+       "icon": "globe",
+       "how": {
+        "by": "integration",
+        "text": "Sčítání klientů v síti a stav routeru. Vestavěný adaptér UniFi čte soubor, který zapisuje sběr routeru; jiný router připojí plugin. Vypnutý: hub soubor ani adaptér nečte. Naplánovaný sběr (cron, launchd) to nezastaví."
+       },
+       "state": "not-configured",
+       "summary": "Žádný adaptér routeru není nastavený.",
+       "href": "#integrations",
+       "prompt": "V Home Hubu zprovozni integraci „Adaptér routeru“ pro stroj „Router“ (10.0.0.1, id router). Postup podle hubu: V local/site.json nastav router.adapter („unifi“) a host a spouštěj python3 scripts/collect-router-unifi.py každou minutu. Nejdřív mi řekni, co přesně uděláš a jaký přístup k tomu potřebuješ; nic dalšího neměň.",
+       "promptT": [
+        {
+         "key": "V Home Hubu zprovozni integraci „{title}“ pro stroj „{name}“ ({hostname}, id {id}). Postup podle hubu: {howTo} Nejdřív mi řekni, co přesně uděláš a jaký přístup k tomu potřebuješ; nic dalšího neměň.",
+         "params": {
+          "title": [
+           "Adaptér routeru"
+          ],
+          "howTo": [
+           "V local/site.json nastav router.adapter („unifi“) a host a spouštěj python3 scripts/collect-router-unifi.py každou minutu."
+          ],
+          "id": "router",
+          "name": "Router",
+          "hostname": "10.0.0.1"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "pi-box",
+     "name": "Pi box",
+     "hostname": "pi.example.lan",
+     "ip": "10.0.0.40",
+     "kind": "other",
+     "role": "computer",
+     "platform": "linux",
+     "source": "added",
+     "online": "unknown",
+     "lastSeen": null,
+     "state": "not-configured",
+     "counts": {
+      "ok": 0,
+      "attention": 0,
+      "notConfigured": 6,
+      "off": 0
+     },
+     "facets": [
+      {
+       "id": "telemetry",
+       "title": "Telemetrie",
+       "icon": "pulse",
+       "how": {
+        "by": "source",
+        "text": "Home Hub data čte sám: z Thermo (macOS), node_exporter nebo Promethea (Linux), WinRM nebo SSH (Windows a Linux). Na stroji musí běžet zdroj; připojení nastavíš na stránce stroje v Přehledu."
+       },
+       "state": "not-configured",
+       "summary": "Telemetrie není připojená. Připoj ji na stránce stroje v Přehledu.",
+       "href": "#host-pi-box",
+       "prompt": "Připrav stroj „Pi box“ (pi.example.lan) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo stroj přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce stroje.",
+       "promptT": [
+        {
+         "key": "Připrav stroj „{name}“ ({hostname}) tak, aby Home Hub četl jeho telemetrii. Zjisti systém. macOS: nainstaluj Thermo a založ v něm účet pro Home Hub. Linux: spusť prometheus-node-exporter na portu 9100 dostupný jen z LAN (nebo stroj přidej jako target existujícího Promethea). Windows: zapni OpenSSH Server nebo WinRM přes HTTPS. Nic jiného neměň a pošli mi adresu, port a účet; připojení pak nastavím v Home Hubu na stránce stroje.",
+         "params": {
+          "id": "pi-box",
+          "name": "Pi box",
+          "hostname": "pi.example.lan"
+         }
+        }
+       ]
+      },
+      {
+       "id": "backups",
+       "title": "Zálohy",
+       "icon": "archive",
+       "how": {
+        "by": "hub",
+        "text": "Home Hub zálohuje sám: rsync přes SSH s vlastním klíčem, plán, uchovávání a kontrola místa. Na cílovém stroji stačí účet s SSH, rsync a řádek do authorized_keys z průvodce."
+       },
+       "state": "not-configured",
+       "summary": "Žádná úloha záloh na tenhle stroj neukládá ani ho nezálohuje. Založ ji na stránce Zálohování.",
+       "href": "#backup-jobs",
+       "prompt": "Připrav stroj „Pi box“ (pi.example.lan) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na stroji neměň.",
+       "promptT": [
+        {
+         "key": "Připrav stroj „{name}“ ({hostname}) pro zálohy Home Hubu přes rsync a SSH. Jako cíl: vytvoř účet s přístupem přes SSH, adresář pro snímky a ověř, že je nainstalovaný rsync. Jako zdroj: ověř, že účet hubu smí číst zálohované adresáře. Řádek do authorized_keys ti pošlu z průvodce na stránce Zálohování; nic jiného na stroji neměň.",
+         "params": {
+          "id": "pi-box",
+          "name": "Pi box",
+          "hostname": "pi.example.lan"
+         }
+        }
+       ]
+      },
+      {
+       "id": "versions",
+       "title": "Verze a aktualizace",
+       "icon": "versions",
+       "how": {
+        "by": "collector",
+        "text": "Kolektor scripts/collect-systems.mjs běží na stroji hubu (launchd, každých 6 h), přihlásí se přes SSH a jen čte. Stroj musí být v local/site.json s ssh.alias a ssh.probe (mac nebo nas)."
+       },
+       "state": "not-configured",
+       "summary": "Kolektor čte jen stroje, které mají v local/site.json ssh.probe (a běží na nich agent kolektoru).",
+       "href": "#versions",
+       "prompt": "Zapoj stroj „Pi box“ (pi.example.lan, id pi-box) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje pi-box nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only pi-box a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+       "promptT": [
+        {
+         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+         "params": {
+          "id": "pi-box",
+          "name": "Pi box",
+          "hostname": "pi.example.lan"
+         }
+        }
+       ]
+      },
+      {
+       "id": "protection",
+       "title": "Ochrana stroje",
+       "icon": "shield",
+       "how": {
+        "by": "collector",
+        "text": "Stejný kolektor jako verze (collect-systems): firewall, šifrování disku, SSH heslem, otevřené porty. Jen čte."
+       },
+       "state": "not-configured",
+       "summary": "Kolektor čte jen stroje, které mají v local/site.json ssh.probe (a běží na nich agent kolektoru).",
+       "href": "#hardening",
+       "prompt": "Zapoj stroj „Pi box“ (pi.example.lan, id pi-box) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje pi-box nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only pi-box a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+       "promptT": [
+        {
+         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do kolektoru verzí a ochrany Home Hubu. Na stroji, kde běží Home Hub: přidej do ~/.ssh/config alias, který se na stroj přihlásí klíčem bez hesla, a v local/site.json u stroje {id} nastav ssh: {alias, probe: \"mac\"} (macOS) nebo \"nas\" (TrueNAS); pro jiný systém nejdřív napiš sondu podle scripts/systems/mac-probe.sh, jen pro čtení. Je-li stroj v hubu jen přidaný, přidej ho do local/site.json se stejným id, v hubu ho odeber a hub restartuj. Pak spusť node scripts/collect-systems.mjs --only {id} a pravidelný běh zajisti přes scripts/systems/install-launchd.sh. Na sondovaném stroji nic neinstaluj ani neměň.",
+         "params": {
+          "id": "pi-box",
+          "name": "Pi box",
+          "hostname": "pi.example.lan"
+         }
+        }
+       ]
+      },
+      {
+       "id": "ssh-keys",
+       "title": "SSH klíče",
+       "icon": "key",
+       "how": {
+        "by": "collector",
+        "text": "Kolektor scripts/collect-security.mjs běží na stroji hubu jednou denně a přes SSH přečte otisky klíčů a authorized_keys. Soukromé klíče nikdy neopustí stroj."
+       },
+       "state": "not-configured",
+       "summary": "Kolektor SSH klíčů čte jen stroje, které mají v local/site.json ssh (a keys není false).",
+       "href": "#security",
+       "prompt": "Zapoj stroj „Pi box“ (pi.example.lan, id pi-box) do inventáře SSH klíčů Home Hubu. Na stroji, kde běží Home Hub: ověř, že se ssh alias stroje z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na stroji nic neměň.",
+       "promptT": [
+        {
+         "key": "Zapoj stroj „{name}“ ({hostname}, id {id}) do inventáře SSH klíčů Home Hubu. Na stroji, kde běží Home Hub: ověř, že se ssh alias stroje z local/site.json (ssh.alias, keys nesmí být false) přihlásí klíčem bez hesla, spusť node scripts/collect-security.mjs a denní běh zajisti přes scripts/systems/install-launchd.sh --with-security. Sonda posílá jen otisky a veřejné řádky authorized_keys; na stroji nic neměň.",
+         "params": {
+          "id": "pi-box",
+          "name": "Pi box",
+          "hostname": "pi.example.lan"
+         }
+        }
+       ]
+      },
+      {
+       "id": "inventory",
+       "title": "Inventář",
+       "icon": "list",
+       "how": {
+        "by": "agent",
+        "text": "Inventář sám nic nezjišťuje: zapíše ho agent přes MCP (inventory_update) nebo ty na mapě inventáře."
+       },
+       "state": "not-configured",
+       "summary": "Stroj v inventáři není. Zapíše ho agent (MCP inventory_update) nebo ho přidáš na mapě inventáře.",
+       "href": "#inventory-map",
+       "prompt": "Zapiš stroj „Pi box“ (id pi-box, pi.example.lan) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind machine, id pi-box) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+       "promptT": [
+        {
+         "key": "Zapiš stroj „{name}“ (id {id}, {hostname}) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind machine, id {id}) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+         "params": {
+          "id": "pi-box",
+          "name": "Pi box",
+          "hostname": "pi.example.lan"
+         }
+        }
+       ]
+      },
+      {
+       "id": "runtimes",
+       "title": "LLM runtimy",
+       "icon": "cpu",
+       "how": {
+        "by": "hub",
+        "text": "Home Hub runtimy čte sám přes jejich HTTP API (jen GET). Adresu zapíše agent přes MCP (runtime_endpoint_upsert) nebo local/site.json → runtimes."
+       },
+       "state": "not-applicable",
+       "summary": "Žádný LLM runtime.",
+       "href": "#models"
+      },
+      {
+       "id": "git-lfs",
+       "title": "Git LFS",
+       "icon": "archive",
+       "how": {
+        "by": "hub",
+        "text": "Home Hub čte git host přes jeho API a git; kde běží a kde leží LFS soubory, ví z inventáře."
+       },
+       "state": "not-applicable",
+       "summary": "Žádný připojený git host tu neběží ani tu neukládá LFS soubory.",
+       "href": "#git-lfs"
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

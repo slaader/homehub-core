@@ -1,0 +1,20 @@
+HOST	alice-laptop	Linux	alice	0	2026-11-13T09:52:03Z
+OS	Fedora Linux	41	Fedora Linux 41 (Workstation Edition)	6.11.5-300.fc41.x86_64	x86_64
+HW	ThinkPad X1 Carbon Gen 11	12th Gen Intel(R) Core(TM) i7-1365U	33348456448	12
+UPTIME	13820
+AUTO	dnf-automatic-apply	yes
+PRIV	sshd	denied
+SSHD	effective	unknown
+PRIV	listen	ok
+LISTEN	sshd	?	0.0.0.0:22
+LISTEN	cupsd	?	127.0.0.1:631
+LISTEN	?	?	[::]:1716
+PRIV	nft	denied
+NFT	unknown
+PKGUP	dnf	bash		5.2.32-1.fc41	0
+PKGUP	dnf	kernel-core		6.11.5-300.fc41	1
+PKGUP	dnf	firefox		134.0-1.fc41	0
+SW	node	cmd	v22.13.0	/usr/bin/node
+SW	watch-cask	unsupported		cask
+SW	example-app	missing		/opt/example-app/package.json
+END	ok
