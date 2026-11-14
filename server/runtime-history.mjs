@@ -4,17 +4,17 @@
 // /logs/stream/http?no-history is its access log as a plain-text stream, one line per request with the
 // method, path, status, User-Agent and duration. The first gives the figures, the second says who sent it.
 //
-//   <state>/runtimes/<machine>/requests-YYYY-MM.jsonl   one request per line, by the UTC month of `at`
+//   <state>/runtimes/<device>/requests-YYYY-MM.jsonl   one request per line, by the UTC month of `at`
 //
-// What a line holds, and nothing else: {machine, runtime, model, at, metricId, path, status, inputTokens,
-// outputTokens, cacheTokens, promptTps, generationTps, durationMs, client, uaFamily?, clientMachine?,
+// What a line holds, and nothing else: {device, runtime, model, at, metricId, path, status, inputTokens,
+// outputTokens, cacheTokens, promptTps, generationTps, durationMs, client, uaFamily?, clientDevice?,
 // clientAddress?}. Never a prompt, a body, a header other than the User-Agent's first word, or a full UA.
 //
 // What may be requested, and nothing else (HISTORY_READS): GET /api/metrics/activity?page=<1..10>&limit=200
 // and GET /logs/stream/http?no-history. Both are refused before a socket opens when the path differs in any
 // character. No POST, no /upstream/…, no unload, no capture.
 //
-// De-duplication: metricKey (machine, runtime, the runtime's record id, the record's time). A llama-swap
+// De-duplication: metricKey (device, runtime, the runtime's record id, the record's time). A llama-swap
 // restart starts its ids again at 1, but with new times, so a restart neither drops nor repeats a record.
 // The store remembers the keys of the last DEDUP_DAYS days (at most DEDUP_CAP of them) and ignores anything
 // older than that window when it comes from a runtime. A record that names a client may follow one of the
@@ -49,7 +49,7 @@ const text=(v,n=120)=>typeof v==='string'?v.replace(/[\u0000-\u001f\u007f]/g,'')
 const int=v=>Number.isSafeInteger(v)&&v>=0?v:null;
 const num=(v,max=1e12)=>typeof v==='number'&&Number.isFinite(v)&&v>=0&&v<=max?v:null;
 const plain=v=>v&&typeof v==='object'&&!Array.isArray(v);
-const MACHINE=/^[a-z][a-z0-9_-]{1,31}$/;
+const DEVICE=/^[a-z][a-z0-9_-]{1,31}$/;
 const IPV4=/^(\d{1,3})(\.\d{1,3}){3}$/;
 const isLoopback=a=>/^127\.|^::1$|^localhost$/i.test(a);
 const timeMs=v=>{const t=typeof v==='number'?v:Date.parse(v);return Number.isFinite(t)?t:null;};
@@ -109,43 +109,43 @@ export function joinLine(record,lines){
 }
 
 // ── Records ─────────────────────────────────────────────────────────────────────────────────────────
-// A stored line, cleaned (also what an import passes through). null when it is not a request of a machine.
+// A stored line, cleaned (also what an import passes through). null when it is not a request of a device.
 export function cleanRecord(r){
  if(!plain(r))return null;
- const at=timeMs(r.at),machine=text(r.machine,32);if(at==null||!MACHINE.test(machine))return null;
+ const at=timeMs(r.at),device=text(r.device,32);if(at==null||!DEVICE.test(device))return null;
  const address=text(r.clientAddress,64).replace(/^ip:/,'');
- const out={machine,runtime:text(r.runtime,60)||'unknown',model:text(r.model,160)||'unknown',at:new Date(at).toISOString(),metricId:int(r.metricId),
+ const out={device,runtime:text(r.runtime,60)||'unknown',model:text(r.model,160)||'unknown',at:new Date(at).toISOString(),metricId:int(r.metricId),
   path:cleanPath(r.path)||'other',status:int(r.status),inputTokens:int(r.inputTokens),outputTokens:int(r.outputTokens),cacheTokens:int(r.cacheTokens),
   promptTps:num(r.promptTps,1e7),generationTps:num(r.generationTps,1e7),durationMs:int(r.durationMs),client:text(r.client,60)===UNATTRIBUTED?'':text(r.client,60)};
  const family=uaFamilyOf(r.uaFamily);if(family){out.uaFamily=family;if(!out.client)out.client=clientFor(family);}
- if(MACHINE.test(text(r.clientMachine,32)))out.clientMachine=text(r.clientMachine,32);
+ if(DEVICE.test(text(r.clientDevice,32)))out.clientDevice=text(r.clientDevice,32);
  if(address&&(IPV4.test(address)||isLoopback(address)))out.clientAddress=address;
  return out;
 }
-export const recordKey=r=>metricKey({machine:r.machine,runtime:r.runtime,metricId:r.metricId,at:timeMs(r.at)});
-// llama-swap's activity records (one page's data[]) → stored records of this machine and runtime. The
-// address names a client machine when it is a site machine's (never on loopback: that is this machine or
+export const recordKey=r=>metricKey({device:r.device,runtime:r.runtime,metricId:r.metricId,at:timeMs(r.at)});
+// llama-swap's activity records (one page's data[]) → stored records of this device and runtime. The
+// address names a client device when it is a site device's (never on loopback: that is this device or
 // a tunnel into it, the same as an SSH forward).
-export function fromActivity(items,{machine,runtime,machines=[]}){
+export function fromActivity(items,{device,runtime,devices=[]}){
  return (Array.isArray(items)?items:[]).filter(plain).map(m=>{
   const t=plain(m.tokens)?m.tokens:m,address=text(m.src,64).replace(/^ip:/,'');
-  const where=address&&!isLoopback(address)?machines.find(x=>x.ip&&x.ip===address)?.id:null;
-  return cleanRecord({machine,runtime,model:m.model,at:m.timestamp,metricId:m.id,path:m.req_path,status:m.resp_status_code,
+  const where=address&&!isLoopback(address)?devices.find(x=>x.ip&&x.ip===address)?.id:null;
+  return cleanRecord({device,runtime,model:m.model,at:m.timestamp,metricId:m.id,path:m.req_path,status:m.resp_status_code,
    inputTokens:t.input_tokens,outputTokens:t.output_tokens,cacheTokens:t.cache_tokens,promptTps:t.prompt_per_second,generationTps:t.tokens_per_second,
-   durationMs:m.duration_ms,clientAddress:address,...(where?{clientMachine:where}:{})});
+   durationMs:m.duration_ms,clientAddress:address,...(where?{clientDevice:where}:{})});
  }).filter(r=>r&&r.metricId!==null);
 }
 
 // A line of an older history file, for scripts/import-runtime-history.mjs: either this store's own format, or
 // the v1 compute bridge's history ({kind: "request", serviceId, metricId, at, model, path: a kind word,
 // status, …tokens, uaFamily, requestor}). Events and anything without a record id are left out.
-export function fromImportLine(raw,{machine}){
+export function fromImportLine(raw,{device}){
  if(!plain(raw)||raw.kind==='event')return null;
- if(raw.machine!==undefined&&raw.machine!==machine)return null;
+ if(raw.device!==undefined&&raw.device!==device)return null;
  const v1=raw.kind==='request'||raw.serviceId!==undefined;
- const r=cleanRecord(v1?{machine,runtime:raw.serviceId||'llama-swap',model:raw.model,at:raw.at,metricId:raw.metricId,path:raw.path,status:raw.status,
+ const r=cleanRecord(v1?{device,runtime:raw.serviceId||'llama-swap',model:raw.model,at:raw.at,metricId:raw.metricId,path:raw.path,status:raw.status,
   inputTokens:raw.inputTokens,outputTokens:raw.outputTokens,cacheTokens:raw.cacheTokens,promptTps:raw.promptTps,generationTps:raw.generationTps,durationMs:raw.durationMs,
-  client:raw.requestor,uaFamily:raw.uaFamily}:{...raw,machine});
+  client:raw.requestor,uaFamily:raw.uaFamily}:{...raw,device});
  return r&&r.metricId!==null?r:null;
 }
 
@@ -153,98 +153,98 @@ export function fromImportLine(raw,{machine}){
 const FILE=/^requests-(\d{4}-\d{2})\.jsonl$/;
 export function createRequestHistory(stateDirectory,{retentionMonths=RETENTION_MONTHS,dedupDays=DEDUP_DAYS,dedupCap=DEDUP_CAP,clients=()=>({}),maxLines=400000}={}){
  const root=path.join(stateDirectory,'runtimes');
- const dir=machine=>{if(!MACHINE.test(machine))throw new Error('invalid');return path.join(root,machine);};
- const known=new Map();// machine → Map(key → {at, attributed})
+ const dir=device=>{if(!DEVICE.test(device))throw new Error('invalid');return path.join(root,device);};
+ const known=new Map();// device → Map(key → {at, attributed})
  const queues=new Map(),pruned=new Map(),stats=new Map();
- const queue=machine=>{if(!queues.has(machine))queues.set(machine,serial());return queues.get(machine);};
- async function filesOf(machine){try{return (await readdir(dir(machine))).filter(f=>FILE.test(f)).sort();}catch{return [];}}
- async function machines(){try{return (await readdir(root,{withFileTypes:true})).filter(d=>d.isDirectory()&&MACHINE.test(d.name)).map(d=>d.name).sort();}catch{return [];}}
- // Every record of one machine in [from, to], file by file (a file is one month).
- async function readMachine(machine,from,to){
+ const queue=device=>{if(!queues.has(device))queues.set(device,serial());return queues.get(device);};
+ async function filesOf(device){try{return (await readdir(dir(device))).filter(f=>FILE.test(f)).sort();}catch{return [];}}
+ async function devices(){try{return (await readdir(root,{withFileTypes:true})).filter(d=>d.isDirectory()&&DEVICE.test(d.name)).map(d=>d.name).sort();}catch{return [];}}
+ // Every record of one device in [from, to], file by file (a file is one month).
+ async function readDevice(device,from,to){
   const out=[];
-  for(const f of await filesOf(machine)){
+  for(const f of await filesOf(device)){
    const start=Date.parse(`${FILE.exec(f)[1]}-01T00:00:00Z`),end=new Date(start).setUTCMonth(new Date(start).getUTCMonth()+1);
    if(start>to||end<=from)continue;
-   let body;try{body=await readFile(path.join(dir(machine),f),'utf8');}catch{continue;}
+   let body;try{body=await readFile(path.join(dir(device),f),'utf8');}catch{continue;}
    let n=0;
-   for(const line of body.split('\n')){if(!line||++n>maxLines)continue;let r;try{r=cleanRecord(JSON.parse(line));}catch{continue;}if(!r||r.machine!==machine)continue;const at=Date.parse(r.at);if(at>=from&&at<=to)out.push(r);}
+   for(const line of body.split('\n')){if(!line||++n>maxLines)continue;let r;try{r=cleanRecord(JSON.parse(line));}catch{continue;}if(!r||r.device!==device)continue;const at=Date.parse(r.at);if(at>=from&&at<=to)out.push(r);}
   }
   return out;
  }
- async function keysOf(machine,now){
-  if(known.has(machine))return known.get(machine);
+ async function keysOf(device,now){
+  if(known.has(device))return known.get(device);
   const map=new Map();
-  for(const r of await readMachine(machine,now-dedupDays*DAY,now+DAY)){const k=recordKey(r),seen=map.get(k);if(!seen||(!seen.attributed&&r.client))map.set(k,{at:Date.parse(r.at),attributed:Boolean(r.client)});}
-  known.set(machine,map);return map;
+  for(const r of await readDevice(device,now-dedupDays*DAY,now+DAY)){const k=recordKey(r),seen=map.get(k);if(!seen||(!seen.attributed&&r.client))map.set(k,{at:Date.parse(r.at),attributed:Boolean(r.client)});}
+  known.set(device,map);return map;
  }
  function trim(map,now){
   const cutoff=now-dedupDays*DAY;
   for(const [k,v] of map){if(v.at<cutoff)map.delete(k);}
   if(map.size>dedupCap)for(const [k] of [...map].sort((a,b)=>a[1].at-b[1].at).slice(0,map.size-dedupCap))map.delete(k);// the oldest go
  }
- // Monthly: once per machine and month, drop the files older than the retention.
- async function prune(machine,now){
-  const month=monthOf(now);if(pruned.get(machine)===month)return 0;pruned.set(machine,month);
+ // Monthly: once per device and month, drop the files older than the retention.
+ async function prune(device,now){
+  const month=monthOf(now);if(pruned.get(device)===month)return 0;pruned.set(device,month);
   const d=new Date(now),oldest=monthOf(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()-(retentionMonths-1),1));let removed=0;
-  for(const f of await filesOf(machine))if(FILE.exec(f)[1]<oldest){await unlink(path.join(dir(machine),f)).catch(()=>{});removed++;}
+  for(const f of await filesOf(device))if(FILE.exec(f)[1]<oldest){await unlink(path.join(dir(device),f)).catch(()=>{});removed++;}
   return removed;
  }
- // records: cleaned or raw records of one machine. window: false for an import (any age, every month read).
+ // records: cleaned or raw records of one device. window: false for an import (any age, every month read).
  // → {added, known, skipped}
- function ingest(machine,records,{now=Date.now(),window=true}={}){
-  return queue(machine)(async()=>{
-   await mkdir(dir(machine),{recursive:true,mode:0o700});
-   const map=window?await keysOf(machine,now):await importKeys(machine,records);
+ function ingest(device,records,{now=Date.now(),window=true}={}){
+  return queue(device)(async()=>{
+   await mkdir(dir(device),{recursive:true,mode:0o700});
+   const map=window?await keysOf(device,now):await importKeys(device,records);
    const byMonth=new Map();let added=0,dup=0,skipped=0;
    for(const raw of Array.isArray(records)?records:[]){
-    const r=cleanRecord({...raw,machine});const at=r&&Date.parse(r.at);
+    const r=cleanRecord({...raw,device});const at=r&&Date.parse(r.at);
     if(!r||r.metricId===null||at>now+300000||(window&&at<now-dedupDays*DAY)){skipped++;continue;}
     const k=recordKey(r),seen=map.get(k);
     if(seen&&(seen.attributed||!r.client)){dup++;continue;}
     map.set(k,{at,attributed:Boolean(r.client)});added++;
     const month=r.at.slice(0,7);byMonth.set(month,(byMonth.get(month)||'')+JSON.stringify(r)+'\n');
    }
-   for(const [month,chunk] of byMonth)await appendFile(path.join(dir(machine),`requests-${month}.jsonl`),chunk,{mode:0o600});
+   for(const [month,chunk] of byMonth)await appendFile(path.join(dir(device),`requests-${month}.jsonl`),chunk,{mode:0o600});
    if(window)trim(map,now);
-   await prune(machine,now);
-   const s=stats.get(machine)||{lastIngestedAt:null,lastAddedAt:null};s.lastIngestedAt=now;if(added)s.lastAddedAt=now;stats.set(machine,s);
+   await prune(device,now);
+   const s=stats.get(device)||{lastIngestedAt:null,lastAddedAt:null};s.lastIngestedAt=now;if(added)s.lastAddedAt=now;stats.set(device,s);
    return {added,known:dup,skipped};
   });
  }
  // An import may reach back further than the window: the keys of every month it touches.
- async function importKeys(machine,records){
+ async function importKeys(device,records){
   const times=(Array.isArray(records)?records:[]).map(r=>timeMs(r?.at)).filter(v=>v!=null);
   const map=new Map();if(!times.length)return map;
-  for(const r of await readMachine(machine,Math.min(...times)-DAY,Math.max(...times)+DAY)){const k=recordKey(r),seen=map.get(k);if(!seen||(!seen.attributed&&r.client))map.set(k,{at:Date.parse(r.at),attributed:Boolean(r.client)});}
-  known.delete(machine);// the live window is rebuilt from the files on its next use
+  for(const r of await readDevice(device,Math.min(...times)-DAY,Math.max(...times)+DAY)){const k=recordKey(r),seen=map.get(k);if(!seen||(!seen.attributed&&r.client))map.set(k,{at:Date.parse(r.at),attributed:Boolean(r.client)});}
+  known.delete(device);// the live window is rebuilt from the files on its next use
   return map;
  }
- const has=async(machine,record,now=Date.now())=>(await keysOf(machine,now)).has(recordKey(record));
+ const has=async(device,record,now=Date.now())=>(await keysOf(device,now)).has(recordKey(record));
  // runtimes.requests: the stored records in [from, to], one per key (the one that names a client), oldest
  // first. client is named again from uaFamily with today's table, so a new site.json entry renames history.
  async function read({from=0,to=Date.now(),limit=200000}={}){
   const own=clients()||{},out=new Map();
-  for(const machine of await machines()){
-   for(const r of await readMachine(machine,from,to)){
+  for(const device of await devices()){
+   for(const r of await readDevice(device,from,to)){
     const k=recordKey(r),seen=out.get(k);if(seen&&(seen.client||!r.client))continue;
     out.set(k,r);
    }
   }
   return [...out.values()].sort((a,b)=>Date.parse(a.at)-Date.parse(b.at)).slice(-limit).map(r=>{
    const client=r.uaFamily?clientFor(r.uaFamily,own):r.client;
-   return {machine:r.machine,runtime:r.runtime,model:r.model,at:r.at,metricId:r.metricId,path:r.path,status:r.status,inputTokens:r.inputTokens??0,outputTokens:r.outputTokens??0,
+   return {device:r.device,runtime:r.runtime,model:r.model,at:r.at,metricId:r.metricId,path:r.path,status:r.status,inputTokens:r.inputTokens??0,outputTokens:r.outputTokens??0,
     cacheTokens:r.cacheTokens,promptTps:r.promptTps,generationTps:r.generationTps,durationMs:r.durationMs,client:client||'',
-    ...(r.clientMachine?{clientMachine:r.clientMachine}:{}),...(r.clientAddress?{clientAddress:r.clientAddress}:{})};
+    ...(r.clientDevice?{clientDevice:r.clientDevice}:{}),...(r.clientAddress?{clientAddress:r.clientAddress}:{})};
   });
  }
- // For the integration page: when this machine's history was last read, last grew, and how many of its
+ // For the integration page: when this device's history was last read, last grew, and how many of its
  // records fall on or after `since` (the start of today on the site's clock).
- async function summary(machine,{since,now=Date.now()}={}){
-  const map=await keysOf(machine,now),s=stats.get(machine)||{};let today=0;
+ async function summary(device,{since,now=Date.now()}={}){
+  const map=await keysOf(device,now),s=stats.get(device)||{};let today=0;
   for(const v of map.values())if(v.at>=since)today++;
   return {lastIngestedAt:s.lastIngestedAt?new Date(s.lastIngestedAt).toISOString():null,lastAddedAt:s.lastAddedAt?new Date(s.lastAddedAt).toISOString():null,recordsToday:today};
  }
- return {root,windowMs:dedupDays*DAY,ingest,read,has,summary,machines,readMachine,prune,provider:{id:'runtimes-history',read}};
+ return {root,windowMs:dedupDays*DAY,ingest,read,has,summary,devices,readDevice,prune,provider:{id:'runtimes-history',read}};
 }
 
 // ── Reads and the stream ────────────────────────────────────────────────────────────────────────────
@@ -307,7 +307,7 @@ export function createStreamWatcher({base,token=null,fetcher=fetch,onLine,onRequ
 // therefore takes the whole buffer; later ones usually one page. A record that ended less than
 // JOIN_AFTER_MS ago waits for the next tick while the stream is connected, so its log line can arrive first.
 // While the integration is off (enabled() false) nothing is read and every stream is closed.
-export function createHistoryCollector({store,endpoints,runtimeIdOf,kindOf,tokens,fetcher=fetch,streamFetcher=fetcher,machines=()=>[],clients=()=>({}),
+export function createHistoryCollector({store,endpoints,runtimeIdOf,kindOf,tokens,fetcher=fetch,streamFetcher=fetcher,devices=()=>[],clients=()=>({}),
  enabled=async()=>true,now=Date.now,onRequest=null,watch=createStreamWatcher,maxLines=2000}){
  const streams=new Map();// endpoint id → {key, watcher, lines[]}
  const status=new Map();// endpoint id → {lastSyncAt, lastError, lastErrorAt, added, attributed, pages}
@@ -327,22 +327,22 @@ export function createHistoryCollector({store,endpoints,runtimeIdOf,kindOf,token
   const st=status.get(e.id)||{lastSyncAt:null,lastError:null,lastErrorAt:null,added:0,attributed:0,pages:0};status.set(e.id,st);
   const stream=await ensureStream(e),connected=stream.watcher.status().state==='connected';
   const get=createHistoryReader({base:e.url,token:await tokens.get(e.id),fetcher,onRequest});
-  const runtime=(await runtimeIdOf(e.id))||'llama-swap',site=machines(),own=clients()||{};
+  const runtime=(await runtimeIdOf(e.id))||'llama-swap',site=devices(),own=clients()||{};
   const t=now();let pages=0,added=0,attributed=0;
   try{
    for(let page=1;page<=ACTIVITY_MAX_PAGES;page++){
     const body=await get(activityPath(page));pages++;
-    const items=fromActivity(body?.data,{machine:e.machine,runtime,machines:site});
+    const items=fromActivity(body?.data,{device:e.device,runtime,devices:site});
     let seenOne=false;const fresh=[];
     for(const r of items){
      // Known, or older than the store's window (it would not be kept): everything after it is older still.
-     if(Date.parse(r.at)<t-(store.windowMs??DEDUP_DAYS*DAY)||await store.has(e.machine,r,t)){seenOne=true;continue;}
+     if(Date.parse(r.at)<t-(store.windowMs??DEDUP_DAYS*DAY)||await store.has(e.device,r,t)){seenOne=true;continue;}
      if(connected&&Date.parse(r.at)+(r.durationMs||0)+JOIN_AFTER_MS>t)continue;// its log line may still come
      const line=joinLine(r,stream.lines);
      if(line){r.uaFamily=line.uaFamily;r.client=clientFor(line.uaFamily,own);if(r.client)attributed++;}
      fresh.push(r);
     }
-    if(fresh.length)added+=(await store.ingest(e.machine,fresh,{now:t})).added;
+    if(fresh.length)added+=(await store.ingest(e.device,fresh,{now:t})).added;
     const total=Number(body?.total_pages);
     if(seenOne||!items.length||!Array.isArray(body?.data)||body.data.length<ACTIVITY_PAGE_LIMIT||(Number.isFinite(total)&&page>=total))break;
    }

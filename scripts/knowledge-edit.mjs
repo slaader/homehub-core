@@ -2,7 +2,7 @@
 // entry form, whole entries from agents, deletes and bulk upserts. Every change is applied to the
 // document in memory, checked with the same validate() agents run, and only then written (atomically);
 // after that the publish step runs, if one is configured (see createKnowledgeEditor). The hub calls it
-// for its own file; a bridge on another machine can run the same editor next to the file it owns.
+// for its own file; a bridge on another computer can run the same editor next to the file it owns.
 //
 // Concurrency is optimistic and per entry: entryHash(entry) is the version stamp. A change to an
 // existing entry carries the hash its author read (base); a different hash on disk means "conflict".
@@ -53,7 +53,7 @@ export function applyEntry(doc,{entry,base},today=todayUtc(),by=null){
  return {entry:next,doc:{...doc,updated_at:today,entries:existing?doc.entries.map(e=>e.id===next.id?next:e):[...doc.entries,next]}};
 }
 
-// Field edits from the entry form: {id, base, fields}. fields: the text fields in EDITABLE, machine,
+// Field edits from the entry form: {id, base, fields}. fields: the text fields in EDITABLE, device,
 // secrets [{what, store, ref, check}] and depends_on [{id, kind, label}]. An emptied field is removed.
 const short=(v,max)=>{const x=v??'';if(typeof x!=='string'||x.length>max)invalid();return x.trim();};
 function secretRows(v){
@@ -70,7 +70,7 @@ export function editInput(input){
  const fields={};
  for(const [k,v] of Object.entries(input.fields)){
   if(EDITABLE.includes(k))fields[k]=short(v,k==='notes'?LIMITS.notesLength:LIMITS.textLength);
-  else if(k==='machine'){fields.machine=short(v,LIMITS.idLength);if(fields.machine&&!ENTRY_ID.test(fields.machine))invalid();}
+  else if(k==='device'){fields.device=short(v,LIMITS.idLength);if(fields.device&&!ENTRY_ID.test(fields.device))invalid();}
   else if(k==='secrets')fields.secrets=secretRows(v);
   else if(k==='depends_on')fields.depends_on=dependencyRows(v);
   else invalid();
@@ -142,7 +142,7 @@ export const bulkSummary=results=>({create:results.filter(r=>r.action==='create'
  *   editor.bulk(input, {by, user})   bulk upsert (dryRun writes nothing)  → {results, summary} | {ok:false, conflicts}
  * A missing file is an empty inventory: the first write creates it.
  * publish runs after each saved change: by default nothing (the hub serves the file it just wrote), or
- * the script named by KNOWLEDGE_PUBLISH (e.g. one that copies the file to the machine that serves it).
+ * the script named by KNOWLEDGE_PUBLISH (e.g. one that copies the file to the computer that serves it).
  * secretStores: the site's own store names; default = the site this process loaded.
  */
 export function createKnowledgeEditor({file=path.join(resolvePaths().data,'knowledge.json'),secretStores,publish=process.env.KNOWLEDGE_PUBLISH?()=>run(path.resolve(process.env.KNOWLEDGE_PUBLISH),[],{timeout:30000}):async()=>{}}={}){

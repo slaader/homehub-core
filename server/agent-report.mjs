@@ -4,7 +4,7 @@
 // A change here is a change to that note first.
 //
 // A leaf module: it imports only node: modules and other leaves (secret-patterns, ssh-lines, agent-privileged,
-// watch-rules, semver), so the agent never drags the hub onto a machine.
+// watch-rules, semver), so the agent never drags the hub onto a device.
 import {createHash} from 'node:crypto';
 import {secretIn,namedSecretIn} from './secret-patterns.mjs';
 import {splitAuthorizedLine,splitOutside,fingerprintOf} from './ssh-lines.mjs';
@@ -167,7 +167,7 @@ export function checkLine(part,line,platform){
 }
 
 // --- runtimes ----------------------------------------------------------------------------------------------------
-// One machine's entry of the home.runtimes extension point (docs/plugins.md), closed: only the documented fields.
+// One device's entry of the home.runtimes extension point (docs/plugins.md), closed: only the documented fields.
 const str=n=>({s:n}),number={n:true},list=(of,max)=>({list:of,max}),obj=keys=>({keys});
 const RUNTIME=obj({id:str(60),name:str(60),kind:str(40),status:{enum:['running','stopped','unknown']},url:{url:true},version:str(40),source:str(40),
  mode:{enum:['cli']},activity:obj({active:number,queued:number}),pids:list(number,16),role:{enum:['gateway','engine']},
@@ -195,7 +195,7 @@ function checkRuntimeValue(schema,v,runtimeUrl){
  return 'invalid';
 }
 // The agent's own default: an origin on loopback only (docs/agent.md §5 → runtimes.mjs). The hub passes its own
-// check (server/site-config.mjs → runtimeEndpoint for the bound machine: loopback or inside lanCidrs).
+// check (server/site-config.mjs → runtimeEndpoint for the bound device: loopback or inside lanCidrs).
 export function loopbackOrigin(url){
  let u;try{u=new URL(url);}catch{return false;}
  return ['http:','https:'].includes(u.protocol)&&!u.username&&!u.password&&u.pathname==='/'&&!u.search&&!u.hash&&!/[?#]/.test(url)&&ipv4Ok(u.hostname)&&u.hostname.startsWith('127.')&&`${u.origin}`===url.replace(/\/$/,'');
@@ -291,8 +291,8 @@ export const digestOf=part=>part.records?createHash('sha256').update(part.record
 // When a part stored with receivedAt stops being fresh: receivedAt + 3 × interval (then it is "no news", never off).
 export const freshUntil=part=>Date.parse(part.receivedAt)+REPORT_LIMITS.staleFactor*part.interval*1000;
 
-// --- the watch list on the machine -----------------------------------------------------------------------------------
-// specs.txt (docs/agent.md → The watch list): the bytes of systemsSpecs(registry, machine), "id|kind|a|b|label" per
+// --- the watch list on the device -----------------------------------------------------------------------------------
+// specs.txt (docs/agent.md → The watch list): the bytes of systemsSpecs(registry, device), "id|kind|a|b|label" per
 // line, "\n" after each, an empty list an empty file. The installer and the agent at every start run this; a file that
 // fails stops the agent before anything runs. platform: "macos" or "linux". → {ok, lines, errors:[{line, reason}]}.
 const SPEC_ID=/^[A-Za-z0-9._-]{1,60}$/,FORMULAS=/^[a-z0-9@._+-]+(,[a-z0-9@._+-]+)*$/,PACKAGE=/^[A-Za-z0-9._-]{1,100}$/,LABEL=/^[A-Za-z0-9._@-]{1,120}$/;

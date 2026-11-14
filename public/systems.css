@@ -121,7 +121,7 @@ a.col-badge:focus-visible{outline:2px solid var(--color-focus);outline-offset:2p
 .col-check .why{font-size:var(--text-s);color:var(--color-text-dim);max-width:80ch}
 .col-check .why .help{color:var(--color-text-faint)}
 
-/* Wide matrices (key → machine) scroll sideways and keep their first column in view */
+/* Wide matrices (key → device) scroll sideways and keep their first column in view */
 .col-matrix{width:100%;border-collapse:collapse;font-size:var(--text-s)}
 .col-matrix th,.col-matrix td{padding:var(--space-2) var(--space-3);border-top:1px solid var(--color-border);text-align:left;vertical-align:top;white-space:nowrap}
 .col-matrix thead th{border-top:0;border-bottom:1px solid var(--color-border);font:var(--weight-medium) var(--text-xs)/1.3 var(--font-sans);letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)}

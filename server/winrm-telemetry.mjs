@@ -1,7 +1,7 @@
 // Windows telemetry over WinRM (WS-Management), as an alternative to SSH: the hub sends fixed, read-only WMI
-// queries (WS-Enumeration Enumerate and Pull with a WQL filter) to the machine's WinRM HTTPS listener and builds the
+// queries (WS-Enumeration Enumerate and Pull with a WQL filter) to the device's WinRM HTTPS listener and builds the
 // same data object the SSH collector's PowerShell script prints (server/windows-telemetry.mjs → snapshotFromData),
-// so readings, rates, history and the machine page mean exactly the same for both transports.
+// so readings, rates, history and the device page mean exactly the same for both transports.
 //
 // What is supported, and nothing more:
 //   transport       HTTPS only (default port 5986). Never plain HTTP, never AllowUnencrypted.

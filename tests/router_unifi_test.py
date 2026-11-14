@@ -127,17 +127,17 @@ class UnifiTests(unittest.TestCase):
    finally: unifi.KEY_FILE = original
  def test_site_configuration(self):
   site = {'lanCidrs': ['10.0.0.0/24', '10.0.20.0/24', 'nonsense'], 'router': {'adapter': 'unifi', 'host': '10.0.0.254', 'site': 'home'},
-          'machines': [{'id': 'mini', 'ip': '10.0.0.25'}, {'id': 'gw', 'role': 'router', 'ip': '10.0.0.1'}]}
+          'devices': [{'id': 'mini', 'ip': '10.0.0.25'}, {'id': 'gw', 'role': 'router', 'ip': '10.0.0.1'}]}
   host, lans, name = unifi.site_settings(site, {})
   self.assertEqual((host, [str(n) for n in lans], name), ('10.0.0.254', ['10.0.0.0/24', '10.0.20.0/24'], 'home'))
-  self.assertEqual(unifi.site_settings({'machines': site['machines']}, {})[:1], ('10.0.0.1',), 'the machine with role router is the gateway')
-  self.assertEqual([str(n) for n in unifi.site_settings({'machines': site['machines']}, {})[1]], ['10.0.0.0/24'], 'no lanCidrs: the /24 around the gateway')
+  self.assertEqual(unifi.site_settings({'devices': site['devices']}, {})[:1], ('10.0.0.1',), 'the device with role router is the gateway')
+  self.assertEqual([str(n) for n in unifi.site_settings({'devices': site['devices']}, {})[1]], ['10.0.0.0/24'], 'no lanCidrs: the /24 around the gateway')
   host, lans, name = unifi.site_settings(site, {'UNIFI_HOST': '10.9.0.1', 'UNIFI_LAN': '10.9.0.0/16', 'UNIFI_SITE': 'lab'})
   self.assertEqual((host, [str(n) for n in lans], name), ('10.9.0.1', ['10.9.0.0/16'], 'lab'), 'the environment overrides the file')
   self.assertEqual(unifi.site_settings({}, {})[0], '192.168.1.1')
   self.assertEqual(unifi.site_settings({'router': {'site': '../../etc'}}, {})[2], 'default', 'a site name that is not an id is refused')
   self.assertEqual(len(unifi.site_settings({'router': {'host': 'gateway.example.lan'}}, {})[1]), 3, 'a host name has no /24: private ranges')
-  self.assertEqual(unifi.site_settings([] if False else {'lanCidrs': 'x', 'machines': 'y', 'router': 'z'}, {})[0], '192.168.1.1', 'wrong shapes are ignored')
+  self.assertEqual(unifi.site_settings([] if False else {'lanCidrs': 'x', 'devices': 'y', 'router': 'z'}, {})[0], '192.168.1.1', 'wrong shapes are ignored')
   with tempfile.TemporaryDirectory() as tmp:
    root = pathlib.Path(tmp)
    (root / 'site.json').write_text(json.dumps(site))

@@ -1,6 +1,6 @@
 // Browser side of Windows telemetry, without a browser: the form refuses what the server refuses and saves only
 // a tested connection, the device dialog offers Windows with an app-managed key (no hub-side terminal steps, no
-// assumption about the hub's system), a Windows machine's notices name SSH (with the server's hint) instead of
+// assumption about the hub's system), a Windows device's notices name SSH (with the server's hint) instead of
 // Thermo, and its page panel says what Windows does not report instead of showing a zero.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -45,7 +45,7 @@ test('the dialog offers Windows with a key the hub manages: the only set-up outs
  const src=await readFile(new URL('../public/home-add-device.js',import.meta.url),'utf8'),setup=await readFile(new URL('../public/windows-setup.js',import.meta.url),'utf8');
  for(const must of ['/api/home/devices/windows','/api/home/devices/ssh','/api/home/devices/endpoint/draft','/draft/discover','/api/home/devices/telemetry','/draft/key','/draft/scan','/draft/trust','/draft/test','/draft/discard','/api/home/devices/windows/tools','keepalive:true'])assert.ok(src.includes(must),must);
  for(const must of ['OpenSSH.Server~~~~0.0.1.0','administrators_authorized_keys','S-1-5-32-544','S-1-5-18','S-1-5-32-558','ssh_host_*_key.pub'])assert.ok(setup.includes(must),must);
- // Nothing to do on the hub's own machine: no key files made in a terminal, no ~/.ssh/config, no Mac.
+ // Nothing to do on the hub's own host: no key files made in a terminal, no ~/.ssh/config, no Mac.
  assert.doesNotMatch(src+setup,/ssh-keygen -t|IdentityFile|Host \$\{|~\/\.ssh\/config|Terminál|na Macu|on the Mac/,'no hub-side terminal steps');
  assert.doesNotMatch(src+setup,/StrictHostKeyChecking|UserKnownHostsFile|accept-new/,'the guide never touches host-key checking');
  assert.doesNotMatch(src,/privateKey\s*:\s*draft|\.pem\b/,'the dialog never holds a stored private key');
@@ -57,13 +57,13 @@ test('the dialog offers Windows with a key the hub manages: the only set-up outs
 
 const win=telemetry=>({id:'pc',kind:'thermo',online:'offline',platform:'windows',added:true,source:'ui',telemetry:{provider:'windows',hostId:'pc',thermoId:null,target:'pc-windows',...telemetry}});
 const managedWin=telemetry=>win({target:'alice@pc.example.lan:2222',connection:{mode:'managed',host:'pc.example.lan',port:2222,user:'alice',keyFingerprint:'SHA256:x',hostKeyFingerprint:'SHA256:y'},...telemetry});
-test('a Windows machine: its state and notices name SSH and say what to do',()=>{
+test('a Windows device: its state and notices name SSH and say what to do',()=>{
  assert.equal(statusOf(win({state:'ok',lastSampleAt:new Date().toISOString()})).tone,'ok');
  assert.equal(hasReadings(win({state:'ok'})),true);
  const key=statusOf(win({state:'unreachable',reason:'down',detail:'host-key-unknown',hint:WINDOWS_ERRORS['host-key-unknown']}));
  assert.equal(key.text,'host key not verified');assert.match(key.title,/never accepts an unknown key/);
  assert.equal(statusOf(win({state:'unreachable',reason:'denied',hint:WINDOWS_ERRORS.denied})).text,'login refused');
- const down=statusOf(win({state:'unreachable',reason:'down',detail:'timeout',hint:WINDOWS_ERRORS.timeout}));assert.match(down.title,/timed out.*does not mean the machine is off/);
+ const down=statusOf(win({state:'unreachable',reason:'down',detail:'timeout',hint:WINDOWS_ERRORS.timeout}));assert.match(down.title,/timed out.*does not mean the device is off/);
  const notice=text(telemetryNotice(win({state:'unreachable',reason:'down',detail:'refused',hint:WINDOWS_ERRORS.refused})));
  assert.match(notice,/Windows does not answer over SSH/);assert.match(notice,/OpenSSH Server/);assert.match(notice,/ssh pc-windows/);assert.doesNotMatch(notice,/Thermo|49286/);
  assert.match(text(telemetryNotice(win({state:'unreachable',reason:'down',detail:'host-key-changed',hint:WINDOWS_ERRORS['host-key-changed']}))),/host key is not verified.*differs from the verified one.*verify it again in Edit device/s);
@@ -72,7 +72,7 @@ test('a Windows machine: its state and notices name SSH and say what to do',()=>
  assert.match(managed,/lets port 2222 through/);assert.match(managed,/for the account alice/);assert.doesNotMatch(managed,/ssh alice|Terminal|Mac\b|older alias/);
  assert.match(text(telemetryNotice(win({state:'unreachable',reason:'down',detail:'refused',hint:WINDOWS_ERRORS.refused}))),/Older alias connection.*Convert it/s,'an alias set-up is told it can be converted');
  assert.match(text(tileNotice(win({state:'unreachable',reason:'denied'}))),/did not accept Home Hub's SSH key/);
- // Not connected yet, but the machine says it runs Windows: the Windows way, not the agent.
+ // Not connected yet, but the device says it runs Windows: the Windows way, not the agent.
  const plain={id:'pc',kind:'other',online:'unknown',platform:'windows',source:'ui',telemetry:{state:'not-installed'}};
  assert.match(installSteps(plain,{}).join(' '),/OpenSSH Server/);assert.match(text(tileNotice(plain,{})),/over SSH without an agent/);
  assert.match(text(telemetryNotice(plain,{})),/reports no temperatures, fans or power/);

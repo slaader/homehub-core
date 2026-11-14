@@ -8,7 +8,7 @@
    },
    "schemaVersion": 1,
    "generatedAt": "<moving>",
-   "machines": [
+   "devices": [
     {
      "id": "mini",
      "name": "Mac mini",
@@ -760,10 +760,10 @@
    }
   }
  },
- "machines": {
+ "devices": {
   "status": 200,
   "body": {
-   "machines": [
+   "devices": [
     {
      "id": "mini",
      "name": "Mac mini",
@@ -1068,7 +1068,7 @@
     "10.0.0.0/24"
    ],
    "limits": {
-    "machines": 20
+    "devices": 20
    },
    "telemetry": {
     "agent": "Thermo",
@@ -1139,10 +1139,10 @@
    }
   }
  },
- "machineList": {
+ "deviceList": {
   "status": 200,
   "body": {
-   "machines": [
+   "devices": [
     {
      "id": "mini",
      "name": "Mac mini",
@@ -1447,7 +1447,7 @@
     "10.0.0.0/24"
    ],
    "limits": {
-    "machines": 20
+    "devices": 20
    },
    "telemetry": {
     "agent": "Thermo",
@@ -1586,7 +1586,7 @@
       "configuredBy": [
        {
         "source": "site.json",
-        "name": "machines[].thermoId"
+        "name": "devices[].thermoId"
        }
       ],
       "items": []
@@ -1648,7 +1648,7 @@
       "configuredBy": [
        {
         "source": "site.json",
-        "name": "machines[].reach"
+        "name": "devices[].reach"
        }
       ],
       "items": [
@@ -1871,7 +1871,7 @@
       "configuredBy": [
        {
         "source": "site.json",
-        "name": "machines[].ssh.probe (4)"
+        "name": "devices[].ssh.probe (4)"
        }
       ],
       "items": [
@@ -1948,7 +1948,7 @@
       "configuredBy": [
        {
         "source": "site.json",
-        "name": "machines[].ssh (4)"
+        "name": "devices[].ssh (4)"
        },
        {
         "source": "site.json",
@@ -2105,7 +2105,7 @@
    "pluginsDirectory": null
   }
  },
- "adminMachines": {
+ "adminDevices": {
   "status": 200,
   "body": {
    "schemaVersion": 1,
@@ -2251,7 +2251,7 @@
      "off": false
     }
    ],
-   "machines": [
+   "devices": [
     {
      "id": "mini",
      "name": "Mac mini",
@@ -2411,10 +2411,10 @@
        "state": "not-configured",
        "summary": "Stroj v inventáři není. Zapíše ho agent (MCP inventory_update) nebo ho přidáš na mapě inventáře.",
        "href": "#inventory-map",
-       "prompt": "Zapiš stroj „Mac mini“ (id mini, mini.example.lan) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind machine, id mini) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+       "prompt": "Zapiš stroj „Mac mini“ (id mini, mini.example.lan) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind device, id mini) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
        "promptT": [
         {
-         "key": "Zapiš stroj „{name}“ (id {id}, {hostname}) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind machine, id {id}) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+         "key": "Zapiš stroj „{name}“ (id {id}, {hostname}) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind device, id {id}) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
          "params": {
           "id": "mini",
           "name": "Mac mini",
@@ -2802,10 +2802,10 @@
        "state": "not-configured",
        "summary": "Stroj v inventáři není. Zapíše ho agent (MCP inventory_update) nebo ho přidáš na mapě inventáře.",
        "href": "#inventory-map",
-       "prompt": "Zapiš stroj „mini_server“ (id mini_server, mini-server.example.lan) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind machine, id mini_server) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+       "prompt": "Zapiš stroj „mini_server“ (id mini_server, mini-server.example.lan) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind device, id mini_server) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
        "promptT": [
         {
-         "key": "Zapiš stroj „{name}“ (id {id}, {hostname}) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind machine, id {id}) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+         "key": "Zapiš stroj „{name}“ (id {id}, {hostname}) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind device, id {id}) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
          "params": {
           "id": "mini_server",
           "name": "mini_server",
@@ -2985,10 +2985,10 @@
        "state": "not-configured",
        "summary": "Stroj v inventáři není. Zapíše ho agent (MCP inventory_update) nebo ho přidáš na mapě inventáře.",
        "href": "#inventory-map",
-       "prompt": "Zapiš stroj „NAS“ (id nas, nas.example.lan) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind machine, id nas) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+       "prompt": "Zapiš stroj „NAS“ (id nas, nas.example.lan) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind device, id nas) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
        "promptT": [
         {
-         "key": "Zapiš stroj „{name}“ (id {id}, {hostname}) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind machine, id {id}) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+         "key": "Zapiš stroj „{name}“ (id {id}, {hostname}) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind device, id {id}) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
          "params": {
           "id": "nas",
           "name": "NAS",
@@ -3157,10 +3157,10 @@
        "state": "not-configured",
        "summary": "Stroj v inventáři není. Zapíše ho agent (MCP inventory_update) nebo ho přidáš na mapě inventáře.",
        "href": "#inventory-map",
-       "prompt": "Zapiš stroj „Router“ (id router, 10.0.0.1) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind machine, id router) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+       "prompt": "Zapiš stroj „Router“ (id router, 10.0.0.1) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind device, id router) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
        "promptT": [
         {
-         "key": "Zapiš stroj „{name}“ (id {id}, {hostname}) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind machine, id {id}) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+         "key": "Zapiš stroj „{name}“ (id {id}, {hostname}) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind device, id {id}) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
          "params": {
           "id": "router",
           "name": "Router",
@@ -3369,10 +3369,10 @@
        "state": "not-configured",
        "summary": "Stroj v inventáři není. Zapíše ho agent (MCP inventory_update) nebo ho přidáš na mapě inventáře.",
        "href": "#inventory-map",
-       "prompt": "Zapiš stroj „Pi box“ (id pi-box, pi.example.lan) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind machine, id pi-box) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+       "prompt": "Zapiš stroj „Pi box“ (id pi-box, pi.example.lan) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind device, id pi-box) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
        "promptT": [
         {
-         "key": "Zapiš stroj „{name}“ (id {id}, {hostname}) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind machine, id {id}) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
+         "key": "Zapiš stroj „{name}“ (id {id}, {hostname}) do inventáře Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a inventory:write. Zavolej inventory_describe a inventory_search, ať nic nezdvojíš. Zapiš stroj (kind device, id {id}) a služby, které na něm běží, s adresami, porty a závislostmi. Hesla a tokeny nikdy, jen kde jsou uložené.",
          "params": {
           "id": "pi-box",
           "name": "Pi box",

@@ -13,14 +13,14 @@ export {hashPassword,createAuth} from '../server/auth.mjs';
 export {createAccessStore} from '../server/access-store.mjs';
 export {SCOPES,scopeFor,legacyScopes} from '../server/scopes.mjs';
 // The site configuration.
-export {site,loadSite,validateSite,machineKind,sshHosts} from '../server/site-config.mjs';
-// What a household's tests check its data and plugins against: the edition, the overview's machine definitions and
+export {site,loadSite,validateSite,deviceKind,sshHosts} from '../server/site-config.mjs';
+// What a household's tests check its data and plugins against: the edition, the overview's device definitions and
 // stacks, the systems collector's parser, the LLM page's model graph and the runtime adapters' read paths, the
 // inventory file's rules and the software watch list's place. These follow core: a MINOR release may add to them,
 // and a change of meaning is a MAJOR one like any other name here.
 export {readEdition} from '../server/edition.mjs';
 export {homeDefinitions,stackLayouts} from '../server/home-data.mjs';
-export {systemMachines,buildSystems,parseSystemsProbe} from '../server/systems-data.mjs';
+export {systemDevices,buildSystems,parseSystemsProbe} from '../server/systems-data.mjs';
 export {liveState,placements,buildGraph,cleanRequest} from '../server/models-data.mjs';
 export {READ_PATHS,EVENT_PATH} from '../server/runtime-adapters.mjs';
 export {walk as walkKnowledge,find as findKnowledge,load as loadKnowledge,validStore,storeNames} from '../scripts/check-knowledge.mjs';

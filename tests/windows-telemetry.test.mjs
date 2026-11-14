@@ -13,7 +13,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {validSshTarget,sshArgs,resolveArgs,runSsh,classifySsh,parseCollectorOutput,deriveReading,gpuDevices,collectWindows,checkWindows,createWindowsPoller,
  COLLECTOR_SCRIPT,REMOTE_COMMAND,SSH_OPTIONS,WINDOWS_ERRORS,WINDOWS_MIN_INTERVAL_MS} from '../server/windows-telemetry.mjs';
-import {createHomeDevices,machineHash,normalizeDevice} from '../server/home-devices.mjs';
+import {createHomeDevices,deviceHash,normalizeDevice} from '../server/home-devices.mjs';
 import {buildHome,homeHistory,spreadSpans,sparkFor} from '../server/home-data.mjs';
 import {telemetrySources} from '../server/core/home.mjs';
 import {hub,SITE} from './hub-helper.mjs';
@@ -85,7 +85,7 @@ test('collector output: the real script output parses; CLIXML noise, missing cla
  assert.equal([...a.cpu.keys()].filter(k=>/^\d+$/.test(k)).length,24);assert.equal(typeof a.cpu.get('_Total').ts,'bigint','counters stay exact');
  assert.deepEqual(a.volumes.map(v=>v.mount),['C:','D:','E:','G:']);assert.ok(a.gmem.length>=1);assert.equal(a.adapters[0].name,'AMD Radeon RX 6900 XT');
  for(const junk of ['','HHWIN1 not json','HHWIN1 []','HHWIN1 {"v":2}','plain text'])assert.throws(()=>parseCollectorOutput(junk),/bad-output/,junk);
- // A machine without GPU counters, a page file or volumes: empty and null, never zero.
+ // A device without GPU counters, a page file or volumes: empty and null, never zero.
  const bare=parseCollectorOutput('HHWIN1 '+JSON.stringify({v:1,t:1,os:['Windows Server','10.0.20348','8388608',null],cpu:[['0','10','100'],['_Total','10','100']],avail:'4294967296',page:[],vol:[],disk:[],net:[],gts:null,gpu:[],gmem:[],adapters:[]}));
  assert.equal(bare.swapUsed,null);assert.equal(bare.disk,null);assert.equal(bare.gmem.length,0);assert.equal(bare.os.bootUnix,null);
  const r=deriveReading(null,bare,100);
@@ -127,7 +127,7 @@ test('GPU: per engine (summed over its processes, capped at 100 %), then the bus
  assert.equal(by[L2].util,100,'one engine never reads above 100 %');
  assert.ok(gpus.every(g=>g.util<=100));assert.equal(gpus[0].name,null,'two GPUs: the counters do not say which adapter is which');
  const r=deriveReading({...prev,cpu:new Map([['_Total',{idle:0n,ts:0n}]])},{...cur,cpu:new Map([['_Total',{idle:5n*SEC,ts:10n*SEC}]])},10);
- assert.equal(r.gpu,100,'the machine shows its busiest GPU');assert.equal(r.cpu,50);assert.equal(r.vramUsed,3e9);
+ assert.equal(r.gpu,100,'the device shows its busiest GPU');assert.equal(r.cpu,50);assert.equal(r.vramUsed,3e9);
  // A counter that went backwards (a reused pid) counts as a new instance.
  const reset=gpuDevices(snap({[e(5,L1,0,'3D')]:9*Number(SEC)},0n),snap({[e(5,L1,0,'3D')]:2*Number(SEC)},10n*SEC));
  assert.equal(reset.find(g=>g.id===L1).util,20);
@@ -194,9 +194,9 @@ test('device store: Windows is connected to an existing device in place; older r
  // A file written before platforms existed: the hash a client read then still matches.
  const legacy={id:'desk',name:'Desk',kind:'other',hostname:'desk.example.lan',ip:null,props:{cpu:'',gpu:'',ramGb:null,diskTotalBytes:null},image:false,createdAt:'2026-01-01T00:00:00Z',createdBy:'admin'};
  await writeFile(path.join(dir,'devices.json'),JSON.stringify({schema:1,devices:[legacy]}));
- const d=createHomeDevices(dir,{reserved:SITE.machines.map(m=>m.id)});
+ const d=createHomeDevices(dir,{reserved:SITE.devices.map(m=>m.id)});
  const old=createHash('sha256').update(JSON.stringify({id:'desk',name:'Desk',hostname:'desk.example.lan',ip:null,role:'other',hardware:{cpu:'',gpu:'',ramGb:null,diskTotalBytes:null},thermoId:null,picture:null})).digest('hex');
- const [desk]=await d.list();assert.equal(machineHash(desk),old);assert.equal(desk.platform,null);assert.equal(desk.telemetryProvider,null);
+ const [desk]=await d.list();assert.equal(deviceHash(desk),old);assert.equal(desk.platform,null);assert.equal(desk.telemetryProvider,null);
  // Connect it (the user added it as a plain tile earlier): same id, same creation, no new device.
  assert.throws(()=>d.setWindows('desk',{target:'-oProxyCommand=x'}),/invalid/);
  assert.throws(()=>d.setWindows('desk',{target:'pc',extra:1}),/invalid/);
@@ -204,12 +204,12 @@ test('device store: Windows is connected to an existing device in place; older r
  assert.deepEqual(r.windows,{id:'desk',target:'pc-windows'});assert.equal(r.device.platform,'windows');assert.equal(r.device.createdAt,'2026-01-01T00:00:00Z');
  assert.equal((await d.list()).length,1);assert.deepEqual(await d.windowsHosts(),[{id:'desk',target:'pc-windows'}]);
  assert.equal((await stat(path.join(dir,'windows-hosts.json'))).mode&0o777,0o600);
- assert.equal((await readFile(path.join(dir,'devices.json'),'utf8')).includes('pc-windows'),false,'the target is not in the machine record agents write');
+ assert.equal((await readFile(path.join(dir,'devices.json'),'utf8')).includes('pc-windows'),false,'the target is not in the device record agents write');
  // Re-target, then the platform rule, Thermo and agents' upserts.
  assert.deepEqual((await d.setWindows('desk',{target:'alice@pc.example.lan'})).windows,{id:'desk',target:'alice@pc.example.lan'});
  await assert.rejects(d.setThermo('desk',{port:49286,username:'u',password:'correct horse battery',pin:'ab'.repeat(32)}),/invalid/);
  const cur=(await d.list())[0];
- const up=await d.upsert({id:'desk',name:'Desk 2',hostname:'desk.example.lan',role:'computer'},{base:machineHash(cur)});
+ const up=await d.upsert({id:'desk',name:'Desk 2',hostname:'desk.example.lan',role:'computer'},{base:deviceHash(cur)});
  assert.equal(up.device.platform,'windows','an upsert without platform keeps it');assert.equal(up.device.telemetryProvider,'windows','and the hub keeps its telemetry');
  await assert.rejects(d.upsert({id:'desk',name:'Desk 2',hostname:'desk.example.lan',role:'computer',thermoId:'desk'},{base:up.hash}),/invalid/);
  await assert.rejects(d.upsert({id:'desk',name:'Desk 2',hostname:'desk.example.lan',role:'computer',platform:'linux'},{base:up.hash}),/invalid/);
@@ -228,7 +228,7 @@ test('device store: Windows is connected to an existing device in place; older r
  assert.equal(normalizeDevice({...legacy}).platform,null);
 });
 
-test('overview: a Windows device reads like any machine with telemetry; what Windows lacks is null',async()=>{
+test('overview: a Windows device reads like any device with telemetry; what Windows lacks is null',async()=>{
  const a=parseCollectorOutput(await fixture(1)),b=parseCollectorOutput(await fixture(2));
  const nowSec=Math.round(b.t/1000);
  const reading=deriveReading(a,b,nowSec);const {gpus,cores,...row}=reading;
@@ -238,7 +238,7 @@ test('overview: a Windows device reads like any machine with telemetry; what Win
  const added=[normalizeDevice({id:'pc',name:'PC',hostname:'pc.example.lan',role:'computer',platform:'windows',telemetryProvider:'windows',props:{}}),
   normalizeDevice({id:'box',name:'Box',hostname:'box.example.lan',role:'computer',props:{}})];
  const home=buildHome({site:SITE,added,thermo:telemetrySources({thermo,windows,windowsIds:['pc']}),now:b.t});
- const pc=home.machines.find(m=>m.id==='pc'),box=home.machines.find(m=>m.id==='box');
+ const pc=home.devices.find(m=>m.id==='pc'),box=home.devices.find(m=>m.id==='box');
  assert.equal(pc.kind,'thermo');assert.equal(pc.platform,'windows');assert.equal(pc.online,'online');
  assert.deepEqual([pc.telemetry.state,pc.telemetry.provider,pc.telemetry.thermoId,pc.telemetry.hostId,pc.telemetry.target],['ok','windows',null,'pc','pc-windows']);
  assert.equal(pc.quad.cpu,row.cpu,'its own poller, not Thermo\'s readings for the same id');
@@ -248,7 +248,7 @@ test('overview: a Windows device reads like any machine with telemetry; what Win
  assert.ok(home.telemetry.adapters.some(x=>x.id==='windows'&&x.connect==='ssh'));
  // Unreachable: the collector's code and what to do.
  const down=buildHome({site:SITE,added,thermo:telemetrySources({thermo,windows:{...windows,status:()=>({pc:{state:'down',error:'host-key-unknown'}}),seconds:()=>[],live:()=>({})},windowsIds:['pc']}),now:b.t});
- const t2=down.machines.find(m=>m.id==='pc').telemetry;
+ const t2=down.devices.find(m=>m.id==='pc').telemetry;
  assert.deepEqual([t2.state,t2.reason,t2.detail],['unreachable','down','host-key-unknown']);assert.equal(t2.hint,WINDOWS_ERRORS['host-key-unknown']);
 });
 
@@ -281,24 +281,24 @@ test('HTTP: test, connect in place, add and disconnect; hostile targets and API 
  const agent=await h.account('agent',['read','home:write']);
  assert.equal((await fetch(`${h.origin}/api/home/devices/windows/check`,{method:'POST',headers:{...agent.headers,'Content-Type':'application/json'},body:JSON.stringify({target:'pc'})})).status,403,'API keys never start ssh');
  // A device an agent added as a plain tile is connected in place, after a successful test.
- const made=await fetch(`${h.origin}/api/home/devices`,{method:'POST',headers:{...agent.headers,'Content-Type':'application/json'},body:JSON.stringify({machine:{id:'gaming',name:'Gaming',hostname:'gaming.example.lan'}})});
+ const made=await fetch(`${h.origin}/api/home/devices`,{method:'POST',headers:{...agent.headers,'Content-Type':'application/json'},body:JSON.stringify({device:{id:'gaming',name:'Gaming',hostname:'gaming.example.lan'}})});
  assert.equal(made.status,201);
  const refused=await h.post('/api/home/devices/windows',{id:'gaming',windows:{target:'refused'}},h.admin);assert.equal(refused.status,422);assert.equal((await refused.json()).error.reason,'denied');
  assert.equal(added.length,0,'nothing stored after a failed test');
  const conn=await h.post('/api/home/devices/windows',{id:'gaming',windows:{target:'pc-windows'}},h.admin);assert.equal(conn.status,200);
  const dev=await conn.json();assert.equal(dev.id,'gaming');assert.equal(dev.platform,'windows');assert.deepEqual(added.at(-1),{id:'gaming',target:'pc-windows'});
  const list=await (await h.post('/api/home/devices/windows/check',{target:'pc-windows'},h.admin)).json();assert.equal(list.ok,true);
- const machines=await (await fetch(`${h.origin}/api/home/devices`,{headers:h.admin})).json();
- const m=machines.machines.find(x=>x.id==='gaming');assert.equal(m.platform,'windows');assert.ok(machines.platforms.includes('windows'));
- assert.equal(JSON.stringify(machines).includes('pc-windows'),false,'machine_list carries no SSH target');
+ const devices=await (await fetch(`${h.origin}/api/home/devices`,{headers:h.admin})).json();
+ const m=devices.devices.find(x=>x.id==='gaming');assert.equal(m.platform,'windows');assert.ok(devices.platforms.includes('windows'));
+ assert.equal(JSON.stringify(devices).includes('pc-windows'),false,'device_list carries no SSH target');
  const page=await (await fetch(`${h.origin}/api/home`,{headers:h.admin})).json();
- const tile=page.machines.find(x=>x.id==='gaming');assert.deepEqual([tile.kind,tile.telemetry.provider,tile.telemetry.state,tile.telemetry.target],['thermo','windows','unreachable','pc-windows']);
+ const tile=page.devices.find(x=>x.id==='gaming');assert.deepEqual([tile.kind,tile.telemetry.provider,tile.telemetry.state,tile.telemetry.target],['thermo','windows','unreachable','pc-windows']);
  // A Thermo login is refused while Windows is connected; disconnect, then add a Windows device directly.
  assert.equal((await h.post('/api/home/devices/windows',{id:'gaming',windows:null},h.admin)).status,200);assert.deepEqual(removed,['gaming']);
  const created=await h.post('/api/home/devices/add',{name:'Office PC',kind:'windows',hostname:'office.example.lan',windows:{target:'office'}},h.admin);
  assert.equal(created.status,201);assert.equal(checked.at(-1),'office');assert.deepEqual(added.at(-1),{id:'office-pc',target:'office'});
  const failed=await h.post('/api/home/devices/add',{name:'Locked PC',kind:'windows',hostname:'locked.example.lan',windows:{target:'locked'}},h.admin);
- assert.equal(failed.status,422);assert.equal((await (await fetch(`${h.origin}/api/home/devices`,{headers:h.admin})).json()).machines.some(x=>x.id==='locked-pc'),false);
+ assert.equal(failed.status,422);assert.equal((await (await fetch(`${h.origin}/api/home/devices`,{headers:h.admin})).json()).devices.some(x=>x.id==='locked-pc'),false);
  const rm1=await h.post('/api/home/devices/remove',{id:'office-pc'},h.admin);assert.equal(rm1.status,200);assert.equal(removed.at(-1),'office-pc');
  // The integration lists it like Thermo.
  const ig=await (await fetch(`${h.origin}/api/admin/integrations`,{headers:h.admin})).json();

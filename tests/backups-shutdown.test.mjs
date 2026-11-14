@@ -57,9 +57,9 @@ test('M5: at start, a run a dead hub left "running" becomes interrupted and the 
 
 test('M5: the server exits on SIGTERM after its modules stop',async t=>{
  const dir=await mkdtemp(path.join(os.tmpdir(),'hub-sig-'));t.after(()=>rm(dir,{recursive:true,force:true}));
- // The child is a real hub: its reachability poller would connect to the fixture's machines, so this copy marks each one reach:false.
+ // The child is a real hub: its reachability poller would connect to the fixture's devices, so this copy marks each one reach:false.
  const site=JSON.parse(await readFile(path.join(root,'tests','fixtures','site.json'),'utf8'));
- site.machines=(site.machines||[]).map(m=>({...m,reach:false}));
+ site.devices=(site.devices||[]).map(m=>({...m,reach:false}));
  const siteFile=path.join(dir,'site.json');await writeFile(siteFile,JSON.stringify(site));
  const child=spawn(process.execPath,[path.join(root,'server','index.mjs')],{cwd:root,stdio:['ignore','pipe','pipe'],
   env:{...process.env,LOCAL_PREVIEW:'1',PORT:'0',DATA_DIR:dir,AUTH_FILE:path.join(dir,'none.json'),BACKUP_KEYS_DIR:path.join(dir,'keys'),HOME_HUB_PLUGINS_DIR:'none',HOME_HUB_SITE_CONFIG:siteFile}});

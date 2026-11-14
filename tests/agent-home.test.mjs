@@ -1,5 +1,5 @@
-// Push agent, step 4 (docs/agent.md §7): the overview shows the agent of each machine that holds a key.
-// machines[].agent on GET /api/home, GET /api/home/devices and the MCP tool machine_list; the integration "agent.reports"
+// Push agent, step 4 (docs/agent.md §7): the overview shows the agent of each device that holds a key.
+// devices[].agent on GET /api/home, GET /api/home/devices and the MCP tool device_list; the integration "agent.reports"
 // and what turning it off means; and that a hub without agent keys answers exactly as before (fixture site).
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,7 +9,7 @@ import {tmpdir} from 'node:os';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {agentFor,buildHome,machineList} from '../server/home-data.mjs';
+import {agentFor,buildHome,deviceList} from '../server/home-data.mjs';
 import {homeHub,homeAnswers,DEVICE} from './support/home-answers.mjs';
 import {envelope,systemsParts,reportTo,issueAgent,errorCode,rec,quiet} from './support/agent.mjs';
 import {SITE} from './hub-helper.mjs';
@@ -42,32 +42,32 @@ test('agentFor: never, fresh and no news by the hub\'s clock; behind ignores bui
  assert.equal(agentFor({...entry,specs:sha('a'),hubSpecs:null}).specsDiffer,null);
 });
 
-test('buildHome and machineList: agent only where the agent module names the machine; online does not follow it',()=>{
+test('buildHome and deviceList: agent only where the agent module names the device; online does not follow it',()=>{
  const at='2026-11-13T10:00:00.000Z',now=Date.parse(at)+1000;
  const plain=buildHome({site:SITE,thermo:quiet,now});
  const home=buildHome({site:SITE,thermo:quiet,now,agentNow:now,hubVersion:'1.6.0',agents:{mini:{lastReportAt:at,agentVersion:'1.6.0',parts:{heartbeat:{receivedAt:at,interval:60}}}}});
- assert.deepEqual(home.machines.map(m=>[m.id,m.agent?.freshness??null]),[['mini','fresh'],['studio',null],['mini_server',null],['nas',null],['router',null]]);
- assert.deepEqual(home.machines.map(m=>m.online),plain.machines.map(m=>m.online),'a fresh heartbeat is not online (the owner\'s decision for 1.x)');
- assert.deepEqual(without(home.machines,'agent'),without(plain.machines,'agent'));
- const list=machineList({site:SITE,home});
- assert.deepEqual(list.machines.map(m=>m.agent?.freshness??null),['fresh',null,null,null,null]);
- assert.deepEqual(list.machines[0].agent,home.machines[0].agent,'both lists say the same');
+ assert.deepEqual(home.devices.map(m=>[m.id,m.agent?.freshness??null]),[['mini','fresh'],['studio',null],['mini_server',null],['nas',null],['router',null]]);
+ assert.deepEqual(home.devices.map(m=>m.online),plain.devices.map(m=>m.online),'a fresh heartbeat is not online (the owner\'s decision for 1.x)');
+ assert.deepEqual(without(home.devices,'agent'),without(plain.devices,'agent'));
+ const list=deviceList({site:SITE,home});
+ assert.deepEqual(list.devices.map(m=>m.agent?.freshness??null),['fresh',null,null,null,null]);
+ assert.deepEqual(list.devices[0].agent,home.devices[0].agent,'both lists say the same');
  // The agent's clock stands apart from the telemetry's: the tests move it alone.
- assert.equal(buildHome({site:SITE,thermo:quiet,now,agentNow:now+3600_000,agents:{mini:{lastReportAt:at,parts:{heartbeat:{receivedAt:at,interval:60}}}}}).machines[0].agent.freshness,'no-news');
+ assert.equal(buildHome({site:SITE,thermo:quiet,now,agentNow:now+3600_000,agents:{mini:{lastReportAt:at,parts:{heartbeat:{receivedAt:at,interval:60}}}}}).devices[0].agent.freshness,'no-news');
 });
 
 test('a hub without agent keys answers exactly as before step 4, apart from agent: null and the new integration (fixture site)',async t=>{
  const h=await homeHub(t);
  const now=await homeAnswers(h);
- // machines[].agent is null on every machine of both lists, and of machine_list.
- for(const name of ['home','machines','machineList']){
-  const machines=now[name].body.machines;
-  assert.ok(machines.length>=6,`${name}: the site and the added device`);
-  assert.deepEqual(machines.map(m=>m.agent),machines.map(()=>null),`${name}: agent null`);
-  assert.deepEqual(Object.keys(machines[0]).filter(k=>k==='agent'),['agent'],`${name}: the field is there`);
+ // devices[].agent is null on every device of both lists, and of device_list.
+ for(const name of ['home','devices','deviceList']){
+  const devices=now[name].body.devices;
+  assert.ok(devices.length>=6,`${name}: the site and the added device`);
+  assert.deepEqual(devices.map(m=>m.agent),devices.map(()=>null),`${name}: agent null`);
+  assert.deepEqual(Object.keys(devices[0]).filter(k=>k==='agent'),['agent'],`${name}: the field is there`);
  }
- const strip=a=>({...a,body:{...a.body,machines:without(a.body.machines,'agent')}});
- for(const name of ['home','machines','machineList'])assert.equal(JSON.stringify(strip(now[name])),JSON.stringify(GOLDEN[name]),name);
+ const strip=a=>({...a,body:{...a.body,devices:without(a.body.devices,'agent')}});
+ for(const name of ['home','devices','deviceList'])assert.equal(JSON.stringify(strip(now[name])),JSON.stringify(GOLDEN[name]),name);
  // The integrations page gains the kind "agent" and the card agent.reports (not configured: no key); nothing else moves.
  const ig=now.integrations.body,card=ig.integrations.find(i=>i.id==='agent.reports');
  assert.deepEqual([card.kind,card.module,card.toggle,card.enabled,card.status.state,card.test],['agent','agent',true,true,'not-configured',false]);
@@ -75,63 +75,63 @@ test('a hub without agent keys answers exactly as before step 4, apart from agen
  const before={...now.integrations,body:{...ig,kinds:ig.kinds.filter(k=>k!=='agent'),integrations:ig.integrations.filter(i=>i.id!=='agent.reports'),
   plugins:ig.plugins.map(p=>({...p,integrations:p.integrations.filter(i=>i!=='agent.reports')}))}};
  assert.equal(JSON.stringify(before),JSON.stringify(GOLDEN.integrations),'integrations');
- // Integrations → Machines lists the integration's facet among the facets, and no machine carries it without a key.
- const am=now.adminMachines.body;
+ // Integrations → Devices lists the integration's facet among the facets, and no device carries it without a key.
+ const am=now.adminDevices.body;
  assert.deepEqual(am.facets.filter(f=>f.id==='int-agent-reports').map(f=>[f.title,f.page]),[['Push agenti','integrations']]);
- assert.equal(am.machines.some(m=>m.facets.some(f=>f.id==='int-agent-reports')),false);
- assert.equal(JSON.stringify({...now.adminMachines,body:{...am,facets:am.facets.filter(f=>f.id!=='int-agent-reports')}}),JSON.stringify(GOLDEN.adminMachines),'Integrations → Machines');
+ assert.equal(am.devices.some(m=>m.facets.some(f=>f.id==='int-agent-reports')),false);
+ assert.equal(JSON.stringify({...now.adminDevices,body:{...am,facets:am.facets.filter(f=>f.id!=='int-agent-reports')}}),JSON.stringify(GOLDEN.adminDevices),'Integrations → Devices');
 });
 
 // A hub on the fixture site with an injected agent clock, one added device and the agent tooling.
 async function agentHub(t,clock,extra={}){
  const h=await homeHub(t,{agentClock:()=>clock.now,...extra});
  const get=async(url,headers=h.admin)=>{const r=await fetch(h.origin+url,{headers});return {status:r.status,body:await r.json()};};
- const home=async id=>(await get('/api/home')).body.machines.find(m=>m.id===id);
+ const home=async id=>(await get('/api/home')).body.devices.find(m=>m.id===id);
  const rpc=async(name,args={})=>(await (await fetch(h.origin+'/mcp',{method:'POST',headers:{'Content-Type':'application/json',...h.writer.headers},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}})})).json()).result.structuredContent;
  return {...h,get,home,rpc,report:reportTo(h)};
 }
 
-test('over HTTP: a key that never reported, a fresh report, then no news by the injected clock; online, the machine lists and MCP agree',async t=>{
+test('over HTTP: a key that never reported, a fresh report, then no news by the injected clock; online, the device lists and MCP agree',async t=>{
  const clock={now:Date.parse('2026-11-13T10:00:00Z')};
  const h=await agentHub(t,clock);
- const onlineBefore=(await h.get('/api/home')).body.machines.map(m=>[m.id,m.online]);
+ const onlineBefore=(await h.get('/api/home')).body.devices.map(m=>[m.id,m.online]);
  const key=await issueAgent(h,'mini');
  assert.deepEqual((await h.home('mini')).agent,{lastReportAt:null,freshness:'never',agentVersion:null,behind:null,specsDiffer:null});
- assert.equal((await h.home('studio')).agent,null,'a machine without a key');
+ assert.equal((await h.home('studio')).agent,null,'a device without a key');
  const r=await h.report(key.token,envelope({heartbeat:{schema:1,interval:60},...systemsParts({name:'mini'})},{agentVersion:'0.9.0'}));
  assert.equal(r.status,200);const {receivedAt}=await r.json();
  const fresh=(await h.home('mini')).agent;
  assert.deepEqual(fresh,{lastReportAt:receivedAt,freshness:'fresh',agentVersion:'0.9.0',behind:true,specsDiffer:null});
- assert.deepEqual((await h.get('/api/home')).body.machines.map(m=>[m.id,m.online]),onlineBefore,'online does not follow the agent');
- const listed=(await h.get('/api/home/devices')).body.machines.find(m=>m.id==='mini');assert.deepEqual(listed.agent,fresh);
- assert.deepEqual((await h.rpc('machine_list')).machines.find(m=>m.id==='mini').agent,fresh,'machine_list carries it, as it carries reachability');
- // The heartbeat goes quiet first; the os part still holds the machine fresh. Past every part: no news.
+ assert.deepEqual((await h.get('/api/home')).body.devices.map(m=>[m.id,m.online]),onlineBefore,'online does not follow the agent');
+ const listed=(await h.get('/api/home/devices')).body.devices.find(m=>m.id==='mini');assert.deepEqual(listed.agent,fresh);
+ assert.deepEqual((await h.rpc('device_list')).devices.find(m=>m.id==='mini').agent,fresh,'device_list carries it, as it carries reachability');
+ // The heartbeat goes quiet first; the os part still holds the device fresh. Past every part: no news.
  clock.now+=181_000;assert.equal((await h.home('mini')).agent.freshness,'fresh');
  clock.now+=3*21600_000;
  const quietNow=(await h.home('mini')).agent;
  assert.deepEqual([quietNow.freshness,quietNow.lastReportAt],['no-news',receivedAt],'no news, with when it was last heard');
- // Integrations → Machines: the agent's facet on the machines with a key, each in its own state.
+ // Integrations → Devices: the agent's facet on the devices with a key, each in its own state.
  await issueAgent(h,'mini_server');
- const facets=(await h.get('/api/admin/machines')).body.machines,facet=id=>facets.find(m=>m.id===id).facets.filter(f=>f.id==='int-agent-reports').map(f=>f.state);
+ const facets=(await h.get('/api/admin/devices')).body.devices,facet=id=>facets.find(m=>m.id===id).facets.filter(f=>f.id==='int-agent-reports').map(f=>f.state);
  assert.deepEqual([facet('mini'),facet('mini_server'),facet('studio')],[['stale'],['not-configured'],[]]);
- // The integration says the same per machine.
+ // The integration says the same per device.
  const card=(await h.get('/api/admin/integrations')).body.integrations.find(i=>i.id==='agent.reports');
  assert.deepEqual([card.status.state,card.status.items.map(i=>[i.id,i.state])],['stale',[['mini','stale'],['mini_server','not-configured']]]);
- // Revoked: the machine holds no key, and the field is null again.
+ // Revoked: the device holds no key, and the field is null again.
  assert.equal((await h.post('/api/admin/agents/revoke',{id:key.agent.id},h.admin)).status,200);
  assert.equal((await h.home('mini')).agent,null);
 });
 
-test('specsDiffer: the agent\'s SPECS digest against the hub\'s current watch list for that machine',async t=>{
+test('specsDiffer: the agent\'s SPECS digest against the hub\'s current watch list for that device',async t=>{
  const clock={now:Date.parse('2026-11-13T10:00:00Z')};
  const h=await agentHub(t,clock);
  const key=await issueAgent(h,'mini');
- // The fixture hub has no watch list: the machine's specs.txt is empty, and so is the hash of it.
+ // The fixture hub has no watch list: the device's specs.txt is empty, and so is the hash of it.
  const send=async digest=>{clock.now+=21600_000;return h.report(key.token,envelope(systemsParts({name:'mini',packages:[rec('SW','node','cmd','v22.13.0','/opt/homebrew/bin/node'),rec('SPECS',digest)]})));};
  assert.equal((await send(sha(''))).status,200);assert.equal((await h.home('mini')).agent.specsDiffer,false);
  // The digest is found once per stored part: polling the overview copies no records.
  const store=h.handler.state('agent').reports,slice=store.slice;let copies=0;
- store.slice=(machine,names)=>{if(names.includes('packages'))copies++;return slice(machine,names);};
+ store.slice=(device,names)=>{if(names.includes('packages'))copies++;return slice(device,names);};
  try{for(let i=0;i<3;i++)assert.equal((await h.home('mini')).agent.specsDiffer,false);}finally{store.slice=slice;}
  assert.equal(copies,0,'GET /api/home copies no packages part it has looked at before');
  assert.equal((await send(sha('node|cmd|/opt/homebrew/bin/node|--version|\n'))).status,200);assert.equal((await h.home('mini')).agent.specsDiffer,true);
@@ -156,13 +156,13 @@ test('specsDiffer is null while the hub\'s watch list cannot be read, and follow
  assert.equal((await h.home('mini')).agent.specsDiffer,false,'a missing list is the empty list, as agent-specs.mjs prints it');
 });
 
-test('a re-issued key starts at never: what an earlier key of the machine sent is not this key\'s report',async t=>{
+test('a re-issued key starts at never: what an earlier key of the device sent is not this key\'s report',async t=>{
  const clock={now:Date.parse('2026-11-13T10:00:00Z')};
  const h=await agentHub(t,clock);
  const old=await issueAgent(h,'mini');
  assert.equal((await h.report(old.token,envelope({heartbeat:{schema:1,interval:60},...systemsParts({name:'mini'})},{agentVersion:'1.6.0'}))).status,200);
  assert.equal((await h.home('mini')).agent.freshness,'fresh');
- // A second key while the first still works (a rotation): the machine is still reporting.
+ // A second key while the first still works (a rotation): the device is still reporting.
  clock.now+=1000;const next=await issueAgent(h,'mini');
  assert.equal((await h.home('mini')).agent.freshness,'fresh','the earliest key that is not revoked counts');
  // The first key revoked (a leaked one): the one left has sent nothing.
@@ -174,7 +174,7 @@ test('a re-issued key starts at never: what an earlier key of the machine sent i
  assert.equal((await h.post('/api/admin/agents/revoke',{id:next.agent.id},h.admin)).status,200);
  clock.now+=1000;const third=await issueAgent(h,'mini');
  assert.equal((await h.home('mini')).agent.freshness,'never');
- assert.equal((await h.rpc('machine_list')).machines.find(m=>m.id==='mini').agent.freshness,'never','machine_list says the same');
+ assert.equal((await h.rpc('device_list')).devices.find(m=>m.id==='mini').agent.freshness,'never','device_list says the same');
  // Its first report: fresh, and only what it sent counts (the os part of the earlier key does not).
  clock.now+=60_000;
  const r=await h.report(third.token,envelope({heartbeat:{schema:1,interval:60}},{agentVersion:'1.7.0'}));assert.equal(r.status,200);
@@ -233,19 +233,19 @@ test('the too-soon check compares a part only with what the same key stored',asy
  assert.equal((await h.report(b.token,envelope(hb))).status,429,'and the 20 s floor stays per key');
 });
 
-test('a record of another platform than the machine now says is no news, as for the readers',async t=>{
+test('a record of another platform than the device now says is no news, as for the readers',async t=>{
  const clock={now:Date.now()};
  const h=await agentHub(t,clock);
  clock.now=Date.now();
  const key=await issueAgent(h,DEVICE.id);
  assert.equal((await h.report(key.token,envelope({heartbeat:{schema:1,interval:60}},{platform:'linux'}))).status,200);
  assert.equal((await h.home(DEVICE.id)).agent.freshness,'fresh');
- const listed=(await h.get('/api/home/devices')).body.machines.find(m=>m.id===DEVICE.id);
- assert.equal((await h.post('/api/home/devices',{machine:{...DEVICE,platform:'macos'},base:listed.hash},h.writer.headers)).status,200);
+ const listed=(await h.get('/api/home/devices')).body.devices.find(m=>m.id===DEVICE.id);
+ assert.equal((await h.post('/api/home/devices',{device:{...DEVICE,platform:'macos'},base:listed.hash},h.writer.headers)).status,200);
  await h.handler.state('agent').sweep();
  const a=(await h.home(DEVICE.id)).agent;
  assert.ok(a,'the key stays: macos may run an agent');
- assert.equal(a.freshness,'no-news','what a linux agent sent is not read for a macos machine');assert.notEqual(a.lastReportAt,null);
+ assert.equal(a.freshness,'no-news','what a linux agent sent is not read for a macos device');assert.notEqual(a.lastReportAt,null);
 });
 
 test('the integration agent.reports turned off: a report is refused with 409 INTEGRATION_DISABLED and nothing is stored; the readers join no agent record',async t=>{
@@ -265,8 +265,8 @@ test('the integration agent.reports turned off: a report is refused with 409 INT
  // Off as for every other integration: the overview lists it, the readers answer as without agents, the card says so.
  const home=(await h.get('/api/home')).body;
  assert.ok(home.integrations.disabled.some(i=>i.id==='agent.reports'&&i.kind==='agent'));
- assert.equal(home.machines.find(m=>m.id==='mini').runtimes,null,'home.runtimes answers nothing while it is off');
- assert.equal(home.machines.find(m=>m.id==='mini').agent.lastReportAt,stored.lastSeenAt,'the key is still there: the field says when it was last heard');
+ assert.equal(home.devices.find(m=>m.id==='mini').runtimes,null,'home.runtimes answers nothing while it is off');
+ assert.equal(home.devices.find(m=>m.id==='mini').agent.lastReportAt,stored.lastSeenAt,'the key is still there: the field says when it was last heard');
  assert.deepEqual(await h.handler.state('agent').readers(),[]);
  const card=(await h.get('/api/admin/integrations')).body.integrations.find(i=>i.id==='agent.reports');
  assert.deepEqual([card.enabled,card.status.state],[false,'disabled']);
@@ -279,19 +279,19 @@ test('the integration agent.reports turned off: a report is refused with 409 INT
  assert.equal((await h.home('mini')).runtimes?.source,'agent');
 });
 
-test('turned off, a key whose machine is gone is still revoked on its report (409 AGENT_MACHINE_GONE, not INTEGRATION_DISABLED)',async t=>{
+test('turned off, a key whose device is gone is still revoked on its report (409 AGENT_DEVICE_GONE, not INTEGRATION_DISABLED)',async t=>{
  const clock={now:Date.now()};
  const h=await agentHub(t,clock);
  clock.now=Date.now();
  const key=await issueAgent(h,DEVICE.id);
  assert.equal((await h.post('/api/admin/integrations/toggle',{id:'agent.reports',enabled:false},h.admin)).status,200);
- const listed=(await h.get('/api/home/devices')).body.machines.find(m=>m.id===DEVICE.id);
+ const listed=(await h.get('/api/home/devices')).body.devices.find(m=>m.id===DEVICE.id);
  assert.equal((await h.post('/api/home/devices/remove',{id:DEVICE.id,base:listed.hash},h.writer.headers)).status,200);
  const r=await h.report(key.token,envelope({heartbeat:{schema:1,interval:60}},{platform:'linux'}));
- assert.equal(r.status,409);assert.equal(await errorCode(r),'AGENT_MACHINE_GONE');
+ assert.equal(r.status,409);assert.equal(await errorCode(r),'AGENT_DEVICE_GONE');
  assert.equal(h.handler.state('agent').record(DEVICE.id),null,'nothing stored');
  const stored=(await h.get('/api/admin/agents')).body.agents.find(a=>a.id===key.agent.id);
- assert.equal(stored.revokedBy,'machine-removed','revoked in the same step');
+ assert.equal(stored.revokedBy,'device-removed','revoked in the same step');
  assert.equal((await h.report(key.token,envelope({heartbeat:{schema:1,interval:60}},{platform:'linux'}))).status,401);
 });
 
@@ -304,12 +304,12 @@ test('a device added after its id was used: an old record is no report (never), 
  assert.equal((await h.report(key.token,envelope({heartbeat:{schema:1,interval:60}},{platform:'linux'}))).status,200);
  assert.equal((await h.home(DEVICE.id)).agent.freshness,'fresh');
  // Removed and added again under the same id: the key is revoked by the hub, and a new key starts at never.
- const listed=(await h.get('/api/home/devices')).body.machines.find(m=>m.id===DEVICE.id);
+ const listed=(await h.get('/api/home/devices')).body.devices.find(m=>m.id===DEVICE.id);
  assert.equal((await h.post('/api/home/devices/remove',{id:DEVICE.id,base:listed.hash},h.writer.headers)).status,200);
  await new Promise(r=>setTimeout(r,20));
- assert.equal((await h.post('/api/home/devices',{machine:DEVICE},h.writer.headers)).status,201);
+ assert.equal((await h.post('/api/home/devices',{device:DEVICE},h.writer.headers)).status,201);
  await h.handler.state('agent').sweep();
  assert.equal((await h.home(DEVICE.id)).agent,null,'the old key is revoked');
  await issueAgent(h,DEVICE.id);
- assert.equal((await h.home(DEVICE.id)).agent.freshness,'never','what the earlier machine of that id sent is not this one\'s');
+ assert.equal((await h.home(DEVICE.id)).agent.freshness,'never','what the earlier device of that id sent is not this one\'s');
 });

@@ -1,10 +1,10 @@
-// Reachability: does a machine's address answer on the network? The hub makes a TCP connect to each port a
-// machine lists in site.json (machines[].reach, default port 22) and records the answer. It is a signal of its
+// Reachability: does a device's address answer on the network? The hub makes a TCP connect to each port a
+// device lists in site.json (devices[].reach, default port 22) and records the answer. It is a signal of its
 // own, apart from "online" (server/home-data.mjs), which it never changes. A host that does not answer is not
-// proof of the machine's state (AGENTS.md: a failed probe is not proof of a device's state).
+// proof of the device's state (AGENTS.md: a failed probe is not proof of a device's state).
 //   checkHost({host, ports, timeoutMs, connect})  → {state: answering|not-answering|unknown, port, open}
 //   reachabilityOf(entry, nowMs)                  → {state, checkedAt, port} as the API shows it (older than 3 min = unknown)
-//   reachTargets(site)                            → [{id, host, ports}] of the site machines that are checked
+//   reachTargets(site)                            → [{id, host, ports}] of the site devices that are checked
 //   createReachabilityPoller({targets, connect, now, …}) → {start, stop, poll, pause, resume, paused, status}
 // A port answers when the connect completes (open) or the host refuses it (refused: something answered with a
 // reset). A timeout or an unreachable network on every port is not-answering. connect and the clock are injected
@@ -49,7 +49,7 @@ export async function checkHost({host,ports=REACH_DEFAULT_PORTS,timeoutMs=REACH_
  return {state:'not-answering',port:null,open:null};
 }
 
-// The API's view of one machine's last check (entry = {state, port, at} with at in ms, or nothing).
+// The API's view of one device's last check (entry = {state, port, at} with at in ms, or nothing).
 // A result older than REACH_STALE_MS, or none, is unknown; its checkedAt stays so the age can be read.
 export function reachabilityOf(entry,nowMs){
  const at=Number.isFinite(entry?.at)?entry.at:null;
@@ -59,13 +59,13 @@ export function reachabilityOf(entry,nowMs){
  return {state:entry.state,checkedAt,port:entry.port};
 }
 
-// The machines of the site configuration that are checked: not reach:false, and with an address (ip, else hostname).
+// The devices of the site configuration that are checked: not reach:false, and with an address (ip, else hostname).
 export function reachTargets(site){
- return (site?.machines||[]).filter(m=>m.reach!==false&&(m.ip||m.hostname)).map(m=>({id:m.id,host:m.ip||m.hostname,ports:[...(m.reach?.ports??REACH_DEFAULT_PORTS)]}));
+ return (site?.devices||[]).filter(m=>m.reach!==false&&(m.ip||m.hostname)).map(m=>({id:m.id,host:m.ip||m.hostname,ports:[...(m.reach?.ports??REACH_DEFAULT_PORTS)]}));
 }
 
-// The poller: one run at a time, at most `concurrency` machines at once, the ports of a machine in order.
-// targets() → [{id, host, ports}] (see reachTargets). Results are kept per machine: {state, port, open, at}.
+// The poller: one run at a time, at most `concurrency` devices at once, the ports of a device in order.
+// targets() → [{id, host, ports}] (see reachTargets). Results are kept per device: {state, port, open, at}.
 export function createReachabilityPoller({targets=()=>[],connect=tcpConnect,now=Date.now,intervalMs=REACH_INTERVAL_MS,timeoutMs=REACH_TIMEOUT_MS,concurrency=REACH_CONCURRENCY,log=()=>{}}={}){
  const results=new Map();
  let timer=null,polling=null,paused=false,started=false,stopped=false;
@@ -91,11 +91,11 @@ export function createReachabilityPoller({targets=()=>[],connect=tcpConnect,now=
  }
  const schedule=()=>{clearInterval(timer);timer=setInterval(()=>void poll(),intervalMs);timer.unref?.();};
  return {
-  // Starts without waiting for the first run: a check of many machines must not hold up the hub's start.
+  // Starts without waiting for the first run: a check of many devices must not hold up the hub's start.
   start(){started=true;stopped=false;if(!paused){void poll();schedule();}return Promise.resolve();},
   stop(){started=false;stopped=true;clearInterval(timer);timer=null;},
   poll,
-  // Paused (the integration is disabled): no checks, and nothing kept, so every machine reads unknown.
+  // Paused (the integration is disabled): no checks, and nothing kept, so every device reads unknown.
   pause(){paused=true;clearInterval(timer);timer=null;results.clear();return Promise.resolve();},
   resume(){if(!paused)return Promise.resolve();paused=false;if(started){void poll();schedule();}return Promise.resolve();},
   paused:()=>paused,

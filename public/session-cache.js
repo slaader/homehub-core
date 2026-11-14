@@ -38,7 +38,7 @@ export function sessionCache(ttlMs){
  caches.add(cache);return cache;
 }
 
-// Pages the router knows (#<page>[/sub]); anything else is the overview or a #host-<id> machine page.
+// Pages the router knows (#<page>[/sub]); anything else is the overview or a #host-<id> device page.
 // #inventory-map is open to every signed-in account, as the v1 inventory was (GET /api/inventory is plain read).
 // The list comes from the server's UI manifest (GET /api/ui/manifest → pages): app.js hands it to setPages()
 // after sign-in, so plugin pages route like core ones. PAGES and ADMIN_PAGES are the core pages, in force

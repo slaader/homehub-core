@@ -309,7 +309,7 @@ export async function readAccessAudit(directory,{accessStore,appTokens,agentStor
  const api=want('api')?(await lines('api-audit.jsonl')).map(e=>({at:e.at,kind:'api',event:e.event,id:e.key||null,subject:e.name||null,detail:[e.tool||e.route,e.subject].filter(Boolean).join(' · '),status:e.status})):[];
  // The file holds the bare event (issued, revoked), from 1.0.0 on; the server/app-tokens.mjs migration carries the older file over.
  const app=want('app')?(await lines('app-tokens-audit.jsonl')).map(e=>({at:e.at,kind:'app',event:`app-token-${e.event}`,id:e.id||null,subject:e.name||apps.get(e.id)||null})):[];
- const agent=want('agent')?(await lines('agent-audit.jsonl')).map(e=>({at:e.at,kind:'agent',event:e.event,id:e.agent||null,subject:typeof e.machine==='string'?e.machine:null,detail:[e.code,e.detail].filter(Boolean).join(' · ')})):[];
+ const agent=want('agent')?(await lines('agent-audit.jsonl')).map(e=>({at:e.at,kind:'agent',event:e.event,id:e.agent||null,subject:typeof e.device==='string'?e.device:null,detail:[e.code,e.detail].filter(Boolean).join(' · ')})):[];
  const needle=String(q||'').trim().toLowerCase();
  const hit=e=>!needle||[e.event,e.subject,e.detail,e.by,e.id,e.status].some(v=>v!=null&&String(v).toLowerCase().includes(needle));
  return [...access,...app,...api,...agent].filter(e=>typeof e.at==='string'&&hit(e)).sort((a,b)=>b.at.localeCompare(a.at)).slice(0,limit);

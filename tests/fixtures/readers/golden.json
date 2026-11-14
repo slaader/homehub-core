@@ -15,7 +15,7 @@
     "nas-apps": "Aplikace na NAS",
     "containers": "Kontejnery (Docker)"
    },
-   "machines": [
+   "devices": [
     {
      "id": "mini",
      "name": "Mac mini",
@@ -709,7 +709,7 @@
      "id": "llama.cpp",
      "name": "llama.cpp",
      "category": "ai",
-     "machine": "mini",
+     "device": "mini",
      "installed": "0.5.0-dev",
      "raw": "version: 0.5.0-dev (build 11200, commit 81bc6b83f)",
      "build": null,
@@ -738,7 +738,7 @@
      "id": "node",
      "name": "Node.js",
      "category": "infra",
-     "machine": "mini",
+     "device": "mini",
      "installed": "25.9.0",
      "raw": "v25.9.0",
      "build": null,
@@ -776,7 +776,7 @@
      "id": "node",
      "name": "Node.js",
      "category": "infra",
-     "machine": "mini_server",
+     "device": "mini_server",
      "installed": "25.9.0",
      "raw": "v25.9.0",
      "build": null,
@@ -814,7 +814,7 @@
      "id": "thermo",
      "name": "Thermo",
      "category": "infra",
-     "machine": "mini",
+     "device": "mini",
      "installed": "0.8.1",
      "raw": "0.8.1",
      "build": "103",
@@ -843,7 +843,7 @@
      "id": "docker:open-design",
      "name": "open-design",
      "category": "containers",
-     "machine": "mini",
+     "device": "mini",
      "installed": "latest",
      "raw": "example/open-design:latest",
      "path": null,
@@ -882,7 +882,7 @@
      "id": "app:immich",
      "name": "immich",
      "category": "nas-apps",
-     "machine": "nas",
+     "device": "nas",
      "installed": "v3.3.5_1.14.58",
      "raw": "1.14.58",
      "path": null,
@@ -913,7 +913,7 @@
      "id": "docker:open-design",
      "name": "open-design",
      "category": "containers",
-     "machine": "mini_server",
+     "device": "mini_server",
      "installed": "latest",
      "raw": "example/open-design:latest",
      "path": null,
@@ -952,7 +952,7 @@
      "id": "docker:open-design",
      "name": "open-design",
      "category": "containers",
-     "machine": "retired",
+     "device": "retired",
      "installed": "latest",
      "raw": "example/open-design:latest",
      "path": null,
@@ -1021,7 +1021,7 @@
       "state": "stale",
       "count": 3,
       "intervalSeconds": 21600,
-      "unit": "machines",
+      "unit": "devices",
       "lastAt": "2026-11-08T12:00:00Z"
      },
      {
@@ -1043,7 +1043,7 @@
      }
     ],
     "lastAt": "2026-11-08T12:00:00Z",
-    "summary": "Collected by a job (scripts/collect-systems.mjs), 3 machines, stale, last 2026-11-08T12:00:00Z; collected by a job (scripts/check-upstream.mjs), 3 sources, stale, last 2026-11-08T12:00:00Z; read from configuration (tests/fixtures/readers/watch.json), 3 items."
+    "summary": "Collected by a job (scripts/collect-systems.mjs), 3 devices, stale, last 2026-11-08T12:00:00Z; collected by a job (scripts/check-upstream.mjs), 3 sources, stale, last 2026-11-08T12:00:00Z; read from configuration (tests/fixtures/readers/watch.json), 3 items."
    }
   }
  },
@@ -1053,7 +1053,7 @@
    "schemaVersion": 1,
    "collectedAt": "2026-11-08T12:00:00.000Z",
    "collectedFrom": "studio",
-   "machines": [
+   "devices": [
     {
      "id": "studio",
      "name": "Mac Studio",
@@ -1191,7 +1191,7 @@
      "comment": "studio->nas",
      "copies": [
       {
-       "machine": "studio",
+       "device": "studio",
        "owner": "alice",
        "path": "/Users/alice/.ssh/id_a",
        "mode": "600",
@@ -1204,7 +1204,7 @@
       {
        "target": {
         "kind": "host",
-        "machine": "nas",
+        "device": "nas",
         "user": "admin",
         "ips": [
          "10.0.0.74"
@@ -1224,7 +1224,7 @@
      ],
      "routes": [
       {
-       "machine": "studio",
+       "device": "studio",
        "user": "alice",
        "alias": "nas",
        "hostname": "10.0.0.74",
@@ -1233,7 +1233,7 @@
        "proxyJump": null,
        "target": {
         "kind": "host",
-        "machine": "nas"
+        "device": "nas"
        },
        "accepted": true,
        "alsoGit": false,
@@ -1245,7 +1245,7 @@
    "otherKeys": [],
    "unknownAuthorized": [
     {
-     "machine": "nas",
+     "device": "nas",
      "user": "admin",
      "fingerprint": "SHA256:8bX+tphjMek330TUGqiYcVLJAp/KUNNHcg7EImOoLBM",
      "type": "ssh-ed25519",
@@ -1289,9 +1289,9 @@
      "detail": "Jeho privátní část není na žádném z prověřených strojů (jiné zařízení nebo zapomenutý klíč). Bez omezení adresy.",
      "titleT": [
       {
-       "key": "Na {machine} ({user}) je povolený cizí klíč „{key}“",
+       "key": "Na {device} ({user}) je povolený cizí klíč „{key}“",
        "params": {
-        "machine": "NAS",
+        "device": "NAS",
         "user": "admin",
         "key": "phone"
        }
@@ -1314,9 +1314,9 @@
      "detail": "Omezeno přes AllowUsers na alice@10.0.0.25.",
      "titleT": [
       {
-       "key": "{machine}: SSH přijímá i heslo",
+       "key": "{device}: SSH přijímá i heslo",
        "params": {
-        "machine": "Mac Studio"
+        "device": "Mac Studio"
        }
       }
      ],
@@ -1335,9 +1335,9 @@
      "detail": "Účet má sudo bez hesla a ani from= ani AllowUsers neomezují, odkud se klíč smí použít.",
      "titleT": [
       {
-       "key": "{machine} ({user}): klíč „{key}“ bez omezení adresy",
+       "key": "{device} ({user}): klíč „{key}“ bez omezení adresy",
        "params": {
-        "machine": "NAS",
+        "device": "NAS",
         "user": "admin",
         "key": "phone"
        }
@@ -1353,7 +1353,7 @@
     "intervalSeconds": 86400,
     "staleAfterSeconds": 108000,
     "script": "scripts/collect-security.mjs",
-    "machines": [
+    "devices": [
      {
       "id": "mini",
       "name": "Mac mini"
@@ -1371,7 +1371,7 @@
       "name": "NAS"
      }
     ],
-    "siteMachines": 5,
+    "siteDevices": 5,
     "gitHost": "git.example.lan"
    },
    "provenance": {
@@ -1385,12 +1385,12 @@
       "state": "stale",
       "count": 2,
       "intervalSeconds": 86400,
-      "unit": "machines",
+      "unit": "devices",
       "lastAt": "2026-11-08T12:00:00.000Z"
      }
     ],
     "lastAt": "2026-11-08T12:00:00.000Z",
-    "summary": "Collected by a job (scripts/collect-security.mjs), 2 machines, stale, last 2026-11-08T12:00:00.000Z."
+    "summary": "Collected by a job (scripts/collect-security.mjs), 2 devices, stale, last 2026-11-08T12:00:00.000Z."
    }
   }
  },
@@ -1449,7 +1449,7 @@
      {
       "module": "runtimes",
       "source": "runtimes",
-      "machines": 0,
+      "devices": 0,
       "lastAt": null,
       "failed": false
      }
@@ -1457,7 +1457,7 @@
     "requests": []
    },
    "overview": {
-    "machines": 0,
+    "devices": 0,
     "runtimes": {
      "total": 0,
      "up": 0,
@@ -1483,7 +1483,7 @@
     "observedAt": null,
     "generatedAt": "<moving>"
    },
-   "machines": [],
+   "devices": [],
    "models": [],
    "work": {
     "items": [],
@@ -1505,8 +1505,8 @@
    },
    "known": [
     {
-     "machine": "mini",
-     "machineName": "Mac mini",
+     "device": "mini",
+     "deviceName": "Mac mini",
      "role": "client",
      "title": "AI Gateway",
      "description": "Front door.",
@@ -1516,8 +1516,8 @@
      "kind": null
     },
     {
-     "machine": "mini",
-     "machineName": "Mac mini",
+     "device": "mini",
+     "deviceName": "Mac mini",
      "role": "runtime",
      "title": "llama-swap",
      "description": "Model router.",
@@ -1527,8 +1527,8 @@
      "kind": "llm"
     },
     {
-     "machine": "mini",
-     "machineName": "Mac mini",
+     "device": "mini",
+     "deviceName": "Mac mini",
      "role": "runtime",
      "title": "oMLX",
      "description": "MLX server.",
@@ -1540,8 +1540,8 @@
      "kind": "llm"
     },
     {
-     "machine": "studio",
-     "machineName": "Mac Studio",
+     "device": "studio",
+     "deviceName": "Mac Studio",
      "role": "runtime",
      "title": "llama-swap",
      "description": "Model router.",
@@ -1551,8 +1551,8 @@
      "kind": "llm"
     },
     {
-     "machine": "studio",
-     "machineName": "Mac Studio",
+     "device": "studio",
+     "deviceName": "Mac Studio",
      "role": "runtime",
      "title": "oMLX",
      "description": "MLX server.",
@@ -1562,8 +1562,8 @@
      "kind": "other"
     },
     {
-     "machine": "studio",
-     "machineName": "Mac Studio",
+     "device": "studio",
+     "deviceName": "Mac Studio",
      "role": "runtime",
      "title": "mlx-serve",
      "description": "Diffusion packs.",
@@ -1573,8 +1573,8 @@
      "kind": "image"
     },
     {
-     "machine": "studio",
-     "machineName": "Mac Studio",
+     "device": "studio",
+     "deviceName": "Mac Studio",
      "role": "runtime",
      "title": "llama-server",
      "description": "Installed, not running.",
@@ -1584,8 +1584,8 @@
      "kind": "llm"
     },
     {
-     "machine": "nas",
-     "machineName": "NAS",
+     "device": "nas",
+     "deviceName": "NAS",
      "role": "client",
      "title": "Apps",
      "description": "NAS apps.",

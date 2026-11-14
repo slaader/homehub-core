@@ -10,7 +10,7 @@ const text=v=>typeof v==='string'?v:'';
 // One row per entry, with everything the columns show and sort by.
 export function rowsOf(doc){
  const {usedBy}=index(doc),runs=new Map();
- for(const e of doc.entries)if(e.kind!=='machine'&&e.machine)runs.set(e.machine,(runs.get(e.machine)||0)+1);
+ for(const e of doc.entries)if(e.kind!=='device'&&e.device)runs.set(e.device,(runs.get(e.device)||0)+1);
  return doc.entries.map(e=>({entry:e,id:e.id,name:text(e.name)||e.id,kind:e.kind,kindLabel:kindName(e.kind),place:text(place(e)),address:text(e.address),version:text(e.version),
   needs:(e.depends_on||[]).length,usedBy:(usedBy.get(e.id)||[]).length+(runs.get(e.id)||0),secrets:(e.secrets||[]).length,unknown:(e.secrets||[]).filter(s=>s.store==='unknown').length,
   gap:hasGap(e),verified:text(e.verified_at),inferred:e.confidence==='inferred'}));

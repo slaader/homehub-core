@@ -24,7 +24,7 @@ Status: phases 1, 2 and 3 are implemented.
   already in the daily NAS backup.
 - **The chosen, finished asset**: the project's own repository (Git LFS for large assets). The agent
   commits it after the decision and may put the commit in the next round's notes or the ticket.
-- **Rendering**: on whatever machine has the GPU and the tools (Godot, Blender). The hub only displays the results.
+- **Rendering**: on whatever computer has the GPU and the tools (Godot, Blender). The hub only displays the results.
 
 ## Model
 
@@ -192,7 +192,7 @@ item is opened; no other page imports it, and it never loads anything from the n
   file at start-up. There is no `'unsafe-inline'`, no workers and no WebAssembly. So Draco, meshopt and KTX2
   compressed models do not load. Export without them.
 
-### Export on the rendering machine
+### Export on the rendering computer
 
 **Godot 4** (from a scene or an imported unit). Run it as an `@tool` script or from the editor's script runner:
 

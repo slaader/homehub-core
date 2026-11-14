@@ -1,5 +1,5 @@
 // Where a collected snapshot stands, in one of four states every collector-backed screen shows:
-//   not-configured  nothing tells the collector which machines to read (no ssh aliases in the site config)
+//   not-configured  nothing tells the collector which devices to read (no ssh aliases in the site config)
 //   waiting         configured, but no snapshot has been written yet
 //   stale           the snapshot is older than the collector's interval allows
 //   ok              a snapshot of the expected age

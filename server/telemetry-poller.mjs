@@ -8,7 +8,7 @@
 //   collect(config)             → snapshot (rejects with Error(code))
 //   derive(prev, cur, atSec)    → reading {t, span, cpu, cores, gpu, memUsed, …}; every rate null without prev
 //   volumes(snap)               → [{name, mount, fs, used, total}]
-//   native(snap, reading, iso)  → what the machine page shows beyond the gauges
+//   native(snap, reading, iso)  → what the device page shows beyond the gauges
 //   errors                      → {code: sentence}: only these codes are kept as a status error
 //   valid(config), key(config), label(config), info(config)   → identity of a connection
 //   deniedCodes                 → codes that mean "credentials refused" (state 'denied')

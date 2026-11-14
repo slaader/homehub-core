@@ -835,7 +835,7 @@
    "ok": true
   },
   {
-   "case": "the hub on this machine",
+   "case": "the hub on this computer",
    "text": "{\"schema\":1,\"hub\":\"http://127.0.0.1:8781\"}",
    "ok": true
   },
@@ -845,8 +845,8 @@
    "ok": true
   },
   {
-   "case": "a machine field",
-   "text": "{\"schema\":1,\"hub\":\"https://hub.example.lan\",\"machine\":\"winbox\"}",
+   "case": "a device field",
+   "text": "{\"schema\":1,\"hub\":\"https://hub.example.lan\",\"device\":\"winbox\"}",
    "ok": false
   },
   {

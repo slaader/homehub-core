@@ -5,7 +5,7 @@
  "timeZone": "Europe/Berlin",
  "defaultLanguage": "en",
  "publicOrigin": "https://hub.example.lan",
- "machines": [
+ "devices": [
   {"id": "mini", "name": "Mac mini", "hostname": "mini.example.lan", "ip": "10.0.0.25", "role": "computer", "picture": "/images/desktop.png", "thermoId": "mini",
    "hardware": {"cpu": "14j (10P+4E) M4 Pro", "gpu": "20c", "ramGb": 64, "diskTotalBytes": 3996000000000}, "ssh": {"alias": "mini", "probe": "mac"},
    "stack": {"layers": ["INPUT", "RUNTIME", "HARDWARE"], "cols": ["gguf", "mlx"], "engines": {"gguf": "llama.cpp", "mlx": "Apple MLX"}, "blocks": [

@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
   The owner's check of the Windows agent's scripts, where PowerShell exists (Windows PowerShell 5.1, or pwsh on any
-  system). Not part of npm test: core's tests must pass on a machine without PowerShell, and they check these files
+  system). Not part of npm test: core's tests must pass on a computer without PowerShell, and they check these files
   statically instead (tests/agent-windows-fixtures.test.mjs).
 
 .DESCRIPTION

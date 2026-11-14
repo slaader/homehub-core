@@ -1,6 +1,6 @@
 # Home Hub: specification
 
-Home Hub is one page for a home network: which machines there are and how they are doing, what runs where and
+Home Hub is one page for a home network: which devices there are and how they are doing, what runs where and
 what depends on what, who may reach it, and a small tracker for your own projects. It is a single Node process
 with no third-party dependencies and a plain-JavaScript front end.
 
@@ -11,9 +11,9 @@ Core features:
 - **Sign-in and access** — one built-in owner, people with roles (Admin, Editor, Viewer and custom roles: sets
   of scopes), service accounts with scopes and API keys, app tokens for native clients, an access audit.
   Sessions and keys are stored as SHA-256 hashes. A fresh install has no owner until `node scripts/setup.mjs`.
-- **Overview** — a tile per machine from the site configuration, plus devices added in the UI. Live CPU, GPU,
-  power, temperature and memory come from the Thermo app when it runs on the machine (optional).
-- **Inventory** — one checked file (`data/knowledge.json`): machines, runtimes, tools, stores and how they
+- **Overview** — a tile per device from the site configuration, plus devices added in the UI. Live CPU, GPU,
+  power, temperature and memory come from the Thermo app when it runs on the device (optional).
+- **Inventory** — one checked file (`data/knowledge.json`): devices, runtimes, tools, stores and how they
   depend on each other, shown as a map and as a services catalog. Secrets are recorded as locations, never values.
 - **Security** — SSH key inventory, OS and software versions with update candidates, host protection checks.
   Collected over SSH by read-only probes.
@@ -54,7 +54,7 @@ are different facts; an unknown value is `null`, not a guess.
 
 - No secrets reach the browser or the inventory: tokens and passwords are stored hashed, bodies and tokens are
   never logged, the inventory checker rejects anything that looks like a secret.
-- Collectors are read-only on the machines they probe.
+- Collectors are read-only on the devices they probe.
 - An observation older than 3 minutes is stale. A failed probe is not proof that a device is off; a DHCP lease is
   not proof that it is connected.
 - Every write is checked twice: by role or scope at the pipeline, and by revision or hash at the store

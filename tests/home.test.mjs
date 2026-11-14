@@ -6,11 +6,11 @@ import path from 'node:path';
 import http from 'node:http';
 import {buildHome as build,homeHistory as history,homeHistoryQuery as historyQuery,mergeStack as merge,stackLayouts} from '../server/home-data.mjs';
 import {SITE} from './hub-helper.mjs';
-// The machines come from the site configuration; these tests run on the generic fixture site.
+// The devices come from the site configuration; these tests run on the generic fixture site.
 const STACKS=stackLayouts(SITE);
 const buildHome=input=>build({site:SITE,...input});
-const mergeStack=(machine,services=[])=>merge(machine,services,STACKS[machine]);
-const homeHistory=(thermo,machine,range,now)=>history(thermo,machine,range,now,['mini','studio','mini_server']);
+const mergeStack=(device,services=[])=>merge(device,services,STACKS[device]);
+const homeHistory=(thermo,device,range,now)=>history(thermo,device,range,now,['mini','studio','mini_server']);
 const homeHistoryQuery=input=>historyQuery(input,[],SITE);
 import {createHandler} from '../server/index.mjs';
 import {hashPassword} from '../server/auth.mjs';
@@ -28,7 +28,7 @@ const snapshot=services=>({collectedAt:new Date(nowMs).toISOString(),memory:{use
 test('home tiles merge thermo quad, bridge services and router',()=>{
  const home=buildHome({snapshots:{mini:{bridge:'connected',snapshot:snapshot([{id:'llama-swap',name:'llama-swap',status:'reachable',url:'http://127.0.0.1:8081',models:[{id:'gemma-4-26B-A4B-it-OptiQ-4bit',state:'loaded'}]}])}},thermo:thermoStub(),
   router:{status:'ok',freshness:'fresh',observedAt:new Date(nowMs).toISOString(),model:'UniFi Dream Router 7',firmware:'4.2.7',devices:[{presence:'associated'},{presence:'reachable'}]},now:nowMs});
- const mini=home.machines.find(m=>m.id==='mini'),studio=home.machines.find(m=>m.id==='studio'),router=home.machines.find(m=>m.id==='router');
+ const mini=home.devices.find(m=>m.id==='mini'),studio=home.devices.find(m=>m.id==='studio'),router=home.devices.find(m=>m.id==='router');
  assert.equal(mini.online,'online');
  // quad = mean of the last 15 one-second readings (i=105..119 → cpu 30+(i%10))
  assert.ok(Math.abs(mini.quad.cpu-(30+80/15))<1e-9);assert.equal(mini.quad.windowSeconds,15);assert.equal(mini.quad.samples,15);
@@ -38,11 +38,11 @@ test('home tiles merge thermo quad, bridge services and router',()=>{
  assert.equal(studio.online,'online','thermo up with fresh seconds ⇒ online');
  assert.equal(router.online,'online');
  assert.equal(home.router.clients,2);
- assert.equal(home.machines.find(m=>m.id==='mini_server').online,'offline');
+ assert.equal(home.devices.find(m=>m.id==='mini_server').online,'offline');
 });
 test('stale minute rows fall back to live sample',()=>{
  const home=buildHome({snapshots:{},thermo:thermoStub({seconds:()=>[],minutes:()=>[],live:()=>({mini:{at:nowMs,reading:{t:nowSec,cpu:33,cpuMax:44,gpu:12,power:24,cpuTemp:52}}})}),now:nowMs});
- assert.equal(home.machines.find(m=>m.id==='mini').quad.cpu,33);
+ assert.equal(home.devices.find(m=>m.id==='mini').quad.cpu,33);
 });
 test('runtimes stack: live service marks blocks on, offline marks dashed off',async()=>{
  const services=[{id:'llama-swap',status:'reachable',url:'http://127.0.0.1:8081',models:[{id:'gemma-4-26B-A4B-it-OptiQ-4bit',state:'loaded',sizeBytes:15e9}],stats:{requests:9,uptimeSeconds:3600},pool:null}];
@@ -78,13 +78,13 @@ test('history buckets 30m from seconds and 7d from minutes; 6m reports partial',
  assert.equal(homeHistory(week,'mini','7d',nowSec).complete,true);
  const m6=homeHistory(thermo,'mini','6m',nowSec);
  assert.equal(m6.complete,false);assert.equal(m6.points.length,180);
- assert.equal(homeHistoryQuery({machine:'mini',range:'30m'}).range,'30m');
- assert.deepEqual(homeHistoryQuery({machine:'nas',range:'7d'}),{machine:'nas',range:'7d',points:[],complete:false,source:'žádný zdroj',reason:'Stroj nemá připojenou telemetrii.'});
+ assert.equal(homeHistoryQuery({device:'mini',range:'30m'}).range,'30m');
+ assert.deepEqual(homeHistoryQuery({device:'nas',range:'7d'}),{device:'nas',range:'7d',points:[],complete:false,source:'žádný zdroj',reason:'Stroj nemá připojenou telemetrii.'});
 });
 test('invalid input fails closed',()=>{
  assert.throws(()=>homeHistory(thermoStub(),'router','30m'),/invalid/);
- assert.throws(()=>homeHistoryQuery({machine:'bogus',range:'30m'}),/invalid/);
- assert.throws(()=>homeHistoryQuery({machine:'mini',range:'5m'}),/invalid/);
+ assert.throws(()=>homeHistoryQuery({device:'bogus',range:'30m'}),/invalid/);
+ assert.throws(()=>homeHistoryQuery({device:'mini',range:'5m'}),/invalid/);
 });
 test('home routes require login and serve tiles and history',async t=>{
  const dir=await mkdtemp(path.join(os.tmpdir(),'hubhome-'));t.after(()=>rm(dir,{recursive:true,force:true}));
@@ -96,21 +96,21 @@ test('home routes require login and serve tiles and history',async t=>{
  await new Promise(r=>server.listen(0,'127.0.0.1',r));
  const base=`http://127.0.0.1:${server.address().port}`;
  assert.equal((await fetch(base+'/api/home')).status,401);
- assert.equal((await fetch(base+'/api/home/history?machine=mini&range=30m')).status,401);
+ assert.equal((await fetch(base+'/api/home/history?device=mini&range=30m')).status,401);
  const login=await fetch(base+'/api/session',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({username:'admin',password:'test-password'})});
  const cookie=login.headers.get('set-cookie').split(';')[0];
  const home=await (await fetch(base+'/api/home',{headers:{Cookie:cookie}})).json();
- assert.equal(home.machines.length,5);
- assert.ok(home.machines.every(m=>['mini','studio','mini_server','nas','router'].includes(m.id)));
- assert.ok(home.machines.every(m=>m.props&&'online'in m&&'stack'in m));
- const hist=await (await fetch(base+'/api/home/history?machine=mini&range=30m',{headers:{Cookie:cookie}})).json();
- assert.equal(hist.machine,'mini');assert.equal(hist.points.length,60);
- assert.equal((await fetch(base+'/api/home/history?machine=mini&range=bogus',{headers:{Cookie:cookie}})).status,400);
- const nas=await (await fetch(base+'/api/home/history?machine=nas&range=7d',{headers:{Cookie:cookie}})).json();
+ assert.equal(home.devices.length,5);
+ assert.ok(home.devices.every(m=>['mini','studio','mini_server','nas','router'].includes(m.id)));
+ assert.ok(home.devices.every(m=>m.props&&'online'in m&&'stack'in m));
+ const hist=await (await fetch(base+'/api/home/history?device=mini&range=30m',{headers:{Cookie:cookie}})).json();
+ assert.equal(hist.device,'mini');assert.equal(hist.points.length,60);
+ assert.equal((await fetch(base+'/api/home/history?device=mini&range=bogus',{headers:{Cookie:cookie}})).status,400);
+ const nas=await (await fetch(base+'/api/home/history?device=nas&range=7d',{headers:{Cookie:cookie}})).json();
  assert.equal(nas.reason,'Stroj nemá připojenou telemetrii.');
  await new Promise(r=>server.close(r));
 });
-test('collected machine descriptors replace static tiles and stacks; router falls back to census',()=>{
+test('collected device descriptors replace static tiles and stacks; router falls back to census',()=>{
  const descriptors={
   studio:{schemaVersion:1,id:'studio',name:'Mac Studio',hostname:'studio.example.lan',collectedAt:'2026-11-07T21:00:00Z',
    addresses:[{ip:'10.0.0.151',mac:'aa:bb:cc:dd:ee:ff'}],hardware:{cpu:'Apple M5 Ultra',cpuCores:{performance:12,efficiency:24,total:36,labels:'12 Super + 24 Performance'},gpuCores:80,ramGb:256,disks:[{mount:'/',totalBytes:4e12}]},
@@ -121,28 +121,28 @@ test('collected machine descriptors replace static tiles and stacks; router fall
    clients:[{connection:'wired'},{connection:'wifi'},{connection:'wifi'}]},
   mini:{schemaVersion:2,id:'mini'}};
  const home=buildHome({thermo:thermoStub(),descriptors,now:nowMs});
- const studio=home.machines.find(m=>m.id==='studio');
+ const studio=home.devices.find(m=>m.id==='studio');
  assert.equal(studio.props.gpu,'80c');assert.equal(studio.props.cpu,'36j (12S+24P) M5 Ultra');
  assert.equal(studio.stack.source,'collected');assert.deepEqual(studio.stack.blocks.map(b=>b.id),['omlx','hw'],'invalid block dropped');
  assert.equal(studio.stack.blocks[0].state,'on','collected state kept when the bridge does not report the service');
  assert.deepEqual(studio.reviewNeeded,['GPU has 80 cores']);
- const router=home.machines.find(m=>m.id==='router');
+ const router=home.devices.find(m=>m.id==='router');
  assert.equal(router.online,'stale');assert.equal(router.quad.clients,3);assert.equal(router.quad.wifi,2);assert.equal(router.props.cpu,'4j Qualcomm IPQ5322');
- const mini=home.machines.find(m=>m.id==='mini');
+ const mini=home.devices.find(m=>m.id==='mini');
  assert.equal(mini.props.gpu,'20c','unknown schema version keeps static definition');
 });
 
 test('quad temperature is the hotter of CPU and GPU; minute row is the fallback when no recent seconds',()=>{
  const hot=thermoStub({seconds:host=>host==='mini'?[{t:nowSec-1,cpu:10,gpu:96,power:120,cpuTemp:65,gpuTemp:78,memUsed:1,memTotal:2}]:[]});
- const q=buildHome({thermo:hot,now:nowMs}).machines.find(m=>m.id==='mini').quad;
+ const q=buildHome({thermo:hot,now:nowMs}).devices.find(m=>m.id==='mini').quad;
  assert.equal(q.temp,78);assert.equal(q.gpu,96);assert.equal(q.samples,1);
  const old=thermoStub({seconds:host=>host==='mini'?[{t:nowSec-600,cpu:99}]:[]});
- const f=buildHome({thermo:old,now:nowMs}).machines.find(m=>m.id==='mini').quad;
+ const f=buildHome({thermo:old,now:nowMs}).devices.find(m=>m.id==='mini').quad;
  assert.equal(f.windowSeconds,60,'stale seconds ⇒ newest minute row');assert.notEqual(f.cpu,99);
 });
 test('memory quad prefers GPU allocations (model held) and reports pressure 0/1/2 from Thermo build 97+',()=>{
  const t=thermoStub({seconds:host=>host==='mini'?[{t:nowSec-2,cpu:5,gpu:0,memUsed:50e9,memTotal:64e9,gpuMem:3e9,gpuMemAlloc:40e9,memPressure:0},{t:nowSec-1,cpu:5,gpu:0,memUsed:51e9,memTotal:64e9,gpuMem:4e9,gpuMemAlloc:41e9,memPressure:1}]:[]});
- const q=buildHome({thermo:t,now:nowMs}).machines.find(m=>m.id==='mini').quad;
+ const q=buildHome({thermo:t,now:nowMs}).devices.find(m=>m.id==='mini').quad;
  assert.equal(q.gpuMemAlloc,41e9);assert.equal(q.gpuMem,4e9);assert.equal(q.memPressure,1,'worst level in the window');
  const h=homeHistory(t,'mini','30m',nowSec);const last=h.points.filter(p=>p.gpuMemAlloc!=null).at(-1);
  assert.ok(last.gpuMemAlloc>=40e9&&last.memPressure===1);
@@ -156,5 +156,5 @@ test('review fixes: window boundary, raw maxima, chip temperature, range validat
  assert.equal(peak.cpu,50);assert.equal(peak.cpuMax,100,'peak survives averaging');
  const hot=bucketRows([{t:1795,cpuTemp:50,gpuTemp:90},{t:1796,gpuTemp:70}],cfg,1800).at(-1);
  assert.equal(hot.temp,80,'hotter-of per reading, GPU-only readings kept');assert.equal(hot.tempMax,90);
- for(const range of ['constructor','toString','__proto__'])assert.throws(()=>homeHistoryQuery({machine:'mini',range}));
+ for(const range of ['constructor','toString','__proto__'])assert.throws(()=>homeHistoryQuery({device:'mini',range}));
 });

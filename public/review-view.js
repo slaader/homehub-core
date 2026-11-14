@@ -838,5 +838,5 @@ function modelViewer(variant,{onPick,onCamera}){
  return {node,setMode(on){mode=on;box.classList.toggle('rv-commenting',on);},setPins(list){pins=list;drawPins();},focus,setCamera(c){setCamera(c);}};
 }
 // Page entry for the shell (app.js): every page module exports (context) => Node, and the server's UI
-// manifest names it. context = {me, page, sub, machine, site}.
+// manifest names it. context = {me, page, sub, device, site}.
 export const reviewPage=({me,sub})=>reviewView(me,sub);

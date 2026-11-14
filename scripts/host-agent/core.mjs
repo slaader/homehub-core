@@ -1,5 +1,5 @@
 // The core entry of the host-agent installer: core's own push agent (docs/agent.md §5), which needs no plugin and no
-// site.json on the machine. scripts/install-host-agent.mjs --core parses the flags and calls this.
+// site.json on the device. scripts/install-host-agent.mjs --core parses the flags and calls this.
 //
 // Split as server/update-apply.mjs is: planCoreInstall and the render functions are pure (the inputs are read by the
 // caller and passed in), and applyCorePlan does every side effect through the world it is given (exec, fs, clock,
@@ -145,13 +145,13 @@ export function parseCoreArgs(argv){
 }
 
 // --- the plan ----------------------------------------------------------------------------------------------------------
-/** A key file as create-agent-key --output writes it → {token, agent: {id, machine, prefix}}. */
+/** A key file as create-agent-key --output writes it → {token, agent: {id, device, prefix}}. */
 export function readKeyFile(text){
  let raw;try{raw=JSON.parse(text);}catch{refuse('--key-file is not the JSON file create-agent-key --output wrote');}
  const token=parseToken(raw?.token);
- if(raw?.schema!==1||!token||!raw.agent||typeof raw.agent.machine!=='string')refuse('--key-file is not an agent key file (schema 1, an hha_ token)');
+ if(raw?.schema!==1||!token||!raw.agent||typeof raw.agent.device!=='string')refuse('--key-file is not an agent key file (schema 1, an hha_ token)');
  const id=typeof raw.agent.id==='string'?raw.agent.id.slice(0,64):null;
- return {token,agent:{id,machine:raw.agent.machine.slice(0,64),prefix:token.slice(0,12)}};
+ return {token,agent:{id,device:raw.agent.device.slice(0,64),prefix:token.slice(0,12)}};
 }
 /** "--runtime ollama=http://127.0.0.1:11434" → {id, kind, url}: the id is the kind when it names one, else auto. */
 export function parseRuntimeFlag(v){
@@ -173,7 +173,7 @@ export function planCoreInstall(options,{platform,root=coreRoot,home,uid,user=nu
  if(platform!=='macos'&&platform!=='linux')refuse(`The Node agent runs on macOS and Linux, not ${platform}`);
  if(!options.hub)refuse('Say where the hub is: --hub https://hub.example.lan');
  const hub=parseHub(options.hub);
- if(!hub)refuse('--hub must be an origin: https://<name or IPv4>[:port], or http://127.0.0.1[:port] on the hub\'s own machine');
+ if(!hub)refuse('--hub must be an origin: https://<name or IPv4>[:port], or http://127.0.0.1[:port] on the hub\'s own host');
  if(options.pins.length&&options.ca)refuse('--pin and --ca exclude each other');
  if(options.pins.length>2)refuse('At most two --pin (the certificate now and the next one)');
  const pins=options.pins.map(p=>normalizePin(p)||refuse(`--pin ${String(p).slice(0,80)} is not a SHA-256 fingerprint`));
@@ -249,12 +249,12 @@ function gitState(dir){
 export function formatCorePlan(p){
  const l=[];
  l.push(`Push agent (core ${p.record.core}, commit ${(p.record.commits.core||'?').slice(0,10)}${p.record.dirty?', dirty':''}) on ${p.platform} as ${p.account} → ${p.paths.target}`);
- l.push(`  hub ${p.hub.origin}: ${!p.hub.secure?'plain HTTP to the hub on this machine':p.pins.length?`pinned (${p.pins.map(x=>x.slice(0,16)+'…').join(', ')})`:p.caPath?`CA ${p.caPath}`:'the system certificate store'}`);
- l.push(`  key ${p.agent.prefix}… for machine ${p.agent.machine} → ${p.paths.key}${p.keyMode==='credential'?' (root 0600, LoadCredential=agent-key)':p.keyMode==='file'?` (owned by ${p.account}, 0400: systemd ${p.systemd??'unknown'} ${p.loadCredential===false&&p.systemd>=LOAD_CREDENTIAL_SINCE?'did not hand a test unit its LoadCredential=':'has no LoadCredential='})`:' (0600)'}`);
+ l.push(`  hub ${p.hub.origin}: ${!p.hub.secure?'plain HTTP to the hub on this computer':p.pins.length?`pinned (${p.pins.map(x=>x.slice(0,16)+'…').join(', ')})`:p.caPath?`CA ${p.caPath}`:'the system certificate store'}`);
+ l.push(`  key ${p.agent.prefix}… for device ${p.agent.device} → ${p.paths.key}${p.keyMode==='credential'?' (root 0600, LoadCredential=agent-key)':p.keyMode==='file'?` (owned by ${p.account}, 0400: systemd ${p.systemd??'unknown'} ${p.loadCredential===false&&p.systemd>=LOAD_CREDENTIAL_SINCE?'did not hand a test unit its LoadCredential=':'has no LoadCredential='})`:' (0600)'}`);
  if(p.keyMode==='file'&&p.loadCredential===false&&p.loadCredentialWhy)l.push(`    the LoadCredential= test: ${p.loadCredentialWhy}`);
  l.push(`  ${p.files.length} files; agent.json and specs.txt in ${p.paths.config}; state ${p.paths.state}${p.paths.log?`; log ${p.paths.log}`:'; log: the journal'}`);
  l.push(`  SSH keys: ${p.keys}${p.runtimes.length?`; runtimes: ${p.runtimes.map(r=>`${r.id} ${r.url}`).join(', ')}`:''}`);
- l.push(`  watch list (${p.specsLines.length} line${p.specsLines.length===1?'':'s'}): each one is run or read on this machine; confirm every line:`);
+ l.push(`  watch list (${p.specsLines.length} line${p.specsLines.length===1?'':'s'}): each one is run or read on this computer; confirm every line:`);
  p.specsLines.forEach((line,i)=>l.push(`   ${String(i+1).padStart(3)}  ${line}`));
  if(p.service.kind==='launchd-daemon'){
   l.push(`  launchd-daemon ${p.service.label}: ${p.service.file} (root:wheel 0644, written with sudo), in the system domain from boot, UserName ${p.account} (never root); HOME_HUB_LAUNCHD_DOMAIN ${p.service.gui}`);
@@ -599,7 +599,7 @@ export async function applyCorePlan(p,{world=systemWorld(),once=false,yes=false}
   ownedChain(world,p.paths.target,{uid:p.uid,why});
  }
  if(p.specsLines.length&&!yes){
-  const ok=await world.confirm(`Install with these ${p.specsLines.length} watch-list line(s)? Each one is run or read on this machine. [y/N] `);
+  const ok=await world.confirm(`Install with these ${p.specsLines.length} watch-list line(s)? Each one is run or read on this computer. [y/N] `);
   if(!ok){world.warn('Not confirmed (or no terminal: pass --yes after reading the lines); nothing was changed.');return {status:'declined'};}
  }
  const owner=p.platform==='linux'?await ensureAccount(world,p.account):null;

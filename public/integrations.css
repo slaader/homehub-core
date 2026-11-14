@@ -76,7 +76,7 @@
  .ig-card-head .ui-pill{grid-column:1/-1;justify-self:start}
 }
 
-/* Integrations → Machines (public/machines-view.js). */
+/* Integrations → Devices (public/devices-view.js). */
 .mc-section-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);flex-wrap:wrap}
 .mc-section-head h2{margin:0}
 .mc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,260px),1fr));gap:var(--space-3)}

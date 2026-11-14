@@ -120,7 +120,7 @@ const provLabel=kind=>({manual:t('Ručně'),agent:t('Agent'),config:t('Konfigura
 const provWhat=kind=>({manual:t('Upravil člověk ve webovém rozhraní nebo v aplikaci.'),agent:t('Zapsal agent klíčem servisního účtu, přes MCP nebo API.'),config:t('Načteno z konfiguračního souboru.'),
  collector:t('Zapsala automatická úloha, která stroje jen čte.'),telemetry:t('Hlásí živě agent na stroji.'),plugin:t('Dodává plugin.'),other:t('Razítko nebo jméno, které tady nenese žádný účet: import, úprava souboru nebo zrušený účet.')})[kind]||'';
 const provCount=(n,unit)=>({entries:()=>tp(n,'{n} záznam|{n} záznamy|{n} záznamů'),rounds:()=>tp(n,'{n} kolo|{n} kola|{n} kol'),
- machines:()=>tp(n,'{n} stroj|{n} stroje|{n} strojů'),records:()=>tp(n,'{n} zápis|{n} zápisy|{n} zápisů'),projects:()=>tp(n,'{n} projekt|{n} projekty|{n} projektů'),items:()=>tp(n,'{n} položka|{n} položky|{n} položek'),sources:()=>tp(n,'{n} zdroj|{n} zdroje|{n} zdrojů'),clients:()=>tp(n,'{n} klient|{n} klienti|{n} klientů')})[unit]?.()||String(n);
+ devices:()=>tp(n,'{n} stroj|{n} stroje|{n} strojů'),records:()=>tp(n,'{n} zápis|{n} zápisy|{n} zápisů'),projects:()=>tp(n,'{n} projekt|{n} projekty|{n} projektů'),items:()=>tp(n,'{n} položka|{n} položky|{n} položek'),sources:()=>tp(n,'{n} zdroj|{n} zdroje|{n} zdrojů'),clients:()=>tp(n,'{n} klient|{n} klienti|{n} klientů')})[unit]?.()||String(n);
 const provState=state=>({'not-configured':t('nenastaveno'),waiting:t('zatím neběžel'),stale:t('starý snímek'),unavailable:t('poslední pokus selhal'),disabled:t('vypnuto administrátorem')})[state]||'';
 const DAY_ONLY=/^\d{4}-\d{2}-\d{2}$/;
 // "2 days ago" in the reader's language; a calendar day (an inventory stamp) is counted in whole days.

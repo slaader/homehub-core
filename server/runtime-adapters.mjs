@@ -48,7 +48,7 @@ const stats=(...items)=>items.filter(Boolean).slice(0,6);
 // --- HTTP ------------------------------------------------------------------------------------
 export class RuntimeReadError extends Error{constructor(code,status=null){super(code);this.code=code;this.status=status;}}
 // What went wrong, as a short code the integration page and the logs can show. refused = nothing listens
-// there (on loopback that means the runtime is not running); the rest says nothing about the machine.
+// there (on loopback that means the runtime is not running); the rest says nothing about the device.
 export function errorCode(e){
  if(e instanceof RuntimeReadError)return e.code;
  const code=e?.cause?.code||e?.code||'';

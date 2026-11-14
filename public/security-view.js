@@ -55,13 +55,13 @@ function sudoBadge(verdict){
 const ROOTISH=['nopasswd','root','forgejo-admin'];
 
 function model(doc){
- const machines=new Map(doc.machines.map(m=>[m.id,m]));
- const ipName=new Map();for(const m of doc.machines)for(const ip of m.ips||[])ipName.set(ip,m.name);
- const account=(machine,user)=>machines.get(machine)?.accounts?.find(a=>a.user===user)||null;
- const tilde=(machine,owner,file)=>{const home=account(machine,owner)?.home;return home&&file.startsWith(home+'/')?'~'+file.slice(home.length):file;};
+ const devices=new Map(doc.devices.map(m=>[m.id,m]));
+ const ipName=new Map();for(const m of doc.devices)for(const ip of m.ips||[])ipName.set(ip,m.name);
+ const account=(device,user)=>devices.get(device)?.accounts?.find(a=>a.user===user)||null;
+ const tilde=(device,owner,file)=>{const home=account(device,owner)?.home;return home&&file.startsWith(home+'/')?'~'+file.slice(home.length):file;};
  // sshd AllowUsers user@ip entries for one account (addresses that account may log in from).
- const allowFrom=(machine,user)=>[...new Set((machines.get(machine)?.ssh?.allowUsers||[]).map(x=>x.split('@')).filter(([u,ip])=>u===user&&ip).map(([,ip])=>ip))];
- return {machines,ipName,account,tilde,allowFrom,mName:id=>machines.get(id)?.name||id,mIp:id=>(machines.get(id)?.ips||[]).join(', ')};
+ const allowFrom=(device,user)=>[...new Set((devices.get(device)?.ssh?.allowUsers||[]).map(x=>x.split('@')).filter(([u,ip])=>u===user&&ip).map(([,ip])=>ip))];
+ return {devices,ipName,account,tilde,allowFrom,mName:id=>devices.get(id)?.name||id,mIp:id=>(devices.get(id)?.ips||[]).join(', ')};
 }
 const fromText=(from,m)=>from.map(ip=>m.ipName.has(ip)?`${m.ipName.get(ip)} (${ip})`:ip).join(', ');
 
@@ -69,7 +69,7 @@ const fromText=(from,m)=>from.map(ip=>m.ipName.has(ip)?`${m.ipName.get(ip)} (${i
 function accessLine(a,m){
  const tg=a.target,bits=[];
  if(tg.kind==='host'){
-  bits.push(el('b',{},m.mName(tg.machine)),el('span',{class:'col-dim'},m.mIp(tg.machine)),el('span',{class:'col-user'},tg.user));
+  bits.push(el('b',{},m.mName(tg.device)),el('span',{class:'col-dim'},m.mIp(tg.device)),el('span',{class:'col-user'},tg.user));
   bits.push(a.restricted?badge(t('jen příkaz'),'good',a.command||''):sudoBadge(a.sudo));
   // restrict / permitopen limit forwarding only; commands still run, so they never read as "ok".
   if(!a.restricted&&a.noForwarding)bits.push(badge(t('bez přesměrování (restrict)'),'',t('restrict vypíná přesměrování portů, agenta, X11 a PTY, ale libovolné příkazy dál povoluje.')));
@@ -77,7 +77,7 @@ function accessLine(a,m){
  }else if(tg.kind==='forgejo'){bits.push(el('b',{},'Forgejo'),el('span',{class:'col-user'},tg.account),sudoBadge(a.sudo));}
  else if(tg.kind==='forgejo-deploy'){bits.push(el('b',{},'Forgejo'),el('span',{class:'col-dim'},tg.repo),badge(tg.readOnly?t('deploy klíč · čtení'):t('deploy klíč · zápis'),tg.readOnly?'good':'warn'));}
  else bits.push(el('b',{},t(tg.label)),tg.user?el('span',{class:'col-user'},tg.user):null,badge(t('neověřeno'),'',t('Vychází jen z ~/.ssh/config, cíl jsem neprověřil.')));
- const allow=tg.kind==='host'?m.allowFrom(tg.machine,tg.user):[];
+ const allow=tg.kind==='host'?m.allowFrom(tg.device,tg.user):[];
  if(a.from?.length)bits.push(badge(t('jen z {from}',{from:fromText(a.from,m)}),'good','authorized_keys from='));
  else if(allow.length)bits.push(badge(t('AllowUsers: jen z {from}',{from:fromText(allow,m)}),'good',t('authorized_keys nemá from=, adresy omezuje sshd AllowUsers.')));
  else if(tg.kind==='host'&&!a.restricted)bits.push(badge(t('z libovolné adresy'),'warn',t('Bez from= v authorized_keys a bez AllowUsers v sshd.')));
@@ -88,8 +88,8 @@ const typeText=k=>[k.type,k.bits].filter(Boolean).join(' ')||'—';
 
 // --- the matrix: key → type, age, passphrase, and every place it is authorized -------------------------
 function matrix(doc,m,now){
- const hits=(k,col)=>k.access.filter(a=>col==='git'?a.target.kind.startsWith('forgejo'):col==='other'?['external','local'].includes(a.target.kind):a.target.kind==='host'&&a.target.machine===col);
- const targets=[...doc.machines.filter(x=>x.sshOpen===undefined).map(x=>[x.id,x.name||x.id]),
+ const hits=(k,col)=>k.access.filter(a=>col==='git'?a.target.kind.startsWith('forgejo'):col==='other'?['external','local'].includes(a.target.kind):a.target.kind==='host'&&a.target.device===col);
+ const targets=[...doc.devices.filter(x=>x.sshOpen===undefined).map(x=>[x.id,x.name||x.id]),
   ...(doc.forgejo||doc.keys.some(k=>hits(k,'git').length)?[['git',t('Git server')]]:[]),...(doc.keys.some(k=>hits(k,'other').length)?[['other',t('Jinde')]]:[])];
  const where=(k,col)=>{
   const found=hits(k,col);
@@ -98,14 +98,14 @@ function matrix(doc,m,now){
    const tg=a.target,root=ROOTISH.includes(a.sudo);
    const tone=a.restricted?'good':root?'bad solid':a.unverified?'':'info';
    const text=tg.kind==='host'?tg.user:tg.kind==='forgejo'?tg.account:tg.kind==='forgejo-deploy'?tg.repo.split('/').pop():t(tg.label);
-   const why=tg.kind==='host'?`${tg.user}@${m.mName(tg.machine)} · ${t((SUDO[a.sudo]||[a.sudo])[0])}${a.restricted?' · '+t('omezený příkaz'):''}${a.from?.length?' · '+t('jen z {from}',{from:fromText(a.from,m)}):''}`:t((SUDO[a.sudo]||[tg.label])[0]);
+   const why=tg.kind==='host'?`${tg.user}@${m.mName(tg.device)} · ${t((SUDO[a.sudo]||[a.sudo])[0])}${a.restricted?' · '+t('omezený příkaz'):''}${a.from?.length?' · '+t('jen z {from}',{from:fromText(a.from,m)}):''}`:t((SUDO[a.sudo]||[tg.label])[0]);
    return badge(`${text}${a.restricted?' ⌁':root?' #':''}`,tone,why);
   }));
  };
- const groups=new Map();for(const k of doc.keys){const home=(k.copies.find(c=>!c.backup)||k.copies[0])?.machine||'?';if(!groups.has(home))groups.set(home,[]);groups.get(home).push(k);}
+ const groups=new Map();for(const k of doc.keys){const home=(k.copies.find(c=>!c.backup)||k.copies[0])?.device||'?';if(!groups.has(home))groups.set(home,[]);groups.get(home).push(k);}
  const body=[];
  for(const [home,list] of groups){
-  body.push(el('tr',{class:'col-group'},el('th',{colspan:String(targets.length+4),scope:'colgroup'},t('Leží na {machine} · {ip}',{machine:m.mName(home),ip:m.mIp(home)||'—'}))));
+  body.push(el('tr',{class:'col-group'},el('th',{colspan:String(targets.length+4),scope:'colgroup'},t('Leží na {device} · {ip}',{device:m.mName(home),ip:m.mIp(home)||'—'}))));
   for(const k of list){const h=keyHealth(k,now);
    body.push(el('tr',{class:h.level==='bad'?'bad':h.level==='warn'?'attn':''},
     el('th',{scope:'row'},el('div',{class:'col-name col-mono'},k.name),el('div',{class:'col-dim'},[...new Set(k.copies.map(c=>c.owner))].join(', '))),
@@ -126,13 +126,13 @@ function matrix(doc,m,now){
 // --- the inventory: where each key lives and what it opens ----------------------------------------------
 function keysTable(doc,m,now){
  const rows=doc.keys.map(k=>{
-  const owners=[...new Map(k.copies.map(c=>[`${c.machine}/${c.owner}`,c])).values()],h=keyHealth(k,now);
+  const owners=[...new Map(k.copies.map(c=>[`${c.device}/${c.owner}`,c])).values()],h=keyHealth(k,now);
   return el('tr',{class:h.level==='bad'?'bad':h.level==='warn'?'attn':''},
    cell(t('Klíč'),el('div',{class:'col-name col-mono'},k.name),k.comment&&k.comment!==k.name?el('div',{class:'col-dim'},k.comment):null,
     el('div',{class:'col-dim col-mono',title:k.fingerprint},`${typeText(k)} · ${k.fingerprint.slice(7,19)}… · ${ageText(h.ageDays)}`),encBadge(k),strengthBadge(h),ageBadge(h)),
-   cell(t('Kde leží'),el('div',{class:'col-lines'},k.copies.map(c=>el('div',{},el('b',{},m.mName(c.machine)),c.backup?badge(t('záloha'),'warn'):null,
-    el('span',{class:'col-dim col-path',title:c.path},m.tilde(c.machine,c.owner,c.path)),el('span',{class:'col-dim'},`${c.owner} · ${c.mode} · ${day(c.mtime)}`))))),
-   cell(t('Vlastník · sudo na tom stroji'),el('div',{class:'col-lines'},owners.map(c=>el('div',{},el('span',{class:'col-user'},c.owner),t('na'),m.mName(c.machine),sudoBadge(m.account(c.machine,c.owner)?.sudo))))),
+   cell(t('Kde leží'),el('div',{class:'col-lines'},k.copies.map(c=>el('div',{},el('b',{},m.mName(c.device)),c.backup?badge(t('záloha'),'warn'):null,
+    el('span',{class:'col-dim col-path',title:c.path},m.tilde(c.device,c.owner,c.path)),el('span',{class:'col-dim'},`${c.owner} · ${c.mode} · ${day(c.mtime)}`))))),
+   cell(t('Vlastník · sudo na tom stroji'),el('div',{class:'col-lines'},owners.map(c=>el('div',{},el('span',{class:'col-user'},c.owner),t('na'),m.mName(c.device),sudoBadge(m.account(c.device,c.owner)?.sudo))))),
    cell(t('Co odemyká (stroj · IP · účet · sudo tam)'),k.access.length?el('div',{class:'col-lines'},k.access.map(a=>accessLine(a,m))):el('span',{class:'col-dim'},t('Nikam nevede – nenašel jsem ho v žádném authorized_keys ani ve Forgejo.'))),
    cell(t('Použití v ~/.ssh/config'),k.routes.length?el('div',{class:'col-lines'},k.routes.map(r=>el('div',{title:`${r.hostname}:${r.port}${r.proxyJump?' '+t('přes {jump}',{jump:r.proxyJump}):''}`},
      el('code',{class:'col-mono'},`ssh ${r.alias}`),r.accepted===false?badge(t('cíl ho nepřijímá'),'warn'):r.alsoGit?badge(t('i git'),'',t('Stejný Host blok vybírá klíč i pro git na Forgejo (:2222).')):null))):el('span',{class:'col-dim'},'—')));
@@ -143,8 +143,8 @@ function keysTable(doc,m,now){
 }
 
 function accounts(doc,m){
- return el('div',{class:'col-cards'},doc.machines.map(mm=>{
-  // A machine a push agent reports on says whose record won; an agent's gone quiet is "no news" (systems-view.js).
+ return el('div',{class:'col-cards'},doc.devices.map(mm=>{
+  // A device a push agent reports on says whose record won; an agent's gone quiet is "no news" (systems-view.js).
   const head=el('header',{},el('h3',{},mm.name),mm.source==='agent'&&mm.stale?stateBadge(mm):null,sourceBadge(mm),el('span',{class:'meta'},(mm.ips||[]).join(' · ')||'—'));
   if(!mm.reachable)return el('section',{class:'col-card'},head,el('p',{class:'col-empty'},mm.note||mm.error?t(mm.note||mm.error):t('Nedostupné.')));
   const s=mm.ssh||{};
@@ -159,7 +159,7 @@ function accounts(doc,m){
    cell('sudo',sudoBadge(a.sudo),a.sudo.expired?.length?el('div',{class:'col-dim',title:a.sudo.expired.join('\n')},tp(a.sudo.expired.length,'+ {n} prošlé pravidlo|+ {n} prošlá pravidla|+ {n} prošlých pravidel')):null),
    cell(t('Kdo se sem dostane (authorized_keys)'),a.authorizedKeys.length?el('div',{class:'col-lines'},a.authorizedKeys.map(e=>{
     const src=doc.keys.find(k=>k.fingerprint===e.fingerprint);
-    const origin=src?[...new Set(src.copies.map(c=>m.mName(c.machine)))].join(', '):null;
+    const origin=src?[...new Set(src.copies.map(c=>m.mName(c.device)))].join(', '):null;
     return el('div',{},el('b',{},src?src.name:(e.comment||e.fingerprint).slice(0,40)),
      origin?el('span',{class:'col-dim'},t('z {origin}',{origin})):badge(t('cizí – privátní část nenalezena'),'warn',e.fingerprint),
      e.from.length?badge(t('jen z {from}',{from:fromText(e.from,m)}),'good'):null,e.restricted?badge(t('jen příkaz'),'good',e.command||''):e.noForwarding?badge(t('bez přesměrování'),'',t('restrict: příkazy povolené, přesměrování ne.')):null);
@@ -171,8 +171,8 @@ function accounts(doc,m){
 
 function otherKeys(doc,m){
  if(!doc.otherKeys.length)return el('p',{class:'col-empty'},t('Žádné jiné privátní klíče sonda nenašla.'));
- const rows=doc.otherKeys.map(o=>el('tr',{},cell(t('Účel'),t(o.label),o.backup?badge(t('záloha'),'warn'):null),cell(t('Stroj'),el('b',{},m.mName(o.machine)),' ',el('span',{class:'col-dim'},m.mIp(o.machine))),
-  cell(t('Cesta'),el('span',{class:'col-dim col-path',title:o.path},m.tilde(o.machine,o.owner,o.path))),cell(t('Vlastník · práva'),`${o.owner} · ${o.mode}`),cell(t('Typ'),el('span',{class:'col-dim'},[o.type,o.bits].filter(Boolean).join(' ')||'—'))));
+ const rows=doc.otherKeys.map(o=>el('tr',{},cell(t('Účel'),t(o.label),o.backup?badge(t('záloha'),'warn'):null),cell(t('Stroj'),el('b',{},m.mName(o.device)),' ',el('span',{class:'col-dim'},m.mIp(o.device))),
+  cell(t('Cesta'),el('span',{class:'col-dim col-path',title:o.path},m.tilde(o.device,o.owner,o.path))),cell(t('Vlastník · práva'),`${o.owner} · ${o.mode}`),cell(t('Typ'),el('span',{class:'col-dim'},[o.type,o.bits].filter(Boolean).join(' ')||'—'))));
  return el('div',{class:'col-watch'},el('p',{class:'col-lead'},t('Privátní klíče, které nejsou klientské SSH klíče: HTTPS certifikáty, klíče SSH serverů, podpisové klíče a identita aplikací.')),
   el('section',{class:'col-card'},el('div',{class:'col-scroll'},el('table',{class:'col-table'},el('thead',{},el('tr',{},...[t('Účel'),t('Stroj'),t('Cesta'),t('Vlastník · práva'),t('Typ')].map(h=>el('th',{scope:'col'},h)))),el('tbody',{},rows)))));
 }
@@ -184,7 +184,7 @@ function render(box,doc,now=Date.now()){
  const weak=health.filter(h=>h.strength==='weak').length,aging=health.filter(h=>h.strength!=='weak'&&h.level==='warn').length;
  const foreign=doc.unknownAuthorized.length+(doc.forgejo?.unknown?.length||0);
  const warn=doc.findings.filter(f=>f.level!=='info').length;
- const unprobed=doc.machines.filter(x=>x.sshOpen!==undefined&&x.note);
+ const unprobed=doc.devices.filter(x=>x.sshOpen!==undefined&&x.note);
  const tabs=[['matrix',t('Matice klíčů')],['keys',t('Inventář klíčů')],['accounts',t('Účty na strojích')],['other',t('Ostatní klíče')]];
  const content=el('div',{});
  const buttons=tabs.map(([id,label])=>[id,el('button',{type:'button',role:'tab',class:'col-chip',onclick:()=>{tab=id;paint();}},label)]);
@@ -216,7 +216,7 @@ const setupSteps=()=>[
  t('Spusť sběr klíčů: {command}',{command:'node scripts/collect-security.mjs'}),
  t('Aby se snímek obnovoval sám: {mac} (macOS), nebo timer z {linux} (Linux).',{mac:'sh scripts/systems/install-launchd.sh --with-security',linux:'examples/systemd/'})];
 function setupState(collector){
- if(collector?.state==='waiting'){const n=collector.machines?.length||0;
+ if(collector?.state==='waiting'){const n=collector.devices?.length||0;
   return emptyState({icon:'◔',title:t('Sběr klíčů je nastavený, ale ještě neproběhl'),
    body:`${tp(n,'V konfiguraci je {n} stroj s aliasem ssh.|V konfiguraci jsou {n} stroje s aliasem ssh.|V konfiguraci je {n} strojů s aliasem ssh.')} ${t('Sběr jen čte: posílá otisky, cesty a veřejné řádky authorized_keys, nic na strojích nemění.')}`,
    steps:setupSteps().slice(2)});}
@@ -246,5 +246,5 @@ export function securityView(){
  return box;
 }
 // Page entry for the shell (app.js): every page module exports (context) => Node, and the server's UI
-// manifest names it. context = {me, page, sub, machine, site}.
+// manifest names it. context = {me, page, sub, device, site}.
 export const securityPage=()=>securityView();

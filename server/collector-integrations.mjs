@@ -1,11 +1,11 @@
 // The three collectors of the security module as integrations (server/integrations.mjs):
-//   security.systems   scripts/collect-systems.mjs   versions, updates and protection of the machines
+//   security.systems   scripts/collect-systems.mjs   versions, updates and protection of the devices
 //   security.upstream  scripts/check-upstream.mjs    the newest release of every watched program
 //   security.keys      scripts/collect-security.mjs  the SSH key inventory
 // Each runs on its own schedule (launchd, systemd, cron, by hand) and leaves a snapshot under data/. The
 // hub only reads those snapshots: turning one off makes the hub stop reading its file and hides its data,
 // but the scheduled job keeps running. Status comes from the snapshot itself: when it was written, how
-// the job was started (its `run` stamp: scheduler and label), and which machines it reached.
+// the job was started (its `run` stamp: scheduler and label), and which devices it reached.
 import {readFile} from 'node:fs/promises';
 import path from 'node:path';
 import {loadSystems,systemsSetup,systemsDirectory} from './systems-data.mjs';
@@ -30,19 +30,19 @@ function scheduleItem(run,intervalSeconds,collectedAt){
   :tx('Plánovaně: {scheduler} · každých {every}',{scheduler:[run.scheduler,run.label].filter(Boolean).join(' ')||'?',every:every(intervalSeconds)});
  return {id:'schedule',label:'Plán',state:run?.trigger==='scheduled'?'ok':'off',summary,lastSuccessAt:collectedAt};
 }
-const machineItems=machines=>(machines||[]).slice(0,30).map(m=>({id:m.id,label:m.name||m.id,state:m.reachable?(m.stale?'stale':'ok'):'error',
+const deviceItems=devices=>(devices||[]).slice(0,30).map(m=>({id:m.id,label:m.name||m.id,state:m.reachable?(m.stale?'stale':'ok'):'error',
  summary:m.reachable?(m.stale?'Starší data.':'Přečteno.'):'Nedostupný.',lastSuccessAt:m.collectedAt||null,...(m.reachable?{}:{lastError:m.error||'unreachable'})}));
 const readJson=file=>readFile(file,'utf8').then(JSON.parse).catch(()=>null);
 const label=(root,file)=>{if(!file)return null;const rel=path.relative(root,file);return rel&&!rel.startsWith('..')&&!path.isAbsolute(rel)?rel:path.basename(file);};
 
 async function systemsStatus(state,hub,{enabled=true}={}){
- const site=hub.site,probed=site.machines.filter(m=>m.ssh?.probe);
- const configuredBy=probed.length?[{source:'site.json',name:`machines[].ssh.probe (${probed.length})`}]:[];
+ const site=hub.site,probed=site.devices.filter(m=>m.ssh?.probe);
+ const configuredBy=probed.length?[{source:'site.json',name:`devices[].ssh.probe (${probed.length})`}]:[];
  if(!enabled)return {state:'disabled',configuredBy};
  const [doc,snapshot]=await Promise.all([loadSystems(hub.directory,{site,registryFile:state.watch.file,upstream:false}).catch(()=>null),readJson(path.join(systemsDirectory(hub.directory),'snapshot.json'))]);
  const c=doc?.collector||systemsSetup(site);
  return {state:STATE[c.state]||'error',summary:SUMMARY[c.state]||'',lastSuccessAt:c.collectedAt,configuredBy,
-  items:[...(c.state==='not-configured'?[]:[scheduleItem(readRun(snapshot?.run),COLLECTORS.systems.intervalSeconds,c.collectedAt)]),...machineItems(doc?.machines)]};
+  items:[...(c.state==='not-configured'?[]:[scheduleItem(readRun(snapshot?.run),COLLECTORS.systems.intervalSeconds,c.collectedAt)]),...deviceItems(doc?.devices)]};
 }
 async function upstreamStatus(state,hub,{enabled=true}={}){
  const watch=await readWatch({file:state.watch.file}).catch(()=>null),items=watch?.registry?.items?.length||0;
@@ -63,14 +63,14 @@ async function upstreamStatus(state,hub,{enabled=true}={}){
   items:[...(c.state==='not-configured'?[]:[scheduleItem(readRun(upstream?.run),COLLECTORS.upstream.intervalSeconds,c.collectedAt)]),tokenItem]};
 }
 async function keysStatus(state,hub,{enabled=true}={}){
- const site=hub.site,machines=site.machines.filter(m=>m.ssh&&m.ssh.keys);
- const configuredBy=[...(machines.length?[{source:'site.json',name:`machines[].ssh (${machines.length})`}]:[]),...(site.security.gitHost?[{source:'site.json',name:'security.gitHost'}]:[])];
+ const site=hub.site,devices=site.devices.filter(m=>m.ssh&&m.ssh.keys);
+ const configuredBy=[...(devices.length?[{source:'site.json',name:`devices[].ssh (${devices.length})`}]:[]),...(site.security.gitHost?[{source:'site.json',name:'security.gitHost'}]:[])];
  if(!enabled)return {state:'disabled',configuredBy};
  const doc=await loadSecurity(hub.directory).catch(()=>'invalid');
  if(doc==='invalid')return {state:'error',summary:'Snímek klíčů nejde přečíst.',lastError:'invalid-snapshot',configuredBy};
  const c=securitySetup(site,{collectedAt:doc?.collectedAt||null});
  return {state:STATE[c.state]||'error',summary:SUMMARY[c.state]||'',lastSuccessAt:c.collectedAt,configuredBy,
-  items:[...(c.state==='not-configured'?[]:[scheduleItem(readRun(doc?.run),COLLECTORS.security.intervalSeconds,c.collectedAt)]),...machineItems(doc?.machines)]};
+  items:[...(c.state==='not-configured'?[]:[scheduleItem(readRun(doc?.run),COLLECTORS.security.intervalSeconds,c.collectedAt)]),...deviceItems(doc?.devices)]};
 }
 
 export const collectorIntegrations=[

@@ -34,12 +34,42 @@ A major release: names on the public surface change, with no alias for the old o
     (the overview's old route answered `{removed: <id>}`). It replaces `POST /api/home/machines/remove` and needs the
     scope `home:write`. `base` is required and checked as before; only a person signed in with a password may leave it
     out. An app token that removed with `{id}` alone must now send `base`.
-- **Breaking:** `GET /api/router` names the site's own router entry `siteMachine` (was `machine`), apart from
-  `devices`, the network clients the router saw.
+- **Breaking: a machine is now a device, everywhere.** What the hub called a machine (a computer, a NAS, the router:
+  whatever `site.json` lists or the overview adds) is a device in the configuration, the API, the MCP tools, the
+  commands and the plugin contract. The old names are gone, with no alias. Where the difference matters, a **site
+  device** is one from `site.json` and an **added device** one added on the overview or written by an agent. The
+  router's census keeps its name: `router.devices` are the network clients the router saw.
+  - `site.json`: the key `machines` is `devices`, and `runtimes[].machine` is `runtimes[].device`. A file that still
+    has `machines` is refused at start with a message that names the new key. Host agents are placed under
+    `plugins.<id>.agents.<agent>.<device id>`, as before.
+  - HTTP fields and parameters: `machine` → `device` and `machines` → `devices` in every answer and body, among them
+    `GET /api/home` (`devices`), `GET` and `POST /api/home/devices` (`{devices}`, `{device, base?}`),
+    `POST /api/home/devices/site`, `POST /api/home/runtime`, `GET /api/home/history?device=`, `GET /api/systems`,
+    `GET /api/security`, `GET /api/collectors`, `GET /api/models` (`clientDevice`), `GET /api/software-watch`,
+    `GET` and `POST /api/admin/agents` and the inventory (below). `machineCollectedAt` is `deviceCollectedAt`.
+    `GET /api/router` names the site's own router entry `siteDevice` (was `machine`).
+  - `GET /api/admin/devices` replaces `GET /api/admin/machines`.
+  - Error codes: `MACHINE_INVALID`, `MACHINE_SECRET`, `MACHINE_NOT_FOUND`, `MACHINE_READ_ONLY`, `MACHINE_CONFLICT`,
+    `MACHINE_DUPLICATE` and `MACHINE_LIMIT` are `DEVICE_…`; `AGENT_MACHINE_GONE` is `AGENT_DEVICE_GONE`. Note that
+    `DEVICE_LIMIT` now means "the overview holds its 20 added devices"; the app-token limit is `APP_TOKEN_LIMIT`.
+  - MCP: the tools `machine_list`, `machine_upsert` and `machine_remove` are `device_list`, `device_upsert` and
+    `device_remove`; the argument `machine` is `device` there and in `runtime_publish`, `inventory_search` and
+    `runtime_endpoint_upsert`.
+  - Inventory: the entry kind `machine` is `device` and the entry field `machine` is `device`. An entry's hash covers
+    its fields, so every placed entry has a new hash: a client that kept one reads the entry again.
+  - Push agent: an agent key is bound to `device` (`GET /api/admin/agents`, the key file's `agent.device`); a key is
+    revoked by the hub as `device-removed` or `device-changed`.
+  - Commands: `--device` replaces `--machine` (`scripts/manage-access.mjs create-agent-key`,
+    `scripts/import-runtime-history.mjs`, `scripts/install-host-agent.mjs`), and the environment variable
+    `DEVICES_DIR` replaces `MACHINES_DIR`.
 
 ### Plugin contract
 
 - **Breaking:** `principal.authKind` is `app` for a native app's token (was `device`).
+- **Breaking:** the extension point `machines.facets` is `devices.facets`, and an integration's field `machines` is
+  `devices`. `hub.site.machines` is `hub.site.devices`; a page's context carries `device` (was `machine`).
+- **Breaking:** `home-hub/testing` exports `deviceKind` and `systemDevices` (were `machineKind`, `systemMachines`).
+- **Breaking:** a host agent's `config` module gets `{site, device}` (was `{site, machine}`).
 
 ### Data
 

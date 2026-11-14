@@ -12,12 +12,12 @@
 //               agent      written with a service-account key, over MCP or the API (accounts names them)
 //               config     read from a configuration file (source names it)
 //               collector  written by an automated job (source = its script; schedule says who ran it)
-//               telemetry  reported live by an agent on a machine (source names it)
+//               telemetry  reported live by an agent on a device (source names it)
 //               plugin     supplied by a plugin (source = the plugin or adapter id)
 //               other      a stamp or a name nobody on this hub carries: an import, an edit of the file,
 //                          an account that was removed (detail lists them)
 //     id        a stable name for the source inside one answer, when a page shows only part of it
-//     host      the machine the source ran on, when the data says so
+//     host      the device the source ran on, when the data says so
 //     count     how many records come from this source; unit says what is counted
 //     changes   later changes by this kind of source to records it did not necessarily create
 //     schedule  {trigger: "scheduled" | "manual", scheduler?: "launchd" | "systemd", label?} when the
@@ -27,7 +27,7 @@
 import {USER_STAMP} from '../scripts/knowledge-edit.mjs';
 
 export const PROVENANCE_KINDS=Object.freeze(['manual','agent','config','collector','telemetry','plugin','other']);
-export const PROVENANCE_UNITS=Object.freeze(['entries','items','records','projects','rounds','machines','sources','clients']);
+export const PROVENANCE_UNITS=Object.freeze(['entries','items','records','projects','rounds','devices','sources','clients']);
 const LIMITS={sources:12,names:8,text:160};
 const text=(v,max=LIMITS.text)=>typeof v==='string'?v.replace(/[\u0000-\u001f\u007f]/g,' ').trim().slice(0,max):'';
 const count=v=>Number.isSafeInteger(v)&&v>=0?v:null;
@@ -52,7 +52,7 @@ function cleanSource(s){
  const schedule=cleanSchedule(s.schedule);if(schedule)out.schedule=schedule;
  return out;
 }
-const ONE={entries:'entry',items:'item',records:'record',projects:'project',rounds:'round',machines:'machine',sources:'source',clients:'client'};
+const ONE={entries:'entry',items:'item',records:'record',projects:'project',rounds:'round',devices:'device',sources:'source',clients:'client'};
 const counted=(n,unit='records')=>`${n} ${n===1?ONE[unit]||unit:unit}`;
 const WORDS={manual:'edited by hand',agent:'written by agents',config:'read from configuration',collector:'collected by a job',telemetry:'live telemetry',plugin:'supplied by a plugin',other:'of another origin'};
 function phrase(s){

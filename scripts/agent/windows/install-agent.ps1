@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Installs, updates or removes the Home Hub push agent on this Windows machine (docs/agent.md -> Windows: PowerShell
+  Installs, updates or removes the Home Hub push agent on this Windows computer (docs/agent.md -> Windows: PowerShell
   only). Run it here, as an administrator, from a checkout of Home Hub core. Windows PowerShell 5.1.
 
 .DESCRIPTION
@@ -9,9 +9,9 @@
     install-agent.ps1 -Uninstall [-DryRun | -WhatIf]
 
   -KeyFile is the file `node scripts/manage-access.mjs create-agent-key --output` (or the admin page) gave for this
-  machine; its token goes to <Root>\private\agent.key, readable by LocalService and Administrators only, and is never
+  device; its token goes to <Root>\private\agent.key, readable by LocalService and Administrators only, and is never
   printed (only its first 12 characters), logged, put on a command line or passed to a command as a parameter.
-  -Specs is what `node scripts/agent-specs.mjs <machine> --platform windows` printed on the hub: every line is shown
+  -Specs is what `node scripts/agent-specs.mjs <device> --platform windows` printed on the hub: every line is shown
   and must be confirmed (or -Yes). Trust: no -Pin/-Ca is the system store with the name checked (a hub behind a proxy
   with a public certificate); -Ca a private CA's root certificate (name checked; the hub sends any intermediate);
   -Pin one or two SHA-256 fingerprints of the hub's certificate.
@@ -243,7 +243,7 @@ function New-WritableDirectory {
   $null = [IO.Directory]::CreateDirectory($Path)
   Set-PrivateAcl -Path $Path -Directory -Grants $Grants
   if ($null -eq $old) { return }
-  # Moved, not copied: a copy would be the administrator's (seen on a real machine: the next update found agent.log
+  # Moved, not copied: a copy would be the administrator's (seen on a real computer: the next update found agent.log
   # owned by Administrators and dropped it), a moved file stays LocalService's. What arrives is checked again, and a
   # name that is a link or not LocalService's (swapped between the check and the move) is removed, as a name only.
   foreach ($name in $Keep) {
@@ -289,7 +289,7 @@ function Register-AgentTask {
   $principal = New-ScheduledTaskPrincipal -UserId $account -LogonType ServiceAccount -RunLevel Limited
   $settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
   $triggers = @((New-ScheduledTaskTrigger -AtStartup), (New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Hours 1)))
-  $null = Register-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -Action $action -Principal $principal -Settings $settings -Trigger $triggers -Description 'Home Hub push agent (docs/agent.md). Reports this machine to the hub; installed by install-agent.ps1.' -Force
+  $null = Register-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -Action $action -Principal $principal -Settings $settings -Trigger $triggers -Description 'Home Hub push agent (docs/agent.md). Reports this computer to the hub; installed by install-agent.ps1.' -Force
 }
 function Stop-AgentTask {
   $t = Get-Task
@@ -353,7 +353,7 @@ if ($null -eq $hubInfo) { Stop-Install '-Hub must be an origin: https://<name or
 
 # The key file. Its text holds the token, so it never reaches a command as a parameter (Module Logging records those):
 # the token is cut out with .NET's regex first, and ConvertFrom-Json reads the file with a placeholder in its place.
-$token = $null; $agentId = $null; $machine = $null
+$token = $null; $agentId = $null; $device = $null
 if ($KeyFile) {
   try { $keyText = [IO.File]::ReadAllText($KeyFile, $Utf8) } catch { Stop-Install '-KeyFile cannot be read' }
   $found = [regex]::Matches($keyText, 'hha_[0-9a-f]{64}')
@@ -363,8 +363,8 @@ if ($KeyFile) {
   $masked = $keyText.Replace($token, $placeholder); $keyText = $null; $found = $null
   try { $k = ConvertFrom-Json -InputObject $masked } catch { $k = $null }
   $agentInfo = Get-Prop $k 'agent'
-  if ((Get-Prop $k 'schema') -ne 1 -or (Get-Prop $k 'token') -cne $placeholder -or -not ((Get-Prop $agentInfo 'machine') -is [string])) { $token = $null; Stop-Install '-KeyFile is not an agent key file (schema 1, an hha_ token)' }
-  $machine = [string](Get-Prop $agentInfo 'machine'); $agentId = [string](Get-Prop $agentInfo 'id')
+  if ((Get-Prop $k 'schema') -ne 1 -or (Get-Prop $k 'token') -cne $placeholder -or -not ((Get-Prop $agentInfo 'device') -is [string])) { $token = $null; Stop-Install '-KeyFile is not an agent key file (schema 1, an hha_ token)' }
+  $device = [string](Get-Prop $agentInfo 'device'); $agentId = [string](Get-Prop $agentInfo 'id')
 }
 $specsBytes = New-Object byte[] 0
 if ($Specs) { try { $specsBytes = [IO.File]::ReadAllBytes($Specs) } catch { Stop-Install 'cannot read -Specs' } }
@@ -393,7 +393,7 @@ $files['package.json'] = [IO.File]::ReadAllBytes((Join-Path $Checkout 'package.j
 # --- the plan ------------------------------------------------------------------------------------------------------
 Say ('Home Hub agent ' + $version + ' for Windows')
 Say ('  hub        ' + $hubInfo.origin + ' (trust: ' + $parsed.trust.mode + ')')
-if ($token) { Say ('  key        ' + $token.Substring(0, 12) + '... for machine ' + $machine + ' -> ' + (Join-Path $Dirs.private 'agent.key')) }
+if ($token) { Say ('  key        ' + $token.Substring(0, 12) + '... for device ' + $device + ' -> ' + (Join-Path $Dirs.private 'agent.key')) }
 Say ('  runs as    NT AUTHORITY\LocalService, Scheduled Task ' + $TaskPath + $TaskName)
 Say ('  files      ' + $Root + ' (agent, config, private, state, logs)')
 Say ('  watch list ' + @($specsCheck.lines).Count + ' line(s):')
@@ -459,7 +459,7 @@ if ([IO.File]::Exists($keyPath)) { [IO.File]::Delete($keyPath) }
 $keySame = [Convert]::ToBase64String([IO.File]::ReadAllBytes($keyPath)) -ceq [Convert]::ToBase64String($keyBytes)
 [Array]::Clear($keyBytes, 0, $keyBytes.Length)
 if (-not $keySame) { Stop-Install ($keyPath + ' differs from what was checked') }
-$record = [ordered]@{ schema = 1; installedAt = (Format-Iso (Get-NowMs)); version = $version; hub = $hubInfo.origin; trust = $parsed.trust.mode; agentId = $agentId; machine = $machine
+$record = [ordered]@{ schema = 1; installedAt = (Format-Iso (Get-NowMs)); version = $version; hub = $hubInfo.origin; trust = $parsed.trust.mode; agentId = $agentId; device = $device
   account = $SidLocalService; task = $TaskPath + $TaskName; specsSha256 = (Get-Sha256Hex $specsBytes); files = $hashes; backup = $backup }
 Write-CheckedFile (Join-Path $Root $Marker) ($Utf8.GetBytes((ConvertTo-AgentJson $record) + "`n")) $Read
 Say ('Starting; waiting up to ' + $Wait + ' s for the first accepted report...')

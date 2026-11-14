@@ -74,14 +74,14 @@ test('the access pages build the DOM from text only and name no plugin',async()=
 });
 
 test('the MCP tool table: rows come from the manifest, a plugin tool is tagged, a long description folds',()=>{
- assert.deepEqual(toolLead('Search the inventory (machines, tools). Matches id and name. Returns the hash.'),['Search the inventory (machines, tools).','Matches id and name. Returns the hash.']);
+ assert.deepEqual(toolLead('Search the inventory (devices, tools). Matches id and name. Returns the hash.'),['Search the inventory (devices, tools).','Matches id and name. Returns the hash.']);
  assert.deepEqual(toolLead('Add a comment, e.g. what was done.'),['Add a comment, e.g. what was done.',''],'an abbreviation does not end the sentence');
  assert.deepEqual(toolLead(undefined),['','']);
  const modules=[{id:'core',core:true,title:'Home Hub'},{id:'notes',core:false,title:'Notes'}];
- const rows=toolRows([{name:'home_status',title:'Machine status',scope:'read',write:false,description:'Current state.',module:'core'},
+ const rows=toolRows([{name:'home_status',title:'Device status',scope:'read',write:false,description:'Current state.',module:'core'},
   {name:'notes_add',title:'Notes: add',scope:'notes:write',write:true,description:'Add a note. It is appended.',module:'notes'},
   {name:'keys_list',scope:'security:read',write:false,description:'SSH keys.',module:'gone'}],modules);
- assert.deepEqual(rows.map(r=>[r.name,r.title,r.scope,r.write,r.plugin]),[['home_status','Machine status','read',false,null],['notes_add','Notes: add','notes:write',true,'Notes'],['keys_list','keys_list','security:read',false,null]]);
+ assert.deepEqual(rows.map(r=>[r.name,r.title,r.scope,r.write,r.plugin]),[['home_status','Device status','read',false,null],['notes_add','Notes: add','notes:write',true,'Notes'],['keys_list','keys_list','security:read',false,null]]);
  assert.deepEqual([rows[1].lead,rows[1].rest],['Add a note.','It is appended.']);
  assert.deepEqual(toolRows(),[],'without a manifest the table is empty, not a made-up list');
 });

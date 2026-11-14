@@ -319,13 +319,13 @@ test('newer scopes: Editor, the presets and full access hold home:write and soft
  const tools=async headers=>(await (await fetch(h.origin+'/mcp',{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list'})})).json()).result.tools.map(x=>x.name);
  for(const who of [editor.headers,full.headers]){
   const held=await me(who);assert.ok(NEWER.every(id=>held.includes(id)));
-  const names=await tools(who);for(const name of ['machine_upsert','machine_remove','runtime_publish','software_watch_list','software_watch_put'])assert.ok(names.includes(name),name);
+  const names=await tools(who);for(const name of ['device_upsert','device_remove','runtime_publish','software_watch_list','software_watch_put'])assert.ok(names.includes(name),name);
  }
  assert.ok(NEWER.every(id=>!editor.account.scopes.includes('*')&&editor.account.scopes.includes(id)),'the Editor preset stores the list, new scopes included');
  const oldScopes=await me(old),oldTools=await tools(old);
  assert.ok(oldScopes.includes('tickets:write')&&NEWER.every(id=>!oldScopes.includes(id))&&!oldScopes.includes('security:read'));
- assert.ok(oldTools.includes('ticket_create')&&oldTools.includes('machine_list'));
- for(const name of ['machine_upsert','machine_remove','runtime_publish','software_watch_list','software_watch_put'])assert.ok(!oldTools.includes(name),`a legacy key must not see ${name}`);
- const refused=await h.post('/api/home/devices',{machine:{id:'pi',name:'Pi'}},old);
+ assert.ok(oldTools.includes('ticket_create')&&oldTools.includes('device_list'));
+ for(const name of ['device_upsert','device_remove','runtime_publish','software_watch_list','software_watch_put'])assert.ok(!oldTools.includes(name),`a legacy key must not see ${name}`);
+ const refused=await h.post('/api/home/devices',{device:{id:'pi',name:'Pi'}},old);
  assert.equal(refused.status,403);assert.equal((await refused.json()).error.code,'SCOPE_REQUIRED');
 });

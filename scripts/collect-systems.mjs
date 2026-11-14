@@ -1,23 +1,23 @@
 #!/usr/bin/env node
 // Collect OS versions, watched software versions and host protection for Home Hub → data/systems/snapshot.json.
-// Run on a machine that reaches every other one over SSH, by hand or from a scheduled job
+// Run on a device that reaches every other one over SSH, by hand or from a scheduled job
 // (scripts/systems/install-launchd.sh on macOS, examples/systemd/ on Linux):
 //   node scripts/collect-systems.mjs [--data DIR] [--host id=alias ...] [--only id,id]
-// Which machines, and through which ssh alias, comes from the site configuration (machines[].ssh:
-// alias + probe; alias "local" = this machine). Without any such machine there is nothing to do: the
+// Which devices, and through which ssh alias, comes from the site configuration (devices[].ssh:
+// alias + probe; alias "local" = this computer). Without any such device there is nothing to do: the
 // script says what to add and writes nothing. Read-only everywhere: nothing is installed, upgraded or
-// written on a probed machine. scripts/systems/mac-probe.sh runs on each Mac as the SSH user (watched
+// written on a probed device. scripts/systems/mac-probe.sh runs on each Mac as the SSH user (watched
 // binaries are never executed as root); scripts/systems/nas-probe.sh runs on a TrueNAS box through a
-// sudo-capable alias because its middleware needs root. A machine that cannot be reached keeps its
+// sudo-capable alias because its middleware needs root. A device that cannot be reached keeps its
 // previous record, marked stale. Each run also appends one line to history.jsonl.
-// Each record carries probedAt: this machine's clock when its probe came back (a failed probe leaves it as it was).
+// Each record carries probedAt: this computer's clock when its probe came back (a failed probe leaves it as it was).
 // The hub reads it, with the file's modification time, when it chooses between this record and a push agent's
 // (docs/agent.md §3 → Who wins over the collectors).
 import {spawn} from 'node:child_process';
 import {readFile,writeFile,rename,mkdir,appendFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {parseSystemsProbe,buildSystems,systemsSpecs,systemMachines,historyEntry} from '../server/systems-data.mjs';
+import {parseSystemsProbe,buildSystems,systemsSpecs,systemDevices,historyEntry} from '../server/systems-data.mjs';
 import {site as loadedSite,sshHosts} from '../server/site-config.mjs';
 import {readWatch,checkWatch} from '../server/software-watch.mjs';
 import {collectorRun} from '../server/collector-run.mjs';
@@ -36,9 +36,9 @@ export function run(cmd,argv,{timeoutMs=300000}={}){
  });
 }
 
-// One machine. exec is run() or a stand-in with the same signature (the tests pass one, so no test ever
+// One device. exec is run() or a stand-in with the same signature (the tests pass one, so no test ever
 // opens an SSH connection). → {record} | {error}
-export async function probeMachine(alias,script,exec=run){
+export async function probeDevice(alias,script,exec=run){
  let r;
  if(alias==='local')r=await exec('/bin/sh',['-c',script,'systems-probe']);
  else{
@@ -54,37 +54,37 @@ const emptyRecord=(id,alias,error,at)=>({host:id,alias,complete:false,stale:fals
 
 /**
  * Probe every host, merge with the previous snapshot and write snapshot.json and history.jsonl in outDir.
- * hosts: Map id → ssh alias; registry: the software watch list; exec: see probeMachine.
+ * hosts: Map id → ssh alias; registry: the software watch list; exec: see probeDevice.
  * → {snapshot, doc, file, upstream}
  */
 export async function collectSystems({site=loadedSite(),hosts=sshHosts(site,m=>m.ssh.probe),registry,outDir,exec=run,now=()=>new Date().toISOString(),
  collectedFrom=null,probesDir=path.join(root,'scripts','systems'),started=null}){
- const machineList=systemMachines(site);
+ const deviceList=systemDevices(site);
  const [macProbe,nasProbe]=await Promise.all(['mac-probe.sh','nas-probe.sh'].map(f=>readFile(path.join(probesDir,f),'utf8')));
  const previous=await readFile(path.join(outDir,'snapshot.json'),'utf8').then(JSON.parse).catch(()=>null);
  const results=await Promise.all([...hosts].map(async([id,alias])=>{
-  const kind=machineList.find(m=>m.id===id)?.kind||'mac';
+  const kind=deviceList.find(m=>m.id===id)?.kind||'mac';
   const script=kind==='nas'?nasProbe:`SPECS='${systemsSpecs(registry,id)}'\n${macProbe}`;
-  const res=await probeMachine(alias,script,exec);
+  const res=await probeDevice(alias,script,exec);
   return [id,alias,res,now()];
  }));
- const machines={...(previous?.machines||{})};
+ const devices={...(previous?.devices||{})};
  for(const [id,alias,res,probedAt] of results){
-  if(res.record)machines[id]={...res.record,alias,stale:false,lastError:null,probedAt};
-  else if(machines[id])machines[id]={...machines[id],stale:true,lastError:res.error,lastAttemptAt:now()};
-  else machines[id]=emptyRecord(id,alias,res.error,now());
+  if(res.record)devices[id]={...res.record,alias,stale:false,lastError:null,probedAt};
+  else if(devices[id])devices[id]={...devices[id],stale:true,lastError:res.error,lastAttemptAt:now()};
+  else devices[id]=emptyRecord(id,alias,res.error,now());
  }
  const snapshot={schemaVersion:1,collectedAt:now(),collectedFrom:collectedFrom??(await exec('hostname',['-s'])).stdout.trim(),
   // How this run was started (a scheduled job or a terminal), when that is knowable: server/collector-run.mjs.
-  ...(started?{run:started}:{}),machines};
+  ...(started?{run:started}:{}),devices};
  await mkdir(outDir,{recursive:true,mode:0o700});
  const file=path.join(outDir,'snapshot.json'),tmp=`${file}.${process.pid}.tmp`;
  await writeFile(tmp,JSON.stringify(snapshot,null,1)+'\n',{mode:0o600});await rename(tmp,file);
 
  // History for trend charts: one compact line per run, capped at ~2 years of 6-hourly runs.
  const upstream=await readFile(path.join(outDir,'upstream.json'),'utf8').then(JSON.parse).catch(()=>null);
- const doc=buildSystems({snapshot,upstream,registry,machines:machineList});
- const line={at:snapshot.collectedAt,machines:Object.fromEntries(doc.machines.filter(m=>m.summary).map(m=>[m.id,historyEntry(m)]))};
+ const doc=buildSystems({snapshot,upstream,registry,devices:deviceList});
+ const line={at:snapshot.collectedAt,devices:Object.fromEntries(doc.devices.filter(m=>m.summary).map(m=>[m.id,historyEntry(m)]))};
  const histFile=path.join(outDir,'history.jsonl');
  const hist=(await readFile(histFile,'utf8').catch(()=>'')).split('\n').filter(Boolean);
  if(hist.length>=3000){const keep=hist.slice(-2999);await writeFile(histFile,keep.join('\n')+'\n'+JSON.stringify(line)+'\n',{mode:0o600});}
@@ -92,10 +92,10 @@ export async function collectSystems({site=loadedSite(),hosts=sshHosts(site,m=>m
  return {snapshot,doc,file,upstream};
 }
 
-export const NOTHING_TO_PROBE=`No machine to probe yet. Nothing was written.
- 1. In local/site.json give each machine an ssh entry: "ssh": {"alias": "<ssh config alias>", "probe": "mac"}
-    ("nas" for TrueNAS; "alias": "local" for the machine this runs on). config/site.example.json shows one.
- 2. Check that  ssh <alias> true  works without a password prompt from this machine.
+export const NOTHING_TO_PROBE=`No device to probe yet. Nothing was written.
+ 1. In local/site.json give each device an ssh entry: "ssh": {"alias": "<ssh config alias>", "probe": "mac"}
+    ("nas" for TrueNAS; "alias": "local" for the device this runs on). config/site.example.json shows one.
+ 2. Check that  ssh <alias> true  works without a password prompt from this computer.
  3. Run  node scripts/collect-systems.mjs  again, then install the scheduled job:
     sh scripts/systems/install-launchd.sh   (macOS)   or   examples/systemd/   (Linux).`;
 
@@ -105,18 +105,18 @@ if(process.argv[1]===fileURLToPath(import.meta.url)){
  const dataDir=path.resolve(opt('--data')||resolvePaths().data);
  const outDir=process.env.SYSTEMS_DIR||path.join(dataDir,'systems');
  const site=loadedSite();
- // id=alias; "local" runs the probe on this machine.
+ // id=alias; "local" runs the probe on this computer.
  const hosts=sshHosts(site,m=>m.ssh.probe);
  args.forEach((a,i)=>{if(a==='--host'){const [id,alias]=String(args[i+1]||'').split('=');if(id&&alias)hosts.set(id,alias);}});
  const only=opt('--only')?.split(',').filter(Boolean);
  for(const [id,alias] of hosts)if(alias==='skip'||(only&&!only.includes(id)))hosts.delete(id);
  if(!hosts.size){console.log(NOTHING_TO_PROBE);process.exit(0);}
  const watch=await readWatch();
- const problems=checkWatch(watch.registry,{machines:site.machines.filter(m=>m.ssh?.probe==='mac').map(m=>m.id)});
+ const problems=checkWatch(watch.registry,{devices:site.devices.filter(m=>m.ssh?.probe==='mac').map(m=>m.id)});
  for(const p of [...problems.errors,...problems.warnings].slice(0,20))console.warn(`watch list: ${p}`);
  const started=Date.now();
  const {doc,file,upstream}=await collectSystems({site,hosts,registry:watch.registry,outDir,started:collectorRun()});
- for(const m of doc.machines){
+ for(const m of doc.devices){
   if(!hosts.has(m.id))continue;
   const s=m.summary;
   console.log(`${m.id.padEnd(12)} ${m.stale?'STALE ':''}${m.reachable?`${m.os?.name} ${m.os?.version} · OS ${m.os?.status} · ${s.softwareUpdates} software + ${s.appUpdates} apps to update · checks warn ${s.checks.warn} crit ${s.checks.crit}`:m.error||'unreachable'}`);

@@ -8,7 +8,7 @@
 //   backup-jobs:manage    run now, cancel, delete a snapshot (people whose role holds it, API keys with it)
 //   administrator         everything that decides where data is read from and sent to: create, edit, test,
 //                         confirm host keys, delete a job. Password sign-in only, never an API key, because a
-//                         job can copy any file the hub can read to any machine it names.
+//                         job can copy any file the hub can read to any device it names.
 // Paths are /api/backup-jobs…: /api/backups… belongs to whatever a household's plugin may serve there.
 import os from 'node:os';
 import path from 'node:path';
@@ -17,8 +17,8 @@ import {createBackupRunner,createBackupScheduler,createKey,publicKey,removeKey,a
 import {expandHome} from '../backup-config.mjs';
 import {resolvePaths,privateFile} from '../paths.mjs';
 import {tx} from '../text.mjs';
-import {FACETS_POINT,machineForHost} from '../machine-facets.mjs';
-import {HOW,PROMPTS} from '../machine-facet-sources.mjs';
+import {FACETS_POINT,deviceForHost} from '../device-facets.mjs';
+import {HOW,PROMPTS} from '../device-facet-sources.mjs';
 
 export const BACKUP_INTEGRATION='backup-jobs.runner';
 export const MANAGE_SCOPE='backup-jobs:manage';
@@ -88,8 +88,8 @@ async function detail(b,job){
   // Snapshots on the target that no recorded run made (older history, made by hand) are listed too.
   snapshots:h.snapshots.map(name=>({name,run:h.runs.find(r=>r.snapshot===name)?.id??null}))};
 }
-// Machines of the site configuration, offered as suggestions in the wizard (free entry always works).
-const suggestions=site=>site.machines.filter(m=>m.hostname||m.ip).map(m=>({id:m.id,name:m.name,host:m.hostname||m.ip,role:m.role,local:m.ssh?.alias==='local'}));
+// Devices of the site configuration, offered as suggestions in the wizard (free entry always works).
+const suggestions=site=>site.devices.filter(m=>m.hostname||m.ip).map(m=>({id:m.id,name:m.name,host:m.hostname||m.ip,role:m.role,local:m.ssh?.alias==='local'}));
 
 // ---- the integration card ----------------------------------------------------------------------------
 const ITEM_STATE={ok:'ok',warning:'stale',failed:'error',cancelled:'stale',interrupted:'error',running:'ok',ready:'not-configured',draft:'not-configured',off:'off'};
@@ -111,34 +111,34 @@ async function integrationStatus(b,hub,{enabled=true}={}){
 }
 
 // Two jobs may not write into one directory, or one inside the other: they would prune each other's snapshots.
-// Host names are compared as written (an IP and a name for one machine are caught by the owner marker instead).
+// Host names are compared as written (an IP and a name for one device are caught by the owner marker instead).
 const nested=(a,b)=>a===b||a.startsWith(b.endsWith('/')?b:b+'/')||b.startsWith(a.endsWith('/')?a:a+'/');
 const sameDestination=(a,b)=>Boolean(a&&b&&a.host.toLowerCase()===b.host.toLowerCase()&&a.port===b.port&&nested(a.path,b.path));
 const idOf=input=>input&&typeof input==='object'?input.id:undefined;
 const partOf=input=>{const part=input?.part,index=input?.index??0;if(!['target','source'].includes(part)||!Number.isInteger(index)||index<0||index>20)throw new BackupError('invalid','part must be "target" or "source" (with index)');return {part,index};};
 
-// Integrations → Machines: per machine, the jobs that store snapshots on it (target) and the jobs that back it up
-// (an SSH source; a local source is the hub's own machine: the site machine with ssh.alias "local", else the one
-// named like this host). A machine no job touches is "not configured". Read-only: job summaries as the page has them.
+// Integrations → Devices: per device, the jobs that store snapshots on it (target) and the jobs that back it up
+// (an SSH source; a local source is the hub's own host: the site device with ssh.alias "local", else the one
+// named like this host). A device no job touches is "not configured". Read-only: job summaries as the page has them.
 const JOB_WORD={ok:'v pořádku',warning:'s varováním',failed:'selhala',cancelled:'zrušená',interrupted:'přerušená',running:'běží',ready:'připravená',draft:'rozpracovaná',off:'vypnutá'};
-async function backupFacet(b,hub,machines){
+async function backupFacet(b,hub,devices){
  const report={id:'backups',title:'Zálohy',icon:'archive',order:20,page:'backup-jobs',how:HOW.backups,prompt:PROMPTS.backups,
-  howTo:'Žádná úloha záloh na tenhle stroj neukládá ani ho nezálohuje. Založ ji na stránce Zálohování.',machines:{}};
+  howTo:'Žádná úloha záloh na tenhle stroj neukládá ani ho nezálohuje. Založ ji na stránce Zálohování.',devices:{}};
  if(!hub.integrationEnabled(BACKUP_INTEGRATION))return {...report,off:true};
  let jobs=[];try{jobs=b.jobs();}catch{return report;}
- const local=hub.site.machines.find(m=>m.ssh?.alias==='local')?.id||machineForHost(machines,os.hostname())?.id||null;
+ const local=hub.site.devices.find(m=>m.ssh?.alias==='local')?.id||deviceForHost(devices,os.hostname())?.id||null;
  const per=new Map(),add=(id,line)=>{if(!id)return;if(!per.has(id))per.set(id,[]);per.get(id).push(line);};
  for(const job of jobs){
   const s=await summary(b,job).catch(()=>null);if(!s)continue;
   const line={job:job.name,state:ITEM_STATE[s.state]||'error',word:JOB_WORD[s.state]||s.state};
-  if(job.target?.host)add(machineForHost(machines,job.target.host)?.id,{...line,role:'target'});
-  for(const src of job.sources||[])add(src.kind==='ssh'?machineForHost(machines,src.host)?.id:local,{...line,role:'source'});
+  if(job.target?.host)add(deviceForHost(devices,job.target.host)?.id,{...line,role:'target'});
+  for(const src of job.sources||[])add(src.kind==='ssh'?deviceForHost(devices,src.host)?.id:local,{...line,role:'source'});
  }
  for(const [id,lines] of per){
   // A failed job first, then one with a warning; only drafts and unfinished jobs: it wants finishing.
   const worst=['error','stale','ok','off'].find(x=>lines.some(l=>l.state===x))||'warn';
   const target=lines.some(l=>l.role==='target'),source=lines.some(l=>l.role==='source');
-  report.machines[id]={state:worst,href:'#backup-jobs',
+  report.devices[id]={state:worst,href:'#backup-jobs',
    summary:target&&source?'Ukládají se sem zálohy a sám je zálohovaný.':target?'Ukládají se sem zálohy.':'Je zálohovaný.',
    details:lines.map(l=>({label:l.role==='target'?'Cíl úlohy':'Zdroj úlohy',value:tx('{job}: {state}',{job:l.job,state:[l.word]})}))};
  }
@@ -147,7 +147,7 @@ async function backupFacet(b,hub,machines){
 
 export default {
  id:'backup-jobs',title:'Backups',
- provides:{[FACETS_POINT]:(b,hub)=>machines=>backupFacet(b,hub,machines)},
+ provides:{[FACETS_POINT]:(b,hub)=>devices=>backupFacet(b,hub,devices)},
  assets:['backups-view.js','backups-wizard.js','backups.css','i18n-en-backups.js'],
  nav:[{groupKey:'Domov',hash:'backup-jobs',labelKey:'Zálohování',view:'backups-view.js#backupsPage',order:14,icon:'archive'}],
  setup:hub=>createBackups(hub),
@@ -269,7 +269,7 @@ export default {
   status:(b,hub,opts)=>integrationStatus(b,hub,opts)}],
  mcpInstructions:'Backups the hub runs itself: backup_jobs_list returns each job with its state, last run, next run and snapshot count. Jobs are set up by an administrator in the web UI.',
  mcpTools:[{name:'backup_jobs_list',scope:'read',title:'Backups: list jobs',
-  description:'The backup jobs this Home Hub runs (rsync over SSH to a target machine, one hard-linked snapshot per run): for each job its target and sources, schedule (site time zone), retention, state (draft, off, ready, running, ok, warning, failed, cancelled), last run with its result and statistics, next scheduled run, last success, logical size of the newest snapshot and the number of snapshots on the target. Read-only.',
+  description:'The backup jobs this Home Hub runs (rsync over SSH to a target device, one hard-linked snapshot per run): for each job its target and sources, schedule (site time zone), retention, state (draft, off, ready, running, ok, warning, failed, cancelled), last run with its result and statistics, next scheduled run, last success, logical size of the newest snapshot and the number of snapshots on the target. Read-only.',
   inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,openWorldHint:false},
   run:async(args,{state})=>({timeZone:state.timeZone()||null,jobs:await Promise.all(state.jobs().map(j=>summary(state,j)))})}],
  apiDocs:[{title:'Zálohování',routes:[

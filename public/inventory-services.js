@@ -1,7 +1,7 @@
 // The Services view of the inventory page (#inventory-map/services; the old address #services leads there).
 // It is the inventory seen through one kind: every entry of kind "runtime" is a service. Next to the map
 // and the table it is the one dense list that answers "what is this service, where do I reach it, and what
-// breaks with it": per service its address (port or URL, clickable), the machine it runs on, the names of
+// breaks with it": per service its address (port or URL, clickable), the device it runs on, the names of
 // what depends on it and of what it needs, and when and by whom it was last verified. The map shows those
 // names for one selected card at a time; the table shows only how many there are.
 // It shares the page's search box and the table's place and gap filters, and keeps its own sort order.
@@ -14,13 +14,13 @@ import {emptyState} from './ui.js';
 import {place,hasGap,matcher,typeTag,isExample,index} from './inventory-data.js';
 import {showCreate,linkify} from './inventory-entry.js';
 
-export const SERVICES_PROMPT=()=>t('Projdi moje stroje a zapiš do inventáře Home Hubu každou běžící službu (MCP server „home-hub“, scope inventory:write).\n1. Zavolej inventory_describe: zjistíš schéma, druhy a pravidla.\n2. Před každým zápisem zavolej inventory_search, ať nezaložíš nic dvakrát. Stroj, na kterém služba běží, musí mít vlastní záznam druhu machine; když chybí, založ ho jako první.\n3. Každou službu ulož přes inventory_update (nebo víc naráz přes inventory_bulk_upsert, nejdřív s dryRun) jako záznam s kind „runtime“: id, name, machine, address (host:port nebo URL), version, managed_by a depends_on.\n4. U přihlašovacích údajů zapiš jen to, kde jsou uložené (store a název položky), nikdy jejich hodnotu.\nNakonec vypiš, co se ti nepodařilo ověřit.');
+export const SERVICES_PROMPT=()=>t('Projdi moje stroje a zapiš do inventáře Home Hubu každou běžící službu (MCP server „home-hub“, scope inventory:write).\n1. Zavolej inventory_describe: zjistíš schéma, druhy a pravidla.\n2. Před každým zápisem zavolej inventory_search, ať nezaložíš nic dvakrát. Stroj, na kterém služba běží, musí mít vlastní záznam druhu device; když chybí, založ ho jako první.\n3. Každou službu ulož přes inventory_update (nebo víc naráz přes inventory_bulk_upsert, nejdřív s dryRun) jako záznam s kind „runtime“: id, name, device, address (host:port nebo URL), version, managed_by a depends_on.\n4. U přihlašovacích údajů zapiš jen to, kde jsou uložené (store a název položky), nikdy jejich hodnotu.\nNakonec vypiš, co se ti nepodařilo ověřit.');
 
 // Services grouped by where they run, in the order the entries have in the file.
 export function serviceGroups(doc){
  const groups=new Map();
- for(const e of doc.entries.filter(x=>x.kind==='runtime')){const key=e.machine||'';if(!groups.has(key))groups.set(key,[]);groups.get(key).push(e);}
- return [...groups].map(([machine,services])=>({machine,label:services[0]?place(services[0])||machine:machine,services}));
+ for(const e of doc.entries.filter(x=>x.kind==='runtime')){const key=e.device||'';if(!groups.has(key))groups.set(key,[]);groups.get(key).push(e);}
+ return [...groups].map(([device,services])=>({device,label:services[0]?place(services[0])||device:device,services}));
 }
 const text=v=>typeof v==='string'?v:'';
 // One row per service, with everything the list shows and sorts by. usedBy: the entries that name this
@@ -32,7 +32,7 @@ export function serviceRows(doc){
 }
 const COLUMNS=[['name','Služba'],['address','Adresa'],['place','Stroj'],['usedBy','Závisí na ní'],['needs','Potřebuje'],['verified','Ověřeno']];
 const KEY={name:r=>r.name.toLowerCase(),address:r=>r.address.toLowerCase(),place:r=>r.place.toLowerCase(),usedBy:r=>r.usedBy.length,needs:r=>r.needs.length,verified:r=>r.verified};
-// Sorted copy. Empty values go last in either direction; ties go by machine, then by name.
+// Sorted copy. Empty values go last in either direction; ties go by device, then by name.
 export function sortServices(rows,key='place',dir='asc'){
  const of=KEY[key]||KEY.place,sign=dir==='desc'?-1:1,empty=v=>v===''||v===0;
  return [...rows].sort((a,b)=>{const x=of(a),y=of(b);
@@ -42,7 +42,7 @@ export function sortServices(rows,key='place',dir='asc'){
 }
 const emptyServices=()=>emptyState({icon:'◎',title:t('Zatím tu nejsou žádné služby'),
  body:t('Katalog služeb je pohled na inventář: každý záznam druhu „runtime“ je služba. V inventáři zatím žádný takový není.'),
- steps:[t('Služba je cokoli, co běží a má adresu: server, démon, aplikace s portem.'),t('Založ záznam s druhem „runtime“ a strojem, na kterém běží. Stroj musí mít vlastní záznam druhu „machine“.'),t('Doplň adresu, verzi, kdo ji spouští a na čem závisí. Objeví se tady i v mapě.')],
+ steps:[t('Služba je cokoli, co běží a má adresu: server, démon, aplikace s portem.'),t('Založ záznam s druhem „runtime“ a strojem, na kterém běží. Stroj musí mít vlastní záznam druhu „device“.'),t('Doplň adresu, verzi, kdo ji spouští a na čem závisí. Objeví se tady i v mapě.')],
  agentPrompt:SERVICES_PROMPT(),mcpSnippet:true,
  actions:[canWrite()?{label:t('Přidat službu'),onclick:()=>showCreate({kind:'runtime'}),primary:true}:null]});
 

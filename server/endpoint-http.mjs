@@ -16,7 +16,7 @@
 //   - plain HTTP is a separate choice of the caller (a Node Exporter on the LAN without TLS); a caller never
 //     sends credentials over it (enforced again here: an Authorization header over plain HTTP is refused), with one
 //     exception the caller must ask for: loopbackAuth, and only to the literal 127.0.0.1 (the push agent on the
-//     hub's own machine, docs/agent.md section 4).
+//     hub's own host, docs/agent.md section 4).
 //   - no redirects (a 3xx is an error), no compression (Accept-Encoding: identity; an encoded reply is refused),
 //     a hard deadline over connect + TLS + reply, and a cap on the reply's size.
 // Errors are Error(code): timeout, refused, unresolved, unreachable, tls-untrusted, tls-pin, tls-hostname,

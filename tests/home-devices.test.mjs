@@ -8,11 +8,11 @@ import {readStore} from './support/sealed.mjs';
 import {createHomeDevices,newDeviceId} from '../server/home-devices.mjs';
 import {buildHome as build,validHomeOrder,homeOrder} from '../server/home-data.mjs';
 import {hub,SITE} from './hub-helper.mjs';
-const HOME_MACHINE_IDS=SITE.machines.map(m=>m.id),buildHome=input=>build({site:SITE,...input});
+const HOME_DEVICE_IDS=SITE.devices.map(m=>m.id),buildHome=input=>build({site:SITE,...input});
 
 const PIN='ab'.repeat(32),JPEG=Buffer.from([0xff,0xd8,0xff,0xe0,1,2,3,4]);
 const thermo={kind:'thermo',thermo:{port:49286,username:'homehub',password:'correct horse battery',pin:PIN}};
-async function store(t){const dir=await mkdtemp(path.join(os.tmpdir(),'home-devices-'));t.after(()=>rm(dir,{recursive:true,force:true}));return {dir,d:createHomeDevices(dir,{reserved:HOME_MACHINE_IDS})};}
+async function store(t){const dir=await mkdtemp(path.join(os.tmpdir(),'home-devices-'));t.after(()=>rm(dir,{recursive:true,force:true}));return {dir,d:createHomeDevices(dir,{reserved:HOME_DEVICE_IDS})};}
 
 test('home devices: ids, validation, secrets kept apart, picture, removal',async t=>{
  const {dir,d}=await store(t);
@@ -35,9 +35,9 @@ test('home devices: ids, validation, secrets kept apart, picture, removal',async
  assert.equal((await d.putImage('printer',Readable.from([JPEG]))).image,true);assert.ok((await d.image('printer')).endsWith('printer.jpg'));
  // The overview shows both; the order accepts their ids.
  const home=buildHome({thermo:{status:()=>({}),seconds:()=>[],minutes:()=>[],live:()=>({}),disks:()=>({})},added:await d.list()});
- const added=home.machines.filter(m=>m.added);assert.deepEqual(added.map(m=>[m.id,m.kind,m.online]),[['mac-studio-2','thermo','offline'],['printer','other','unknown']]);
+ const added=home.devices.filter(m=>m.added);assert.deepEqual(added.map(m=>[m.id,m.kind,m.online]),[['mac-studio-2','thermo','offline'],['printer','other','unknown']]);
  assert.match(added[1].image,/^\/images\/home\/printer\.jpg\?v=/);
- const ids=[...HOME_MACHINE_IDS,'mac-studio-2','printer'];assert.deepEqual(validHomeOrder(['printer','mini'],ids),['printer','mini']);assert.throws(()=>validHomeOrder(['printer']),/invalid/);
+ const ids=[...HOME_DEVICE_IDS,'mac-studio-2','printer'];assert.deepEqual(validHomeOrder(['printer','mini'],ids),['printer','mini']);assert.throws(()=>validHomeOrder(['printer']),/invalid/);
  assert.deepEqual(homeOrder(['printer'],ids).slice(0,2),['printer','mini']);
  // Removal drops the tile, the Thermo login and the picture.
  await d.remove('mac-studio-2');await d.remove('printer');assert.deepEqual(await d.list(),[]);assert.deepEqual(await d.thermoHosts(),[]);
@@ -63,7 +63,7 @@ test('home devices over HTTP: probe, Thermo login checked before saving, picture
  assert.equal((await put(JPEG)).status,200);
  const img=await fetch(`${h.origin}/images/home/studio-2.jpg`,{headers:h.admin});assert.equal(img.status,200);assert.equal(img.headers.get('content-type'),'image/jpeg');
  assert.equal((await fetch(`${h.origin}/images/home/studio-2.jpg`)).status,401);
- const home=await (await fetch(`${h.origin}/api/home`,{headers:h.admin})).json();assert.ok(home.machines.some(m=>m.id==='studio-2'&&m.added&&m.kind==='thermo'));
+ const home=await (await fetch(`${h.origin}/api/home`,{headers:h.admin})).json();assert.ok(home.devices.some(m=>m.id==='studio-2'&&m.added&&m.kind==='thermo'));
  const order=await (await fetch(`${h.origin}/api/profile/home-order`,{headers:h.admin})).json();assert.ok(order.known.includes('studio-2'));
  assert.equal((await h.post('/api/profile/home-order',{order:['studio-2','mini']},h.admin)).status,200);
  // API keys never use the add form or upload, whatever their scopes; one removes only with home:write (and the hash).

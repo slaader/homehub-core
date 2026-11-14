@@ -1,6 +1,6 @@
-// The set-up that happens on the machine for the providers other than Windows over SSH (public/windows-setup.js),
+// The set-up that happens on the device for the providers other than Windows over SSH (public/windows-setup.js),
 // as text to copy: Windows over WinRM (PowerShell), Linux with Node Exporter, an existing Prometheus, and Linux
-// over SSH (POSIX shell). Nothing here runs anywhere by itself; the hub never installs or configures a machine.
+// over SSH (POSIX shell). Nothing here runs anywhere by itself; the hub never installs or configures a device.
 // Pure functions (no DOM): the device dialog shows them, tests check them. Values from the form are quoted as
 // literals of the target shell (PowerShell: psLiteral; POSIX sh: shLiteral) and refused when they carry a line
 // break or a control character; placeholders in <angle brackets> are for the person to fill in.
@@ -148,5 +148,5 @@ export function linuxAuthorizeScript(publicKey){
 // Optional: a dedicated account with a normal shell and no extra rights.
 export const linuxAccountScript=user=>{if(!validUnixUser(user))throw new Error('invalid');
  return ['# Optional, as root: a dedicated account for Home Hub (no sudo, no groups).',`sudo useradd --create-home --shell /bin/sh ${user}`].join('\n');};
-export const LINUX_FINGERPRINT_SCRIPT=['# The fingerprints of this machine\'s SSH host keys. Compare one with Home Hub.',
+export const LINUX_FINGERPRINT_SCRIPT=['# The fingerprints of this device\'s SSH host keys. Compare one with Home Hub.',
  'for f in /etc/ssh/ssh_host_*_key.pub; do ssh-keygen -lf "$f"; done'].join('\n');

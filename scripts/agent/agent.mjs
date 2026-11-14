@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The Home Hub push agent for macOS and Linux (docs/agent.md §5): a thin wrapper that runs the probes that already
-// exist on this machine and posts what they print to the hub. Installed and started by
+// exist on this computer and posts what they print to the hub. Installed and started by
 // scripts/install-host-agent.mjs --core; it updates only when that is run again from a newer checkout.
 //
 //   node scripts/agent/agent.mjs --config DIR [--state DIR] [--key FILE]     run: report until stopped

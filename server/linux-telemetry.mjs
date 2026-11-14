@@ -5,7 +5,7 @@
 //                  hostname or by a pinned certificate, optionally with Basic credentials (only over verified HTTPS).
 //   linux-ssh      agent-less: the hub signs in with its own key (the app-managed SSH of server/windows-ssh.mjs)
 //                  and runs one fixed, read-only POSIX shell script that reads /proc, /sys and df. No sudo, no
-//                  Python, no package, nothing written on the machine.
+//                  Python, no package, nothing written on the device.
 // Both become the same snapshot (cumulative counters with the source's own clock), and a reading is the
 // difference between two snapshots of one connection (server/telemetry-poller.mjs):
 //   CPU     busy share of all CPUs and per logical CPU: 1 − Δ(idle + iowait) / Δ(all modes but guest)
@@ -16,7 +16,7 @@
 //           container, tunnel or VPN interfaces (those carry traffic already counted on a physical one)
 //   volumes local block filesystems (ext2/3/4, xfs, btrfs, zfs, f2fs, vfat, exfat, ntfs, fuseblk, …), one per device
 //           and one per ZFS pool (its datasets share the pool's space); never summed into a "disk capacity"
-//   sensors hwmon temperatures when the machine reports them (CPU = coretemp/k10temp/zenpower/cpu_thermal), else
+//   sensors hwmon temperatures when the device reports them (CPU = coretemp/k10temp/zenpower/cpu_thermal), else
 //           null; GPU and power: not measured (null, never 0)
 // Nothing between two snapshots is invented: the first snapshot, one after a failure, a gap longer than five
 // minutes, a reboot (boot time moved) or a counter that went backwards (reset, wrap) gives no rate for it.
@@ -242,7 +242,7 @@ export function deriveLinuxReading(prev,cur,atSec){
   gpu:null,memUsed,memTotal:m.total,swapUsed,vramUsed:null,
   diskRead:usable?round(familyRate(usable.disks,cur.disks,'read',span),0):null,diskWrite:usable?round(familyRate(usable.disks,cur.disks,'write',span),0):null,
   netRx:usable?round(familyRate(usable.net,cur.net,'rx',span),0):null,netTx:usable?round(familyRate(usable.net,cur.net,'tx',span),0):null,
-  // Instantaneous sensor values where the machine reports them; power and GPU are not measured (null, never 0).
+  // Instantaneous sensor values where the device reports them; power and GPU are not measured (null, never 0).
   cpuTemp:round(cur.cpuTemp),gpuTemp:round(cur.gpuTemp),power:null,gpuMem:null,memPressure:null,gpus:[]};
 }
 export const linuxVolumes=snap=>snap.volumes.slice(0,12).map(v=>({name:v.pool?`${v.pool} (ZFS · ${v.mount})`:v.mount,mount:v.mount,fs:v.fs||'',used:v.size!=null&&v.free!=null?Math.max(0,v.size-v.free):null,total:v.size}));

@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 // Collect the SSH key inventory for Home Hub → data/security/ssh-keys.json.
-// Run on a machine that reaches every other one over SSH, by hand or from a scheduled job. Machines and
-// ssh aliases come from the site configuration (machines[].ssh; alias "local" = this machine;
-// ssh.keys:false leaves one out). Without any such machine the script says what to add and writes nothing.
+// Run on a device that reaches every other one over SSH, by hand or from a scheduled job. Devices and
+// ssh aliases come from the site configuration (devices[].ssh; alias "local" = this computer;
+// ssh.keys:false leaves one out). Without any such device the script says what to add and writes nothing.
 //   node scripts/collect-security.mjs [--out FILE] [--host id=alias ...] [--no-forgejo]
-// Read-only everywhere. The probe (scripts/security/ssh-probe.sh) runs on each machine and
+// Read-only everywhere. The probe (scripts/security/ssh-probe.sh) runs on each device and
 // sends back fingerprints, paths, public authorized_keys lines, ssh -G routes and sudo -l
-// rules; private keys never leave the machine they are on. Forgejo keys come from `tea api`.
-// Beside the inventory it writes probes.json (the same directory): each machine's probe output with probedAt (this
-// machine's clock when the probe came back), Forgejo and the router entry, so the hub can rebuild the inventory with
+// rules; private keys never leave the device they are on. Forgejo keys come from `tea api`.
+// Beside the inventory it writes probes.json (the same directory): each device's probe output with probedAt (this
+// device's clock when the probe came back), Forgejo and the router entry, so the hub can rebuild the inventory with
 // the push agents' records (docs/agent.md §3; server/security-data.mjs → loadSecurity).
 import {spawn} from 'node:child_process';
 import {readFile,writeFile,rename,mkdir} from 'node:fs/promises';
@@ -16,8 +16,8 @@ import net from 'node:net';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {buildSecurity,probesFileOf,SECURITY_PROBES_SCHEMA} from '../server/security-data.mjs';
-import {loadMachineDescriptors} from '../server/home-data.mjs';
-import {site as loadedSite,sshHosts,siteMachineIds} from '../server/site-config.mjs';
+import {loadDeviceDescriptors} from '../server/home-data.mjs';
+import {site as loadedSite,sshHosts,siteDeviceIds} from '../server/site-config.mjs';
 import {collectorRun} from '../server/collector-run.mjs';
 import {resolvePaths} from '../server/paths.mjs';
 
@@ -34,7 +34,7 @@ export function run(cmd,argv,{timeoutMs=240000}={}){
  });
 }
 
-// One machine. exec is run() or a stand-in with the same signature (tests never open an SSH connection).
+// One device. exec is run() or a stand-in with the same signature (tests never open an SSH connection).
 export async function probeKeys(alias,script,exec=run){
  if(alias==='local'){const r=await exec('/bin/sh',['-c',script,'ssh-probe']);return r.stdout.includes('\nEND\tok')?{text:r.stdout}:{error:(r.stderr||'probe failed').trim().split('\n').pop()};}
  // The script travels base64-encoded inside the remote command, so the remote stdin stays empty.
@@ -65,18 +65,18 @@ export async function forgejoKeys(git,exec=run){
  */
 // clock: () => ms, when each probe came back (the tests pass one).
 export async function collectSecurity({site=loadedSite(),hosts=sshHosts(site,m=>m.ssh.keys),out,exec=run,forgejo=true,portOpen=tcpOpen,collectedFrom=null,now=Date.now(),
- machinesDir=process.env.MACHINES_DIR||path.join(resolvePaths().data,'machines'),probeFile=path.join(root,'scripts','security','ssh-probe.sh'),warn=()=>{},started=null,clock=Date.now}){
- const router=site.machines.find(m=>m.role==='router'&&m.ip)||null,git=site.security;
+ devicesDir=process.env.DEVICES_DIR||path.join(resolvePaths().data,'devices'),probeFile=path.join(root,'scripts','security','ssh-probe.sh'),warn=()=>{},started=null,clock=Date.now}){
+ const router=site.devices.find(m=>m.role==='router'&&m.ip)||null,git=site.security;
  const script=await readFile(probeFile,'utf8');
  const [probeResults,forgejoDoc,routerSsh]=await Promise.all([
   Promise.all([...hosts].map(async([id,alias])=>{const r=await probeKeys(alias,script,exec);return [id,r.text!=null?{...r,probedAt:new Date(clock()).toISOString()}:r];})),
   !forgejo||!git.gitHost?null:forgejoKeys(git,exec).catch(e=>{warn(`Forgejo skipped: ${e.message}`);return null;}),
   router?portOpen(router.ip,22):null,
  ]);
- const descriptors=await loadMachineDescriptors(machinesDir,siteMachineIds(site)).catch(()=>[]);
+ const descriptors=await loadDeviceDescriptors(devicesDir,siteDeviceIds(site)).catch(()=>[]);
  const probes=Object.fromEntries(probeResults),from=collectedFrom??(await exec('hostname',['-s'])).stdout.trim();
- const extraMachines=router?[{id:router.id,sshOpen:routerSsh,note:routerSsh?'Port 22 je otevřený, ale Home Hub k routeru SSH klíč nemá.':'SSH je na routeru vypnuté (port 22 zavřený).'}]:[];
- const built=buildSecurity({probes,forgejo:forgejoDoc,descriptors,site,now,collectedFrom:from,extraMachines});
+ const extraDevices=router?[{id:router.id,sshOpen:routerSsh,note:routerSsh?'Port 22 je otevřený, ale Home Hub k routeru SSH klíč nemá.':'SSH je na routeru vypnuté (port 22 zavřený).'}]:[];
+ const built=buildSecurity({probes,forgejo:forgejoDoc,descriptors,site,now,collectedFrom:from,extraDevices});
  // How this run was started (a scheduled job or a terminal), when that is knowable: server/collector-run.mjs.
  const doc=started?{...built,run:started}:built;
  await mkdir(path.dirname(out),{recursive:true});
@@ -84,7 +84,7 @@ export async function collectSecurity({site=loadedSite(),hosts=sshHosts(site,m=>
  // renames sees the older inventory alone, never a mix.
  const probesDoc={schemaVersion:SECURITY_PROBES_SCHEMA,collectedAt:built.collectedAt,collectedFrom:from,
   probes:Object.fromEntries(Object.entries(probes).map(([id,p])=>[id,p.text!=null?{text:p.text,probedAt:p.probedAt}:{error:String(p.error||'').slice(0,300)}])),
-  forgejo:forgejoDoc,extraMachines};
+  forgejo:forgejoDoc,extraDevices};
  for(const [file,content] of [[probesFileOf(out),probesDoc],[out,doc]]){
   const tmp=`${file}.${process.pid}.tmp`;
   await writeFile(tmp,JSON.stringify(content,null,1)+'\n',{mode:0o600});await rename(tmp,file);
@@ -92,10 +92,10 @@ export async function collectSecurity({site=loadedSite(),hosts=sshHosts(site,m=>
  return doc;
 }
 
-export const NOTHING_TO_PROBE=`No machine to read SSH keys from yet. Nothing was written.
- 1. In local/site.json give each machine an ssh entry: "ssh": {"alias": "<ssh config alias>"}
-    ("alias": "local" for the machine this runs on; "keys": false leaves a machine out).
- 2. Check that  ssh <alias> true  works without a password prompt from this machine.
+export const NOTHING_TO_PROBE=`No device to read SSH keys from yet. Nothing was written.
+ 1. In local/site.json give each device an ssh entry: "ssh": {"alias": "<ssh config alias>"}
+    ("alias": "local" for the device this runs on; "keys": false leaves a device out).
+ 2. Check that  ssh <alias> true  works without a password prompt from this computer.
  3. Run  node scripts/collect-security.mjs  again. To keep it fresh, install the scheduled job:
     sh scripts/systems/install-launchd.sh --with-security   (macOS)   or   examples/systemd/   (Linux).`;
 
@@ -103,13 +103,13 @@ if(process.argv[1]===fileURLToPath(import.meta.url)){
  const args=process.argv.slice(2);
  const opt=name=>{const i=args.indexOf(name);return i>=0?args[i+1]:null;};
  const out=path.resolve(opt('--out')||path.join(opt('--data')||resolvePaths().data,'security','ssh-keys.json'));
- // id=alias; "local" runs the probe on this machine. A NAS needs a sudo-capable alias to see every account.
+ // id=alias; "local" runs the probe on this computer. A NAS needs a sudo-capable alias to see every account.
  const site=loadedSite(),hosts=sshHosts(site,m=>m.ssh.keys);
  args.forEach((a,i)=>{if(a==='--host'){const [id,alias]=String(args[i+1]||'').split('=');if(id&&alias)hosts.set(id,alias);}});
  for(const [id,alias] of hosts)if(alias==='skip')hosts.delete(id);
  if(!hosts.size){console.log(NOTHING_TO_PROBE);process.exit(0);}
  const started=Date.now();
  const doc=await collectSecurity({site,hosts,out,forgejo:!args.includes('--no-forgejo'),warn:m=>console.error(m),started:collectorRun()});
- for(const m of doc.machines)console.log(`${m.id.padEnd(12)} ${m.reachable?`${m.accounts.length} accounts`:m.error||m.note||'unreachable'}`);
+ for(const m of doc.devices)console.log(`${m.id.padEnd(12)} ${m.reachable?`${m.accounts.length} accounts`:m.error||m.note||'unreachable'}`);
  console.log(`${doc.keys.length} SSH keys, ${doc.otherKeys.length} other keys, ${doc.unknownAuthorized.length} unknown authorized, ${doc.findings.length} findings → ${path.relative(process.cwd(),out)} (${((Date.now()-started)/1000).toFixed(1)} s)`);
 }

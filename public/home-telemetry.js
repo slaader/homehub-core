@@ -1,19 +1,19 @@
-// Telemetry on the overview: what a machine's state is called, and what the page shows when live numbers are
+// Telemetry on the overview: what a device's state is called, and what the page shows when live numbers are
 // missing. Live metrics come from a separate telemetry agent (Thermo) that is optional: the server names it
 // and where to get it in /api/home → telemetry {agent, repoUrl, staleAfterSeconds} (server/thermo-client.mjs).
 // Three cases are kept apart on purpose:
-//   not installed   the machine names no telemetry host                    → how to install it
+//   not installed   the device names no telemetry host                    → how to install it
 //   unreachable     a host is named, nothing was ever read from it         → what to check (and why)
 //   stale           readings exist but the newest is older than 3 minutes  → when it was last seen
-// A failed read says the agent did not answer. It never says the machine is off.
-// A Windows machine has no agent: the hub reads it over SSH (telemetry.provider "windows"), normally with a
+// A failed read says the agent did not answer. It never says the device is off.
+// A Windows device has no agent: the hub reads it over SSH (telemetry.provider "windows"), normally with a
 // connection it manages itself (telemetry.connection.mode "managed": host, port, user, its own key), else through
 // an older SSH alias. Its notices name the SSH side instead, with the server's hint for the last failure
 // (telemetry.hint, a source-language sentence), and its page adds what only Windows reports (nativePanel:
 // per-core load, disk and network, GPUs). Nothing here assumes which system the hub runs on.
-// Also here: the "local LLM runtimes" cards of a machine page. They show what a home.runtimes provider
+// Also here: the "local LLM runtimes" cards of a device page. They show what a home.runtimes provider
 // reported (docs/plugins.md). The telemetry agent does not report runtimes, and nothing here says it will:
-// a machine no provider reports on has no such section.
+// a device no provider reports on has no such section.
 import {el} from './views.js';
 import {t,tp,locale} from './i18n.js';
 import {timeZone} from './site.js';
@@ -32,8 +32,8 @@ const viaWindows=m=>m?.telemetry?.provider==='windows';
 const viaFeed=m=>Boolean(feedOf(m))&&!viaWindows(m);
 const sshFeed=m=>['windows','linux-ssh'].includes(feedOf(m));
 
-// The one-line state of a machine: {tone: ok | warn | bad | dim, text, title}.
-// Machines that report through the telemetry agent are judged by their readings; a NAS or a router by its
+// The one-line state of a device: {tone: ok | warn | bad | dim, text, title}.
+// Devices that report through the telemetry agent are judged by their readings; a NAS or a router by its
 // own feed (service probes, the router adapter); anything else has nothing to judge.
 export function statusOf(m){
  const tel=m.telemetry||{};
@@ -60,13 +60,13 @@ export function statusOf(m){
 }
 export const statusPill=m=>{const s=statusOf(m);return el('span',{class:`hv-status ${s.tone}`,title:s.title||null},el('i',{'aria-hidden':'true'}),s.text);};
 
-// Does this machine show live numbers (gauges, charts)? Only with readings, fresh or stale.
+// Does this device show live numbers (gauges, charts)? Only with readings, fresh or stale.
 export const hasReadings=m=>m.kind==='thermo'&&(m.telemetry?['ok','stale'].includes(m.telemetry.state):Boolean(m.quad));
 
-// How to get telemetry for a machine: an added device is connected in its edit dialog, a machine from the
+// How to get telemetry for a device: an added device is connected in its edit dialog, a device from the
 // site configuration on its own page (Telemetry settings: only the connection is stored, its identity stays in
 // site.json), unless the site reads it through Thermo, which is set in the site's files.
-// A machine whose system is not said is told every way there is, never that only the agent would do.
+// A device whose system is not said is told every way there is, never that only the agent would do.
 const siteEditable=m=>m.source==='site'&&m.telemetryEditable===true;
 export function installSteps(m,meta){
  const where=siteEditable(m)?t('Tady otevři Nastavení telemetrie: identita stroje zůstane v konfiguraci webu, uloží se jen spojení. Dialog ukáže návod, vyzkoušíš spojení a uložíš.')
@@ -84,10 +84,10 @@ export function installSteps(m,meta){
   m.source==='site'?t('Stroj je z konfigurace webu: v local/site.json mu nastav thermoId a přihlášení přidej do souboru private/thermo-hosts.json. Pak Home Hub restartuj.')
    :t('Tady otevři Upravit zařízení → Telemetrie, ověř spojení, potvrď otisk certifikátu a ulož.')];
 }
-// The not-installed notices name the agent only for a Mac (or a machine the site reads through Thermo).
+// The not-installed notices name the agent only for a Mac (or a device the site reads through Thermo).
 const unknownSystem=m=>!m.platform&&(siteEditable(m)||m.source!=='site');
 
-// What a tile shows instead of gauges. Short: the full story is on the machine's page.
+// What a tile shows instead of gauges. Short: the full story is on the device's page.
 export function tileNotice(m,meta){
  const tel=m.telemetry||{},name=agentOf(meta,m);
  const box=(tone,title,body)=>el('div',{class:`hv-tile-note ${tone}`},el('b',{},title),el('span',{},body));
@@ -102,8 +102,8 @@ export function tileNotice(m,meta){
  return box('warn',t('Telemetrie neodpovídá'),t('Stroj nemusí být vypnutý: může spát, být mimo síť, nebo {name} neběží.',{name}));
 }
 
-// The full notice on a machine's page, or null when telemetry is fine. onConnect: opens the edit dialog
-// at its telemetry part (offered only for a machine the signed-in account may edit).
+// The full notice on a device's page, or null when telemetry is fine. onConnect: opens the edit dialog
+// at its telemetry part (offered only for a device the signed-in account may edit).
 export function telemetryNotice(m,meta,{onConnect}={}){
  const tel=m.telemetry||{},name=agentOf(meta,m);
  if(tel.state==='ok'||tel.state==='not-applicable'||(!tel.state&&m.kind!=='other'))return null;
@@ -158,7 +158,7 @@ export function telemetryNotice(m,meta,{onConnect}={}){
   [t('Stroj je vzhůru a v síti.'),t('{name} běží a má zapnutý přístup po síti.',{name}),t('Port 49286 je povolený ve firewallu stroje.')]);
 }
 
-// Local LLM runtimes on a machine, one compact card per runtime: name and state, what it is, a figure or two,
+// Local LLM runtimes on a device, one compact card per runtime: name and state, what it is, a figure or two,
 // the loaded models, and the rest of its models folded away. m.runtimes = what a home.runtimes provider
 // reported, already bounded by the server. Labels of the figures are the provider's (its own strings).
 const RUNTIME_STATE={running:['ok','běží'],stopped:['dim','zastaveno'],unknown:['dim','stav neznámý']};
@@ -169,7 +169,7 @@ const minutes=iso=>{const s=(Date.now()-Date.parse(iso))/1000;return Number.isFi
 const busyFacts=x=>{const time=x.since?minutes(x.since):null;return [x.active?time?x.active>1?t('generuje ×{n}, nejdéle {time}',{n:x.active,time}):t('generuje {time}',{time})
  :x.active>1?t('generuje ×{n}',{n:x.active}):t('generuje'):null,
  x.queued?tp(x.queued,'{n} ve frontě|{n} ve frontě|{n} ve frontě'):null].filter(Boolean);};
-// A runtime listens on its own machine: ":8081" says more than a loopback address.
+// A runtime listens on its own device: ":8081" says more than a loopback address.
 const listen=url=>{try{const u=new URL(url);return ['127.0.0.1','localhost','[::1]'].includes(u.hostname)?`:${u.port||(u.protocol==='https:'?443:80)}`:u.host;}catch{return '';}};
 const kilo=n=>n>=1e6?`${Math.round(n/1e5)/10}M`:n>=1e3?`${Math.round(n/1e3)}k`:String(n);
 function modelRow(x){
@@ -241,9 +241,9 @@ export function runtimesSection(m,meta,{open=[]}={}){
   source?el('p',{class:`hv-source${old?' warn':''}`},source):null);
 }
 
-// What only Windows telemetry reports, on the machine page: the system, per-core load, disk and network
+// What only Windows telemetry reports, on the device page: the system, per-core load, disk and network
 // rates and each GPU, averaged over the last poll interval (native.span). Sensors are said to be missing,
-// never shown as 0. m.native = /api/home → machines[].native.
+// never shown as 0. m.native = /api/home → devices[].native.
 const rate=v=>v==null?'–':v>=1e9?`${Math.round(v/1e8)/10} GB/s`:v>=1e6?`${Math.round(v/1e5)/10} MB/s`:v>=1e3?`${Math.round(v/1e3)} kB/s`:`${Math.round(v)} B/s`;
 const days=s=>s==null?'–':s>=86400?tp(Math.floor(s/86400),'{n} den|{n} dny|{n} dní'):tp(Math.max(1,Math.floor(s/3600)),'{n} hodina|{n} hodiny|{n} hodin');
 export function nativePanel(m){
@@ -266,8 +266,8 @@ export function nativePanel(m){
   !n.gpuCounters?el('p',{class:'hv-note'},t('Windows nevrací čítače GPU (starší ovladač, nebo účtu chybí skupina Performance Monitor Users).')):null);
 }
 
-// What only the Linux sources report, on the machine page: system and kernel, load, per-core load, disk and network
-// rates and the temperatures the machine reports. GPU and power are said not to be measured, never shown as 0.
+// What only the Linux sources report, on the device page: system and kernel, load, per-core load, disk and network
+// rates and the temperatures the device reports. GPU and power are said not to be measured, never shown as 0.
 function linuxPanel(m,n){
  const cell=(k,v)=>el('div',{},el('span',{class:'hv-k'},k),el('b',{},v??'–'));
  const cores=Array.isArray(n.cpu?.cores)?n.cpu.cores:[];

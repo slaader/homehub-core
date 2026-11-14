@@ -49,5 +49,5 @@
   "node_modules/home-hub/server/version.mjs",
   "plugins/relay/scripts/agent.mjs"
  ],
- "config": "{\n \"$comment\": \"Written by scripts/install-host-agent.mjs from site.json → plugins for the agent \\\"agent\\\" of the plugin \\\"relay\\\" on box. Do not edit: install again.\",\n \"plugin\": \"relay\",\n \"agent\": \"agent\",\n \"machine\": \"box\",\n \"greeting\": \"hello\"\n}\n"
+ "config": "{\n \"$comment\": \"Written by scripts/install-host-agent.mjs from site.json → plugins for the agent \\\"agent\\\" of the plugin \\\"relay\\\" on box. Do not edit: install again.\",\n \"plugin\": \"relay\",\n \"agent\": \"agent\",\n \"device\": \"box\",\n \"greeting\": \"hello\"\n}\n"
 }

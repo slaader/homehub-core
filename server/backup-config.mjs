@@ -4,7 +4,7 @@
 //
 // A job (data/state/backup-jobs/jobs.json, written atomically, 0600):
 //   {id, name, enabled, createdAt, updatedAt,
-//    target:  {host, port, user, path, hostKey},          the machine that stores the snapshots (any SSH host)
+//    target:  {host, port, user, path, hostKey},          the device that stores the snapshots (any SSH host)
 //    sources: [{name, kind: "local" | "ssh", path, host?, port?, user?, hostKey?}],
 //    excludes: ["*.tmp", …], schedule: {mode: "daily" | "weekly" | "manual", time: "HH:MM", days: [1..7]},
 //    retention: {keepLast, keepDays}, timeoutMinutes}
@@ -95,7 +95,7 @@ export function sourcesInput(raw,current=[]){
  const names=new Set();
  return raw.map((s,i)=>{
   const where=`sources[${i}]`;only(s,['name','kind','path','host','port','user'],where);
-  if(!['local','ssh'].includes(s.kind))invalid(`${where}.kind must be "local" (this hub) or "ssh" (another machine)`);
+  if(!['local','ssh'].includes(s.kind))invalid(`${where}.kind must be "local" (this hub) or "ssh" (another computer)`);
   const out=s.kind==='local'?{kind:'local',path:localPath(s.path,`${where}.path`)}:{kind:'ssh',host:host(s.host,`${where}.host`),port:port(s.port,`${where}.port`),user:user(s.user,`${where}.user`),path:remotePath(s.path,`${where}.path`,{root:true})};
   let name=s.name===undefined||s.name===''?defaultName(out.path):s.name;
   if(typeof name!=='string'||!SOURCE_NAME.test(name))invalid(`${where}.name must be a short folder name (a-z, 0-9, . _ -)`);

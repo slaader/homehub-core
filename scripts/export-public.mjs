@@ -34,7 +34,7 @@ export function readmeFromSource(text){
 export const publicReadme=({source=null}={})=>readmeFromSource(source)??FALLBACK_README;
 const FALLBACK_README=`# Home Hub
 
-One page for a home network: the machines and how they are doing, what runs where and what depends on what,
+One page for a home network: the devices and how they are doing, what runs where and what depends on what,
 who may reach it, and a small tracker for your own projects. One Node process, no third-party dependencies,
 a plain-JavaScript front end, and an MCP endpoint so agents can read and maintain the same data.
 
@@ -61,7 +61,7 @@ you what to add where. To serve it on your network, put it behind a reverse prox
 mkdir -p local && cp config/site.example.json local/site.json
 \`\`\`
 
-Edit the name, your network, and your machines, then restart. \`docs/plugins.md\` explains every field, how the
+Edit the name, your network, and your devices, then restart. \`docs/plugins.md\` explains every field, how the
 collectors use it, and how to write a plugin.
 
 | Read | For |

@@ -63,7 +63,7 @@ test('guides: explicit, minimal, nothing automatic; Basic only for the WinRM ser
 });
 
 const linuxM=(provider,telemetry={},native=null)=>({id:'box',kind:'thermo',online:'offline',platform:'linux',added:true,source:'ui',native,telemetry:{provider,hostId:'box',thermoId:null,state:'unreachable',reason:'down',...telemetry}});
-test('a Linux or WinRM machine: notices name its provider and the server\'s hint; the panel never shows GPU or power as 0',()=>{
+test('a Linux or WinRM device: notices name its provider and the server\'s hint; the panel never shows GPU or power as 0',()=>{
  for(const p of ['node-exporter','prometheus','linux-ssh','winrm']){
   const m=linuxM(p,{detail:'timeout',hint:'Prometheus neodpověděl včas. Stroj může spát nebo být mimo síť, nebo port blokuje firewall.',connection:{mode:p,host:'10.0.0.40',port:9090,job:'node',instance:'a'}});
   const s=statusOf(m);assert.equal(s.text,'telemetrie neodpovídá');

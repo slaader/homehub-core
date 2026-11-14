@@ -2,7 +2,7 @@
 // limits, error replies) and a registry of modules that own the routes, pages, assets and MCP tools.
 // Core features are modules in server/core/; a household adds its own as plugins under local/plugins/
 // (server/plugins.mjs, docs/plugins.md). Nothing here knows about a particular household: names,
-// machines and networks come from the site configuration (server/site-config.mjs).
+// devices and networks come from the site configuration (server/site-config.mjs).
 import https from 'node:https';
 import http from 'node:http';
 import {readFile,writeFile,mkdir,rename} from 'node:fs/promises';
@@ -71,7 +71,7 @@ const startupRegistry=buildRegistry();
 useRoutes(startupRegistry.match);
 
 // Pictures a site adds next to its site.json (local/images/…), served under /images/…: tile pictures of
-// its own machines and the like. Listed once at start-up, so no request ever touches the file system by name.
+// its own devices and the like. Listed once at start-up, so no request ever touches the file system by name.
 const IMAGE_TYPES={'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.svg':'image/svg+xml'};
 export function siteImages(directory){
  const out=[];if(!directory||!existsSync(directory))return out;
@@ -84,7 +84,7 @@ export function siteImages(directory){
 }
 
 /**
- * directory = data dir (knowledge.json, router-observations.json, machines/, security/, systems/);
+ * directory = data dir (knowledge.json, router-observations.json, devices/, security/, systems/);
  * stateDirectory = what the hub writes (hub.db, access.json, home/, tickets/, review/).
  * site = the site configuration (default: local/site.json); plugins = module objects to load instead of
  * the overlay found at start-up (tests). integrationSecretsFile: where write-only integration settings
@@ -162,7 +162,7 @@ export function createHandler(options) {
       // tokens. Attached before the agent gate, so a key refused there is logged too; an agent key is not an API key
       // (its reports have their own audit, agent-audit.jsonl).
       if(principal?.authKind==='api-key'&&req.method==='POST'&&pathname.startsWith('/api/'))res.on('finish',()=>{accessStore.logApi({key:principal.id,account:principal.accountId,name:principal.username,route:pathname,status:res.statusCode,subject:c?.subject??null}).catch(()=>{});});
-      if(agentKey&&!agentRoute)return error(403,'AGENT_ONLY','An agent key can only send its machine\'s report.');
+      if(agentKey&&!agentRoute)return error(403,'AGENT_ONLY','An agent key can only send its device\'s report.');
       if(agentRoute&&!agentKey)return principal?error(403,'AGENT_CREDENTIAL_REQUIRED','This route takes an agent key only.'):error(401,'AUTH_REQUIRED','Use an agent key: Authorization: Bearer hha_…');
       // MCP for agents: POST only, service-account (or legacy) API key, no browser origins.
       if(pathname==='/mcp'){

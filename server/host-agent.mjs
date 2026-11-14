@@ -1,5 +1,5 @@
 // What an installed host agent is: <its directory>/.agent-install.json, written by scripts/install-host-agent.mjs. An agent
-// says it in its answers (`agent: {plugin, agent, version, core, commit}`), so the hub can tell when the copy on a machine
+// says it in its answers (`agent: {plugin, agent, version, core, commit}`), so the hub can tell when the copy on a device
 // is older than the plugin it has itself: the update check for host agents, derived locally with no network.
 // No imports beyond node's: the plugin API re-exports installedAgent, and every agent copies this file.
 import {readFileSync} from 'node:fs';

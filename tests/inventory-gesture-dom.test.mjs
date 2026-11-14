@@ -14,10 +14,10 @@ const views=await import('../public/views.js');
 const leave=()=>views.leaveView?.();
 
 const DOC={updated_at:'2026-11-08T00:00:00Z',entries:[
- {id:'mini',kind:'machine',name:'Mac mini'},
- {id:'svc-a',kind:'runtime',name:'Alpha',machine:'mini',address:'http://alpha'},
- {id:'svc-b',kind:'runtime',name:'Beta',machine:'mini',address:'http://beta'},
- {id:'nas',kind:'machine',name:'NAS box'}]};
+ {id:'mini',kind:'device',name:'Mac mini'},
+ {id:'svc-a',kind:'runtime',name:'Alpha',device:'mini',address:'http://alpha'},
+ {id:'svc-b',kind:'runtime',name:'Beta',device:'mini',address:'http://beta'},
+ {id:'nas',kind:'device',name:'NAS box'}]};
 globalThis.fetch=async url=>{if(String(url)==='/api/inventory')return {ok:true,status:200,json:async()=>({doc:DOC,gaps:[]})};return {ok:false,status:404,json:async()=>({})};};
 const tick=()=>new Promise(r=>setImmediate(r));
 let user=0;
@@ -104,7 +104,7 @@ test('DOM: mouse drag still moves a card and saves the new order; a mouse click 
  m.move(1,document.body,100,262,{type:'mouse'});// moves keep coming even off the card
  m.up(1,document.body,{type:'mouse',x:100,y:262});
  assert.equal(m.selected(),null,'a drag selects nothing');
- const order=Object.values(m.saved().modes.machine.order).find(a=>a.includes('svc-a'));
+ const order=Object.values(m.saved().modes.device.order).find(a=>a.includes('svc-a'));
  assert.deepEqual(order,['mini','svc-b','svc-a'],'Alpha was dropped below Beta');
  m.down(1,'Beta',{type:'mouse'});m.move(1,'Beta',102,201,{type:'mouse'});m.up(1,'Beta',{type:'mouse'});
  assert.equal(m.selected(),'Beta','a click under the slop selects');
@@ -126,7 +126,7 @@ test('DOM: focus moving to a card (an element blur, which does not bubble) forge
  const m=await mount();
  m.down(1,'Alpha',{type:'mouse'});fire(document.body,'blur',{bubbles:false});fire(m.cards().get('Alpha'),'focus',{bubbles:false});
  m.move(1,'Alpha',100,262,{type:'mouse'});m.up(1,'Alpha',{type:'mouse',x:100,y:262});
- assert.deepEqual(Object.values(m.saved().modes.machine.order).find(a=>a.includes('svc-a')),['mini','svc-b','svc-a'],'the drag survived the focus change');
+ assert.deepEqual(Object.values(m.saved().modes.device.order).find(a=>a.includes('svc-a')),['mini','svc-b','svc-a'],'the drag survived the focus change');
  m.down(2,'Beta');m.down(3,document.body,{primary:false});fire(document.body,'blur',{bubbles:false});m.up(2,'Beta');
  assert.equal(m.selected(),null,'the second finger is still counted after an element blur');m.up(3,document.body);
 });
@@ -143,7 +143,7 @@ test('DOM: the map\'s document listeners go away once the map is gone, even with
 
 // Review r4. Clock control for the old 30 s inactivity drop: the view used Date.now for it.
 async function withClock(fn){const real=Date.now;let now=real();Date.now=()=>now;try{await fn(ms=>{now+=ms;});}finally{Date.now=real;}}
-const order=m=>Object.values(m.saved()?.modes.machine.order||{}).find(a=>a.includes('svc-a'))||null;
+const order=m=>Object.values(m.saved()?.modes.device.order||{}).find(a=>a.includes('svc-a'))||null;
 const translateOf=n=>n.getAttribute('transform');
 
 test('DOM review r4 finding 1: a touch held still for over 30 s, then a mouse click on another card: no selection',async()=>{
@@ -215,7 +215,7 @@ test('review r4 finding 2: the shell disposes the page it replaces (render and s
  const {readFile}=await import('node:fs/promises');
  const app=await readFile(new URL('../public/app.js',import.meta.url),'utf8');
  assert.match(app,/import \{[^}]*\bleaveView\b[^}]*\} from '\.\/views\.js'/);
- assert.match(app,/async function render\(\)\{[\s\S]*?\n leaveView\(\);\/\/ the page being replaced[\s\S]*?root\.replaceChildren\(shell\(machine,page,main\)\)/,'render() disposes before drawing any page');
+ assert.match(app,/async function render\(\)\{[\s\S]*?\n leaveView\(\);\/\/ the page being replaced[\s\S]*?root\.replaceChildren\(shell\(device,page,main\)\)/,'render() disposes before drawing any page');
  assert.match(app,/function login\(message=''\)\{\n me=null;setPrincipal\(null\);setPages\(null\);setIdentity\(null\);leaveView\(\);/,'so does the sign-in screen');
  const inv=await readFile(new URL('../public/inventory-view.js',import.meta.url),'utf8');
  assert.match(inv,/onLeave\(\(\)=>\{life\.abort\(\);mapLife\?\.abort\(\);\}\)/,'the inventory view registers its dispose');

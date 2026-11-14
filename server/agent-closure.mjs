@@ -14,7 +14,7 @@
 // Core-only (coreAgentClosure): core's own push agent (scripts/agent/agent.mjs, docs/agent.md §5) needs no plugin.
 // Its files keep their path in core (<target>/scripts/agent/…, <target>/server/…), relative imports only, plus the
 // files it reads rather than imports (the probes and package.json). Every server/ module it reaches must be a leaf
-// (only node: imports and other leaves), so the agent never drags the hub onto a machine:
+// (only node: imports and other leaves), so the agent never drags the hub onto a device:
 // tests/agent-install.test.mjs pins the list.
 import {readFileSync,existsSync,statSync} from 'node:fs';
 import path from 'node:path';

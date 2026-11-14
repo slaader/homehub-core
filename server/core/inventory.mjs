@@ -1,8 +1,8 @@
 // Core module "inventory": the inventory page (map, table and the services catalog), all views of one file
 // (data/knowledge.json) that is served only when it passes the same checker agents run.
-// Writes go through one writer. By default that is the local editor (the file on this machine);
+// Writes go through one writer. By default that is the local editor (the file on this computer);
 // a plugin may provide another one (extension point inventory.writer → {put(change, by), edit(input)}
-// and optionally remove(change) and bulk(change, {by, user})), e.g. a bridge to the machine that owns
+// and optionally remove(change) and bulk(change, {by, user})), e.g. a bridge to the host that owns
 // the file. A hub with no file yet is an empty inventory: the first write creates it.
 // The vocabulary is the site's (site.json → inventory.places, inventory.secretStores) plus the generic
 // built-ins of the rules module (public/inventory-rules.js); nothing here names a household.
@@ -12,12 +12,12 @@ import {check,describe} from '../../scripts/check-knowledge.mjs';
 import {createKnowledgeEditor,editInput,entryInput,deleteInput,bulkInput,entryHash,emptyDoc,LIMITS} from '../../scripts/knowledge-edit.mjs';
 import {toolError} from '../mcp.mjs';
 import {inventoryProvenance} from '../provenance.mjs';
-import {inventoryFacet} from '../machine-facet-sources.mjs';
-import {FACETS_POINT} from '../machine-facets.mjs';
+import {inventoryFacet} from '../device-facet-sources.mjs';
+import {FACETS_POINT} from '../device-facets.mjs';
 
-const UNSUPPORTED='This hub forwards inventory edits to another machine, and that writer cannot do this yet.';
+const UNSUPPORTED='This hub forwards inventory edits to another computer, and that writer cannot do this yet.';
 const servicesError=e=>[({invalid:400,conflict:409,busy:429})[e.message]||503,'INVENTORY_UPDATE_FAILED',e.message==='conflict'?'The entry changed. Read it again before updating.':'Cannot update the service inventory.'];
-const inventoryError=e=>[({invalid:400,'not-found':404,conflict:409,busy:429,unsupported:501})[e.message]||503,'INVENTORY_EDIT_FAILED',({invalid:'That edit is not valid.','not-found':'That entry no longer exists.',conflict:'This entry changed since you opened it. Reload and edit again.',busy:'Another edit is being saved. Try again.',unsupported:UNSUPPORTED})[e.message]||'The edit could not be saved. Check that the machine holding the inventory file is reachable.'];
+const inventoryError=e=>[({invalid:400,'not-found':404,conflict:409,busy:429,unsupported:501})[e.message]||503,'INVENTORY_EDIT_FAILED',({invalid:'That edit is not valid.','not-found':'That entry no longer exists.',conflict:'This entry changed since you opened it. Reload and edit again.',busy:'Another edit is being saved. Try again.',unsupported:UNSUPPORTED})[e.message]||'The edit could not be saved. Check that the host holding the inventory file is reachable.'];
 const hashes=entries=>Object.fromEntries(entries.map(e=>[e.id,entryHash(e)]));
 const few=(ids,n=20)=>ids.length>n?`${ids.slice(0,n).join(', ')} and ${ids.length-n} more`:ids.join(', ');
 // What the checker refused, for a 422 reply: the classic message list plus the structured issues.
@@ -69,7 +69,7 @@ const unavailable=e=>toolError(WRITE_ERRORS[e.message]||'The inventory is not av
 const known=(args,allowed)=>{const extra=Object.keys(args).filter(k=>!allowed.includes(k));if(extra.length)throw toolError(`Unknown argument(s): ${extra.join(', ')}. Use: ${allowed.join(', ')||'no arguments'}.`);};
 const tools=[
  {name:'inventory_describe',scope:'read',title:'Home inventory: schema and rules',
-  description:'How to fill the home inventory correctly, as data: the entry fields, the kinds, categories and dependency (link) kinds, the secret stores an entry may point at, the places (machines) entries can live on, the validation rules the checker enforces, the limits and a few example entries. Call it once before writing with inventory_update or inventory_bulk_upsert.',
+  description:'How to fill the home inventory correctly, as data: the entry fields, the kinds, categories and dependency (link) kinds, the secret stores an entry may point at, the places (devices) entries can live on, the validation rules the checker enforces, the limits and a few example entries. Call it once before writing with inventory_update or inventory_bulk_upsert.',
   inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,openWorldHint:false},
   async run(args,{state,hub}){
    known(args,[]);const doc=await state.read();
@@ -96,10 +96,10 @@ const tools=[
    return {ok:true,id:change.id,deleted:true,published:result.published!==false,by:principal.username};
   }},
  {name:'inventory_bulk_upsert',scope:'inventory:write',title:'Home inventory: create or replace several entries',
-  description:`Create or replace up to ${LIMITS.bulkEntries} whole entries in one call (one request is at most 64 kB). All or nothing: the resulting inventory is checked as a whole, so entries may refer to each other (a machine and what runs on it), and if anything is invalid or any hash is stale nothing changes. For each existing entry pass its hash as base; omit base for a new one. An entry identical to the stored one is reported as unchanged. Set dryRun to see what would happen without writing: it returns the planned action per entry, or the checker's errors. Secret values are refused exactly as in inventory_update.`,
+  description:`Create or replace up to ${LIMITS.bulkEntries} whole entries in one call (one request is at most 64 kB). All or nothing: the resulting inventory is checked as a whole, so entries may refer to each other (a device and what runs on it), and if anything is invalid or any hash is stale nothing changes. For each existing entry pass its hash as base; omit base for a new one. An entry identical to the stored one is reported as unchanged. Set dryRun to see what would happen without writing: it returns the planned action per entry, or the checker's errors. Secret values are refused exactly as in inventory_update.`,
   inputSchema:{type:'object',properties:{
    entries:{type:'array',minItems:1,maxItems:LIMITS.bulkEntries,description:'The changes, each a complete entry.',items:{type:'object',properties:{
-     entry:{type:'object',description:'The complete entry (id, kind, name, machine, address, version, depends_on, notes, …); see inventory_describe.'},
+     entry:{type:'object',description:'The complete entry (id, kind, name, device, address, version, depends_on, notes, …); see inventory_describe.'},
      base:{type:'string',pattern:'^[a-f0-9]{64}$',description:'Hash from inventory_get or inventory_search. Required when the entry already exists.'}},required:['entry'],additionalProperties:false}},
    dryRun:{type:'boolean',description:'true = check everything and report, write nothing (default false).'}},required:['entries'],additionalProperties:false},
   annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false},
@@ -129,8 +129,8 @@ export default {
   {scope:'inventory:write',text:'With inventory:write: inventory_update writes one whole entry, inventory_bulk_upsert several at once (dryRun first), inventory_delete removes one. Each takes the hash you read as base; omit base only to create.'},
  ],
  assets:['inventory-view.js','inventory-data.js','inventory-entry.js','inventory-table.js','inventory-services.js','inventory-rules.js','inventory-versions.js','inventory.css'],
- // Integrations → Machines: whether the inventory knows the machine and how much runs on it.
- provides:{[FACETS_POINT]:state=>async machines=>inventoryFacet(machines,(await Promise.resolve().then(()=>state.read()).catch(()=>null))?.entries)},
+ // Integrations → Devices: whether the inventory knows the device and how much runs on it.
+ provides:{[FACETS_POINT]:state=>async devices=>inventoryFacet(devices,(await Promise.resolve().then(()=>state.read()).catch(()=>null))?.entries)},
  nav:[
   {groupKey:'Inventář',hash:'inventory-map',labelKey:'Mapa inventáře',view:'inventory-view.js#inventoryPage',order:20},
   // The services catalog is a view of the inventory page now; its old address stays routable and leads there.

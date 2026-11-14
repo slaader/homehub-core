@@ -13,8 +13,8 @@ import {createGitLfsStore} from '../git-lfs-store.mjs';
 import {GitError} from '../git-lfs-git.mjs';
 import {ProviderError} from '../git-lfs-providers.mjs';
 import {tx} from '../text.mjs';
-import {gitLfsFacet} from '../machine-facet-sources.mjs';
-import {FACETS_POINT} from '../machine-facets.mjs';
+import {gitLfsFacet} from '../device-facet-sources.mjs';
+import {FACETS_POINT} from '../device-facets.mjs';
 
 export const GIT_LFS_INTEGRATION='git-lfs.hosts';
 // The write scope is a core scope (server/scopes.mjs → CORE_SCOPES), like every scope a core module uses.
@@ -106,11 +106,11 @@ export default {
   {method:'POST',path:'/api/git-lfs/delete/preview',scope:GIT_LFS_SCOPE,bodyLimit:65536,handler:async c=>c.json(200,c.state.store.preview(c.input))},
   {method:'POST',path:'/api/git-lfs/delete',scope:GIT_LFS_SCOPE,bodyLimit:65536,handler:async c=>c.json(200,await c.state.store.removeObjects(c.input,c.principal.username))},
  ].map(route),
- // Integrations → Machines: which machine runs a connected git host and which keeps its LFS files (from the inventory).
- provides:{[FACETS_POINT]:(state,hub)=>async machines=>{
-  const off=!hub.integrationEnabled(GIT_LFS_INTEGRATION);if(off)return gitLfsFacet(machines,{off});
+ // Integrations → Devices: which device runs a connected git host and which keeps its LFS files (from the inventory).
+ provides:{[FACETS_POINT]:(state,hub)=>async devices=>{
+  const off=!hub.integrationEnabled(GIT_LFS_INTEGRATION);if(off)return gitLfsFacet(devices,{off});
   const [o,doc]=await Promise.all([state.store.overview(),Promise.resolve().then(()=>hub.state('inventory')?.read?.()).catch(()=>null)]);
-  return gitLfsFacet(machines,{connections:o.connections,entries:Array.isArray(doc?.entries)?doc.entries:null});}},
+  return gitLfsFacet(devices,{connections:o.connections,entries:Array.isArray(doc?.entries)?doc.entries:null});}},
  integrations:[{id:GIT_LFS_INTEGRATION,title:'Git LFS (git hosty)',kind:'upstream',page:'git-lfs',docs:'docs/git-lfs.md',
   description:'Katalog LFS objektů repozitářů na GitHubu, Gitea a Forgejo přes jejich API a git (částečný mirror bez velkých souborů). Vypnutá: hub hosty nekontaktuje, katalog nečte a mazání odmítne.',
   howTo:'Na stránce Git LFS přidej připojení: druh hostu, adresu, token jen pro čtení a repozitáře.',

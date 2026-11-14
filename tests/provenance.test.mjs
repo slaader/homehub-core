@@ -17,9 +17,9 @@ const kindsOf=p=>p.kinds.map(k=>k.kind);
 
 test('provenance(): one kind, mixed or none; fields are bounded and unknown kinds dropped',()=>{
  assert.deepEqual(provenance([]),{kind:'none',kinds:[],lastAt:null,summary:'No data yet.'});
- const one=provenance([{kind:'collector',source:'scripts/collect-systems.mjs',lastAt:'2026-11-08T12:00:00.000Z',count:3,unit:'machines',state:'ok',intervalSeconds:21600,schedule:{trigger:'scheduled',scheduler:'launchd',label:'local.home-hub.systems-collect'}}]);
+ const one=provenance([{kind:'collector',source:'scripts/collect-systems.mjs',lastAt:'2026-11-08T12:00:00.000Z',count:3,unit:'devices',state:'ok',intervalSeconds:21600,schedule:{trigger:'scheduled',scheduler:'launchd',label:'local.home-hub.systems-collect'}}]);
  assert.equal(one.kind,'collector');assert.equal(one.lastAt,'2026-11-08T12:00:00.000Z');
- assert.match(one.summary,/^Collected by a job \(scripts\/collect-systems\.mjs\), 3 machines, scheduled by launchd, last 2026-11-08T12:00:00\.000Z\.$/);
+ assert.match(one.summary,/^Collected by a job \(scripts\/collect-systems\.mjs\), 3 devices, scheduled by launchd, last 2026-11-08T12:00:00\.000Z\.$/);
  const mixed=provenance([{kind:'agent',count:2,unit:'entries',accounts:['codex','codex','claude'],lastAt:'2026-11-08'},{kind:'manual',count:1,unit:'entries',lastAt:'2026-11-09'},null,{kind:'nonsense',count:9}]);
  assert.equal(mixed.summary,'Written by agents, 2 entries, codex, claude, last 2026-11-08; edited by hand, 1 entry, last 2026-11-09.','one is singular');
  assert.equal(mixed.kind,'mixed');assert.deepEqual(kindsOf(mixed),['agent','manual']);assert.deepEqual(mixed.kinds[0].accounts,['codex','claude']);assert.equal(mixed.lastAt,'2026-11-09');
@@ -44,7 +44,7 @@ test('inventory: the verified_by stamp of each entry decides manual, agent (with
  const h=await hub(t),agent=await h.account('codex',['inventory:write']);
  const before=await get(h,'/api/inventory');assert.equal(before.body.provenance.kind,'other');assert.equal(before.body.provenance.kinds[0].count,2);
  assert.equal((await h.post('/api/inventory/entry',{id:'studio',base:before.body.hashes.studio,fields:{notes:'checked by hand'}},h.admin)).status,200);
- assert.equal((await h.post('/api/inventory/entries',{entry:{id:'studio-ollama',kind:'runtime',machine:'studio',name:'Ollama',address:'127.0.0.1:11434'}},agent.headers)).status,200);
+ assert.equal((await h.post('/api/inventory/entries',{entry:{id:'studio-ollama',kind:'runtime',device:'studio',name:'Ollama',address:'127.0.0.1:11434'}},agent.headers)).status,200);
  const after=(await get(h,'/api/inventory')).body.provenance;
  assert.equal(after.kind,'mixed');assert.deepEqual(after.kinds.map(k=>[k.kind,k.count]).sort(),[['agent',1],['manual',1],['other',1]]);
  assert.deepEqual(after.kinds.find(k=>k.kind==='agent').accounts,['codex']);
@@ -124,8 +124,8 @@ test('collector runs: launchd and systemd are scheduled, a terminal is by hand, 
  for(const bad of [null,undefined,'launchd',{trigger:'cron'},{}])assert.equal(readRun(bad),null);
  assert.deepEqual(readRun({trigger:'scheduled',scheduler:'cron',label:'bad label'}),{trigger:'scheduled'});
  const state=collectorState('systems',{configured:true,collectedAt:'2026-11-08T12:00:00.000Z',now:Date.parse('2026-11-08T13:00:00Z')});
- assert.deepEqual(collectorSource(state,{id:'systems',run:{trigger:'manual'},count:2,unit:'machines',host:'studio'}),
-  {kind:'collector',id:'systems',source:'scripts/collect-systems.mjs',state:'ok',intervalSeconds:21600,lastAt:'2026-11-08T12:00:00.000Z',count:2,unit:'machines',schedule:{trigger:'manual'},host:'studio'});
+ assert.deepEqual(collectorSource(state,{id:'systems',run:{trigger:'manual'},count:2,unit:'devices',host:'studio'}),
+  {kind:'collector',id:'systems',source:'scripts/collect-systems.mjs',state:'ok',intervalSeconds:21600,lastAt:'2026-11-08T12:00:00.000Z',count:2,unit:'devices',schedule:{trigger:'manual'},host:'studio'});
 });
 
 test('collector pages over HTTP: the collector with its state before a snapshot, then when it ran and who started it',async t=>{
@@ -136,15 +136,15 @@ test('collector pages over HTTP: the collector with its state before a snapshot,
  const noKeys=await get(h,'/api/security');assert.equal(noKeys.status,404);assert.equal(noKeys.body.provenance.kinds[0].state,'waiting');assert.equal(noKeys.body.provenance.kinds[0].source,'scripts/collect-security.mjs');
  const at=new Date(Date.now()-3600e3).toISOString();
  await mkdir(path.join(h.dir,'systems'),{recursive:true});await mkdir(path.join(h.dir,'security'),{recursive:true});
- await writeFile(path.join(h.dir,'systems','snapshot.json'),JSON.stringify({schemaVersion:1,collectedAt:at,collectedFrom:'studio',run:{trigger:'scheduled',scheduler:'launchd',label:'local.home-hub.systems-collect'},machines:{}}));
- await writeFile(path.join(h.dir,'security','ssh-keys.json'),JSON.stringify({schemaVersion:1,collectedAt:at,collectedFrom:'studio',run:{trigger:'manual'},machines:[{id:'mini',reachable:true},{id:'nas',reachable:false}],keys:[],otherKeys:[],unknownAuthorized:[],forgejo:null,findings:[]}));
+ await writeFile(path.join(h.dir,'systems','snapshot.json'),JSON.stringify({schemaVersion:1,collectedAt:at,collectedFrom:'studio',run:{trigger:'scheduled',scheduler:'launchd',label:'local.home-hub.systems-collect'},devices:{}}));
+ await writeFile(path.join(h.dir,'security','ssh-keys.json'),JSON.stringify({schemaVersion:1,collectedAt:at,collectedFrom:'studio',run:{trigger:'manual'},devices:[{id:'mini',reachable:true},{id:'nas',reachable:false}],keys:[],otherKeys:[],unknownAuthorized:[],forgejo:null,findings:[]}));
  const systems=(await get(h,'/api/systems')).body;
- assert.deepEqual(systems.provenance.kinds,[{kind:'collector',id:'systems',source:'scripts/collect-systems.mjs',host:'studio',state:'ok',count:0,intervalSeconds:21600,unit:'machines',lastAt:at,schedule:{trigger:'scheduled',scheduler:'launchd',label:'local.home-hub.systems-collect'}}]);
+ assert.deepEqual(systems.provenance.kinds,[{kind:'collector',id:'systems',source:'scripts/collect-systems.mjs',host:'studio',state:'ok',count:0,intervalSeconds:21600,unit:'devices',lastAt:at,schedule:{trigger:'scheduled',scheduler:'launchd',label:'local.home-hub.systems-collect'}}]);
  assert.equal(systems.provenance.kind,'collector');assert.equal(systems.provenance.lastAt,at);
  const keys=(await get(h,'/api/security')).body.provenance.kinds[0];
- assert.deepEqual([keys.kind,keys.state,keys.count,keys.unit,keys.host,keys.schedule],['collector','ok',1,'machines','studio',{trigger:'manual'}]);
+ assert.deepEqual([keys.kind,keys.state,keys.count,keys.unit,keys.host,keys.schedule],['collector','ok',1,'devices','studio',{trigger:'manual'}]);
  // A snapshot from before the stamp existed says nothing about how it was started.
- await writeFile(path.join(h.dir,'systems','snapshot.json'),JSON.stringify({schemaVersion:1,collectedAt:at,machines:{}}));
+ await writeFile(path.join(h.dir,'systems','snapshot.json'),JSON.stringify({schemaVersion:1,collectedAt:at,devices:{}}));
  assert.equal('schedule' in (await get(h,'/api/systems')).body.provenance.kinds[0],false);
 
  // With a watch list: the release check and the list file are sources of their own, each with an id.
@@ -153,7 +153,7 @@ test('collector pages over HTTP: the collector with its state before a snapshot,
  await writeFile(file,JSON.stringify({schemaVersion:1,categories:{infra:'Infra'},items:[{id:'node',name:'Node.js',category:'infra',upstream:{type:'node'},detect:{mini:{kind:'brew',formula:'node'}}}]}));
  const w=await hub(t,{softwareWatchFile:file});
  await mkdir(path.join(w.dir,'systems'),{recursive:true});
- await writeFile(path.join(w.dir,'systems','snapshot.json'),JSON.stringify({schemaVersion:1,collectedAt:at,machines:{}}));
+ await writeFile(path.join(w.dir,'systems','snapshot.json'),JSON.stringify({schemaVersion:1,collectedAt:at,devices:{}}));
  await writeFile(path.join(w.dir,'systems','upstream.json'),JSON.stringify({schemaVersion:2,checkedAt:at,run:{trigger:'manual'},results:{'node:':{ok:true,version:'24.0.0',checkedAt:at}}}));
  const watched=(await get(w,'/api/systems')).body.provenance;
  assert.equal(watched.kind,'mixed');assert.deepEqual(watched.kinds.map(k=>[k.kind,k.id]),[['collector','systems'],['collector','upstream'],['config','watch']]);

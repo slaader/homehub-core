@@ -1,4 +1,4 @@
-/* Overview and machine pages (home-view.js, home-telemetry.js, home-charts.js: classes hv-*) and the
+/* Overview and device pages (home-view.js, home-telemetry.js, home-charts.js: classes hv-*) and the
    add / edit device dialog (home-add-device.js: classes had-*). Everything reads the design tokens of
    tokens.css; the only colours defined here are the data colours below, which have no token yet. */
 :root{
@@ -33,7 +33,7 @@
 .hv-danger{color:var(--color-bad);border-color:color-mix(in srgb,var(--color-bad) 45%,var(--color-border))}
 .hv-danger:hover{border-color:var(--color-bad)}
 
-/* State of a machine or a service: a dot and a word. */
+/* State of a device or a service: a dot and a word. */
 .hv-status{display:inline-flex;align-items:center;gap:6px;font:var(--weight-medium) var(--text-xs)/1.2 var(--font-mono);white-space:nowrap;color:var(--color-text-dim)}
 .hv-status i{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
 .hv-status.ok{color:var(--color-good)}.hv-status.warn{color:var(--color-warn)}.hv-status.bad{color:var(--color-bad)}.hv-status.dim{color:var(--color-text-faint)}
@@ -47,7 +47,7 @@
 .hv-tile{position:relative;display:flex;flex-direction:column;min-width:0;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-l);overflow:hidden;color:var(--color-text);text-decoration:none;transition:border-color .15s ease,transform .15s ease,box-shadow .15s ease}
 .hv-tile:hover{border-color:var(--color-border-strong);transform:translateY(-2px);box-shadow:var(--shadow-raised)}
 .hv-tile:focus-visible{outline:2px solid var(--color-focus);outline-offset:2px}
-/* A tile is a card (.hv-tile, what is dragged) holding the link to the machine's page and, beside it, the Edit button. */
+/* A tile is a card (.hv-tile, what is dragged) holding the link to the device's page and, beside it, the Edit button. */
 .hv-tile-link{display:flex;flex-direction:column;flex:1;min-width:0;color:inherit;text-decoration:none;border-radius:inherit}
 .hv-tile-link:focus-visible{outline:none}
 .hv-tile:has(>.hv-tile-link:focus-visible){outline:2px solid var(--color-focus);outline-offset:2px}
@@ -106,7 +106,7 @@
 .hv-tile.drop-before{box-shadow:-4px 0 0 var(--color-accent)}.hv-tile.drop-after{box-shadow:4px 0 0 var(--color-accent)}
 .hv-tiles.single .hv-tile.drop-before{box-shadow:0 -4px 0 var(--color-accent)}.hv-tiles.single .hv-tile.drop-after{box-shadow:0 4px 0 var(--color-accent)}
 
-/* --- machine page ---------------------------------------------------------------------------- */
+/* --- device page ---------------------------------------------------------------------------- */
 .hv-back{align-self:flex-start;font:var(--text-s) var(--font-mono);color:var(--color-accent);text-decoration:none}
 .hv-back:hover{text-decoration:underline}
 .hv-host-head{display:flex;flex-direction:column;gap:var(--space-4);padding-bottom:var(--space-5);border-bottom:1px solid var(--color-border)}
@@ -326,7 +326,7 @@
 .had-kept{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-3);font-size:var(--text-s);color:var(--color-text-dim)}
 .had-kept img{width:120px;aspect-ratio:3/2;object-fit:cover;border-radius:var(--radius-s);border:1px solid var(--color-border)}
 .had-kept span{flex:1 1 200px}
-/* A site machine's identity in its telemetry dialog: read-only facts, not inputs. */
+/* A site device's identity in its telemetry dialog: read-only facts, not inputs. */
 .had-readonly{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:var(--space-2) var(--space-4);margin:0}
 .had-readonly div{min-width:0}
 .had-readonly dt{font-size:var(--text-xs);color:var(--color-text-dim)}
@@ -369,7 +369,7 @@
  .had-actions{width:100%}.had-actions .ui-button{flex:1;justify-content:center}
 }
 @media(prefers-reduced-motion:reduce){.hv-tile{transition:none}.hv-tile:hover{transform:none}.hv-panel{animation:none}}
-/* Windows telemetry: the set-up guide in Add device, and the machine page's Windows panel */
+/* Windows telemetry: the set-up guide in Add device, and the device page's Windows panel */
 .had-guide summary{cursor:pointer;font-size:var(--text-s);color:var(--color-text)}
 .had-guide[open] summary{margin-bottom:var(--space-2)}
 .had-needs ul{margin:var(--space-1) 0 0;padding-left:var(--space-4);display:flex;flex-direction:column;gap:var(--space-1)}
@@ -392,7 +392,7 @@
 .hv-cores{display:grid;grid-template-columns:repeat(auto-fill,minmax(14px,1fr));gap:3px;align-items:end;height:48px}
 .hv-cores i{display:block;min-height:2px;background:var(--home-cpu,var(--color-accent));border-radius:2px 2px 0 0}
 .hv-cores i.none{background:var(--color-border)}
-/* The push agent (home-agent.js): a line on the tile, a section on the machine page. "No news", never off. */
+/* The push agent (home-agent.js): a line on the tile, a section on the device page. "No news", never off. */
 .hv-agent{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-1) var(--space-2);margin:0;font-size:var(--text-xs);color:var(--color-text-dim)}
 .hv-agent-when{font-family:var(--font-mono);color:var(--color-text-faint)}
 .hv-agent-flag{padding:1px var(--space-2);border:1px solid color-mix(in srgb,var(--color-warn) 50%,var(--color-border));border-radius:var(--radius-pill);color:var(--color-warn)}

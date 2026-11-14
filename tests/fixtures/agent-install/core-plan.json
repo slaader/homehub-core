@@ -3,10 +3,10 @@
   "lines": [
    "Push agent (core <V>, commit cccccccccc) on macos as alice → <HOME>/Library/Application Support/Home Hub Agent",
    "  hub https://hub.example.lan: pinned (abababababababab…)",
-   "  key hha_ffffffff… for machine studio → <HOME>/Library/Application Support/Home Hub Agent/private/agent.key (0600)",
+   "  key hha_ffffffff… for device studio → <HOME>/Library/Application Support/Home Hub Agent/private/agent.key (0600)",
    "  18 files; agent.json and specs.txt in <HOME>/Library/Application Support/Home Hub Agent/config; state <HOME>/Library/Application Support/Home Hub Agent/state; log <HOME>/Library/Logs/Home Hub Agent/agent.log",
    "  SSH keys: all-accounts; runtimes: ollama http://127.0.0.1:11434",
-   "  watch list (1 line): each one is run or read on this machine; confirm every line:",
+   "  watch list (1 line): each one is run or read on this computer; confirm every line:",
    "     1  node|cmd|/opt/homebrew/bin/node|--version|",
    "  launchd-agent home-hub-agent: <HOME>/Library/LaunchAgents/home-hub-agent.plist",
    "  sudoers /etc/sudoers.d/home-hub-agent (0440, checked with visudo -cf first):",
@@ -53,7 +53,7 @@
    "dirty": false,
    "agent": {
     "id": "ag_1",
-    "machine": "studio",
+    "device": "studio",
     "prefix": "hha_ffffffff"
    },
    "config": {
@@ -98,10 +98,10 @@
   "lines": [
    "Push agent (core <V>, commit cccccccccc) on linux as home-hub-agent → /opt/home-hub-agent",
    "  hub https://hub.example.lan: pinned (abababababababab…)",
-   "  key hha_ffffffff… for machine studio → /etc/home-hub-agent/agent.key (root 0600, LoadCredential=agent-key)",
+   "  key hha_ffffffff… for device studio → /etc/home-hub-agent/agent.key (root 0600, LoadCredential=agent-key)",
    "  18 files; agent.json and specs.txt in /etc/home-hub-agent; state /var/lib/home-hub-agent; log: the journal",
    "  SSH keys: off; runtimes: ollama http://127.0.0.1:11434",
-   "  watch list (1 line): each one is run or read on this machine; confirm every line:",
+   "  watch list (1 line): each one is run or read on this computer; confirm every line:",
    "     1  node|cmd|/opt/homebrew/bin/node|--version|",
    "  systemd-system home-hub-agent: /etc/systemd/system/home-hub-agent.service",
    "  sudoers /etc/sudoers.d/home-hub-agent (0440, checked with visudo -cf first):",
@@ -148,7 +148,7 @@
    "dirty": false,
    "agent": {
     "id": "ag_1",
-    "machine": "studio",
+    "device": "studio",
     "prefix": "hha_ffffffff"
    },
    "config": {

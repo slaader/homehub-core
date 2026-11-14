@@ -8,17 +8,17 @@ import {site} from './site.js';
 import {placesOf,DEFAULT_CATEGORY,TEMPLATE_PREFIX} from './inventory-rules.js';
 
 // Labels are Czech source text: pass them through t() when drawing.
-export const KIND={network:'Síť',machine:'Stroj',runtime:'Služba',tool:'Nástroj','model-store':'Úložiště modelů','skill-store':'Úložiště skillů','secret-store':'Úložiště tajemství',external:'Vnější služba','secret-item':'Položka tajemství'};
+export const KIND={network:'Síť',device:'Stroj',runtime:'Služba',tool:'Nástroj','model-store':'Úložiště modelů','skill-store':'Úložiště skillů','secret-store':'Úložiště tajemství',external:'Vnější služba','secret-item':'Položka tajemství'};
 export const GROUPS={runtime:'Služby',tool:'Nástroje','model-store':'Úložiště modelů','skill-store':'Úložiště skillů','secret-store':'Úložiště tajemství'};
-// Dependency kinds: runs-on is implied by an entry's machine; the rest are recorded in depends_on.
+// Dependency kinds: runs-on is implied by an entry's device; the rest are recorded in depends_on.
 export const DEPS={'runs-on':'Běží na',call:'Volá',data:'Používá data',secret:'Potřebuje tajemství',cert:'Potřebuje certifikát'};
-export const DEP_HELP={'runs-on':'Stroj, na kterém běží (pole machine)',call:'Volá ho po síti nebo přes API',data:'Čte jeho soubory: váhy, dumpy, složky',secret:'Bere si od něj přihlašovací údaj',cert:'Bere si od něj TLS certifikát'};
+export const DEP_HELP={'runs-on':'Stroj, na kterém běží (pole device)',call:'Volá ho po síti nebo přes API',data:'Čte jeho soubory: váhy, dumpy, složky',secret:'Bere si od něj přihlašovací údaj',cert:'Bere si od něj TLS certifikát'};
 // Categories colour the map cards; the same list is CATEGORIES in inventory-rules.js.
 export const CATS=[['hardware','Hardware'],['network','Síť'],['service','Služby'],['model','Modely'],['tool','Nástroje'],['llm-support','Podpora LLM'],['saas','SaaS'],['secret','Tajemství']];
 export const CAT_KEYS=CATS.map(c=>c[0]),CAT_LABEL=Object.fromEntries(CATS);
 export const DEFAULT_CAT=DEFAULT_CATEGORY;
 export const catOf=e=>CAT_KEYS.includes(e.category)?e.category:DEFAULT_CAT[e.kind];
-// A card whose machine has no column or whose category is unknown is still drawn: in a last column of its own.
+// A card whose device has no column or whose category is unknown is still drawn: in a last column of its own.
 export const OTHER='Ostatní';
 export const catLabel=c=>t(CAT_LABEL[c]||OTHER);
 export const kindName=k=>KIND[k]?t(KIND[k]):k;
@@ -27,20 +27,20 @@ export const hasGap=e=>(e.secrets||[]).some(s=>s.store==='unknown')||(e.kind==='
 export const isExample=e=>typeof e?.id==='string'&&e.id.startsWith(TEMPLATE_PREFIX);
 
 // --- places ----------------------------------------------------------------------------------
-// The site's places (site.json → inventory.places), then every machine entry the site did not list:
-// a hub without a site file gets its map columns and its machine names from its own machine entries.
+// The site's places (site.json → inventory.places), then every device entry the site did not list:
+// a hub without a site file gets its map columns and its device names from its own device entries.
 export const sitePlaces=()=>site().inventory?.places||[];
 export const siteStores=()=>site().inventory?.secretStores||[];
 export const sitePlace=id=>sitePlaces().find(p=>p.id===id);
 export const allPlaces=entries=>placesOf(sitePlaces(),entries||[]);
-let current=null;// the last document drawn: names for places that are machine entries
+let current=null;// the last document drawn: names for places that are device entries
 export function setCurrent(doc){current=doc||null;}
 export const currentDoc=()=>current;
 export function placeName(id){
  const label=sitePlace(id)?.label;if(label)return t(label);
- return current?.entries?.find(e=>e.id===id&&e.kind==='machine')?.name||id||'';
+ return current?.entries?.find(e=>e.id===id&&e.kind==='device')?.name||id||'';
 }
-export const place=e=>e.kind==='machine'?e.name:e.kind==='external'?t('Mimo dům'):e.kind==='network'?t('Domácí síť'):placeName(e.machine);
+export const place=e=>e.kind==='device'?e.name:e.kind==='external'?t('Mimo dům'):e.kind==='network'?t('Domácí síť'):placeName(e.device);
 
 // Where a secret is kept, in words: [label, tone].
 export function store(s){
@@ -59,16 +59,16 @@ export function index(doc){
  for(const e of doc.entries)for(const d of e.depends_on||[]){if(!usedBy.has(d.id))usedBy.set(d.id,[]);usedBy.get(d.id).push({id:e.id,kind:d.kind,label:d.label||''});}
  return {byId,usedBy};
 }
-// Every edge: recorded depends_on plus the implied runs-on link to the entry's machine (as in inventory-rules.js).
+// Every edge: recorded depends_on plus the implied runs-on link to the entry's device (as in inventory-rules.js).
 export function deps(doc){
  const ids=new Set(doc.entries.map(e=>e.id)),out=[];
  for(const e of doc.entries){for(const d of e.depends_on||[])out.push({from:e.id,to:d.id,kind:d.kind,label:d.label||''});
-  if(!e.virtual&&e.kind!=='machine'&&e.machine&&ids.has(e.machine))out.push({from:e.id,to:e.machine,kind:'runs-on',label:''});}
+  if(!e.virtual&&e.kind!=='device'&&e.device&&ids.has(e.device))out.push({from:e.id,to:e.device,kind:'runs-on',label:''});}
  return out;
 }
 // Does an entry match what was typed in a search box? Every word must appear somewhere in its text.
 // fields(entry): the texts to look in; by default everything a person might search by.
-const searchable=e=>[e.id,e.name,e.kind,kindName(e.kind),e.type,e.machine,e.kind==='machine'?'':placeName(e.machine),e.address,e.version,e.notes,catLabel(catOf(e)),...(e.depends_on||[]).map(d=>d.id)];
+const searchable=e=>[e.id,e.name,e.kind,kindName(e.kind),e.type,e.device,e.kind==='device'?'':placeName(e.device),e.address,e.version,e.notes,catLabel(catOf(e)),...(e.depends_on||[]).map(d=>d.id)];
 export function matcher(query,fields=searchable){
  const words=String(query||'').toLowerCase().split(/\s+/).filter(Boolean);
  if(!words.length)return null;

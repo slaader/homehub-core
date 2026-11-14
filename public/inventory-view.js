@@ -47,7 +47,7 @@ function stats(doc,gaps,onGaps){
   for(const e of doc.entries)for(const s of e.secrets||[])s.store==='unknown'?unknown++:located++;
   const tile=([n,label],i)=>{const warn=i>=5&&n,inner=[el('b',{},n),el('span',{},t(label))];
     return warn?el('button',{type:'button',class:'inv-stat amber',title:t('Ukázat záznamy s mezerami'),onclick:onGaps},inner):el('div',{class:'inv-stat'},inner);};
-  return el('div',{class:'inv-stats'},[[count('machine'),'Stroje'],[count('runtime'),'Služby'],[count('tool'),'Nástroje'],[count('model-store'),'Úložiště modelů'],[located,'Tajemství dohledaná'],[unknown,'Tajemství nezapsaná'],[gaps.length,'Mezery celkem']].map(tile));
+  return el('div',{class:'inv-stats'},[[count('device'),'Stroje'],[count('runtime'),'Služby'],[count('tool'),'Nástroje'],[count('model-store'),'Úložiště modelů'],[located,'Tajemství dohledaná'],[unknown,'Tajemství nezapsaná'],[gaps.length,'Mezery celkem']].map(tile));
 }
 
 // Secret items: each Keychain item or variable listed in a secret store becomes its own map card, kept in
@@ -58,7 +58,7 @@ function withSecretItems(doc){
   for(const st of stores){
     const counts={};for(const x of st.secrets||[])counts[x.store]=(counts[x.store]||0)+1;
     const key=Object.keys(counts).sort((a,b)=>counts[b]-counts[a])[0];if(key&&!storeFor.has(key))storeFor.set(key,st.id);
-    (st.secrets||[]).forEach((x,i)=>refTokens(x.ref).forEach((t,j)=>items.push({id:`si-${st.id}-${i}-${j}`,kind:'secret-item',category:'secret',virtual:true,store:st.id,machine:st.machine,name:x.what,address:t,depends_on:[{id:st.id,kind:'runs-on',label:'uloženo v'}]})));
+    (st.secrets||[]).forEach((x,i)=>refTokens(x.ref).forEach((t,j)=>items.push({id:`si-${st.id}-${i}-${j}`,kind:'secret-item',category:'secret',virtual:true,store:st.id,device:st.device,name:x.what,address:t,depends_on:[{id:st.id,kind:'runs-on',label:'uloženo v'}]})));
   }
   const match=(st,t)=>items.filter(it=>it.store===st&&(it.address===t||t.endsWith('*')&&it.address.startsWith(t.slice(0,-1))));
   const entries=doc.entries.map(e=>{
@@ -72,7 +72,7 @@ function withSecretItems(doc){
   return {...doc,entries:[...entries,...items]};
 }
 // Map: cards coloured by category, arrows for dependencies (arrow points at what is needed; line pattern = kind).
-// Columns are by machine or by category. The browser keeps only the order of columns and of cards in each column,
+// Columns are by device or by category. The browser keeps only the order of columns and of cards in each column,
 // so hidden, removed or new cards never leave holes or land in the wrong column.
 const NS='http://www.w3.org/2000/svg';
 function svg(tag,attrs={},...children){const n=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs)){if(k.startsWith('on'))n.addEventListener(k.slice(2),v);else if(v!=null)n.setAttribute(k,v);}for(const c of children.flat(Infinity))if(c!=null&&c!=='')n.append(c instanceof Node?c:document.createTextNode(String(c)));return n;}
@@ -93,27 +93,27 @@ export function layoutLoad(){
   const strings=a=>Array.isArray(a)?a.filter(x=>typeof x==='string').map(x=>x.slice(0,80)).slice(0,300):null;
   const mode=v=>({cols:strings(v?.cols),order:Object.fromEntries(Object.entries(v?.order&&typeof v.order==='object'?v.order:{}).map(([k,a])=>[k.slice(0,40),strings(a)||[]]))});
   const v=layoutRead(),zoom=Number.isFinite(v.zoom)?Math.min(ZOOM.max,Math.max(ZOOM.min,Math.round(v.zoom*10)/10)):1;
-  return {spacing:v.spacing==='roomy'?'roomy':'compact',lines:v.lines==='all'?'all':'chain',depth:v.depth==='all'?'all':'direct',columns:v.columns==='category'?'category':'machine',
+  return {spacing:v.spacing==='roomy'?'roomy':'compact',lines:v.lines==='all'?'all':'chain',depth:v.depth==='all'?'all':'direct',columns:v.columns==='category'?'category':'device',
     together:v.together===true,focus:v.focus===true,secretItems:v.secretItems===true,hiddenCats:Array.isArray(v.hiddenCats)?v.hiddenCats.filter(k=>CAT_KEYS.includes(k)):[],soloPrev:Array.isArray(v.soloPrev)?v.soloPrev.filter(k=>CAT_KEYS.includes(k)):null,
-    modes:{machine:mode(v.modes?.machine),category:mode(v.modes?.category)},
+    modes:{device:mode(v.modes?.device),category:mode(v.modes?.category)},
     view:VIEWS.includes(v.view)?v.view:'map',zoom,fit:v.fit===true,controls:v.controls==='open'||v.controls==='closed'?v.controls:null};
 }
 function layoutSave(l){try{localStorage.setItem(LAYOUT_KEY,JSON.stringify(l));}catch{}}
-// Map columns in their default order: machines (machine card first) or categories (grouped by machine
+// Map columns in their default order: devices (device card first) or categories (grouped by device
 // inside), then Ostatní for every card that has no column. Each card is in exactly one column; empty ones are left out.
-// Machine columns come from the places: the site's own (site.json → inventory.places; column = a column of
+// Device columns come from the places: the site's own (site.json → inventory.places; column = a column of
 // its own under that heading, lane = its cards share the Network ("net") or Outside ("outside") column),
-// then one column per machine entry the site did not list. all: every entry of the inventory, for those
-// machine columns when `list` is a filtered part of it.
+// then one column per device entry the site did not list. all: every entry of the inventory, for those
+// device columns when `list` is a filtered part of it.
 export function columnGroups(list,columns,all=list){
   const places=allPlaces(all),rank=new Map(places.map((p,i)=>[p.id,i]));
-  const machineRank=e=>rank.get(e.kind==='machine'?e.id:e.machine)??999;
-  const machineCols=[...places.filter(p=>p.column).map(p=>[p.id,p.column]),['net','Síť'],['outside','Mimo dům']];
-  const machineCol=e=>e.kind==='network'||sitePlace(e.id)?.lane==='net'?'net':e.kind==='external'||sitePlace(e.id)?.lane==='outside'||sitePlace(e.machine)?.lane==='outside'?'outside':e.kind==='machine'?e.id:e.machine;
+  const deviceRank=e=>rank.get(e.kind==='device'?e.id:e.device)??999;
+  const deviceCols=[...places.filter(p=>p.column).map(p=>[p.id,p.column]),['net','Síť'],['outside','Mimo dům']];
+  const deviceCol=e=>e.kind==='network'||sitePlace(e.id)?.lane==='net'?'net':e.kind==='external'||sitePlace(e.id)?.lane==='outside'||sitePlace(e.device)?.lane==='outside'?'outside':e.kind==='device'?e.id:e.device;
   const storeKey=e=>e.store||e.id,order=new Map(list.map((e,i)=>[e.id,i])),at=id=>order.get(id)??-1;
   const [known,keyOf,sort]=columns==='category'
-    ?[CATS,catOf,(a,b)=>machineRank(a)-machineRank(b)||at(storeKey(a))-at(storeKey(b))||at(a.id)-at(b.id)]
-    :[machineCols,machineCol,(a,b)=>(b.kind==='machine')-(a.kind==='machine')||CAT_KEYS.indexOf(catOf(a))-CAT_KEYS.indexOf(catOf(b))];
+    ?[CATS,catOf,(a,b)=>deviceRank(a)-deviceRank(b)||at(storeKey(a))-at(storeKey(b))||at(a.id)-at(b.id)]
+    :[deviceCols,deviceCol,(a,b)=>(b.kind==='device')-(a.kind==='device')||CAT_KEYS.indexOf(catOf(a))-CAT_KEYS.indexOf(catOf(b))];
   const keys=new Set(known.map(([k])=>k));
   return [...known.map(([k,label])=>({label,cards:list.filter(e=>keyOf(e)===k)})),{label:OTHER,cards:list.filter(e=>!keys.has(keyOf(e)))}]
     .filter(g=>g.cards.length).map(g=>({...g,cards:g.cards.sort(sort)}));
@@ -273,7 +273,7 @@ function map(src,signal,ui={query:()=>'',onHits:()=>{}}){
     const laneList=fresh.lanes;
     const {width,height}=mapExtent([...pos.values()],laneList.length,{COL,ROW,TOP});
     const lanes=laneList.map(l=>[svg('rect',{x:l.x,y:0,width:W+24,height,rx:10,class:l.label==='Mimo dům'||l.label==='SaaS'?'inv-lane outside':'inv-lane'}),svg('text',{x:l.x+12,y:28,class:'inv-lane-label'},clip(t(l.label).toUpperCase(),19)),svg('text',{x:l.x+W+12,y:28,class:'inv-lane-count','text-anchor':'end'},l.count)]);
-    // Runs-on is drawn only when columns are categories: in machine columns the column already says it.
+    // Runs-on is drawn only when columns are categories: in device columns the column already says it.
     // A highlighted line says which way it goes: need = what the selected card needs, break = what stops with it.
     const edges=[],labels=[],lines=[];
     for(const l of all){
@@ -306,11 +306,11 @@ function map(src,signal,ui={query:()=>'',onHits:()=>{}}){
         s.order[g.label]=place_([...known,...g.cards.map(c=>c.id).filter(x=>!known.includes(x))],visible,id);}
       save();};
     const places=new Map(allPlaces(src.entries).map(p=>[p.id,p]));
-    const shortOf=id=>{const p=places.get(id);return p?p.short||(p.source==='machine'?clip(p.label,12):''):'';};
+    const shortOf=id=>{const p=places.get(id);return p?p.short||(p.source==='device'?clip(p.label,12):''):'';};
     const nodes=shown.map(e=>{const p=pos.get(e.id),isSel=e.id===sel?.id,cat=catOf(e),hit=!!hits?.has(e.id),on=sel?active.seen.has(e.id):!hits||hit;
       // up = the selected card needs it, down = it stops when the selected card fails.
       const tone=sel&&on&&!isSel?(state.mapMode!=='impact'&&needs.seen.has(e.id)?'up':'down'):'';
-      const sub=e.address||e.type||kindName(e.kind),short=layout.columns==='category'&&e.kind!=='machine'?shortOf(e.machine):'',tag=short?`${short} · `:'';
+      const sub=e.address||e.type||kindName(e.kind),short=layout.columns==='category'&&e.kind!=='device'?shortOf(e.device):'',tag=short?`${short} · `:'';
       const node=svg('g',{class:`inv-node cat-${cat} ${on?'on':'dim'} ${isSel?'selected':''} ${sel?state.mapMode:''} ${tone} ${hit?'hit':''}`,transform:`translate(${p.x} ${p.y})`,tabindex:'0',role:'button','aria-pressed':String(isSel),
         'aria-label':`${e.name}, ${catLabel(cat)}. ${isSel?t('Vybráno; dalším stiskem výběr zrušíš.'):t('Stiskem zvýrazníš jeho závislosti.')}${layout.together?` ${t('Tažením posuneš celý sloupec.')}`:''}`,
         onkeydown:ev=>{if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();toggle(e.id);}else if(ev.key==='Escape'&&sel){ev.preventDefault();select(null);}}},// pointers: bindMapPointers in map()
@@ -369,7 +369,7 @@ function map(src,signal,ui={query:()=>'',onHits:()=>{}}){
       chip(t('Všechny vazby'),layout.lines==='all',()=>{layout.lines=layout.lines==='all'?'chain':'all';save();}));
     const custom=!!saved().cols||Object.values(saved().order).some(a=>a.length);
     const cols=(m,label)=>el('button',{type:'button',class:layout.columns===m?'active':'','aria-pressed':String(layout.columns===m),onclick:()=>{layout.columns=m;save();}},label);
-    arrange.replaceChildren(el('span',{class:'inv-chip-title'},t('Sloupce')),el('div',{class:'inv-mode inv-cols',role:'group','aria-label':t('Sloupce')},cols('machine',t('Podle stroje')),cols('category',t('Podle kategorie'))),
+    arrange.replaceChildren(el('span',{class:'inv-chip-title'},t('Sloupce')),el('div',{class:'inv-mode inv-cols',role:'group','aria-label':t('Sloupce')},cols('device',t('Podle stroje')),cols('category',t('Podle kategorie'))),
       el('span',{class:'inv-chip-gap'}),
       chip(t('Posouvat celý sloupec'),layout.together,()=>{layout.together=!layout.together;save();}),
       el('button',{type:'button',class:'inv-chip',...(custom?{}:{disabled:''}),onclick:()=>{saved().cols=null;saved().order={};save();}},t('Výchozí pořadí')),
@@ -401,7 +401,7 @@ function map(src,signal,ui={query:()=>'',onHits:()=>{}}){
 }
 
 // The prompt a person hands to their coding agent to fill an empty inventory over MCP.
-export const INVENTORY_PROMPT=()=>t('Zmapuj moje stroje a služby a zapiš je do inventáře Home Hubu přes MCP (server „home-hub“, scope inventory:write).\n1. Zavolej inventory_describe: zjistíš schéma, druhy záznamů, místa, úložiště tajemství a pravidla kontroly.\n2. Projdi stroje, ke kterým máš přístup, a zjisti, co na nich běží: služby s portem, plánované úlohy, nástroje, úložiště modelů a vnější služby, na kterých závisí.\n3. U každé věci nejdřív zavolej inventory_search, ať nezaložíš nic dvakrát. Pak ji ulož přes inventory_update (u existujícího záznamu předej jako base otisk z inventory_get), nebo víc záznamů naráz přes inventory_bulk_upsert (nejdřív s dryRun: true). Každý záznam má mít kind, machine, address, version a depends_on.\n4. Nejdřív stroje (kind machine) a síť, potom to, co na nich běží.\n5. U hesel, tokenů a klíčů zapiš jen to, kde jsou uložené (store a název položky), nikdy jejich hodnotu.\nNakonec vypiš, co se ti nepodařilo ověřit.');
+export const INVENTORY_PROMPT=()=>t('Zmapuj moje stroje a služby a zapiš je do inventáře Home Hubu přes MCP (server „home-hub“, scope inventory:write).\n1. Zavolej inventory_describe: zjistíš schéma, druhy záznamů, místa, úložiště tajemství a pravidla kontroly.\n2. Projdi stroje, ke kterým máš přístup, a zjisti, co na nich běží: služby s portem, plánované úlohy, nástroje, úložiště modelů a vnější služby, na kterých závisí.\n3. U každé věci nejdřív zavolej inventory_search, ať nezaložíš nic dvakrát. Pak ji ulož přes inventory_update (u existujícího záznamu předej jako base otisk z inventory_get), nebo víc záznamů naráz přes inventory_bulk_upsert (nejdřív s dryRun: true). Každý záznam má mít kind, device, address, version a depends_on.\n4. Nejdřív stroje (kind device) a síť, potom to, co na nich běží.\n5. U hesel, tokenů a klíčů zapiš jen to, kde jsou uložené (store a název položky), nikdy jejich hodnotu.\nNakonec vypiš, co se ti nepodařilo ověřit.');
 
 // What the page shows while the inventory has no entries: what the map is, what to record and how.
 function emptyInventory(){
@@ -410,12 +410,12 @@ function emptyInventory(){
     try{const r=await seedTemplate();if(r.ok)return announce();status.textContent=[t(r.message),...(r.details||[])].join(' ');}catch{status.textContent=t('Home Hub není dosažitelný. Zkus to znovu.');}};
   return el('div',{class:'inv-empty-wrap'},emptyState({icon:'◈',title:t('Mapa inventáře je zatím prázdná'),
     body:t('Mapa je jedno místo, kde je zapsané, co doma běží: stroje, služby a nástroje na nich, vnější služby, co na čem závisí a kde je uložené každé tajemství. Nikdy jeho hodnota, jen místo, kde ho najdeš. Zapisovat může člověk i agent a každou změnu zkontroluje stejná kontrola.'),
-    steps:[t('Zapiš stroje (druh machine) a síťové prvky (network).'),
+    steps:[t('Zapiš stroje (druh device) a síťové prvky (network).'),
       t('Ke každému stroji přidej, co na něm běží: služby (runtime) s adresou a verzí, nástroje (tool), úložiště modelů.'),
       t('Propoj je závislostmi (depends_on) a u přihlašovacích údajů zapiš, kde jsou uložené.'),
       t('Nejrychleji to udělá agent: v Uživatelé a API založ servisní účet se scope inventory:write, připoj ho přes MCP a dej mu zadání níže.')],
     agentPrompt:INVENTORY_PROMPT(),mcpSnippet:true,
-    actions:canWrite()?[{label:t('Začít ze šablony'),onclick:seed,primary:true},{label:t('Přidat první záznam'),onclick:()=>showCreate({kind:'machine'})},{label:t('Import z JSON'),onclick:showImport},{label:t('Uživatelé a API'),href:'#access'}]
+    actions:canWrite()?[{label:t('Začít ze šablony'),onclick:seed,primary:true},{label:t('Přidat první záznam'),onclick:()=>showCreate({kind:'device'})},{label:t('Import z JSON'),onclick:showImport},{label:t('Uživatelé a API'),href:'#access'}]
       :[]}),
     canWrite()?el('p',{class:'muted inv-empty-note'},t('Šablona založí šest ukázkových záznamů (router, server, tři věci na něm a vnější službu), které pak upravíš nebo smažeš.')):el('p',{class:'muted inv-empty-note'},t('Tvůj účet může jen číst. Záznamy přidá někdo s právem zápisu, nebo agent.')),
     status);
@@ -489,5 +489,5 @@ export function inventoryView(me,sub=null){
   return el('div',{class:'inv-page'},header,body);
 }
 // Page entry for the shell (app.js): every page module exports (context) => Node, and the server's UI
-// manifest names it. context = {me, page, sub, machine, site}.
+// manifest names it. context = {me, page, sub, device, site}.
 export const inventoryPage=({me,sub})=>inventoryView(me,sub);

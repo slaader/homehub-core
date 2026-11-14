@@ -1,22 +1,22 @@
 // Core module "agent": where the push agent reports (docs/agent.md). One route, POST /api/agent/report, reached
 // only with an agent key (hha_…, server/agent-store.mjs); the request pipeline (server/index.mjs) refuses that key
-// everywhere else (403 AGENT_ONLY) and every other credential here (403 AGENT_CREDENTIAL_REQUIRED). The machine is
-// the key's, never the report's. What is accepted is kept per machine in <state>/agent/<machine>.json.
+// everywhere else (403 AGENT_ONLY) and every other credential here (403 AGENT_CREDENTIAL_REQUIRED). The device is
+// the key's, never the report's. What is accepted is kept per device in <state>/agent/<device>.json.
 //
-// The readers join it (docs/agent.md §3 → Who wins over the collectors): readers() hands the records of machines that
+// The readers join it (docs/agent.md §3 → Who wins over the collectors): readers() hands the records of devices that
 // exist now and still hold a key that is not revoked, last sent with one of those keys, to GET /api/systems and GET /api/security
 // (server/core/security.mjs), this module provides home.runtimes
-// from the runtimes parts (source "agent", observedAt = the receive time), and an accepted os part adds the machine's
+// from the runtimes parts (source "agent", observedAt = the receive time), and an accepted os part adds the device's
 // line to the trend in <state>/agent/history.jsonl, at most every six hours (the collector's history.jsonl is its own).
 //
 // The keys are managed by administrators (core module "access": GET/POST /api/admin/agents…, which call the
 // functions this module's state exposes) and by `node scripts/manage-access.mjs create-agent-key` with the hub
-// stopped. A key whose machine is gone or was re-created is revoked by the hub itself ("machine-removed"), and so is
-// one whose machine would now be refused at issue: the router, the NAS, platform "other" ("machine-changed"). That
+// stopped. A key whose device is gone or was re-created is revoked by the hub itself ("device-removed"), and so is
+// one whose device would now be refused at issue: the router, the NAS, platform "other" ("device-changed"). That
 // happens on a report, at the start, and when devices.json changes.
 //
-// The overview shows the agent of each machine that holds a key (overview(), read by server/home-data.mjs → agentFor:
-// machines[].agent on GET /api/home, GET /api/home/devices and the MCP tool machine_list), and the integration
+// The overview shows the agent of each device that holds a key (overview(), read by server/home-data.mjs → agentFor:
+// devices[].agent on GET /api/home, GET /api/home/devices and the MCP tool device_list), and the integration
 // "agent.reports" puts the agents on Administration → Integrations (docs/agent.md §7, step 4). Turned off there, the hub
 // takes no report (409 INTEGRATION_DISABLED, nothing stored) and the readers join no agent record, so /api/systems,
 // /api/security and home.runtimes answer as on a hub without agents; the keys and what was stored stay as they are.
@@ -26,7 +26,7 @@ import {stat,readFile,writeFile,appendFile,mkdir,rename} from 'node:fs/promises'
 import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {validateReport,PARTS,REPORT_LIMITS,freshUntil} from '../agent-report.mjs';
-import {createReportStore,createAgentAudit,findMachine,machineRefusal,boundTo,machineFresh} from '../agent-store.mjs';
+import {createReportStore,createAgentAudit,findDevice,deviceRefusal,boundTo,deviceFresh} from '../agent-store.mjs';
 import {runtimeEndpoint} from '../site-config.mjs';
 import {buildSystems,historyEntry,systemsDirectory,specsFileText} from '../systems-data.mjs';
 import {readWatch,watchPath} from '../software-watch.mjs';
@@ -38,13 +38,13 @@ export const AGENT_MODULE='agent';
 export const AGENT_INTEGRATION='agent.reports';
 const SWEEP_EVERY_MS=30_000,HISTORY_EVERY_MS=6*3600_000,HISTORY_LINES=3000;
 const MESSAGES={
- unknown:'No machine of the overview has this id.',
+ unknown:'No device of the overview has this id.',
  router:'The router is reported by the router adapter, not by an agent.',
  nas:'The NAS stays agent-less: it is read over SSH (ssh.probe "nas").',
- other:'A machine whose platform is "other" cannot run an agent: set its platform to macos, linux or windows, or leave it unset.'};
-// Why the hub revokes a key on its own, or null while the key may stay: its machine is gone or re-created
-// ("machine-removed"), or would now be refused at issue ("machine-changed").
-const lapsed=(key,m)=>!boundTo(key,m)?'machine-removed':machineRefusal(m)?'machine-changed':null;
+ other:'A device whose platform is "other" cannot run an agent: set its platform to macos, linux or windows, or leave it unset.'};
+// Why the hub revokes a key on its own, or null while the key may stay: its device is gone or re-created
+// ("device-removed"), or would now be refused at issue ("device-changed").
+const lapsed=(key,m)=>!boundTo(key,m)?'device-removed':deviceRefusal(m)?'device-changed':null;
 const plain=v=>Boolean(v)&&typeof v==='object'&&!Array.isArray(v);
 // A runtimes part that is no news says nothing about now: as the direct reads do with a stale read, the status is
 // unknown, nothing is busy and nothing is said to be loaded.
@@ -57,28 +57,28 @@ function setupAgent(hub){
  const now=hub.options.agentClock||Date.now;
  const keys=hub.agentStore,reports=createReportStore(hub.stateDirectory,{now}),audit=createAgentAudit(hub.stateDirectory,{now});
  const home=hub.state('home');
- const addedMachines=async()=>home?.homeDevices?await home.homeDevices.list():[];
+ const addedDevices=async()=>home?.homeDevices?await home.homeDevices.list():[];
  // The integration "agent.reports" (below): off, no report is taken and no agent record is read.
  const on=()=>typeof hub.integrationEnabled==='function'?hub.integrationEnabled(AGENT_INTEGRATION):true;
  // The hub's software watch list, the one the systems page reads.
  const watchRegistry=()=>readWatch({file:hub.state('security')?.watch?.file??watchPath()}).then(w=>w?.registry||null).catch(()=>null);
- const machineNow=async id=>findMachine(id,{siteMachines:hub.site.machines,addedMachines:await addedMachines()});
+ const deviceNow=async id=>findDevice(id,{siteDevices:hub.site.devices,addedDevices:await addedDevices()});
  // When each key's last report was accepted (the 20 s floor) and what it said, for the admin list.
  const lastAccepted=new Map(),lastReport=new Map();
- for(const machine of reports.machines()){const r=reports.get(machine);if(r?.agentId)lastReport.set(r.agentId,{at:r.lastSeenAt,agentVersion:r.agentVersion,platform:r.platform});}
+ for(const device of reports.devices()){const r=reports.get(device);if(r?.agentId)lastReport.set(r.agentId,{at:r.lastSeenAt,agentVersion:r.agentVersion,platform:r.platform});}
  const seen=new Set([...lastReport.keys()]);
- // Revoke every key whose machine is gone or re-created. One sweep at a time.
+ // Revoke every key whose device is gone or re-created. One sweep at a time.
  let sweeping=null;
  const sweep=()=>sweeping??=(async()=>{try{
-   const list=await addedMachines(),gone=keys.active().map(k=>[k,lapsed(k,findMachine(k.machine,{siteMachines:hub.site.machines,addedMachines:list}))]).filter(([,why])=>why);
+   const list=await addedDevices(),gone=keys.active().map(k=>[k,lapsed(k,findDevice(k.device,{siteDevices:hub.site.devices,addedDevices:list}))]).filter(([,why])=>why);
    for(const [k,why] of gone)await keys.revoke(k.id,{by:why});return gone.length;}finally{sweeping=null;}})();
  const view=a=>{const r=lastReport.get(a.id);return {...a,lastReportAt:r?.at??null,agentVersion:r?.agentVersion??null,platform:r?.platform??null};};
  const admin={
   async list(){await sweep();return keys.list().map(view);},
   async issue(input,{by}){
-   if(!plain(input)||Object.keys(input).some(k=>!['machine','name'].includes(k))||typeof input.machine!=='string'||input.name!==undefined&&typeof input.name!=='string')throw Object.assign(new Error('invalid'),{detail:'Send {machine, name?}.'});
+   if(!plain(input)||Object.keys(input).some(k=>!['device','name'].includes(k))||typeof input.device!=='string'||input.name!==undefined&&typeof input.name!=='string')throw Object.assign(new Error('invalid'),{detail:'Send {device, name?}.'});
    await sweep();
-   const m=await machineNow(input.machine),why=machineRefusal(m);
+   const m=await deviceNow(input.device),why=deviceRefusal(m);
    if(why)throw Object.assign(new Error('invalid'),{detail:MESSAGES[why]});
    const r=await keys.issue(m,{name:input.name,by});return {token:r.token,agent:view(r.agent)};
   },
@@ -89,18 +89,18 @@ function setupAgent(hub){
  };
  // The audit lines a report may bring: a key's first report, one after no news, a changed version or platform.
  const noteReport=(key,before,report,at,stored)=>{
-  const who={agent:key.id,machine:key.machine},out=[];
+  const who={agent:key.id,device:key.device},out=[];
   if(!seen.has(key.id)){seen.add(key.id);out.push(audit.record('agent-first-report',who));}
   // Back after no news: something was stored before, all of it had gone stale, and this report stored a part. A
-  // machine whose reports store nothing (every part refused) never comes back, so it writes no such line.
-  else if(stored&&before&&Object.keys(before.parts||{}).length&&!machineFresh(before,at))out.push(audit.record('agent-report-after-no-news',who));
+  // device whose reports store nothing (every part refused) never comes back, so it writes no such line.
+  else if(stored&&before&&Object.keys(before.parts||{}).length&&!deviceFresh(before,at))out.push(audit.record('agent-report-after-no-news',who));
   if(before?.agentVersion&&before.agentVersion!==report.agentVersion)out.push(audit.record('agent-version-changed',{...who,detail:`${before.agentVersion} → ${report.agentVersion}`}));
   if(before?.platform&&before.platform!==report.platform)out.push(audit.record('agent-platform-changed',{...who,detail:`${before.platform} → ${report.platform}`}));
   return Promise.all(out).catch(()=>{});
  };
- const refused=(key,code,detail)=>audit.refused(code,{agent:key.id,machine:key.machine,detail}).catch(()=>{});
- // An endpoint of a runtimes part: what runtimeEndpoint accepts for the bound machine (loopback, or inside lanCidrs).
- const runtimeUrl=machine=>url=>{try{runtimeEndpoint({machine,url},{lanCidrs:hub.site.lanCidrs});return true;}catch{return false;}};
+ const refused=(key,code,detail)=>audit.refused(code,{agent:key.id,device:key.device,detail}).catch(()=>{});
+ // An endpoint of a runtimes part: what runtimeEndpoint accepts for the bound device (loopback, or inside lanCidrs).
+ const runtimeUrl=device=>url=>{try{runtimeEndpoint({device,url},{lanCidrs:hub.site.lanCidrs});return true;}catch{return false;}};
 
  // The key as it stands now. The pipeline verified it when the headers arrived; the body can take up to ten
  // seconds more, and a revocation in between must win (docs/agent.md §6 → Outlive its revocation).
@@ -110,12 +110,12 @@ function setupAgent(hub){
  async function receive(c){
   const key=c.principal,at=now(),receivedAt=new Date(at).toISOString();
   if(!stillValid(key))return revokedAnswer(c);
-  // A key whose machine is gone or changed is revoked first, whether the integration is on or off.
-  const m=await machineNow(key.machine),why=lapsed(key,m);
+  // A key whose device is gone or changed is revoked first, whether the integration is on or off.
+  const m=await deviceNow(key.device),why=lapsed(key,m);
   if(why){
-   if(stillValid(key))await keys.revoke(key.id,{by:why});await refused(key,'AGENT_MACHINE_GONE');
-   return c.error(409,'AGENT_MACHINE_GONE',why==='machine-removed'?'The machine this key was issued for is gone or was added again; the key is revoked. Issue a new one.'
-    :'The machine this key was issued for no longer takes an agent (the router, the NAS, or platform "other"); the key is revoked.');
+   if(stillValid(key))await keys.revoke(key.id,{by:why});await refused(key,'AGENT_DEVICE_GONE');
+   return c.error(409,'AGENT_DEVICE_GONE',why==='device-removed'?'The device this key was issued for is gone or was added again; the key is revoked. Issue a new one.'
+    :'The device this key was issued for no longer takes an agent (the router, the NAS, or platform "other"); the key is revoked.');
   }
   // Turned off by an administrator: nothing is taken, as no other integration that is off reads anything. The agent
   // logs a 409 and waits for its next interval (docs/agent.md §5); the key and what was stored before stay.
@@ -131,16 +131,16 @@ function setupAgent(hub){
   lastAccepted.set(key.id,at);
   let done=false;
   try{
-   const v=validateReport(c.input,{runtimeUrl:runtimeUrl(key.machine)});
+   const v=validateReport(c.input,{runtimeUrl:runtimeUrl(key.device)});
    if(!v.ok){await refused(key,'AGENT_REPORT_INVALID',`field ${v.field}`);return c.json(400,{error:{code:'AGENT_REPORT_INVALID',message:`The report is malformed: ${v.field}.`,field:v.field}});}
    // Written by a newer hub: refused rather than overwritten (older code refuses newer state).
-   if(reports.locked(key.machine))return c.error(500,'UNAVAILABLE','The hub cannot store this machine\'s reports: its record was written by a newer Home Hub.');
+   if(reports.locked(key.device))return c.error(500,'UNAVAILABLE','The hub cannot store this device\'s reports: its record was written by a newer Home Hub.');
    const parts={...v.parts},refusals=[...v.refused];
    const take=(name,code)=>{delete parts[name];refusals.push({part:name,code});};
-   // A machine whose platform is said must report that one: the hub never guesses which side is right.
+   // A device whose platform is said must report that one: the hub never guesses which side is right.
    if(m.platform&&m.platform!==v.report.platform)for(const name of Object.keys(parts))take(name,'platform-mismatch');
    // A part sent again before its range's minimum is not stored; the rest of the report is.
-   const stored=reports.get(key.machine);
+   const stored=reports.get(key.device);
    // Compared only with what this key stored (the record's agentId is the key of its last report): the first report
    // of a key that takes over is not held back by the other key's parts, which the overview and the readers no longer
    // count once that key is revoked. The 20 s floor above is per key either way.
@@ -149,41 +149,41 @@ function setupAgent(hub){
    // Checked again right before the store, with nothing awaited in between: a key revoked while its report was on
    // the way stores nothing.
    if(!stillValid(key))return revokedAnswer(c);
-   const {before}=await reports.accept(key.machine,{agentId:key.id,report:v.report,parts,receivedAt});
+   const {before}=await reports.accept(key.device,{agentId:key.id,report:v.report,parts,receivedAt});
    done=true;lastReport.set(key.id,{at:receivedAt,agentVersion:v.report.agentVersion,platform:v.report.platform});
    await noteReport(key,before,v.report,at,Object.keys(parts).length>0);
-   if(parts.os)await noteHistory(key.machine,at).catch(e=>console.error(`agent: history of ${key.machine}: ${e.message}`));
+   if(parts.os)await noteHistory(key.device,at).catch(e=>console.error(`agent: history of ${key.device}: ${e.message}`));
    for(const r of refusals)await refused(key,r.code,`${r.part}${r.tag?` ${r.tag}`:''}${r.field?` field ${r.field}`:''}`);
    return c.json(200,{receivedAt,accepted:Object.keys(parts),refused:refusals});
   }finally{if(!done&&lastAccepted.get(key.id)===at)last===undefined?lastAccepted.delete(key.id):lastAccepted.set(key.id,last);}
  }
 
- // Whether a machine's stored record is trusted now, and from when: the machine exists, would still be given a key, and
+ // Whether a device's stored record is trusted now, and from when: the device exists, would still be given a key, and
  // holds keys that are not revoked and are bound to it as it is now. → {m, keys, since} or null. since is when the
  // earliest of those keys was issued (never before an added device was created): what arrived before it is another
- // key's (one revoked since) or an earlier machine's of that id. A record counts only while the key of its last report
+ // key's (one revoked since) or an earlier device's of that id. A record counts only while the key of its last report
  // (its agentId; the parts carry none of their own) is one of those keys, so a report sent with a key revoked since is
  // no report at all, and a re-issued key starts at never. While two keys are live (a rotation), either one's counts.
  const trust=(id,{list,live})=>{
-  const m=findMachine(id,{siteMachines:hub.site.machines,addedMachines:list});if(!m||machineRefusal(m))return null;
-  const bound=live.filter(k=>k.machine===id&&boundTo(k,m));if(!bound.length)return null;
+  const m=findDevice(id,{siteDevices:hub.site.devices,addedDevices:list});if(!m||deviceRefusal(m))return null;
+  const bound=live.filter(k=>k.device===id&&boundTo(k,m));if(!bound.length)return null;
   const stamps=bound.map(k=>Date.parse(k.createdAt??'')).filter(Number.isFinite),born=Date.parse(m.createdAt??'');
   return {m,keys:bound,since:Math.max(stamps.length?Math.min(...stamps):-Infinity,Number.isFinite(born)?born:-Infinity)};
  };
  const counts=(t,r)=>Boolean(r)&&t.keys.some(k=>k.id===r.agentId)&&Date.parse(r.lastSeenAt??'')>=t.since;
  const since=(t,p)=>Date.parse(p?.receivedAt??'')>=t.since;
- const nameOf=(id,list)=>hub.site.machines.find(x=>x.id===id)?.name||list.find(d=>d?.id===id)?.name||id;
+ const nameOf=(id,list)=>hub.site.devices.find(x=>x.id===id)?.name||list.find(d=>d?.id===id)?.name||id;
 
  // What the readers join: the records trusted now (trust above, [{id, name, record}], by id), with only the parts
- // received since. Revoking a machine's last key is how an administrator stops trusting it: from then on its records
+ // received since. Revoking a device's last key is how an administrator stops trusting it: from then on its records
  // are not read, and neither is a record whose last report came with a key revoked since. A record of another platform
- // than the machine now says is left out (its reports are refused from now on). parts: the part names to copy (all
+ // than the device now says is left out (its reports are refused from now on). parts: the part names to copy (all
  // when left out).
  async function readers({parts:names=null}={}){
   if(!on())return [];// the integration is off: no agent record is read
-  const list=await addedMachines().catch(()=>[]),out=[];
+  const list=await addedDevices().catch(()=>[]),out=[];
   let live;try{live=keys.active();}catch{return [];}// a key store this hub cannot read trusts nothing
-  for(const id of reports.machines().sort()){
+  for(const id of reports.devices().sort()){
    const t=trust(id,{list,live});if(!t)continue;
    const r=names?reports.slice(id,names):reports.get(id);
    if(!counts(t,r)||t.m.platform&&r.platform&&t.m.platform!==r.platform)continue;
@@ -193,7 +193,7 @@ function setupAgent(hub){
   }
   return out;
  }
- // home.runtimes: {machine: {source: "agent", observedAt: receivedAt, runtimes}} for the machines with a runtimes part.
+ // home.runtimes: {device: {source: "agent", observedAt: receivedAt, runtimes}} for the devices with a runtimes part.
  async function runtimes(){
   const at=now(),out={};
   for(const {id,record} of await readers({parts:['runtimes']})){const p=record.parts.runtimes;if(!Array.isArray(p?.data?.runtimes))continue;
@@ -201,17 +201,17 @@ function setupAgent(hub){
    out[id]={source:'agent',observedAt:p.receivedAt,runtimes:p.data.runtimes.map(r=>fresh?r:noNews(r))};}
   return out;
  }
- // The SPECS digest of a machine's stored packages part (its last SPECS line), worked out once per stored part: the
+ // The SPECS digest of a device's stored packages part (its last SPECS line), worked out once per stored part: the
  // cache is keyed by the part's receivedAt and digest, so GET /api/home copies no records to find it.
  const specsCache=new Map();
- const agentSpecs=(machine,head)=>{
-  const key=`${head.receivedAt}|${head.digest}`,hit=specsCache.get(machine);if(hit?.key===key)return hit.specs;
-  const records=reports.slice(machine,['packages'])?.parts?.packages?.records;
+ const agentSpecs=(device,head)=>{
+  const key=`${head.receivedAt}|${head.digest}`,hit=specsCache.get(device);if(hit?.key===key)return hit.specs;
+  const records=reports.slice(device,['packages'])?.parts?.packages?.records;
   const line=Array.isArray(records)?records.findLast(l=>typeof l==='string'&&l.startsWith('SPECS\t')):null;
   const specs=line&&/^[a-f0-9]{64}$/.test(line.split('\t')[1]||'')?line.split('\t')[1]:null;
-  specsCache.set(machine,{key,specs});return specs;
+  specsCache.set(device,{key,specs});return specs;
  };
- // The SHA-256 of the hub's specs.txt for a machine (what node scripts/agent-specs.mjs prints), or null when the watch
+ // The SHA-256 of the hub's specs.txt for a device (what node scripts/agent-specs.mjs prints), or null when the watch
  // list cannot be read or is invalid (the script refuses then too, so the page must not ask for a new specs.txt). The
  // list is read again only when its file changed (inode, size, mtime); a missing file is the empty list.
  let hubWatch={stamp:undefined,registry:null,hashes:new Map()};
@@ -224,52 +224,52 @@ function setupAgent(hub){
   if(!hubWatch.hashes.has(id))hubWatch.hashes.set(id,createHash('sha256').update(specsFileText(hubWatch.registry,id)).digest('hex'));
   return hubWatch.hashes.get(id);
  }
- // What the overview says of each machine that holds a key that is not revoked and is bound to the machine as it is now
+ // What the overview says of each device that holds a key that is not revoked and is bound to the device as it is now
  // (and that would still be given one): {<id>: {name, lastReportAt, agentVersion, platform, parts: {<part>: {receivedAt,
  // interval}}, specs, hubSpecs}}, read by server/home-data.mjs → agentFor. The record counts as the readers' does
- // (trust above): one whose last report came with a key revoked since, or that arrived before the machine's earliest
+ // (trust above): one whose last report came with a key revoked since, or that arrived before the device's earliest
  // such key was issued, is no report at all (lastReportAt null), and so a re-issued key starts at never. Of a record
- // that counts, the parts are those received since that key (none of another platform than the machine now says).
+ // that counts, the parts are those received since that key (none of another platform than the device now says).
  // specs: the agent's SPECS digest (the last SPECS line of its packages part), hubSpecs: the SHA-256 of the hub's
- // specs.txt for the machine, read only when an agent sent one. Shown whether the integration is on or off: the keys
+ // specs.txt for the device, read only when an agent sent one. Shown whether the integration is on or off: the keys
  // are there either way.
  async function overview(){
-  const list=await addedMachines().catch(()=>[]),out={};
+  const list=await addedDevices().catch(()=>[]),out={};
   let live;try{live=keys.active();}catch{return out;}
   for(const k of live){
-   if(Object.hasOwn(out,k.machine))continue;
-   const t=trust(k.machine,{list,live});if(!t)continue;
-   const name=nameOf(k.machine,list),r=reports.heads(k.machine);
-   if(!counts(t,r)){out[k.machine]={name,lastReportAt:null,agentVersion:null,platform:null,parts:{},specs:null,hubSpecs:null};continue;}
+   if(Object.hasOwn(out,k.device))continue;
+   const t=trust(k.device,{list,live});if(!t)continue;
+   const name=nameOf(k.device,list),r=reports.heads(k.device);
+   if(!counts(t,r)){out[k.device]={name,lastReportAt:null,agentVersion:null,platform:null,parts:{},specs:null,hubSpecs:null};continue;}
    const kept=t.m.platform&&r.platform&&t.m.platform!==r.platform?[]:Object.entries(r.parts||{}).filter(([,p])=>since(t,p));
    const parts=Object.fromEntries(kept.map(([n,p])=>[n,{receivedAt:p.receivedAt,interval:p.interval}]));
-   const specs=parts.packages?agentSpecs(k.machine,r.parts.packages):null;
-   out[k.machine]={name,lastReportAt:r.lastSeenAt,agentVersion:r.agentVersion??null,platform:r.platform??null,parts,specs,hubSpecs:specs?await hubSpecs(k.machine):null};
+   const specs=parts.packages?agentSpecs(k.device,r.parts.packages):null;
+   out[k.device]={name,lastReportAt:r.lastSeenAt,agentVersion:r.agentVersion??null,platform:r.platform??null,parts,specs,hubSpecs:specs?await hubSpecs(k.device):null};
   }
   return out;
  }
- // The trend: one line {at, machines:{<id>: {os, software, apps, warn, crit, stale}}} per machine at most every six
+ // The trend: one line {at, devices:{<id>: {os, software, apps, warn, crit, stale}}} per device at most every six
  // hours, the shape of the collector's history.jsonl, capped at 3000 lines.
  const historyFile=path.join(hub.stateDirectory,'agent','history.jsonl'),historyAt=new Map();let historyRead=null;
  const readHistory=()=>historyRead??=readFile(historyFile,'utf8').then(text=>{for(const line of text.split('\n'))try{const x=JSON.parse(line),t=Date.parse(x.at);
-  for(const id of Object.keys(x.machines||{}))if(Number.isFinite(t)&&!(historyAt.get(id)>t))historyAt.set(id,t);}catch{}}).catch(()=>{});
+  for(const id of Object.keys(x.devices||{}))if(Number.isFinite(t)&&!(historyAt.get(id)>t))historyAt.set(id,t);}catch{}}).catch(()=>{});
  let historyQueue=Promise.resolve();
- function noteHistory(machine,at){
+ function noteHistory(device,at){
   const op=historyQueue.then(async()=>{
    await readHistory();
-   if(historyAt.has(machine)&&at-historyAt.get(machine)<HISTORY_EVERY_MS)return;
-   const entry=(await readers({parts:['os','updates','packages']})).find(e=>e.id===machine);if(!entry?.record.parts.os)return;
+   if(historyAt.has(device)&&at-historyAt.get(device)<HISTORY_EVERY_MS)return;
+   const entry=(await readers({parts:['os','updates','packages']})).find(e=>e.id===device);if(!entry?.record.parts.os)return;
    const security=hub.state('security'),dir=systemsDirectory(hub.directory);
    const [watch,upstream]=await Promise.all([readWatch({file:security?.watch?.file??watchPath()}).catch(()=>null),readFile(path.join(dir,'upstream.json'),'utf8').then(JSON.parse).catch(()=>null)]);
-   const m=buildSystems({snapshot:null,upstream,registry:watch?.registry,machines:[],agents:[entry],now:at}).machines.find(x=>x.id===machine);
+   const m=buildSystems({snapshot:null,upstream,registry:watch?.registry,devices:[],agents:[entry],now:at}).devices.find(x=>x.id===device);
    if(!m?.summary)return;
-   const line=JSON.stringify({at:new Date(at).toISOString(),machines:{[machine]:historyEntry(m)}})+'\n';
+   const line=JSON.stringify({at:new Date(at).toISOString(),devices:{[device]:historyEntry(m)}})+'\n';
    await mkdir(path.dirname(historyFile),{recursive:true,mode:0o700});
    const lines=(await readFile(historyFile,'utf8').catch(()=>'')).split('\n').filter(Boolean);
    if(lines.length>=HISTORY_LINES){await writeFile(historyFile+'.tmp',lines.slice(-(HISTORY_LINES-1)).join('\n')+'\n'+line,{mode:0o600});await rename(historyFile+'.tmp',historyFile);}
    else await appendFile(historyFile,line,{mode:0o600});
    // Only once the line is written: a failed write is tried again with the next os part, not six hours later.
-   historyAt.set(machine,at);
+   historyAt.set(device,at);
   });
   historyQueue=op.catch(()=>{});return op;
  }
@@ -279,11 +279,11 @@ function setupAgent(hub){
  let timer=null,seenStamp=null;
  const tick=async()=>{const s=await stat(devicesFile).catch(()=>null),stamp=s?`${s.mtimeMs}:${s.size}`:'none';if(stamp!==seenStamp){seenStamp=stamp;await sweep();}};
  return {reports,admin,sweep,receive,readers,runtimes,overview,clock:now,
-  // What one machine's agent reported (record), and how it stands at `at` (status): each part fresh until receivedAt
-  // + 3 × interval, then "no news" (never off); the machine's clock against the hub's, flagged beyond five minutes.
+  // What one device's agent reported (record), and how it stands at `at` (status): each part fresh until receivedAt
+  // + 3 × interval, then "no news" (never off); the device's clock against the hub's, flagged beyond five minutes.
   // For the tests now and the readers to come.
-  record:machine=>reports.get(machine),
-  status:(machine,at=now())=>{const r=reports.get(machine);if(!r)return null;
+  record:device=>reports.get(device),
+  status:(device,at=now())=>{const r=reports.get(device);if(!r)return null;
    const skew=r.lastSentAt&&r.lastSeenAt?Math.round((Date.parse(r.lastSentAt)-Date.parse(r.lastSeenAt))/1000):null;
    return {lastReportAt:r.lastSeenAt,clockSkewSeconds:skew,skewed:skew!==null&&Math.abs(skew)>REPORT_LIMITS.skewSeconds,
     parts:Object.fromEntries(Object.entries(r.parts).map(([n,p])=>[n,freshUntil(p)>at?'fresh':'no-news']))};},
@@ -291,16 +291,16 @@ function setupAgent(hub){
   stop:async()=>{if(timer)clearInterval(timer);timer=null;await reports.flush();}};
 }
 
-// --- integration "agent.reports": the push agents, one item per machine that holds a key -------------------------------
-// A machine's item: fresh → ok, no news → stale (never off: a quiet agent says nothing about the machine), a key that has
+// --- integration "agent.reports": the push agents, one item per device that holds a key -------------------------------
+// A device's item: fresh → ok, no news → stale (never off: a quiet agent says nothing about the device), a key that has
 // not reported yet → not-configured. No test: the hub does not reach out to an agent, it only takes what one sends.
 const AGENT_ITEM={fresh:'ok','no-news':'stale',never:'not-configured'};
 async function agentStatus(state,hub){
- const machines=await state.overview(),ids=Object.keys(machines).sort(),at=state.clock();
+ const devices=await state.overview(),ids=Object.keys(devices).sort(),at=state.clock();
  const configuredBy=[{source:'ui',name:'Uživatelé a API → Push agenti'}];
  if(!ids.length)return {state:'not-configured',summary:'Žádný stroj zatím nemá klíč agenta.',configuredBy,items:[]};
- const items=ids.map(id=>{const a=agentFor(machines[id],{now:at,hubVersion:hub.version?.version??null});
-  return {id,label:machines[id].name||id,state:AGENT_ITEM[a.freshness],lastSuccessAt:a.lastReportAt,
+ const items=ids.map(id=>{const a=agentFor(devices[id],{now:at,hubVersion:hub.version?.version??null});
+  return {id,label:devices[id].name||id,state:AGENT_ITEM[a.freshness],lastSuccessAt:a.lastReportAt,
    summary:a.freshness==='never'?'Klíč je vydaný, agent se zatím neozval.':a.freshness==='no-news'?tx('Žádné zprávy. Agent {version} se odmlčel.',{version:a.agentVersion||'?'})
     :a.behind?tx('Hlásí se. Agent {version} je starší než hub.',{version:a.agentVersion||'?'}):tx('Hlásí se. Agent {version}.',{version:a.agentVersion||'?'})};});
  const fresh=items.filter(i=>i.state==='ok').length;
@@ -312,7 +312,7 @@ const agentIntegration={id:AGENT_INTEGRATION,title:'Push agenti',kind:'agent',
  howTo:'Vydej klíč stroji v Uživatelé a API → Push agenti a na stroji spusť instalátor: node scripts/install-host-agent.mjs --core --hub <adresa hubu> --key-file <soubor s klíčem>.',
  page:'access/agents',docs:'docs/agent.md; docs/API.md → Push agent',
  provides:['home.runtimes'],
- machines:async state=>Object.keys(await state.overview()).map(id=>({machine:id,item:id})),
+ devices:async state=>Object.keys(await state.overview()).map(id=>({device:id,item:id})),
  status:(state,hub)=>agentStatus(state,hub)};
 
 export default {

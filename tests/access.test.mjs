@@ -56,8 +56,8 @@ test('all write families reject viewer sessions and read keys; only admin sessio
 });
 test('inventory creation and complete updates are checked and require an exact current base hash',async t=>{
  const dir=await mkdtemp(path.join(os.tmpdir(),'hub-create-'));t.after(()=>rm(dir,{recursive:true,force:true}));const file=path.join(dir,'knowledge.json');let published=0;
- await writeFile(file,JSON.stringify({schema:1,updated_at:'2026-11-05',entries:[{id:'mini',kind:'machine',name:'mini',verified_at:'2026-11-05'}]}));
- const editor=createKnowledgeEditor({file,publish:async()=>{published++;}});const entry={id:'new-service',kind:'runtime',machine:'mini',name:'New service',address:'127.0.0.1:12345'};
+ await writeFile(file,JSON.stringify({schema:1,updated_at:'2026-11-05',entries:[{id:'mini',kind:'device',name:'mini',verified_at:'2026-11-05'}]}));
+ const editor=createKnowledgeEditor({file,publish:async()=>{published++;}});const entry={id:'new-service',kind:'runtime',device:'mini',name:'New service',address:'127.0.0.1:12345'};
  const created=await editor.put({entry});assert(created.ok);assert(created.published);assert.equal(published,1);
  await assert.rejects(editor.put({entry}),/conflict/);
  const changed=await editor.put({entry:{...created.entry,depends_on:[{id:'mini',kind:'call'}],version:'1.0'},base:created.hash});assert(changed.ok);assert.equal(published,2);

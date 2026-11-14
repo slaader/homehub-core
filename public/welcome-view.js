@@ -29,7 +29,7 @@ function describe(step,me){
     steps(t('Otevři Uživatelé a API → Servisní účty a založ účet, třeba agent-laptop, s oprávněními, která potřebuje.'),t('Vydej mu klíč. Celý se ukáže jen jednou.'),t('Vlož úryvek níž do agenta a místo hhk_… dej ten klíč.')),
     mcpConnect(),
     actions(pageAllowed('access',me)?{label:t('Otevřít Uživatelé a API'),href:'#access',primary:true}:null)]};
-  case 'machines':return {title:t('Přidej své stroje'),
+  case 'devices':return {title:t('Přidej své stroje'),
    line:step.done?tp(d.count,'{n} stroj v přehledu.|{n} stroje v přehledu.|{n} strojů v přehledu.'):t('Přehled je zatím prázdný.'),
    body:()=>[el('p',{},t('Stroje se berou z konfigurace webu (local/site.json). Jednotlivé zařízení jde přidat i rovnou v Přehledu.')),
     steps(rich(t('Zkopíruj {from} do {to} a vyplň název, síť a stroje.'),{from:code('config/site.example.json'),to:code('local/site.json')}),t('Restartuj Home Hub.'),t('Nebo v Přehledu použij tlačítko Přidat zařízení.')),
@@ -112,5 +112,5 @@ export function welcomeView(me,site){
   slot);
 }
 // Page entry for the shell (app.js): every page module exports (context) => Node, and the server's UI
-// manifest names it. context = {me, page, sub, machine, site}.
+// manifest names it. context = {me, page, sub, device, site}.
 export const welcomePage=({me,site})=>welcomeView(me,site);

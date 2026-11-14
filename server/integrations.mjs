@@ -1,5 +1,5 @@
 // Integrations: the outside things a module reads (a telemetry agent, a router, a collector's snapshot, a
-// bridge to another machine), their health, where each is configured, and whether an administrator has
+// bridge to another computer), their health, where each is configured, and whether an administrator has
 // turned one off. docs/plugins.md → Integrations describes the contract; this file holds its rules:
 //   defineIntegrations()      validates a module's `integrations` list (server/plugins.mjs calls it)
 //   normalizeStatus()         bounds what a status() returns, so a module cannot send anything else
@@ -52,7 +52,7 @@ function settingsOf(raw,where,bad){
  });
  return Object.freeze({schema:Object.freeze(schema),read:raw.read,write:raw.write});
 }
-const KNOWN=['id','title','titleKey','kind','description','toggle','toggleNote','status','test','settings','provides','howTo','page','docs','machines'];
+const KNOWN=['id','title','titleKey','kind','description','toggle','toggleNote','status','test','settings','provides','howTo','page','docs','devices'];
 /** A module's raw `integrations` → a frozen, validated list. bad(message) throws the module error. */
 export function defineIntegrations(raw,moduleId,bad){
  if(raw===undefined)return Object.freeze([]);
@@ -75,12 +75,12 @@ export function defineIntegrations(raw,moduleId,bad){
   if(!fn(x.status))bad(`${where} (${x.id}) needs status(state, hub) => Status`);
   if(x.test!==undefined&&!fn(x.test))bad(`${where}.test must be a function`);
   if(x.provides!==undefined&&(!Array.isArray(x.provides)||x.provides.some(p=>typeof p!=='string'||!p)))bad(`${where}.provides must list extension-point names`);
-  // machines(state, hub) → [machineId | {machine, item?}]: the machines this integration belongs to. Each then shows it on its
-  // page under Integrations → Machines, with the state of its status item `item` (or of the whole integration).
-  if(x.machines!==undefined&&!fn(x.machines))bad(`${where}.machines must be a function (state, hub) => [machine id | {machine, item}]`);
+  // devices(state, hub) → [deviceId | {device, item?}]: the devices this integration belongs to. Each then shows it on its
+  // page under Integrations → Devices, with the state of its status item `item` (or of the whole integration).
+  if(x.devices!==undefined&&!fn(x.devices))bad(`${where}.devices must be a function (state, hub) => [device id | {device, item}]`);
   return Object.freeze({id:x.id,module:moduleId,title:x.title,titleKey:x.titleKey??null,kind:x.kind,description:x.description??null,
    toggle:x.toggle!==false,toggleNote:x.toggleNote??null,status:x.status,test:x.test??null,settings:settingsOf(x.settings,where,bad),
-   provides:Object.freeze([...(x.provides||[])]),howTo:x.howTo??null,page:x.page??null,docs:x.docs??null,machines:x.machines??null});
+   provides:Object.freeze([...(x.provides||[])]),howTo:x.howTo??null,page:x.page??null,docs:x.docs??null,devices:x.devices??null});
  }));
 }
 

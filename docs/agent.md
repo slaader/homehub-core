@@ -6,25 +6,25 @@
 > collectors; step 2), the Linux probe (3a), the agent for macOS and Linux with its installer
 > (3b; [As built](#step-3b-as-built) below), the overview and pages (4; [As built](#step-4-as-built) below) and the
 > PowerShell agent for Windows (5; [As built](#step-5-as-built)), with the launchd daemon for macOS (Step 3b as
-> built → The launchd daemon). The Linux system service and the Windows agent have each run on one real machine; each "As built" ends with that run's checklist and what it did not verify, and the launchd
+> built → The launchd daemon). The Linux system service and the Windows agent have each run on one real computer; each "As built" ends with that run's checklist and what it did not verify, and the launchd
 > daemon's with what its first real Mac checks. Not built: the deprecations of step 6 and the removals of 2.0. Everything else below is the contract those build against; a step that has to depart
 > from it changes this file in the same commit.
 
-Today the hub learns about a machine by reaching into it: the collectors log in over SSH and run a probe
+Today the hub learns about a device by reaching into it: the collectors log in over SSH and run a probe
 (`scripts/collect-systems.mjs`, `scripts/collect-security.mjs`), and the agent-less telemetry providers log in over
-SSH or WinRM. The push agent turns the first half around. Every machine runs one generic agent from core that
+SSH or WinRM. The push agent turns the first half around. Every device runs one generic agent from core that
 **sends** what it knows to the hub: the operating system and its updates, watched packages, LLM runtimes, SSH keys
 and a heartbeat. The hub keeps **pulling** what is pulled best: metrics exporters (Thermo, Node Exporter,
 Prometheus), the router, and the NAS over SSH as today.
 
 ```mermaid
 flowchart LR
-  subgraph machine["A machine (installed there by the installer)"]
+  subgraph device["A device (installed there by the installer)"]
     A[scripts/agent/agent.mjs<br>unprivileged account] --> P[probes: mac-probe.sh,<br>linux-probe.sh, ssh-probe.sh]
     A --> R[local LLM runtimes<br>on loopback]
   end
   A -- "POST /api/agent/report<br>Bearer hha_…, verified TLS" --> G[request pipeline<br>agent gate]
-  G --> S[(state/agent/&lt;machine&gt;.json)]
+  G --> S[(state/agent/&lt;device&gt;.json)]
   S --> V[systems, security,<br>home.runtimes readers]
   C[collectors over SSH<br>unchanged through 1.x] --> V
 ```
@@ -41,35 +41,35 @@ flowchart LR
   2.0, after the owner agrees. No plugin manifest that 1.x accepts today is refused because of this design.
 - **Controls stay in plugins.** Core carries no start, stop or restart (see [Later: a mailbox](#later-a-mailbox)).
 
-**The invariant.** The hub never delivers code, probes, commands or agent configuration to a machine. Everything
-an agent runs or obeys reaches the machine through the installer, run on that machine by a person, and the agent
+**The invariant.** The hub never delivers code, probes, commands or agent configuration to a device. Everything
+an agent runs or obeys reaches the device through the installer, run on that device by a person, and the agent
 checks it again before it runs it. The hub's only answer to an agent is a status code and a short acknowledgement,
 and the agent acts on nothing in it beyond when to try again.
 
-## 1. Machine identity
+## 1. Device identity
 
-An agent reports as **one id of the overview's machine namespace**: a `site.json → machines[].id`, or the id of a
+An agent reports as **one id of the overview's device namespace**: a `site.json → devices[].id`, or the id of a
 device added on the overview (`state/home/devices.json`). The two never collide: site ids are reserved for added
-devices (`server/home-devices.mjs`). Thermo host ids and router device ids are not machine ids and are never used.
+devices (`server/home-devices.mjs`). Thermo host ids and the ids of the router's network devices are not device ids and are never used.
 
-- The machine is **bound to the key when the key is issued** and is never part of the report. The report route takes
-  the machine from the key alone; a report that carries a machine field is malformed (closed envelope, below).
-- **Site machines.** Today a site machine is connected only by a person signed in with a password
-  (`server/core/home.mjs → telemetryTarget`). The agent keeps that bar: a key for a site machine is issued only by an
+- The device is **bound to the key when the key is issued** and is never part of the report. The report route takes
+  the device from the key alone; a report that carries a device field is malformed (closed envelope, below).
+- **Site devices.** Today a site device is connected only by a person signed in with a password
+  (`server/core/home.mjs → telemetryTarget`). The agent keeps that bar: a key for a site device is issued only by an
   administrator with a password sign-in, or by the local CLI with the hub stopped. Nothing an agent sends changes
   `site.json`, `site-overrides.json` or `devices.json`; it fills only its own record store.
 - Refused at issue: an id that names nothing, `role: "router"`, `ssh.probe: "nas"` (the NAS stays agent-less,
-  so a machine never has two reader kinds), and `platform: "other"` (no report platform could ever match it, so
-  the key could deliver nothing). A machine whose `platform` is set must report the same one, or every
+  so a device never has two reader kinds), and `platform: "other"` (no report platform could ever match it, so
+  the key could deliver nothing). A device whose `platform` is set must report the same one, or every
   part is refused `platform-mismatch` (the hub never guesses which side is right).
-- A key whose machine later becomes one of these (the site or the device changes its role, probe or platform) is
-  revoked by the hub the same way as below, with `revokedBy: "machine-changed"`.
+- A key whose device later becomes one of these (the site file or the added device changes its role, probe or platform) is
+  revoked by the hub the same way as below, with `revokedBy: "device-changed"`.
 - **Ids come back; keys do not follow them.** `newDeviceId` avoids only the ids taken now, so a removed device's id can
-  be given again. A key binds `{machine, machineCreatedAt}` (a device's `createdAt`; `null` for a site machine) and
-  works only while the machine exists with that stamp. When the hub sees it gone or re-created (a report, the start,
-  a change of `devices.json` or the site), it **revokes** the key itself (`revokedBy: "machine-removed"`, audited);
-  that report gets `409 AGENT_MACHINE_GONE`, every later one `401`. Accepted limit: a site id taken out of
-  `site.json` and put back while the hub is stopped is the household's own file naming the same machine.
+  be given again. A key binds `{device, deviceCreatedAt}` (an added device's `createdAt`; `null` for a site device) and
+  works only while the device exists with that stamp. When the hub sees it gone or re-created (a report, the start,
+  a change of `devices.json` or the site), it **revokes** the key itself (`revokedBy: "device-removed"`, audited);
+  that report gets `409 AGENT_DEVICE_GONE`, every later one `401`. Accepted limit: a site id taken out of
+  `site.json` and put back while the hub is stopped is the household's own file naming the same device.
 
 ## 2. The agent credential
 
@@ -79,11 +79,11 @@ not an app token and not a role, and it holds **no scope**: not `read`, not anyt
 | | |
 |---|---|
 | Token | `hha_` + 64 lowercase hex (32 random bytes). `hh_` is an app token, `hhk_` an API key; neither parser (`bearerOf`, `apiBearerOf`) matches `hha_` |
-| Stored | `<state>/agents.json` (0600, its own file; `access.json` is not touched): `{schemaVersion: 1, agents: [{id, machine, machineCreatedAt, name, prefix, hash, createdAt, createdBy, revokedAt, revokedBy}]}`. `hash` is the SHA-256 of the token, `prefix` its first 12 characters. Module `server/agent-store.mjs`, constant `AGENTS_SCHEMA = 1` |
-| Limits | 100 keys that are not revoked; at most two per machine, so a key can be rotated (issue, install, revoke the old one) |
+| Stored | `<state>/agents.json` (0600, its own file; `access.json` is not touched): `{schemaVersion: 1, agents: [{id, device, deviceCreatedAt, name, prefix, hash, createdAt, createdBy, revokedAt, revokedBy}]}`. `hash` is the SHA-256 of the token, `prefix` its first 12 characters. Module `server/agent-store.mjs`, constant `AGENTS_SCHEMA = 1` |
+| Limits | 100 keys that are not revoked; at most two per device, so a key can be rotated (issue, install, revoke the old one) |
 | Last seen | Never in `agents.json`. Kept in the report store (below), so a report never rewrites the credential file |
-| Admin API | Password sign-in, `/api/admin/` rules. `GET /api/admin/agents` → `{agents: [{id, machine, name, prefix, createdAt, createdBy, revokedAt, revokedBy, lastReportAt, agentVersion, platform}]}`. `POST /api/admin/agents {machine, name?}` → `201 {token, agent}` (the token once); `400 AGENT_INVALID` (unknown machine, router, NAS), `409 AGENT_LIMIT`. `POST /api/admin/agents/revoke {id}` → `200 {agent}`, `404 NOT_FOUND` |
-| CLI | Hub stopped, like the other credentials: `node scripts/manage-access.mjs create-agent-key --machine <id> [--name <n>] --output /abs/file` and `revoke-agent-key --id <id>`; `list` shows agent keys without secrets. The hub reads `agents.json` again whenever it changes on disk, so a `revoke-agent-key` takes effect in a running hub too, and the hub's next write keeps it (`tests/agent-auth.test.mjs`, `tests/agent-cli.test.mjs`). `--output` writes, 0600 and only when the file does not exist: `{"schema": 1, "agent": {id, machine, name, prefix, createdAt}, "token": "hha_…"}` |
+| Admin API | Password sign-in, `/api/admin/` rules. `GET /api/admin/agents` → `{agents: [{id, device, name, prefix, createdAt, createdBy, revokedAt, revokedBy, lastReportAt, agentVersion, platform}]}`. `POST /api/admin/agents {device, name?}` → `201 {token, agent}` (the token once); `400 AGENT_INVALID` (unknown device, router, NAS), `409 AGENT_LIMIT`. `POST /api/admin/agents/revoke {id}` → `200 {agent}`, `404 NOT_FOUND` |
+| CLI | Hub stopped, like the other credentials: `node scripts/manage-access.mjs create-agent-key --device <id> [--name <n>] --output /abs/file` and `revoke-agent-key --id <id>`; `list` shows agent keys without secrets. The hub reads `agents.json` again whenever it changes on disk, so a `revoke-agent-key` takes effect in a running hub too, and the hub's next write keeps it (`tests/agent-auth.test.mjs`, `tests/agent-cli.test.mjs`). `--output` writes, 0600 and only when the file does not exist: `{"schema": 1, "agent": {id, device, name, prefix, createdAt}, "token": "hha_…"}` |
 | Audit | Issue and revoke go to `access-audit.jsonl` (`agent-key-created`, `agent-key-revoked`) |
 
 **Enforced in the request pipeline, on the route that matched** (`server/index.mjs`, right after the principal is
@@ -104,7 +104,7 @@ worked out and the unknown-credential `401`, before the `/mcp` branch). The agen
 
 **No new scope.** The gate is by principal kind, so `scopeIds()` does not change, and the wildcard `*`, the editor
 role, legacy write keys and app tokens, all derived from it, cannot reach an agent route. A later scope in this
-area is `legacy: false`; enqueueing for a machine is an administrator action, never a scope (see the mailbox).
+area is `legacy: false`; enqueueing for a device is an administrator action, never a scope (see the mailbox).
 
 **Rollback.** An older core does not read `agents.json` and its parsers do not match `hha_`: a request with one gets
 `401` on `/api/` and `/mcp` and is anonymous on a page. The key is inert there; `access.json` keeps schema 1.
@@ -143,7 +143,7 @@ newer agent degrades part by part against an older hub.
 
 **The payloads are the shapes the readers already parse**: the probes' tab-separated records, read by
 `parseSystemsProbe` for `os` + `updates` + `packages` joined in that order and by `parseProbe` via `buildSecurity` for
-`sshkeys`; `runtimes` is one machine's entry of the `home.runtimes` extension point (`docs/plugins.md`).
+`sshkeys`; `runtimes` is one device's entry of the `home.runtimes` extension point (`docs/plugins.md`).
 
 | Part | Carries | Interval s (default, range) | Cap |
 |---|---|---|---|
@@ -211,7 +211,7 @@ validator over these fixtures; steps 3a and 5 add theirs to it.
 field that is a name (an `SW` or `RUN` id, a `SHARE` label, an `AUTO` or `SSHD` key) may still be such a name: the
 field table types it as text and `server/agent-report.mjs` is frozen, so it is accepted, and the parsers fill those maps
 without a prototype, so it is an entry like any other, never a lookup (`parseSystemsProbe`, `parseProbe`). An agent
-record a reader still cannot read is left out for that machine alone, whose collector record then stands. `PKGUP*`, `WINUP*`,
+record a reader still cannot read is left out for that device alone, whose collector record then stands. `PKGUP*`, `WINUP*`,
 `PRIV` and the Windows `os` tags are new; `parseSystemsProbe` learns them additively (an older parser skips unknown
 tags) into `packageUpdates: {manager, checked, cacheAgeSeconds, items: [{name, installed, candidate, security}],
 error}`, `windowsUpdates: {checked, items: [{kb, title, severity, restart}], error}`, `privileged: {<id>: bool}` and
@@ -219,28 +219,28 @@ error}`, `windowsUpdates: {checked, items: [{kb, title, severity, restart}], err
 
 **Withheld, checked twice.** `server/agent-report.mjs` holds this table and `validateReport`, imported by the hub,
 the agent and the tests. The agent checks every line before it sends and leaves out one that fails (secret-like, too
-long, wrong field count), counted in `withheld: [{tag, field, reason: secret|long|invalid, count}]`: a machine loses
+long, wrong field count), counted in `withheld: [{tag, field, reason: secret|long|invalid, count}]`: a device loses
 the line, not the part, and the page says so. The hub checks again and trusts nothing: a failing line refuses the
 part (`invalid`, or `secret` naming tag and field, never the value); an `os` or `sshkeys` part without `HOST` and
 `END ok` is `invalid`; `HOST` field 2 must match the envelope (`Darwin`–`macos`, `Linux`–`linux`,
 `Windows`–`windows`), else `platform-mismatch`. `secretIn` gains `hha_`. A `runtimes` part passes each string through
 `secretIn` and each `url` through `runtimeEndpoint` (`server/site-config.mjs`: an origin on loopback or inside
-`lanCidrs`) for the bound machine, else it is refused; no string in it may hold a control character, and a `url` is
+`lanCidrs`) for the bound device, else it is refused; no string in it may hold a control character, and a `url` is
 stored as its origin (`http://0x0a000005/` is kept as `http://10.0.0.5`).
 
 **Names are echoed only when they are names.** An unknown envelope key is named in `error.field` only when it looks
 like a name and not a secret (else `body`); a part name is echoed in `refused[]` and the audit, so one that looks like
 a secret refuses the report with `field: "parts"`. Values are never echoed.
 
-**Time.** `collectedAt`, `sentAt` and the `HOST` time are the machine's clock: information only. The hub's
+**Time.** `collectedAt`, `sentAt` and the `HOST` time are the device's clock: information only. The hub's
 **receive time** (`receivedAt`) is authoritative and is what readers see: joining an agent record replaces `HOST`
-field 5 with `receivedAt` in `host.collectedAt` (systems) and `host.at` (SSH keys), keeping the machine's value as
-`machineCollectedAt`; the macOS uptime is worked out first, from two values of the machine's own clock. More than
+field 5 with `receivedAt` in `host.collectedAt` (systems) and `host.at` (SSH keys), keeping the device's value as
+`deviceCollectedAt`; the macOS uptime is worked out first, from two values of the device's own clock. More than
 five minutes between `sentAt` and receipt is shown as clock skew, never corrected.
 
 **Staleness.** A part is fresh until `receivedAt + 3 × interval`, then it is **no news**: shown stale with its age,
 never off (for the 60 s heartbeat, the hub's usual three minutes). A heartbeat proves that the key works and the
-agent runs, nothing about the machine's health; in 1.x `online` is not derived from it (`machines[].agent`, step 4).
+agent runs, nothing about the device's health; in 1.x `online` is not derived from it (`devices[].agent`, step 4).
 
 **Limits and answers.**
 
@@ -250,21 +250,21 @@ agent runs, nothing about the machine's health; in 1.x `online` is not derived f
 | 400 | `AGENT_REPORT_INVALID` | the envelope is wrong (an unknown key, a missing `parts`, …) |
 | 401 | `AUTH_REQUIRED` | unknown or revoked key, also one revoked while its report was still arriving (checked again before anything is stored) |
 | 403 | `AGENT_ONLY`, `AGENT_CREDENTIAL_REQUIRED`, `ORIGIN_REJECTED` | the pipeline gate (§2); a `Content-Type` that is not exactly `application/json` |
-| 409 | `AGENT_MACHINE_GONE` | the bound machine is gone or re-created, or would now be refused at issue (§1); the key is revoked in the same step |
+| 409 | `AGENT_DEVICE_GONE` | the bound device is gone or re-created, or would now be refused at issue (§1); the key is revoked in the same step |
 | 413 | `TOO_LARGE` | over 512 KiB |
 | 429 | `AGENT_TOO_SOON` | less than 20 s after this key's previous accepted report, or while another report of this key is being taken; `Retry-After` says when |
-| 500 | `UNAVAILABLE` | the machine's `agent/<machine>.json` was written by a newer hub: refused, never overwritten |
+| 500 | `UNAVAILABLE` | the device's `agent/<device>.json` was written by a newer hub: refused, never overwritten |
 
 A part sent again before its range's minimum is `too-soon` and not stored; the rest of the report is. The minimum is
-counted from the stored part only when the machine's last report came with the same key (a part carries no key of its
+counted from the stored part only when the device's last report came with the same key (a part carries no key of its
 own; the record keeps the key of its last report): the first report of a key that takes over is never held back by
 the other key's parts, and while two keys alternate in a rotation a part can be stored more often than its minimum,
 never more than once per key per 20 s. The agent
 sends every part that falls due within 20 s of another in **one** report, so the floor never splits a batch.
 
-**Storage.** One file per machine, `<state>/agent/<machine>.json` (0600, directory 0700; `AGENT_REPORTS_SCHEMA = 1`):
-`{schemaVersion, machine, agentId, agentVersion, platform, lastSeenAt, lastSentAt, parts: {<part>: {schema, collectedAt,
-receivedAt, interval, digest, withheld, records | data}}}` (`lastSentAt`: the last envelope's `sentAt`, the machine's
+**Storage.** One file per device, `<state>/agent/<device>.json` (0600, directory 0700; `AGENT_REPORTS_SCHEMA = 1`):
+`{schemaVersion, device, agentId, agentVersion, platform, lastSeenAt, lastSentAt, parts: {<part>: {schema, collectedAt,
+receivedAt, interval, digest, withheld, records | data}}}` (`lastSentAt`: the last envelope's `sentAt`, the device's
 clock, kept to show skew), the latest copy of each part only, so bounded by the caps. A changed `digest` (SHA-256 of the payload) is written at once; a report that changes only times is flushed at
 most once a minute. Nothing is appended per report.
 
@@ -272,13 +272,13 @@ most once a minute. Nothing is appended per report.
 refusal (at most one per key and code per ten minutes), a key's first report, a report after no news (only when the
 report stored a part, after everything stored before had gone stale), a changed `agentVersion` or `platform`; each but
 the first report at most once per key and event per ten minutes, so no key can write more than a few lines an hour.
-Never a body or a token. Whether a key has reported before is kept in memory, seeded at start from each machine's
-latest `agentId`: a restart during a key rotation, while two keys of one machine alternate, can log one more
+Never a body or a token. Whether a key has reported before is kept in memory, seeded at start from each device's
+latest `agentId`: a restart during a key rotation, while two keys of one device alternate, can log one more
 `agent-first-report` for the older key. The admin audit lists it as kind `agent` (`readAccessAudit`).
 
 ### Who wins over the collectors
 
-Both run side by side through the transition; neither writes the other's file. The choice is **per machine and per
+Both run side by side through the transition; neither writes the other's file. The choice is **per device and per
 reader**, between the collector's record C and the agent's record A, in this order:
 
 1. **Current.** C is current when complete, not `stale`, and younger than its collector's stale-after
@@ -289,54 +289,54 @@ reader**, between the collector's record C and the agent's record A, in this ord
    whose records it carries (`sshd`: an `SSHD` line from `sshd -T`; `listen`: a `LISTEN` line; `pf-info`: a `PF` status
    other than `unknown`; `pf-rules`: a `PF` rule count; `nft`: an `NFT` line other than `unknown`), so a report cannot
    look more complete than it is. SSH keys: `HOST` root (1 = every account). The `sshkeys` part carries no `PRIV` line,
-   so A's root is what its `HOST` line claims, trusted as it stands: what a machine says about itself decides only
-   between two records of that same machine, never another's (a lie about itself, §6). Less access never replaces
+   so A's root is what its `HOST` line claims, trusted as it stands: what a device says about itself decides only
+   between two records of that same device, never another's (a lie about itself, §6). Less access never replaces
    more while the record with more is current.
 3. **Time.** Otherwise the newer wins, a tie to the agent. A's time is `receivedAt` (the hub's clock). C's time is
-   the earlier of its new per-machine `probedAt` (the collecting machine's clock when that probe came back; a failed
+   the earlier of its new per-device `probedAt` (the collecting host's clock when that probe came back; a failed
    probe leaves it as it was; older records use the earlier of the file's `collectedAt` and the record's own `HOST`
-   time) and the collector file's modification time as the hub reads it (the hub machine's clock), so a collector
+   time) and the collector file's modification time as the hub reads it (the hub device's clock), so a collector
    clock that runs ahead cannot win. A collector record that never carried a probe (`collect-systems.mjs`' placeholder
-   for a machine it has never reached: no `probedAt`, no `HOST` time) has no time, so any agent record beats it.
+   for a device it has never reached: no `probedAt`, no `HOST` time) has no time, so any agent record beats it.
 
-**Which agent records are read.** Only those of a machine that exists now, would still be given a key (§1), and holds
-a key that is not revoked and is bound to the machine as it is now: revoking a machine's last key is how an
-administrator stops trusting it, and its records are not read from then on (they stay stored until the machine
+**Which agent records are read.** Only those of a device that exists now, would still be given a key (§1), and holds
+a key that is not revoked and is bound to the device as it is now: revoking a device's last key is how an
+administrator stops trusting it, and its records are not read from then on (they stay stored until the device
 reports again with a new key). The record counts only while the key of its last report (its `agentId`) is one of
-those keys, so what a key revoked since sent (a leaked one, say) is not read even while another key of the machine is
+those keys, so what a key revoked since sent (a leaked one, say) is not read even while another key of the device is
 live; while two keys are live (a rotation), either one's report counts. Of such a record, only the parts received
 since the earliest of those keys was issued are read: a part carries no key of its own, so one from before belongs to
-an earlier key. A part received before an added device was created belongs to an earlier machine of that id and is
-not read; nor is a record whose platform differs from the one the machine now says.
+an earlier key. A part received before an added device was created belongs to an earlier device of that id and is
+not read; nor is a record whose platform differs from the one the device now says.
 
-The page shows which source won for each machine (`source: "collector" | "agent"`), and its time.
+The page shows which source won for each device (`source: "collector" | "agent"`), and its time.
 
 - **Systems.** An agent record is `parseSystemsProbe(os + updates + packages)` with the time replaced (above) plus
-  `{source: "agent", stale: <no news>, lastError: null}`, the record shape `buildSystems` sees today. The machine
-  list becomes the site's `ssh.probe` machines plus every machine with an agent `os` part, and `loadSystems` returns
+  `{source: "agent", stale: <no news>, lastError: null}`, the record shape `buildSystems` sees today. The device
+  list becomes the site's `ssh.probe` devices plus every device with an agent `os` part, and `loadSystems` returns
   `null` only when there is neither a snapshot nor an agent part (today a missing `snapshot.json` alone does). Each
-  machine has a **reader kind**: `mac` or `nas` from `ssh.probe` as today; `mac`, `linux` or `windows` from the
+  device has a **reader kind**: `mac` or `nas` from `ssh.probe` as today; `mac`, `linux` or `windows` from the
   agent's platform. `buildSystems` branches on that kind, never on `HOST` platform (`Linux` for the NAS and a Linux
   agent alike): `nas` keeps `osSummary` and `nasChecks`, `mac` keeps `macChecks`, `linux` gets its own summary
   (distribution, `PKGUP`) and checks (sshd, `NFT`, security updates, exposed ports), `windows` its own (`WINUP`,
   Defender, BitLocker, firewall profiles, RDP, exposed ports). The top-level `collectedAt` is the newest of the
   snapshot's and the agents' `receivedAt`; `collector.systems` stays the collector's, and `collector.agents:
-  {machines, fresh, noNews}` joins it. Agent machines join the trend through `<state>/agent/history.jsonl` (one line
-  per machine at most every six hours); `history.jsonl` stays the collector's.
-- **SSH keys.** The inventory is joined across machines, so it is rebuilt, not patched. `collect-security.mjs` also
+  {devices, fresh, noNews}` joins it. Agent devices join the trend through `<state>/agent/history.jsonl` (one line
+  per device at most every six hours); `history.jsonl` stays the collector's.
+- **SSH keys.** The inventory is joined across devices, so it is rebuilt, not patched. `collect-security.mjs` also
   writes `probes.json` beside its `--out` file (default `data/security/`; `loadSecurity` looks beside `SECURITY_FILE`
   when set): `{schemaVersion: 1, collectedAt, collectedFrom, probes: {id: {text, probedAt} | {error}}, forgejo,
-  extraMachines}` (`SECURITY_PROBES_SCHEMA = 1`). `loadSecurity` loads the descriptors itself
-  (`loadMachineDescriptors`) and runs `buildSecurity` over those probes, each winning agent `sshkeys` text in place
-  of a machine's; forgejo and the router entry stay the collector's. A `probes.json` older than `ssh-keys.json` was
+  extraDevices}` (`SECURITY_PROBES_SCHEMA = 1`). `loadSecurity` loads the descriptors itself
+  (`loadDeviceDescriptors`) and runs `buildSecurity` over those probes, each winning agent `sshkeys` text in place
+  of a device's; forgejo and the router entry stay the collector's. A `probes.json` older than `ssh-keys.json` was
   left by an older collector: the page then shows `ssh-keys.json` as today, noting that agents are not joined. For
-  an agent's probe `machineIndex` ignores the `HOST` name and `NET`, so they never decide other machines' routes. A
+  an agent's probe `deviceIndex` ignores the `HOST` name and `NET`, so they never decide other devices' routes. A
   key copy, an `authorized_keys` access and a route that an agent's record adds carry `source: "agent"`: a key whose
-  other copies are elsewhere still shows what the collector read apart from what one machine said about itself.
-- **Collector-only views.** `GET /api/collectors` reports the collectors' own state and Integrations → Machines (the
-  `machines.facets` versions, protection and SSH key facets) reads the collectors' snapshots alone; neither joins agent
+  other copies are elsewhere still shows what the collector read apart from what one device said about itself.
+- **Collector-only views.** `GET /api/collectors` reports the collectors' own state and Integrations → Devices (the
+  `devices.facets` versions, protection and SSH key facets) reads the collectors' snapshots alone; neither joins agent
   records. Step 4 adds the agent's own facet there (`int-agent-reports`, from the integration `agent.reports`) on each
-  machine that holds a key.
+  device that holds a key.
 - **Runtimes.** The agent module provides `home.runtimes` (`source: "agent"`, `observedAt` = receive time).
 
 ## 4. Transport and trust
@@ -351,13 +351,13 @@ The agent's configuration holds the hub's origin and how to trust it, and it fai
 ```
 
 - No `trust`: Node's store with hostname verification, **the choice behind a reverse proxy with a public ACME
-  certificate** (a pin would mean re-running the installer on every machine at each renewal). Nothing turns
+  certificate** (a pin would mean re-running the installer on every device at each renewal). Nothing turns
   verification off. With a proxy in front of the hub, the pin or CA is the proxy's.
 - `ca`: a PEM file that **replaces** Node's store for this connection, with hostname verification: a private CA.
 - `pins`: one or two SHA-256 fingerprints of the leaf certificate (DER), as the device dialogs show them; either
   matches, so a certificate is replaced without a gap (new pin beside the old, change, drop the old). The name is not
   checked, because the certificate identifies itself. Only for a long-lived self-signed certificate.
-- `http://` only to the literal `127.0.0.1` (an agent on the hub's own machine); any other `http://` origin,
+- `http://` only to the literal `127.0.0.1` (an agent on the hub's own host); any other `http://` origin,
   `localhost` and `::1` included, is refused at start (`validEndpointHost` takes no IPv6 literal).
 
 `server/endpoint-http.mjs` is extended, not copied: `trust: {mode: "pin", pins: [a, b]}` (today one pin),
@@ -365,7 +365,7 @@ The agent's configuration holds the hub's origin and how to trust it, and it fai
 The rest stays: trust checked before a byte is written, no redirects, no compression, a deadline, a reply cap (64 KiB
 for the agent). The key never appears on a command line, in an environment variable, in `.agent-install.json` or in
 a log; on Windows also never as a parameter of a PowerShell function or cmdlet, which Module Logging writes to an event
-log the machine's users can read (Step 5 as built).
+log the device's users can read (Step 5 as built).
 
 ## 5. The agent process
 
@@ -382,7 +382,7 @@ A thin Node wrapper runs the probes that already exist, locally, and posts what 
 | `server/agent-report.mjs` | The frozen schema (parts, the field table, caps, ranges), `validateReport` and `validateSpecs`; shared by the hub and the agent |
 | `server/agent-privileged.mjs` | `PRIVILEGED`: every privileged command line, per platform, with full paths (below) |
 
-**Leaf modules.** The agent must not drag the hub onto the machine: `agent-report.mjs` and `agent-privileged.mjs`
+**Leaf modules.** The agent must not drag the hub onto the device: `agent-report.mjs` and `agent-privileged.mjs`
 import only `node:` modules and other leaves. So the secret patterns move to `server/secret-patterns.mjs`,
 `parseAuthorizedLine` and `parseKeygenLine` to `server/ssh-lines.mjs`, `CMD_ARGS` to `server/watch-rules.mjs` (their
 old modules re-export them), and `tests/agent-install.test.mjs` pins the closure of `agent.mjs` to a fixed file list.
@@ -404,11 +404,11 @@ checked with `visudo -cf` first. A command listed without arguments (`ssh-probe`
 which in sudoers allows no arguments at all; a bare command would allow any. The NAS's `nas-probe.sh` keeps its own forms and is not part of this list.
 
 **The watch list** reaches the probe as `SPECS`, as today, but from a file the installer wrote
-(`<config>/specs.txt`), never from the hub: the bytes of `systemsSpecs(registry, machine)` (UTF-8, `\n` after each
-line, an empty list an empty file), made by `node scripts/agent-specs.mjs <machine> > specs.txt` on the hub, which
-hashes the same bytes from its current list, so `SPECS <sha256>` tells the page whether a machine's list differs.
+(`<config>/specs.txt`), never from the hub: the bytes of `systemsSpecs(registry, device)` (UTF-8, `\n` after each
+line, an empty list an empty file), made by `node scripts/agent-specs.mjs <device> > specs.txt` on the hub, which
+hashes the same bytes from its current list, so `SPECS <sha256>` tells the page whether a device's list differs.
 
-The machine trusts the file no more than the hub's list: `mac-probe.sh` runs `"$bin" $b` with `$b` unquoted
+The device trusts the file no more than the hub's list: `mac-probe.sh` runs `"$bin" $b` with `$b` unquoted
 (line 115), and a `software:write` key or an editor can change the list. So `validateSpecs` runs in the installer
 (which prints the lines for the person to confirm) and in the agent at every start, and **a file that fails stops the
 agent** (`lastError: "specs-invalid"`) before anything runs. A line passes only with: an id `[A-Za-z0-9._-]{1,60}`; a
@@ -454,9 +454,9 @@ keys). Where things are:
 | Windows | `C:\ProgramData\Home Hub Agent\` | `…\private\agent.key`, ACL'd to the task's account and Administrators | `…\state\status.json`, `…\logs\` |
 
 `agent.json`: `{"schema": 1, "hub", "trust", "intervals": {<part>: s}, "keys": "own|all-accounts|off", "runtimes":
-[{"id", "kind", "url"}]}`; no machine, which comes from the key.
+[{"id", "kind", "url"}]}`; no device, which comes from the key.
 
-**The installer** gains a core entry that needs no plugin and no `site.json` on the machine:
+**The installer** gains a core entry that needs no plugin and no `site.json` on the device:
 
 ```sh
 node scripts/install-host-agent.mjs --core --hub https://hub.example.lan [--pin <sha256> [--pin <next>] | --ca /abs/hub-ca.pem] \
@@ -482,7 +482,7 @@ What the note left open, as step 3b settled it:
 - **The agent's flags.** `node scripts/agent/agent.mjs --config DIR [--state DIR] [--key FILE]`, plus `--once` (collect,
   check and print the envelope; no key is read, nothing is sent) and `--once --send` (the same, sent once; it prints the
   hub's status and the accepted and refused parts, exit 0 on a `200` with an accepted part: the preview smoke test and
-  a first check on a new machine). The key is `--key` when it is given; without it, on Linux only,
+  a first check on a new device). The key is `--key` when it is given; without it, on Linux only,
   `$CREDENTIALS_DIRECTORY/agent-key` (systemd's `LoadCredential=`), so a stray `CREDENTIALS_DIRECTORY` never swaps it. A start check that fails (`agent.json`, `specs.txt`, the CA file, the key) exits **78** with `status.json →
   lastError` (`config-invalid`, `specs-invalid`, `ca-invalid`, `key-missing`, `key-invalid`); the unit has
   `RestartPreventExitStatus=78`, the launchd agent `ThrottleInterval` 60. A missing `specs.txt` is `specs-invalid`: the
@@ -528,7 +528,7 @@ What the note left open, as step 3b settled it:
   installer's own. It prints the rules a full install would put in place.
 - **CA file.** `--ca` is copied to `<config>/hub-ca.pem` and `agent.json → trust.ca` names that copy.
 - **`specsFileText`** (the bytes of `specs.txt`) is in `server/systems-data.mjs` beside `systemsSpecs`, so the hub's
-  hash of a machine's list and `scripts/agent-specs.mjs` use one function.
+  hash of a device's list and `scripts/agent-specs.mjs` use one function.
 
 **The launchd daemon** (macOS, `--service launchd-daemon`). A launchd agent runs only in the owner's
 login session, so a headless Mac that restarts to the login window is no news until someone logs in. The daemon kind
@@ -611,14 +611,14 @@ runs the same agent from boot:
   `UserName` and the switch; the install reports the first accepted report; `stat -f '%Su:%Sg %Lp'
   /Library/LaunchDaemons/home-hub-agent.plist` says `root:wheel 644`; `ps -o user= -p <pid>` (the pid from
   `launchctl print system/home-hub-agent`) is the owner; `~/Library/LaunchAgents/home-hub-agent.plist` is gone; and
-  after a restart without logging in the machine is fresh on the hub, with no `RUN` record for its watched
+  after a restart without logging in the device is fresh on the hub, with no `RUN` record for its watched
   LaunchAgents until the owner logs in.
 
 **Updating the agent** is running the installer again from a newer checkout; there is no self-update and none
 through the hub. The hub shows `behind` when the reported `agentVersion` has a lower precedence than its own
 (`server/semver.mjs`; build metadata is ignored, so `1.6.0+dev` is not behind `1.6.0`).
 
-**The first run on a real Linux machine** (2026-11-13: Debian 13, systemd 257, x86_64, in an LXC container; Node
+**The first run on a real Linux device** (2026-11-13: Debian 13, systemd 257, x86_64, in an LXC container; Node
 26 LTS from the official tarball, root-owned under `/usr/local/lib/nodejs/`; an empty watch list; the hub behind a
 public ACME certificate, so no `--pin`). The installer ran as root (`sudo`) from a clone owned by the login account;
 git under sudo reads such a clone (it trusts the `SUDO_UID` owner), so the commit is recorded. The checklist, as
@@ -628,7 +628,7 @@ it went:
    `/etc/systemd/system/home-hub-agent.service`, the sudoers rules) and the watch list. It writes no file; as root it
    runs one transient unit to see whether `LoadCredential=` works (below), which is removed when it ends and leaves
    only its lines in the journal.
-2. **Passed.** `--once` prints an envelope whose `os` records match what the machine shows (`linux-probe.sh`: `OS`,
+2. **Passed.** `--once` prints an envelope whose `os` records match what the device shows (`linux-probe.sh`: `OS`,
    `SSHD`, `NFT`, `LISTEN`, `PKGUP`), with a `PRIV … ok` or `denied` for each privileged read and no password prompt;
    the only change it leaves is the account `home-hub-agent`. Before the first install every `PRIV` is `denied` (no
    rules yet); once the sudoers file is in place `sshd` and `listen` are `ok`, and `LISTEN` names the processes.
@@ -649,7 +649,7 @@ it went:
    account with no home (`/nonexistent`) and the shell `nologin`; the copy, `agent.json` and `specs.txt` are root's,
    `/var/lib/home-hub-agent` the account's, 0700.
 5. **Partly.** An unreachable hub (a name that does not resolve) backs off from 30 s, doubling, and `status.json →
-   lastError` and the journal say so. `401` (a revoked key) was not tried on the first machine.
+   lastError` and the journal say so. `401` (a revoked key) was not tried on the first device.
 6. **Passed.** Over an installed agent the installer makes a backup in `/var/backups/home-hub-agent/<stamp>/` (never
    the key; `.agent-install.json` holds only its prefix) and the health check passes; a wrong `--hub` puts the previous
    agent back (its code, configuration, unit and sudoers rules) and it reports again. `systemctl restart
@@ -665,43 +665,43 @@ of the copy stay; the next install takes them over.
 
 What step 4 settled, beside the row of §7:
 
-- **`machines[].agent`** on `GET /api/home`, `GET /api/home/devices` and the MCP tool `machine_list` (as the
+- **`devices[].agent`** on `GET /api/home`, `GET /api/home/devices` and the MCP tool `device_list` (as the
   reachability check did; `home_status` is unchanged): `{lastReportAt, freshness, agentVersion, behind, specsDiffer}` for
-  a machine that holds a key that is not revoked and is bound to it as it is now (and that would still be given one), else
+  a device that holds a key that is not revoked and is bound to it as it is now (and that would still be given one), else
   `null`
-  (`server/home-data.mjs → agentFor`, from `server/core/agent.mjs → overview()`). `freshness` is per machine: `fresh`
+  (`server/home-data.mjs → agentFor`, from `server/core/agent.mjs → overview()`). `freshness` is per device: `fresh`
   while any part is within `receivedAt + 3 × interval`, the heartbeat included; `no-news` once none is; `never` before
-  the first report since the machine's earliest such key was issued, sent with one of those keys. The line is the
+  the first report since the device's earliest such key was issued, sent with one of those keys. The line is the
   readers' (§3 → Which agent records are read): a record whose last report came with a key revoked since (a leaked
   one, say) is not the new key's, so a re-issued key shows `never` until it reports, also when the old key reported
   after the new one was issued and was revoked only then; and only the parts received since that key count.
-  (Corrected after review, twice: the first build compared only with an added device's creation, so a site machine's
+  (Corrected after review, twice: the first build compared only with an added device's creation, so a site device's
   re-issued key showed the previous key's report as fresh; the second compared only with the earliest live key's
   issue time, so an old key that reported after its successor was issued still showed as the successor's, and the
   readers read it too.) The heartbeat counts here and
   nowhere else, and `online` never follows it (open question 1, decided by the owner: not in 1.x). The word is "no news" on every page, never off, offline or down.
 - **`specsDiffer`** compares the last `SPECS` line of the stored `packages` part with the SHA-256 of `specsFileText` for
-  the machine from the hub's current watch list; the watch list is read only when an agent sent a digest, and again only
+  the device from the hub's current watch list; the watch list is read only when an agent sent a digest, and again only
   when its file changes. A watch list that cannot be read or is invalid gives `null`, never `true`: `agent-specs.mjs`
   refuses then too, so the page must not ask for a new `specs.txt`. The digest is found once per stored `packages` part
   (keyed by its `receivedAt` and digest), so polling the overview copies no records.
 - **The integration `agent.reports`**, kind `agent` (new in `INTEGRATION_KINDS`), belongs to the core module `agent`:
-  one item per machine that holds a key (fresh `ok`, no news `stale`, not heard from `not-configured`), `machines()` so
-  the facet shows on those machines, `provides: ['home.runtimes']`, no test (the hub does not reach out to an agent).
+  one item per device that holds a key (fresh `ok`, no news `stale`, not heard from `not-configured`), `devices()` so
+  the facet shows on those devices, `provides: ['home.runtimes']`, no test (the hub does not reach out to an agent).
   **Off means refused**: `POST /api/agent/report` → `409 INTEGRATION_DISABLED`, nothing stored, and `readers()` returns
   nothing, so `/api/systems`, `/api/security` and `home.runtimes` answer as without agents. This is how
   `docs/API.md` describes every integration that is off ("not read", "no request", and `409 INTEGRATION_DISABLED` for a
   change): accepting and hiding would keep writing outside data the administrator turned off, and turning it on again
   would surface what arrived meanwhile. The agent already treats a `409` as "log and wait for the next interval" (§5),
   so it neither spins nor stops. The key check comes first: an unknown or revoked key is still `401`, and a key whose
-  machine is gone or changed is still revoked with `409 AGENT_MACHINE_GONE` (the machine check comes before the
-  switch). The keys and the stored parts stay; `machines[].agent` keeps showing when each machine was last heard from.
-- **The pages.** A tile and a machine page show the agent (`public/home-agent.js`); Users and API → Push agents
-  (`#access/agents`) lists the keys per machine, issues one (shown once, as the key file `create-agent-key --output`
+  device is gone or changed is still revoked with `409 AGENT_DEVICE_GONE` (the device check comes before the
+  switch). The keys and the stored parts stay; `devices[].agent` keeps showing when each device was last heard from.
+- **The pages.** A tile and a device page show the agent (`public/home-agent.js`); Users and API → Push agents
+  (`#access/agents`) lists the keys per device, issues one (shown once, as the key file `create-agent-key --output`
   writes, never kept, logged or put in a URL) and revokes; Versions, Host protection and SSH keys say whose record won
   (`source`) and show an agent's that went quiet as "no news", never unreachable; `/api/security` adds `stale` to an
-  agent's machine for that.
-  While `agent.reports` is turned off, the tile and the machine page say the hub refuses the reports (from
+  agent's device for that.
+  While `agent.reports` is turned off, the tile and the device page say the hub refuses the reports (from
   `integrations.disabled` on `GET /api/home`), not "no news": the agent may well be sending. The Push agents tab writes
   the open tab into the address (`#access/<tab>`, replaced), so a link to `#access/agents` works from any other tab.
   A hub without agent keys answers as before but for `agent: null` and the integration's card and facet
@@ -709,7 +709,7 @@ What step 4 settled, beside the row of §7:
 
 ## Windows: PowerShell only
 
-Decided by the owner: a PowerShell-only agent, with no Node on Windows machines, run as a Scheduled Task. The report
+Decided by the owner: a PowerShell-only agent, with no Node on Windows devices, run as a Scheduled Task. The report
 is identical to the Node agent's on macOS and Linux, validated by the same schema on the hub. The probes are new: a
 PowerShell port of the CIM script in `server/windows-telemetry.mjs` for `os` (with `DEFENDER`, `BITLOCKER`, `WINFW`,
 `RDP`), the Windows Update Agent search for `updates` (`WINUP*`), registry uninstall keys for `packages` (a new
@@ -721,16 +721,16 @@ the DER's SHA-256), backoff; about 400 lines. It must make sure of TLS 1.2 in `[
 `Tls12` alone, as this said first, would turn TLS 1.3 off where Windows has it) and send with `HttpWebRequest` and
 `ContentType = "application/json"`, because `Invoke-RestMethod` can append a charset the hub refuses. It is held to the hub's validator by fixtures: the validator runs over envelope fixtures captured
 from the script, and `--once` prints the same JSON. The task runs as `NT AUTHORITY\LocalService`. Whether the update
-search and BitLocker answer as LocalService was checked on the first real machine (Step 5 as built → The first run on a
-real machine): BitLocker does, the update search does not (`0x80070005`, access denied); the fallback is a narrow grant,
+search and BitLocker answer as LocalService was checked on the first real device (Step 5 as built → The first run on a
+real device): BitLocker does, the update search does not (`0x80070005`, access denied); the fallback is a narrow grant,
 not SYSTEM, and is still open.
 
-The Node agent was considered and not chosen: it would put a Node 22 runtime, kept updated, on every Windows machine
+The Node agent was considered and not chosen: it would put a Node 22 runtime, kept updated, on every Windows device
 for the transport's sake alone, when the probes are PowerShell anyway.
 
 ### Step 5 as built
 
-`scripts/agent/windows/`, Windows PowerShell 5.1 and nothing else on the machine:
+`scripts/agent/windows/`, Windows PowerShell 5.1 and nothing else on the device:
 
 | File | What |
 |---|---|
@@ -758,7 +758,7 @@ for the transport's sake alone, when the probes are PowerShell anyway.
   after 300 s (`WINUP_ERR search timed out`); it never scans against Microsoft's servers, downloads or installs. An
   update offered only for browsing (`BrowseOnly`: optional and preview updates, drivers) is not pending and is left out.
   An empty answer is `WINUP_NONE` only when Windows' own last successful search
-  (`Microsoft.Update.AutoUpdate` → `Results.LastSearchSuccessDate`) is at most 5 days old; a machine that never searched
+  (`Microsoft.Update.AutoUpdate` → `Results.LastSearchSuccessDate`) is at most 5 days old; a device that never searched
   or not for longer (switched off, a broken or WSUS-blocked scan) has an empty cache, and that is `WINUP_ERR`, never a
   false all-clear. An update without a KB number has no record form and is withheld (`WINUP` field 1). `packages`:
   for each line of `specs.txt`, `SW` and `RUN` (below), then `SPECS <sha256 of specs.txt>`. No `sshkeys`, no `runtimes`,
@@ -766,7 +766,7 @@ for the transport's sake alone, when the probes are PowerShell anyway.
 - **The `winreg` detect kind.** A watch-list rule `{"kind": "winreg", "displayName": "7-Zip*"}` (letters, digits, space
   and `. _ + , -`, `*` for any run of characters, at most four `*`; `server/watch-rules.mjs` → `WINREG_NAME`) is the line
   `id|winreg|<displayName>||<service>`; `launchd` names a Windows service there, as it names a systemd unit on Linux. The
-  agent reads `DisplayName` and `DisplayVersion` of the machine-wide uninstall keys (HKLM, the 64- and 32-bit views),
+  agent reads `DisplayName` and `DisplayVersion` of the system-wide uninstall keys (HKLM, the 64- and 32-bit views),
   matches the whole name ignoring case (ordinal) by its pieces between the `*`, found leftmost first with a plain search
   (`Test-DisplayName`; `matchDisplayName` in `specs.mjs` is the same in JavaScript, held to it by `vectors.json` →
   `names`): no regular expression, so no rule can make the agent backtrack for minutes and stop reporting. It prints
@@ -774,14 +774,14 @@ for the transport's sake alone, when the probes are PowerShell anyway.
   that every rule's first `SW`, every `RUN` and `SPECS` stay under the part's cap of 2000 lines; the page shows the
   highest version and lists the others), else `SW <id> missing "" <displayName>`. A service: `RUN <id> <pid>` when it runs, `loaded` when it is installed and stopped, `absent`
   otherwise. Per-user installs (`HKCU`) are not visible to LocalService and read `missing`.
-- **The watch list on the machine.** `specs.txt` is validateSpecs's format with Windows rules. validateSpecs is frozen
+- **The watch list on the device.** `specs.txt` is validateSpecs's format with Windows rules. validateSpecs is frozen
   and knows no Windows kinds (it refuses every non-empty Windows list), so `validateWindowsSpecs` checks the id and the
   label with validateSpecs's own code (on a Linux line made of them) and the kind (`winreg` only) and the arguments with
   the Windows rules; the PowerShell agent does the same from `report-rules.json`. The vectors in
   `tests/fixtures/agent-windows/vectors.json` hold the two to one answer: the Node test runs them against `validateSpecs`
   (a macOS or Linux twin for every shared rule) and `validateWindowsSpecs`, `-SelfTest` against the agent. A file that
   fails, is not UTF-8 or has CRLF line ends stops the agent (`specs-invalid`, exit 78).
-  `node scripts/agent-specs.mjs <machine> --platform windows` prints it on the hub.
+  `node scripts/agent-specs.mjs <device> --platform windows` prints it on the hub.
 - **Trust.** TLS 1.2 at least, set once at start: `[Net.ServicePointManager]::SecurityProtocol` left alone when it is
   `SystemDefault` (.NET 4.7 and later: Windows offers TLS 1.2, and 1.3 where it has it), else `Tls12` added and `Ssl3`
   removed; never `Tls12` alone, which would turn TLS 1.3 off. One `HttpWebRequest` per report,
@@ -805,24 +805,24 @@ for the transport's sake alone, when the probes are PowerShell anyway.
   in the same case.
 - **The key in memory.** `Initialize-Agent` reads `private\agent.key` into a variable of the module (`$script:Token`), and
   only `Send-AgentReport` reads it, into the `Authorization` header. It is never a parameter of a function or a cmdlet:
-  PowerShell's Module Logging (the Group Policy "Turn on Module Logging", common on managed machines) writes the value of
+  PowerShell's Module Logging (the Group Policy "Turn on Module Logging", common on managed devices) writes the value of
   every parameter a module's command is called with to `Microsoft-Windows-PowerShell/Operational` (event 4103), which the
-  machine's interactive users can read. The installer cuts the token out of the key file's text before `ConvertFrom-Json`
+  device's interactive users can read. The installer cuts the token out of the key file's text before `ConvertFrom-Json`
   reads it, and writes `agent.key` with .NET calls only.
 - **The clock.** The loop measures every wait on a monotonic clock (`[Diagnostics.Stopwatch]`), so a wall clock that jumps
-  back (time sync after boot, a fast hardware clock on a dual-boot machine) never stops the reports; the wall clock is read
+  back (time sync after boot, a fast hardware clock on a dual-boot device) never stops the reports; the wall clock is read
   only for what is written down (`sentAt`, just before the envelope is built, `collectedAt`, `HOST`'s time,
   `status.json`). `-Once` takes the version from `package.json` beside the script (the installed agent) or, from a
   checkout (`scripts\agent\windows`), the checkout's own at its root.
   `agent.json` takes `schema`, `hub`, `trust` (`pins`, or `ca` as an absolute Windows path) and `intervals`
   (`heartbeat`, `os`), nothing else.
 - **The task.** `\Home Hub\home-hub-agent`, `NT AUTHORITY\LocalService` (`S-1-5-19`, its name translated on the
-  machine), `-LogonType ServiceAccount -RunLevel Limited`, at start-up and every hour if it is not running (a second
+  device), `-LogonType ServiceAccount -RunLevel Limited`, at start-up and every hour if it is not running (a second
   instance is ignored), restarted three times a minute apart after a failure, no time limit. The restart is Task
-  Scheduler's and does not fire when the agent exits with a code (seen on a real machine: after an exit 78 the task
+  Scheduler's and does not fire when the agent exits with a code (seen on a real computer: after an exit 78 the task
   stays stopped, last result 78, until the hourly trigger). It runs `powershell.exe -NoLogo -NoProfile -NonInteractive
   -WindowStyle Hidden -ExecutionPolicy RemoteSigned -File "…\agent\home-hub-agent.ps1" -Root "…"` in session 0 with no
-  window; the task itself is not hidden in Task Scheduler. The execution policy is that process's only, the machine's
+  window; the task itself is not hidden in Task Scheduler. The execution policy is that process's only, the device's
   is not changed; the installer writes every file from bytes, so none carries a downloaded-file mark.
 - **Where things are.** `C:\ProgramData\Home Hub Agent\`: `agent\` (the three agent files and `package.json`, whose
   version is `agentVersion`), `config\` (`agent.json`, `specs.txt`, `hub-ca.pem`), `private\agent.key` (the token
@@ -831,7 +831,7 @@ for the transport's sake alone, when the probes are PowerShell anyway.
   with inheritance cut (owner Administrators; Administrators and SYSTEM full control, LocalService read; `state` and
   `logs` writable by LocalService); a directory that is a link or that another account made first is refused. The
   agent writes nothing else (but the compiler's temporary files, under Trust): one function writes, into `state` and
-  `logs` only. LocalService is shared by other services of the machine, which can read the key too: the price of not
+  `logs` only. LocalService is shared by other services of the device, which can read the key too: the price of not
   running as SYSTEM or keeping a password. They can also write `state` and `logs`, so the installer, which runs as an
   administrator, never follows a link there and never sets an ACL over what is in them (below).
 - **The installer.** `install-agent.ps1 -Hub https://hub.example.lan -KeyFile C:\path\agent-key.json [-Specs
@@ -872,13 +872,13 @@ for the transport's sake alone, when the probes are PowerShell anyway.
   swaps a directory for a junction between the listing and the walk (the task is stopped first).
 - **Limits of the frozen schema, accepted.** `SW` has no kind `winreg`, so a found entry is `app`; Windows has no
   privileged list, so no `PRIV` line; there is no `sshkeys` part; the `HOST` user is the task's account name as Windows
-  spells it (localized). The watch-list API offers detect rules for `ssh.probe: "mac"` machines only
-  (`GET /api/software-watch` → `machines`), so a `winreg` rule for a Windows machine is written in the list file by hand
-  until the API names agent machines.
+  spells it (localized). The watch-list API offers detect rules for `ssh.probe: "mac"` devices only
+  (`GET /api/software-watch` → `devices`), so a `winreg` rule for a Windows device is written in the list file by hand
+  until the API names agent devices.
 
-**Installing on a Windows machine.** On the hub: `node scripts/manage-access.mjs create-agent-key --machine <id>
+**Installing on a Windows device.** On the hub: `node scripts/manage-access.mjs create-agent-key --device <id>
 --output /abs/agent-key.json` (or the admin page) and `node scripts/agent-specs.mjs <id> --platform windows >
-specs.txt`. Copy both and a checkout of core to the machine, then in an administrator's Windows PowerShell:
+specs.txt`. Copy both and a checkout of core to the device, then in an administrator's Windows PowerShell:
 
 ```powershell
 cd C:\path\home_hub
@@ -891,7 +891,7 @@ powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\agent\windows\
 Then delete the copied key file. An update is the last line again from a newer checkout; `-Uninstall` removes the task
 and the directory (revoke the key on the hub too).
 
-**The first run on a real machine.** Done on 2026-11-13 on one machine: Windows 11 Pro 25H2 (English), Windows
+**The first run on a real computer.** Done on 2026-11-13 on one computer: Windows 11 Pro 25H2 (English), Windows
 PowerShell 5.1, full language mode, Defender active, no BitLocker, no Group Policy over PowerShell but Script Block
 Logging, an elevated administrator over SSH, the hub behind a public CA's certificate (the system store). The scripts
 parsed as written; six errors showed only when they ran, and are fixed: the self-test read a part without records as
@@ -900,11 +900,11 @@ empty string); `@(Get-UninstallEntries)` made the whole list one entry, so no `w
 place by `-Uninstall` took the marker with it, so the next `-Uninstall` refused the directory; and an update carried
 `agent.log` as a copy that the next update dropped; and the log line of `config-invalid` named it twice. A static test
 now refuses each of these classes where PowerShell is not needed to see it, and `report-first-run.json` has the shape of
-that machine's envelope with every value invented, none taken from the machine.
+that device's envelope with every value invented, none taken from the device.
 
-One thing stopped the end-to-end run, and it was the machine's, not the agent's: its DNS server could not resolve the
+One thing stopped the end-to-end run, and it was the device's, not the agent's: its DNS server could not resolve the
 hub's LAN-only name, so every report ended `unresolved` (backoff doubling from 30 s), and the installer's health check
-failed and put the previous agent back, as designed. The agent needs the hub's name to resolve on the machine (a DNS
+failed and put the previous agent back, as designed. The agent needs the hub's name to resolve on the device (a DNS
 server that knows it, or a hosts entry); `https://<IPv4>` does not help with a hub whose proxy needs the name (SNI). What
 the hub answers was checked instead by a diagnostic that sent, as LocalService, the envelope the installed agent
 collected, with its key and the agent's exact headers, over the system store with the hub's name: `200`, every part
@@ -915,7 +915,7 @@ accepted, from a device whose `platform` was never set. The loop itself (`HttpWe
 2. **Passed.** `-DryRun` and `-WhatIf` print the plan and write nothing; `-Uninstall -WhatIf` too.
 3. **Passed.** `-Once` prints all four parts; every line passes the hub's `validateReport`. As the administrator the
    cache had one update with a KB number and two driver updates without one (withheld, `WINUP` field 1).
-4. **Not verified on the machine** (the name did not resolve; the installer rolled back). The hub took the same
+4. **Not verified on the device** (the name did not resolve; the installer rolled back). The hub took the same
    envelope with `200` and all four parts accepted (above).
 5. **Passed, with one refusal.** As LocalService: Defender, BitLocker (`Win32_EncryptableVolume`), the firewall over the
    DCOM session, RDP, the listeners (the same set as an administrator, with process names), `Win32_Service` and the
@@ -949,8 +949,8 @@ accepted, from a device whose `platform` was never set. The loop itself (`HttpWe
 16. **Passed as far as it went.** After a dozen stops and updates, one `powershell.exe` of LocalService (the agent) and
     no job left over; the search as LocalService ends at once, so a job stopped mid-search was not seen.
 17. **Not tried** (the clock was not changed).
-18. **Partly.** A machine that searched recently; driver updates without a KB number are withheld, not sent. WSUS and a
-    machine that never searched: not tried.
+18. **Partly.** A device that searched recently; driver updates without a KB number are withheld, not sent. WSUS and a
+    device that never searched: not tried.
 19. **Partly.** The firewall read over DCOM answers as LocalService with WinRM running; Group Policy, WinRM stopped and
     a hung provider: not tried.
 20. **Not tried.**
@@ -977,35 +977,35 @@ Each limit has a test, part of the step that builds the limit.
 |---|---|---|
 | Read the hub (`GET /api/home`, inventory, `/mcp`) | Nothing: `403 AGENT_ONLY` before dispatch, `/mcp` included | `tests/agent-auth.test.mjs`: every route of the registry, every method, `/mcp` and an unmatched path, with an agent key, is refused unless its route belongs to the core `agent` module |
 | Reach a plugin route through the agent prefix | Nothing: the gate goes by the matched route's module | `agent-auth.test.mjs`: a plugin route `match: /^\/api\/agent\/(.+)$/` answers `403 AGENT_ONLY` to an agent key |
-| Write another machine | Nothing: the machine comes from the key; a machine field is an unknown envelope key; an agent's `HOST` name and `NET` do not resolve other machines' routes | `agent-auth.test.mjs`: key bound to A, body naming B → 400; records land only in `agent/A.json`; `tests/security.test.mjs`: an agent probe naming B's address leaves B's routes as they were |
-| Live on through a reused id | Nothing: the key binds the device's `createdAt` and is revoked when the machine goes; parts received before the new device was created are not read | `agent-auth.test.mjs`: remove a device, add one that gets the same id, the old key → 409, then 401, and the audit says `machine-removed`; `tests/systems.test.mjs`: the old machine's parts do not show for the new one |
-| Keep a dead machine fresh, or date data into the future | Freshness and every time a reader shows are the hub's receive time; skew is shown | `tests/agent-report.test.mjs`: `collectedAt` and `HOST` a year ahead → stored, flagged, stale after 3 × interval by the injected clock; `/api/systems` `collectedAt` and the collector state show the receive time |
+| Write another device | Nothing: the device comes from the key; a device field is an unknown envelope key; an agent's `HOST` name and `NET` do not resolve other devices' routes | `agent-auth.test.mjs`: key bound to A, body naming B → 400; records land only in `agent/A.json`; `tests/security.test.mjs`: an agent probe naming B's address leaves B's routes as they were |
+| Live on through a reused id | Nothing: the key binds the device's `createdAt` and is revoked when the device goes; parts received before the new device was created are not read | `agent-auth.test.mjs`: remove a device, add one that gets the same id, the old key → 409, then 401, and the audit says `device-removed`; `tests/systems.test.mjs`: the old device's parts do not show for the new one |
+| Keep a dead device fresh, or date data into the future | Freshness and every time a reader shows are the hub's receive time; skew is shown | `tests/agent-report.test.mjs`: `collectedAt` and `HOST` a year ahead → stored, flagged, stale after 3 × interval by the injected clock; `/api/systems` `collectedAt` and the collector state show the receive time |
 | Push out the collector's better record | Nothing while that record is current: coverage first, then hub-side time | `tests/systems.test.mjs`: a fresh agent part with `PRIV … denied` against a current collector record with root 1 → the collector wins; a collector record marked `stale` against a fresh agent part → the agent wins |
 | Flood the hub | 20 s floor (429), 512 KiB (413), per-part minimums | `agent-report.test.mjs`: 429 with `Retry-After`, 413, `too-soon` |
 | Plant markup or a secret on a page | Closed tags and fields, length caps, `secretIn` per the table, text-safe rendering | `agent-report.test.mjs` (secret and markup refused per part; every record of today's probe fixtures accepted); `tests/collectors-dom.test.mjs` (a record holding `<img onerror>` renders as text) |
-| Outlive its revocation | No: the next request is `401`, and so is one still sending its body when the key is revoked (the key is checked again before anything is stored); a machine without a live key has its records ignored by the readers, and so does a record whose last report came with a key revoked since, while the machine's other key is live | `agent-auth.test.mjs`: revoke through the admin API, next report 401; revoke mid-body, 401 and nothing stored; revoke with the CLI while the hub runs, 401; `tests/systems.test.mjs`: revoked, the machine's record no longer shows |
+| Outlive its revocation | No: the next request is `401`, and so is one still sending its body when the key is revoked (the key is checked again before anything is stored); a device without a live key has its records ignored by the readers, and so does a record whose last report came with a key revoked since, while the device's other key is live | `agent-auth.test.mjs`: revoke through the admin API, next report 401; revoke mid-body, 401 and nothing stored; revoke with the CLI while the hub runs, 401; `tests/systems.test.mjs`: revoked, the device's record no longer shows |
 | Gain a scope later | No: the gate is by kind, and no scope is added | `agent-auth.test.mjs`: `scopeIds()` unchanged; a `*` key, an editor and an app token get `AGENT_CREDENTIAL_REQUIRED` |
 | Work against an older core | Inert: `401` | `tests/agent-store.test.mjs`: `apiBearerOf` and `bearerOf` reject `hha_`; `access.json` round-trips unchanged |
 | Come back after an archive restore | Yes, until revoked again | Not limited by code; written under `### Data` and in `docs/updating.md` |
 
-**A compromised hub, against a machine**
+**A compromised hub, against a device**
 
 | It could try to | It can | Proved by |
 |---|---|---|
 | Send code, probes, commands or configuration | Nothing: the agent reads only the status, `Retry-After` and the acknowledgement, and executes nothing from them | `tests/agent-process.test.mjs`: a hostile hub (extra fields, a redirect, a 10 MB answer, a slow answer) leaves configuration, specs and the injected `exec` untouched |
 | Make the probe run other binaries or arguments | Nothing through the agent: the specs file is local, checked by the installer (which shows every line) and by the agent at every start, and passed as an environment variable. `validateSpecs` still allows a `cmd` line naming any existing absolute executable, run with one of the permitted version flags (`CMD_ARGS`); the guard against a hostile list there is the person confirming the printed lines at install | `agent-process.test.mjs`: a `specs.txt` with `x\|cmd\|/bin/sh\|-c id`, a `$(…)`, a backquote or a `;` stops the agent before any `exec`; `tests/agent-install.test.mjs`: the same lines refused at install |
 | Use the sudo rules | Nothing more than the fixed command lines | `agent-install.test.mjs`: the rendered sudoers lines equal `PRIVILEGED`, escaped, no wildcard; every `R` call in the probes is in `PRIVILEGED` and the other way round |
-| Learn what the agents report | Yes: it is the recipient. Private keys never leave a machine (`ssh-probe.sh` sends fingerprints) | `tests/security.test.mjs` (existing probe parsing) |
+| Learn what the agents report | Yes: it is the recipient. Private keys never leave a device (`ssh-probe.sh` sends fingerprints) | `tests/security.test.mjs` (existing probe parsing) |
 | Impersonate the hub without its private key | Nothing: pin, CA or the system store, fail closed | `tests/agent-transport.test.mjs`: wrong pin, unknown CA, wrong name, `http://` to a LAN address or `::1`, a redirect: no request is written |
 | Stall the agent | Bounded by the deadline and the 64 KiB reply cap | `agent-transport.test.mjs` |
 
-**A compromised machine, against the hub**
+**A compromised device, against the hub**
 
 | It could try to | It can | Proved by |
 |---|---|---|
-| Write about another machine | Nothing (as for a stolen key) | `agent-auth.test.mjs`, `security.test.mjs` |
-| Send malformed or huge input | Refused whole or per part; the parsers never throw, also on names every object inherits | `agent-report.test.mjs`: generated junk lines through `validateReport` and the parsers; `systems.test.mjs`, `security.test.mjs`: `SW constructor`, `SSHD constructor` and the like are data, and an unreadable record is left out for its machine alone |
-| Fill the disk | One bounded file per machine, nothing appended per report, the audit rate-limited | `agent-report.test.mjs`: 1000 reports, file size under the caps, audit lines bounded; 50 reports with every part refused, one audit line besides the refusals; a flapping version, bounded |
+| Write about another device | Nothing (as for a stolen key) | `agent-auth.test.mjs`, `security.test.mjs` |
+| Send malformed or huge input | Refused whole or per part; the parsers never throw, also on names every object inherits | `agent-report.test.mjs`: generated junk lines through `validateReport` and the parsers; `systems.test.mjs`, `security.test.mjs`: `SW constructor`, `SSHD constructor` and the like are data, and an unreadable record is left out for its device alone |
+| Fill the disk | One bounded file per device, nothing appended per report, the audit rate-limited | `agent-report.test.mjs`: 1000 reports, file size under the caps, audit lines bounded; 50 reports with every part refused, one audit line besides the refusals; a flapping version, bounded |
 | Lie about itself | Yes, about itself: its records are shown as the agent's, with source and receive time | `tests/systems.test.mjs`: an agent record carries `source: "agent"` |
 | Hide from the page by going quiet | No news is shown, never off | `systems.test.mjs`: a stale agent record reads stale, not unreachable |
 | Pass a Windows record off as a Mac | No: the checks follow the reader kind from the platform, not `HOST` | `systems.test.mjs`: a `windows` record gets the Windows checks, a `linux` agent record never `nasChecks` |
@@ -1016,10 +1016,10 @@ Each limit has a test, part of the step that builds the limit.
 |---|---|---|---|---|---|
 | 0 | This note | — | S | `docs/agent.md` | now |
 | 1 | The agent credential, the route gate, `POST /api/agent/report`, the report store, the agent audit, admin API and CLI, revocation on removal, the field table, the leaf modules, the `docs/API.md` section | MINOR | L | `server/agent-store.mjs`, `server/agent-report.mjs`, `server/agent-privileged.mjs`, `server/secret-patterns.mjs`, `server/ssh-lines.mjs`, `server/watch-rules.mjs`, `server/core/agent.mjs`, `server/index.mjs`, `server/access-store.mjs` (audit kind), `scripts/manage-access.mjs`, `docs/API.md`, `tests/agent-*.test.mjs` (auth, report, store), `tests/data-epoch.test.mjs` | after 0 |
-| 2 | Readers join agent records: the winner rule, `probedAt`, receive time in place of `HOST`, reader kinds `linux` and `windows` with their summaries and checks, `PKGUP`/`WINUP`/`PRIV`/Windows tags in the parser, `probes.json` and the security rebuild, `home.runtimes` from agents, the agents' trend | MINOR | L | `server/systems-data.mjs`, `server/security-data.mjs`, `scripts/collect-systems.mjs`, `scripts/collect-security.mjs`, `server/core/agent.mjs` (`readers()`, the provider, the trend), `server/core/security.mjs` (the two routes pass the records), `server/agent-store.mjs` (`slice`, a reader's copy of named parts), `public/i18n-en-server.js` (English for the new check sentences), `tests/systems.test.mjs`, `tests/security.test.mjs`, `tests/support/readers.mjs`, `tests/fixtures/readers/`; in step 1's tests, `agent-auth` and `agent-report` expect `history.jsonl` beside the machine file | after 1, beside 3 |
+| 2 | Readers join agent records: the winner rule, `probedAt`, receive time in place of `HOST`, reader kinds `linux` and `windows` with their summaries and checks, `PKGUP`/`WINUP`/`PRIV`/Windows tags in the parser, `probes.json` and the security rebuild, `home.runtimes` from agents, the agents' trend | MINOR | L | `server/systems-data.mjs`, `server/security-data.mjs`, `scripts/collect-systems.mjs`, `scripts/collect-security.mjs`, `server/core/agent.mjs` (`readers()`, the provider, the trend), `server/core/security.mjs` (the two routes pass the records), `server/agent-store.mjs` (`slice`, a reader's copy of named parts), `public/i18n-en-server.js` (English for the new check sentences), `tests/systems.test.mjs`, `tests/security.test.mjs`, `tests/support/readers.mjs`, `tests/fixtures/readers/`; in step 1's tests, `agent-auth` and `agent-report` expect `history.jsonl` beside the device file | after 1, beside 3 |
 | 3a | `linux-probe.sh`, tested from fixture output | MINOR | M | `scripts/systems/linux-probe.sh`, `tests/fixtures/probes/linux-*.txt` | after 0, beside 1 |
 | 3b | The agent on macOS and Linux: wrapper, specs check, narrow-sudo switch and `PRIV`, `endpoint-http` trust, installer core entry, sudoers, `systemd-system`, closure core-only | MINOR | L | `scripts/agent/`, `scripts/systems/mac-probe.sh`, `server/endpoint-http.mjs`, `scripts/install-host-agent.mjs`, `server/agent-closure.mjs`, `scripts/host-agent/`, `scripts/agent-specs.mjs`, `tests/agent-process.test.mjs`, `tests/agent-transport.test.mjs`, `tests/agent-install.test.mjs` | after 1, beside 2 |
-| 4 | The overview and pages: `machines[].agent {lastReportAt, freshness: fresh\|no-news\|never, agentVersion, behind, specsDiffer}` (`null` without a key), integration kind `agent`, the keys on the admin Access page, "no news" wording | MINOR | L (home contract) | `server/home-data.mjs`, `server/integrations.mjs`, `public/` pages, `public/i18n-en-*.js` | after 2 |
+| 4 | The overview and pages: `devices[].agent {lastReportAt, freshness: fresh\|no-news\|never, agentVersion, behind, specsDiffer}` (`null` without a key), integration kind `agent`, the keys on the admin Access page, "no news" wording | MINOR | L (home contract) | `server/home-data.mjs`, `server/integrations.mjs`, `public/` pages, `public/i18n-en-*.js` | after 2 |
 | 5 | Windows, as decided above | MINOR | L | `scripts/agent/windows/`, the `winreg` detect kind, envelope fixtures, `tests/agent-windows-fixtures.test.mjs` | after 3b, beside 4 |
 | 6 | Deprecation notices for bridges and `plugin.json → hostAgents`, the SSH collectors and the SSH and WinRM telemetry providers, once agents have run for one minor; the owner signs off | MINOR | L (`docs/API.md`) | `CHANGELOG.md`, `docs/` | after 4 and 5 |
 | 2.0 | Removal of what step 6 deprecated, with the `local/` overlay | MAJOR | L | — | the owner's call |
@@ -1034,10 +1034,10 @@ then on. `server/agent-report.mjs` is frozen when step 1 merges; a change to it 
 
 ## Later: a mailbox
 
-Not designed here, only bounded. An opt-in per-machine mailbox the agent polls (`GET /api/agent/mailbox` →
+Not designed here, only bounded. An opt-in per-device mailbox the agent polls (`GET /api/agent/mailbox` →
 `[{id, requestId, expiresAt}]`, answered by `POST /api/agent/mailbox/result`), where `id` names something defined
-**on the machine** by the installer, with no arguments; the hub accepts only ids the agent announced, requests expire
-in minutes, carry a sequence number and are remembered by the agent on disk. Off unless both the machine and the hub
+**on the device** by the installer, with no arguments; the hub accepts only ids the agent announced, requests expire
+in minutes, carry a sequence number and are remembered by the agent on disk. Off unless both the device and the hub
 enable it; enqueueing is an administrator's or a plugin's action, never a scope; executors and UI stay in plugins.
 
 ## Open questions for the owner
@@ -1047,10 +1047,10 @@ reserved; Windows is a PowerShell-only agent (above); a fresh heartbeat does not
 
 1. **Does a fresh heartbeat count towards `online`?** Recommended: not in 1.x; the agent's freshness is its own field.
 2. **Other accounts' SSH keys.** Recommended: `own` by default on macOS (the owner's keys), `off` on Linux;
-   `all-accounts` per machine where the inventory needs it. Until then a current root collector record wins on coverage.
+   `all-accounts` per device where the inventory needs it. Until then a current root collector record wins on coverage.
 3. **WinRM**, a hub-held credential like SSH. Recommended: keep it through 1.x, deprecate it in step 6.
 4. **Where agent keys are handed out.** Recommended: the admin page (token shown once) and the CLI (`--output`).
 5. **Revocations after an archive restore.** Recommended: document it; a revocation list kept outside the archive
    costs a second file to keep consistent.
-6. **Watch-list changes need a re-install on each machine.** Recommended: accept it, the hub showing which machine's
+6. **Watch-list changes need a re-install on each device.** Recommended: accept it, the hub showing which device's
    specs differ; the hub sending the list would break the invariant.

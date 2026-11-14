@@ -1,4 +1,4 @@
-// Backup jobs, the part that touches machines: the job's own SSH key, pinned host keys, connection tests, the
+// Backup jobs, the part that touches devices: the job's own SSH key, pinned host keys, connection tests, the
 // rsync runs that make snapshots on the target, retention, and the in-app scheduler.
 //
 // The hub is the orchestrator. It uses only tools that are already there (ssh, ssh-keygen, ssh-keyscan, rsync;
@@ -31,8 +31,8 @@
 //   <dest>/.home-hub-backup-job                   the owner marker
 // Unchanged files are hard links into the previous snapshot (rsync --link-dest), so every snapshot is a full,
 // browsable tree and costs only what changed. Retention deletes whole snapshot directories after a successful run.
-// A source on another machine is first mirrored into a staging directory on the hub (rsync pull, incremental),
-// then pushed like a local one: rsync cannot copy between two remote machines, and no key is ever handed on.
+// A source on another computer is first mirrored into a staging directory on the hub (rsync pull, incremental),
+// then pushed like a local one: rsync cannot copy between two remote devices, and no key is ever handed on.
 import {spawn} from 'node:child_process';
 import {mkdir,readFile,writeFile,rename,rm,stat,chmod,access,readdir,open,unlink} from 'node:fs/promises';
 import {existsSync,openSync,writeSync,closeSync,realpathSync,constants as FS} from 'node:fs';
@@ -212,7 +212,7 @@ export const removeKey=(keysDirectory,id)=>rm(jobFiles(keysDirectory,id).dir,{re
 export {hubAddress};
 // The authorized_keys lines a person puts on the target (and on each SSH source). `restrict` turns off port,
 // agent and X11 forwarding and the pty; from="…" (when the hub's address is known) accepts the key only from it.
-// The key still gives a shell on that machine (the hub runs fixed scripts there); on a source that only has to
+// The key still gives a shell on that device (the hub runs fixed scripts there); on a source that only has to
 // be read, command="rrsync -ro <path>" narrows it to read-only rsync (the wizard's connection test then reports
 // no-shell, the runs work). The target needs the shell: snapshots are renamed and pruned with mv and rm.
 export function authorizedKeys(pub,{address=null}={}){

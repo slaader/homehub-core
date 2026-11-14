@@ -1,5 +1,5 @@
 // Security section: SSH key inventory. The collector (scripts/collect-security.mjs) runs
-// scripts/security/ssh-probe.sh on every machine, then buildSecurity() joins the records:
+// scripts/security/ssh-probe.sh on every device, then buildSecurity() joins the records:
 // each private key (by SHA256 fingerprint) → where its copies live, who owns them, and what
 // it opens (authorized_keys entries, Forgejo account and deploy keys, ssh config routes).
 // No private key material ever reaches this module: the probe sends fingerprints, paths and
@@ -11,16 +11,16 @@ import {tx,sentences,textOf} from './text.mjs';
 import {collectorState,staleAfter,COLLECTORS} from './collector-state.mjs';
 import {freshUntil} from './agent-report.mjs';
 import {pickSource,collectorTime} from './systems-data.mjs';
-import {loadMachineDescriptors} from './home-data.mjs';
-import {siteMachineIds} from './site-config.mjs';
+import {loadDeviceDescriptors} from './home-data.mjs';
+import {siteDeviceIds} from './site-config.mjs';
 import {fingerprintOf,parseAuthorizedLine,parseKeygenLine} from './ssh-lines.mjs';
 // The line parsers live in server/ssh-lines.mjs (a leaf module the push agent shares); re-exported here.
 export {fingerprintOf,parseAuthorizedLine,parseKeygenLine};
 
 export const SECURITY_SCHEMA=1;
-// probes.json beside ssh-keys.json (scripts/collect-security.mjs): the collector's raw probe output per machine, so the
+// probes.json beside ssh-keys.json (scripts/collect-security.mjs): the collector's raw probe output per device, so the
 // hub can rebuild the inventory with the push agents' sshkeys parts (docs/agent.md §3 → Who wins over the collectors).
-//   {schemaVersion: 1, collectedAt, collectedFrom, probes: {id: {text, probedAt} | {error}}, forgejo, extraMachines}
+//   {schemaVersion: 1, collectedAt, collectedFrom, probes: {id: {text, probedAt} | {error}}, forgejo, extraDevices}
 export const SECURITY_PROBES_SCHEMA=1;
 const clean=(v,n=400)=>typeof v==='string'?v.replace(/[\u0000-\u001f\u007f]/g,' ').trim().slice(0,n):'';
 
@@ -115,68 +115,68 @@ const finding=(level,title,detail='',key)=>({level,...(key?{key}:{}),title:textO
 
 const privateIp=ip=>/^(192\.168|10|172\.(1[6-9]|2\d|3[01]))\./.test(ip);
 // Who is who: names, host names and addresses from the site configuration, refined by the collected
-// machine descriptors (data/machines/*.json) and, for a machine neither knows, by what its probe reports.
-function machineIndex(descriptors,probes,site){
- const byName=new Map(),machines=new Map();
- for(const m of site?.machines||[])machines.set(m.id,{id:m.id,name:m.name||m.id,hostname:m.hostname||'',ips:m.ip?[m.ip]:[]});
+// device descriptors (data/devices/*.json) and, for a device neither knows, by what its probe reports.
+function deviceIndex(descriptors,probes,site){
+ const byName=new Map(),devices=new Map();
+ for(const m of site?.devices||[])devices.set(m.id,{id:m.id,name:m.name||m.id,hostname:m.hostname||'',ips:m.ip?[m.ip]:[]});
  for(const d of Array.isArray(descriptors)?descriptors:Object.values(descriptors||{})){
   if(!d?.id)continue;
   const ips=(d.addresses||[]).map(a=>a?.ip).filter(ip=>typeof ip==='string'&&/^\d+\.\d+\.\d+\.\d+$/.test(ip));
-  const known=machines.get(d.id);
-  machines.set(d.id,{id:d.id,name:d.name||known?.name||d.id,hostname:d.hostname||known?.hostname||'',ips:ips.length?ips:known?.ips||[]});
+  const known=devices.get(d.id);
+  devices.set(d.id,{id:d.id,name:d.name||known?.name||d.id,hostname:d.hostname||known?.hostname||'',ips:ips.length?ips:known?.ips||[]});
  }
- // A push agent's probe names neither itself nor its addresses here (HOST name, NET): what one machine says about
- // itself never decides which machine another machine's route reaches.
+ // A push agent's probe names neither itself nor its addresses here (HOST name, NET): what one device says about
+ // itself never decides which device another device's route reaches.
  for(const [id,p] of Object.entries(probes)){
-  const m=machines.get(id)||{id,name:id,hostname:'',ips:[]};
+  const m=devices.get(id)||{id,name:id,hostname:'',ips:[]};
   if(!m.ips.length&&p.host&&!p.agent)m.ips=p.host.ips.filter(privateIp);
-  machines.set(id,m);
+  devices.set(id,m);
  }
- for(const m of machines.values()){
+ for(const m of devices.values()){
   for(const n of [m.id,m.hostname,m.hostname.split('.')[0],...m.ips,probes[m.id]?.agent?null:probes[m.id]?.host?.name].filter(Boolean))byName.set(String(n).toLowerCase(),m.id);
  }
  // ssh config often spells an id with a hyphen (mini-server for mini_server).
- for(const id of [...machines.keys()])if(id.includes('_')&&!byName.has(id.replaceAll('_','-')))byName.set(id.replaceAll('_','-'),id);
- return {machines,byName};
+ for(const id of [...devices.keys()])if(id.includes('_')&&!byName.has(id.replaceAll('_','-')))byName.set(id.replaceAll('_','-'),id);
+ return {devices,byName};
 }
 
 // Resolve an ssh config route to what it reaches.
-// forgejoMachine = the machine whose disk holds the Forgejo SSH host key; git remotes there are
-// ssh://git@<it>:2222, so a Host block for that machine also picks the key git uses.
-function resolveRoute(route,fromMachine,index,forgejoHost,forgejoMachine){
- const host=route.hostname.toLowerCase(),machine=index.byName.get(host);
- if(host===forgejoHost||machine&&machine===forgejoMachine&&(route.port===2222||route.remoteUser==='git'||machine===fromMachine))
+// forgejoDevice = the device whose disk holds the Forgejo SSH host key; git remotes there are
+// ssh://git@<it>:2222, so a Host block for that device also picks the key git uses.
+function resolveRoute(route,fromDevice,index,forgejoHost,forgejoDevice){
+ const host=route.hostname.toLowerCase(),device=index.byName.get(host);
+ if(host===forgejoHost||device&&device===forgejoDevice&&(route.port===2222||route.remoteUser==='git'||device===fromDevice))
   return {kind:'forgejo',label:'Forgejo (git)'};
  if(host==='github.com'||host==='ssh.github.com')return {kind:'external',label:'GitHub'};
  if(host==='gitlab.com')return {kind:'external',label:'GitLab'};
- if(['127.0.0.1','localhost','::1'].includes(host))return route.port===22?{kind:'host',machine:fromMachine}:{kind:'local',label:`${route.alias} – lokální VM na ${fromMachine} (port ${route.port})`};
- return machine?{kind:'host',machine}:{kind:'external',label:route.hostname};
+ if(['127.0.0.1','localhost','::1'].includes(host))return route.port===22?{kind:'host',device:fromDevice}:{kind:'local',label:`${route.alias} – lokální VM na ${fromDevice} (port ${route.port})`};
+ return device?{kind:'host',device}:{kind:'external',label:route.hostname};
 }
 
 const expandHome=(file,home)=>file.startsWith('~/')?path.posix.join(home,file.slice(2)):file;
 
 /**
- * probes: {machineId: {text}|{error}}; forgejo: {url, host, users:[{login,isAdmin,keys:[{title,key|fingerprint}]}], deployKeys:[{repo,title,key|fingerprint,readOnly}]}|null
- * router: {id, sshOpen:boolean}|null; descriptors: data/machines/*.json
+ * probes: {deviceId: {text}|{error}}; forgejo: {url, host, users:[{login,isAdmin,keys:[{title,key|fingerprint}]}], deployKeys:[{repo,title,key|fingerprint,readOnly}]}|null
+ * router: {id, sshOpen:boolean}|null; descriptors: data/devices/*.json
  * A probe joined from a push agent also carries {agent: true, receivedAt}: its HOST time is replaced by receivedAt
- * (the machine's own value kept as machineCollectedAt), and its HOST name and NET decide nothing (machineIndex). What
+ * (the device's own value kept as deviceCollectedAt), and its HOST name and NET decide nothing (deviceIndex). What
  * it adds to a key (a copy, an authorized_keys access, a route) carries source: "agent", so a key row can tell what
- * the machine said about itself from what the collector read. A
- * probe with source ("collector" | "agent") and sourceAt says which record won for that machine; without, the
- * machine is as it always was. An agent's that won also says whether it is no news (stale: past receivedAt + 3 ×
+ * the device said about itself from what the collector read. A
+ * probe with source ("collector" | "agent") and sourceAt says which record won for that device; without, the
+ * device is as it always was. An agent's that won also says whether it is no news (stale: past receivedAt + 3 ×
  * interval), so the page can say so instead of showing it as current.
  */
-export function buildSecurity({probes:rawProbes={},forgejo=null,extraMachines=[],descriptors=[],collectedFrom='',now=Date.now(),site=loadedSite()}){
+export function buildSecurity({probes:rawProbes={},forgejo=null,extraDevices=[],descriptors=[],collectedFrom='',now=Date.now(),site=loadedSite()}){
  const probes={};
  for(const [id,p] of Object.entries(rawProbes)){
   if(p?.text==null){probes[id]={error:clean(p?.error||'nedostupné',300)};continue;}
   const host=parseProbe(p.text);
-  if(p.agent){host.machineAt=host.at;host.at=p.receivedAt||null;}
-  probes[id]={host,agent:Boolean(p.agent),...(p.source?{from:{source:p.source,sourceAt:p.sourceAt??null,...(p.agent?{machineCollectedAt:host.machineAt,stale:p.stale===true}:{})}}:{})};
+  if(p.agent){host.deviceAt=host.at;host.at=p.receivedAt||null;}
+  probes[id]={host,agent:Boolean(p.agent),...(p.source?{from:{source:p.source,sourceAt:p.sourceAt??null,...(p.agent?{deviceCollectedAt:host.deviceAt,stale:p.stale===true}:{})}}:{})};
  }
- const index=machineIndex(descriptors,probes,site);
+ const index=deviceIndex(descriptors,probes,site);
  const forgejoHost=(forgejo?.host||site.security.gitHost||'').toLowerCase();
- const machines=[],keys=new Map(),otherKeys=[],unknownAuthorized=[],findings=[];
+ const devices=[],keys=new Map(),otherKeys=[],unknownAuthorized=[],findings=[];
  // The label comes from the primary copy (not a backup); unreadable comments fall back to the file name.
  const keyFor=(fp,meta,copy)=>{
   if(!keys.has(fp))keys.set(fp,{id:fp,fingerprint:fp,type:meta.type||null,bits:meta.bits||null,name:'',comment:'',copies:[],access:[],routes:[]});
@@ -184,26 +184,26 @@ export function buildSecurity({probes:rawProbes={},forgejo=null,extraMachines=[]
   if(!k.name||primary&&k.copies.every(c=>c.backup)){k.name=path.posix.basename(copy.path);const c=readableComment(meta.comment);if(c||primary)k.comment=c;}
   return k;};
 
- // 1. machines, accounts and the private key files on them
+ // 1. devices, accounts and the private key files on them
  for(const [id,p] of Object.entries(probes)){
-  const m=index.machines.get(id);
-  if(p.error){machines.push({id,name:m.name,ips:m.ips,hostname:m.hostname,reachable:false,error:p.error,accounts:[],ssh:null});continue;}
+  const m=index.devices.get(id);
+  if(p.error){devices.push({id,name:m.name,ips:m.ips,hostname:m.hostname,reachable:false,error:p.error,accounts:[],ssh:null});continue;}
   const h=p.host,sshd=h.sshd,mark=p.agent?{source:'agent'}:{};
   const one=k=>sshd[k]?.[0]??null;
   const accounts=h.accounts.map(a=>({user:a.user,uid:a.uid,home:a.home,shell:a.shell,sudo:sudoVerdict(a,now),authorizedKeys:[]}));
-  machines.push({id,name:m.name,ips:m.ips,hostname:m.hostname,reachable:true,os:h.os,probedAs:h.user,complete:h.complete,collectedAt:h.at,
+  devices.push({id,name:m.name,ips:m.ips,hostname:m.hostname,reachable:true,os:h.os,probedAs:h.user,complete:h.complete,collectedAt:h.at,
    ssh:{listening:h.listening,passwordAuth:one('passwordauthentication')==null?null:one('passwordauthentication')==='yes',kbdInteractive:one('kbdinteractiveauthentication')==='yes',
     rootLogin:one('permitrootlogin'),allowUsers:[...new Set(sshd.allowusers||[])],accessGroup:h.accessGroup},accounts,...(p.from||{})});
   for(const k of h.keys){
    const cls=classifyKey(k.path,Boolean(k.fingerprint));
-   const copy={machine:id,owner:k.owner,path:k.path,mode:k.mode,mtime:k.mtime,encrypted:k.encrypted,backup:isBackupPath(k.path),...mark};
+   const copy={device:id,owner:k.owner,path:k.path,mode:k.mode,mtime:k.mtime,encrypted:k.encrypted,backup:isBackupPath(k.path),...mark};
    if(cls.kind==='ssh'){keyFor(k.fingerprint,k,copy).copies.push(copy);}
    else otherKeys.push({...copy,kind:cls.kind,label:cls.label,fingerprint:k.fingerprint,type:k.type,bits:k.bits});
   }
  }
- const machineById=new Map(machines.map(m=>[m.id,m]));
- const forgejoMachine=otherKeys.find(o=>o.kind==='ssh-host'&&/\/forgejo\//.test(o.path))?.machine||null;
- const accountOf=(machine,user)=>machineById.get(machine)?.accounts.find(a=>a.user===user)||null;
+ const deviceById=new Map(devices.map(m=>[m.id,m]));
+ const forgejoDevice=otherKeys.find(o=>o.kind==='ssh-host'&&/\/forgejo\//.test(o.path))?.device||null;
+ const accountOf=(device,user)=>deviceById.get(device)?.accounts.find(a=>a.user===user)||null;
 
  // 2. authorized_keys: what each fingerprint opens
  for(const [id,p] of Object.entries(probes)){
@@ -217,9 +217,9 @@ export function buildSecurity({probes:rawProbes={},forgejo=null,extraMachines=[]
    const restricted=Boolean(e.options.command),noForwarding=Boolean(e.options.restrict);
    const entry={fingerprint:e.fingerprint,type:e.type,comment:readableComment(e.comment),from:e.options.from,command:e.options.command,restricted,noForwarding,permitOpen:e.options.permitOpen,flags:e.options.flags,file:e.file,known:keys.has(e.fingerprint)};
    acct?.authorizedKeys.push(entry);
-   const target={kind:'host',machine:id,user:e.user,ips:machineById.get(id)?.ips||[]};
+   const target={kind:'host',device:id,user:e.user,ips:deviceById.get(id)?.ips||[]};
    if(keys.has(e.fingerprint))keys.get(e.fingerprint).access.push({target,entryComment:entry.comment,from:e.options.from,command:e.options.command,restricted,noForwarding,permitOpen:e.options.permitOpen,sudo:acct?.sudo?.level||'unknown',via:'authorized_keys',...mark});
-   else unknownAuthorized.push({machine:id,user:e.user,...entry});
+   else unknownAuthorized.push({device:id,user:e.user,...entry});
   }
  }
 
@@ -246,17 +246,17 @@ export function buildSecurity({probes:rawProbes={},forgejo=null,extraMachines=[]
   const homeOf=user=>p.host.accounts.find(a=>a.user===user)?.home||'',mark=p.agent?{source:'agent'}:{};
   for(const r of p.host.routes){
    const files=new Set(r.identityFiles.map(f=>expandHome(f,homeOf(r.user))));
-   const target=resolveRoute(r,id,index,forgejoHost,forgejoMachine);
+   const target=resolveRoute(r,id,index,forgejoHost,forgejoDevice);
    for(const k of keys.values())for(const c of k.copies){
-    if(c.machine!==id||!files.has(c.path))continue;
+    if(c.device!==id||!files.has(c.path))continue;
     let accepted=null;
     const git=k.access.some(a=>a.target.kind==='forgejo'||a.target.kind==='forgejo-deploy');
-    if(target.kind==='host')accepted=k.access.some(a=>a.target.kind==='host'&&a.target.machine===target.machine&&a.target.user===r.remoteUser);
+    if(target.kind==='host')accepted=k.access.some(a=>a.target.kind==='host'&&a.target.device===target.device&&a.target.user===r.remoteUser);
     else if(target.kind==='forgejo')accepted=git;
-    // A Host block for the Forgejo machine serves both ssh and git; either one counts.
-    const alsoGit=target.kind==='host'&&target.machine===forgejoMachine&&git;
+    // A Host block for the Forgejo device serves both ssh and git; either one counts.
+    const alsoGit=target.kind==='host'&&target.device===forgejoDevice&&git;
     if(alsoGit&&!accepted)accepted=true;
-    k.routes.push({machine:id,user:r.user,alias:r.alias,hostname:r.hostname,port:r.port,remoteUser:target.kind==='external'?'':r.remoteUser,proxyJump:r.proxyJump,target,accepted,alsoGit,keyPath:c.path,...mark});
+    k.routes.push({device:id,user:r.user,alias:r.alias,hostname:r.hostname,port:r.port,remoteUser:target.kind==='external'?'':r.remoteUser,proxyJump:r.proxyJump,target,accepted,alsoGit,keyPath:c.path,...mark});
    }
   }
  }
@@ -265,63 +265,63 @@ export function buildSecurity({probes:rawProbes={},forgejo=null,extraMachines=[]
   k.access.push({target:{kind:r.target.kind,label:r.target.label,user:r.remoteUser||null},from:[],command:null,restricted:false,sudo:'unknown',via:'ssh-config',unverified:true});
 
  // 5. findings
- const mName=id=>machineById.get(id)?.name||id;
+ const mName=id=>deviceById.get(id)?.name||id;
  const rootKeys=[];
- const order=site.security.order.length?site.security.order:site.machines.map(m=>m.id),rank=id=>order.indexOf(id)+1||99;
- const home=k=>(k.copies.find(c=>!c.backup)||k.copies[0])?.machine||'';
+ const order=site.security.order.length?site.security.order:site.devices.map(m=>m.id),rank=id=>order.indexOf(id)+1||99;
+ const home=k=>(k.copies.find(c=>!c.backup)||k.copies[0])?.device||'';
  const sorted=[...keys.values()].sort((a,b)=>rank(home(a))-rank(home(b))||a.name.localeCompare(b.name));
  for(const k of sorted){
   const label=k.comment&&k.comment!==k.name?`${k.name} (${k.comment})`:k.name||k.fingerprint.slice(0,20);
-  const where=[...new Set(k.copies.map(c=>mName(c.machine)))].join(', ');
-  const rootOn=[...new Set(k.access.filter(a=>a.target.kind==='host'&&['nopasswd','root'].includes(a.sudo)&&!a.restricted).map(a=>`${mName(a.target.machine)} (${a.target.user})`))];
+  const where=[...new Set(k.copies.map(c=>mName(c.device)))].join(', ');
+  const rootOn=[...new Set(k.access.filter(a=>a.target.kind==='host'&&['nopasswd','root'].includes(a.sudo)&&!a.restricted).map(a=>`${mName(a.target.device)} (${a.target.user})`))];
   if(rootOn.length&&k.copies.some(c=>c.encrypted===false))rootKeys.push(`${label} (${where}) → ${rootOn.join(', ')}`);
   if(!k.access.length)findings.push(finding('info',tx('{key}: nikam nevede',{key:label}),tx('Neplatí v žádném authorized_keys ani ve Forgejo. Leží na {where}. Kandidát na smazání.',{where}),k.id));
   const copies=k.copies.length;
-  if(copies>1)findings.push(finding('info',tx('{key}: počet kopií {n}',{key:label,n:copies},`${label}: ${copies} kopie`),k.copies.map(c=>`${mName(c.machine)}:${c.path}`).join(' · '),k.id));
+  if(copies>1)findings.push(finding('info',tx('{key}: počet kopií {n}',{key:label,n:copies},`${label}: ${copies} kopie`),k.copies.map(c=>`${mName(c.device)}:${c.path}`).join(' · '),k.id));
   for(const c of k.copies)if(/^[0-7]{3,4}$/.test(c.mode)&&/[1-7]/.test(c.mode.slice(-2)))
-   findings.push(finding('high',tx('{key}: soubor čitelný i pro ostatní ({mode})',{key:label,mode:c.mode}),`${mName(c.machine)}:${c.path}`,k.id));
-  for(const r of k.routes)if(r.accepted===false)findings.push(finding('info',tx('{key}: alias „{alias}“ na {machine} míří na {target}, ale cíl klíč nepřijímá',{key:label,alias:r.alias,machine:mName(r.machine),target:r.target.kind==='host'?`${mName(r.target.machine)} (${r.remoteUser})`:r.target.label}),'Zastaralý záznam v ~/.ssh/config nebo chybějící authorized_keys.',k.id));
+   findings.push(finding('high',tx('{key}: soubor čitelný i pro ostatní ({mode})',{key:label,mode:c.mode}),`${mName(c.device)}:${c.path}`,k.id));
+  for(const r of k.routes)if(r.accepted===false)findings.push(finding('info',tx('{key}: alias „{alias}“ na {device} míří na {target}, ale cíl klíč nepřijímá',{key:label,alias:r.alias,device:mName(r.device),target:r.target.kind==='host'?`${mName(r.target.device)} (${r.remoteUser})`:r.target.label}),'Zastaralý záznam v ~/.ssh/config nebo chybějící authorized_keys.',k.id));
   const strength=keyStrength(k.type,k.bits),kind=[k.type,k.bits].filter(Boolean).join(' ');
   if(strength==='weak')findings.push(finding('warn',tx('{key}: slabý typ klíče ({type})',{key:label,type:kind}),'DSA a krátké RSA nebo ECDSA klíče už nejsou bezpečné. Vygeneruj nový klíč ed25519 a starý odeber z authorized_keys.',k.id));
   else if(strength==='legacy')findings.push(finding('info',tx('{key}: starší typ klíče ({type})',{key:label,type:kind}),'RSA pod 3072 bitů se pro nové klíče nedoporučuje. Při příští výměně použij ed25519.',k.id));
  }
  if(rootKeys.length)findings.push(finding('warn',tx('Klíče bez passphrase, které otevírají účet se sudo bez hesla, tedy root: {n}',{n:rootKeys.length},`${rootKeys.length} klíčů bez passphrase otevírá účet se sudo bez hesla, tedy root`),
   tx('Kdo získá soubor klíče, je root na cílovém stroji. Jde o záměr pro agenty, ochranu dělají jen from= a AllowUsers. {keys}',{keys:rootKeys.join(' · ')})));
- for(const u of unknownAuthorized)findings.push(finding(['nopasswd','root'].includes(accountOf(u.machine,u.user)?.sudo.level)?'warn':'info',
-  tx('Na {machine} ({user}) je povolený cizí klíč „{key}“',{machine:mName(u.machine),user:u.user,key:(u.comment||u.fingerprint).slice(0,48)}),
+ for(const u of unknownAuthorized)findings.push(finding(['nopasswd','root'].includes(accountOf(u.device,u.user)?.sudo.level)?'warn':'info',
+  tx('Na {device} ({user}) je povolený cizí klíč „{key}“',{device:mName(u.device),user:u.user,key:(u.comment||u.fingerprint).slice(0,48)}),
   sentences('Jeho privátní část není na žádném z prověřených strojů (jiné zařízení nebo zapomenutý klíč).',u.from.length?tx('Jen z {from}.',{from:u.from.join(', ')}):'Bez omezení adresy.',u.restricted?'Omezený příkaz.':null)));
  for(const u of forgejoUnknown)findings.push(finding('warn',tx(u.kind==='forgejo'?'Forgejo: cizí klíč „{title}“ (účet {name})':'Forgejo: cizí klíč „{title}“ (repozitář {name})',{title:u.title,name:u.kind==='forgejo'?u.account:u.repo}),'Privátní část není na žádném z prověřených strojů.'));
- for(const m of machines){
+ for(const m of devices){
   if(!m.reachable||!m.ssh)continue;
-  if(m.ssh.passwordAuth)findings.push(finding('warn',tx('{machine}: SSH přijímá i heslo',{machine:m.name}),m.ssh.allowUsers.length?tx('Omezeno přes AllowUsers na {users}.',{users:m.ssh.allowUsers.join(', ')}):'Bez omezení adres (AllowUsers).'));
+  if(m.ssh.passwordAuth)findings.push(finding('warn',tx('{device}: SSH přijímá i heslo',{device:m.name}),m.ssh.allowUsers.length?tx('Omezeno přes AllowUsers na {users}.',{users:m.ssh.allowUsers.join(', ')}):'Bez omezení adres (AllowUsers).'));
   for(const a of m.accounts){
-   if(a.sudo.expired?.length)findings.push(finding('info',tx('{machine}: prošlé pravidlo sudo pro {user}',{machine:m.name,user:a.user}),a.sudo.expired.join(' · ')));
+   if(a.sudo.expired?.length)findings.push(finding('info',tx('{device}: prošlé pravidlo sudo pro {user}',{device:m.name,user:a.user}),a.sudo.expired.join(' · ')));
    for(const e of a.authorizedKeys)if(!e.from.length&&!e.restricted&&['nopasswd','root'].includes(a.sudo.level)&&!m.ssh.allowUsers.some(x=>x.startsWith(`${a.user}@`)))
-    findings.push(finding('warn',tx('{machine} ({user}): klíč „{key}“ bez omezení adresy',{machine:m.name,user:a.user,key:e.comment||e.fingerprint.slice(0,20)}),'Účet má sudo bez hesla a ani from= ani AllowUsers neomezují, odkud se klíč smí použít.'));
+    findings.push(finding('warn',tx('{device} ({user}): klíč „{key}“ bez omezení adresy',{device:m.name,user:a.user,key:e.comment||e.fingerprint.slice(0,20)}),'Účet má sudo bez hesla a ani from= ani AllowUsers neomezují, odkud se klíč smí použít.'));
   }
   const present=new Set(m.accounts.map(a=>a.user));
   const stale=(m.ssh.accessGroup||[]).filter(u=>!u.startsWith('%')&&u!=='*'&&!present.has(u));
-  if(stale.length)findings.push(finding('info',tx('{machine}: Remote Login povoluje neexistující účty',{machine:m.name}),tx('com.apple.access_ssh obsahuje {users}, kteří na stroji nejsou.',{users:stale.join(', ')})));
+  if(stale.length)findings.push(finding('info',tx('{device}: Remote Login povoluje neexistující účty',{device:m.name}),tx('com.apple.access_ssh obsahuje {users}, kteří na stroji nejsou.',{users:stale.join(', ')})));
  }
- for(const o of otherKeys)if(o.backup)findings.push(finding('info',tx('{machine}: záloha klíče {label}',{machine:mName(o.machine),label:[o.label]}),o.path));
+ for(const o of otherKeys)if(o.backup)findings.push(finding('info',tx('{device}: záloha klíče {label}',{device:mName(o.device),label:[o.label]}),o.path));
  const level={high:0,warn:1,info:2};findings.sort((a,b)=>level[a.level]-level[b.level]);
 
- for(const x of extraMachines)machines.push({id:x.id,name:index.machines.get(x.id)?.name||x.name||x.id,ips:index.machines.get(x.id)?.ips||x.ips||[],hostname:index.machines.get(x.id)?.hostname||'',reachable:false,sshOpen:x.sshOpen,note:clean(x.note,200),accounts:[],ssh:null});
- machines.sort((a,b)=>rank(a.id)-rank(b.id));
+ for(const x of extraDevices)devices.push({id:x.id,name:index.devices.get(x.id)?.name||x.name||x.id,ips:index.devices.get(x.id)?.ips||x.ips||[],hostname:index.devices.get(x.id)?.hostname||'',reachable:false,sshOpen:x.sshOpen,note:clean(x.note,200),accounts:[],ssh:null});
+ devices.sort((a,b)=>rank(a.id)-rank(b.id));
  return {schemaVersion:SECURITY_SCHEMA,collectedAt:new Date(now).toISOString(),collectedFrom,
-  machines,keys:sorted,otherKeys,unknownAuthorized,forgejo:forgejo?{url:forgejo.url||`https://${forgejoHost}`,users:(forgejo.users||[]).map(u=>({login:u.login,isAdmin:Boolean(u.isAdmin),keys:(u.keys||[]).length})),deployKeys:(forgejo.deployKeys||[]).length,unknown:forgejoUnknown}:null,
+  devices,keys:sorted,otherKeys,unknownAuthorized,forgejo:forgejo?{url:forgejo.url||`https://${forgejoHost}`,users:(forgejo.users||[]).map(u=>({login:u.login,isAdmin:Boolean(u.isAdmin),keys:(u.keys||[]).length})),deployKeys:(forgejo.deployKeys||[]).length,unknown:forgejoUnknown}:null,
   findings};
 }
 
-// The machines the key collector reads: every site machine with an ssh alias unless ssh.keys is false.
-export const securityMachines=s=>s.machines.filter(m=>m.ssh&&m.ssh.keys).map(m=>({id:m.id,name:m.name}));
+// The devices the key collector reads: every site device with an ssh alias unless ssh.keys is false.
+export const securityDevices=s=>s.devices.filter(m=>m.ssh&&m.ssh.keys).map(m=>({id:m.id,name:m.name}));
 // Where the key inventory stands (collector-state.mjs); with a snapshot, its age decides between ok and stale.
 export function securitySetup(site,{collectedAt=null,now=Date.now()}={}){
- const machines=securityMachines(site);
- return {...collectorState('security',{configured:machines.length>0,collectedAt,now}),machines,siteMachines:site.machines.length,gitHost:site.security.gitHost};
+ const devices=securityDevices(site);
+ return {...collectorState('security',{configured:devices.length>0,collectedAt,now}),devices,siteDevices:site.devices.length,gitHost:site.security.gitHost};
 }
 // One push agent's sshkeys part as a probe for buildSecurity: {text, receivedAt, fresh, root}, or null without one.
-// A part whose lines cannot be read is null too: that one machine keeps its collector record, the answer stands.
+// A part whose lines cannot be read is null too: that one device keeps its collector record, the answer stands.
 export function agentKeysProbe(record,{now=Date.now()}={}){
  const part=record?.parts?.sshkeys;
  if(!part||!Array.isArray(part.records)||!Number.isFinite(Date.parse(part.receivedAt)))return null;
@@ -343,22 +343,22 @@ async function readProbes(file){
 }
 /**
  * The SSH key inventory: ssh-keys.json as the collector wrote it, or null without one. agents: [{id, name, record}],
- * the push agents' stored reports of machines that exist now. When one of them has an sshkeys part, the inventory is
- * joined across machines, so it is rebuilt: buildSecurity over the collector's probes.json, each machine's record the
+ * the push agents' stored reports of devices that exist now. When one of them has an sshkeys part, the inventory is
+ * joined across devices, so it is rebuilt: buildSecurity over the collector's probes.json, each device's record the
  * winner between the collector's and the agent's (docs/agent.md §3); Forgejo and the router entry stay the collector's.
  * collectedAt is then the newest of the collector's and the agents' receive times, collectorCollectedAt the collector's
- * alone, and agents = {joined, machines, fresh, noNews}. A probes.json missing, unreadable or from another run than
+ * alone, and agents = {joined, devices, fresh, noNews}. A probes.json missing, unreadable or from another run than
  * ssh-keys.json (an older collector wrote only the inventory) leaves ssh-keys.json as it is, with agents.joined false
  * and why. Without an agent's sshkeys part the file is returned exactly as it was.
  */
-export async function loadSecurity(directory,file=process.env.SECURITY_FILE||path.join(directory,'security','ssh-keys.json'),{agents=[],site=loadedSite(),now=Date.now(),machinesDir=process.env.MACHINES_DIR||path.join(directory,'machines')}={}){
+export async function loadSecurity(directory,file=process.env.SECURITY_FILE||path.join(directory,'security','ssh-keys.json'),{agents=[],site=loadedSite(),now=Date.now(),devicesDir=process.env.DEVICES_DIR||path.join(directory,'devices')}={}){
  let doc=null;
  try{doc=JSON.parse(await readFile(file,'utf8'));}catch(e){if(e.code!=='ENOENT')throw new Error('invalid');}
- if(doc&&(doc?.schemaVersion!==SECURITY_SCHEMA||!Array.isArray(doc.machines)||!Array.isArray(doc.keys)))throw new Error('invalid');
+ if(doc&&(doc?.schemaVersion!==SECURITY_SCHEMA||!Array.isArray(doc.devices)||!Array.isArray(doc.keys)))throw new Error('invalid');
  if(doc===null&&!(Array.isArray(agents)&&agents.length))return null;
  const reporting=(Array.isArray(agents)?agents:[]).map(e=>({id:e?.id,name:e?.name,probe:agentKeysProbe(e?.record,{now})})).filter(x=>typeof x.id==='string'&&x.probe).sort((a,b)=>a.id.localeCompare(b.id));
  if(!reporting.length)return doc;
- const fresh=reporting.filter(x=>x.probe.fresh).length,count={machines:reporting.length,fresh,noNews:reporting.length-fresh};
+ const fresh=reporting.filter(x=>x.probe.fresh).length,count={devices:reporting.length,fresh,noNews:reporting.length-fresh};
  const {doc:collected,time:probesTime,why}=await readProbes(probesFileOf(file));
  if(doc&&(!collected||collected.collectedAt!==doc.collectedAt))return {...doc,agents:{joined:false,reason:collected?'probes-outdated':why,...count}};
  const raw={},limit=staleAfter(COLLECTORS.security)*1000;
@@ -373,9 +373,9 @@ export async function loadSecurity(directory,file=process.env.SECURITY_FILE||pat
   if(pickSource(c,{current:a.fresh,time:Date.parse(a.receivedAt),covers:a.root||!cRoot})==='agent')raw[id]={text:a.text,agent:true,receivedAt:a.receivedAt,source:'agent',sourceAt:a.receivedAt,stale:!a.fresh};
   else raw[id]={...C,source:'collector',sourceAt:Number.isFinite(cTime)?new Date(cTime).toISOString():null};
  }
- const descriptors=await loadMachineDescriptors(machinesDir,siteMachineIds(site)).catch(()=>({}));
- for(const {id,name} of reporting)if(!descriptors[id]&&!site.machines.some(m=>m.id===id))descriptors[id]={id,name:name||id};
- const built=buildSecurity({probes:raw,forgejo:collected?.forgejo??null,extraMachines:Array.isArray(collected?.extraMachines)?collected.extraMachines:[],descriptors,
+ const descriptors=await loadDeviceDescriptors(devicesDir,siteDeviceIds(site)).catch(()=>({}));
+ for(const {id,name} of reporting)if(!descriptors[id]&&!site.devices.some(m=>m.id===id))descriptors[id]={id,name:name||id};
+ const built=buildSecurity({probes:raw,forgejo:collected?.forgejo??null,extraDevices:Array.isArray(collected?.extraDevices)?collected.extraDevices:[],descriptors,
   collectedFrom:typeof collected?.collectedFrom==='string'?collected.collectedFrom:'',now,site});
  const collectorAt=collected?.collectedAt??null;
  return {...built,collectedAt:newest([collectorAt,...reporting.map(x=>x.probe.receivedAt)]),collectorCollectedAt:collectorAt,...(doc?.run?{run:doc.run}:{}),agents:{joined:true,...count}};

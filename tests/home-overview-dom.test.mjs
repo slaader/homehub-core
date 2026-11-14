@@ -1,5 +1,5 @@
 // The overview on a small DOM (tests/fixtures/mini-dom.mjs): tiles are moved by dragging them, with no mode
-// to switch on (public/home-drag.js), and a machine page draws the local LLM runtimes a provider reported,
+// to switch on (public/home-drag.js), and a device page draws the local LLM runtimes a provider reported,
 // or nothing at all (public/home-telemetry.js).
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -163,13 +163,13 @@ test('the overview has no reorder mode: tiles are wired to the drag, and a move 
  assert.match(css,/\.hv-tiles\.sortable \.hv-tile\{[^}]*user-select:none[^}]*-webkit-touch-callout:none/,'a long press picks the tile up instead of selecting text or opening a preview');
 });
 
-// --- machine page: local LLM runtimes -----------------------------------------------------------
+// --- device page: local LLM runtimes -----------------------------------------------------------
 const texts=(node,cls)=>{const out=[],visit=n=>{for(const k of n.children||[]){if((k.getAttribute('class')||'').split(' ').includes(cls))out.push(k.textContent);visit(k);}};visit(node);return out;};
 const byTag=(node,tag)=>{const out=[],visit=n=>{for(const k of n.children||[]){if(k.tagName===tag)out.push(k);visit(k);}};visit(node);return out;};
 
 test('local LLM runtimes: one compact card per runtime a provider reported, nothing without a provider',()=>{
  installDom();
- assert.equal(runtimesSection({runtimes:null},{staleAfterSeconds:180}),null,'a machine nobody reports on has no section');
+ assert.equal(runtimesSection({runtimes:null},{staleAfterSeconds:180}),null,'a device nobody reports on has no section');
  const observedAt=new Date(Date.now()-20000).toISOString();
  const runtimes=[
   {id:'omlx',name:'oMLX',kind:'MLX',status:'running',url:'http://127.0.0.1:8000/',version:'0.32',stats:[{label:'tokens/s',value:'90.7'},{label:'requests',value:'917'}],
@@ -181,7 +181,7 @@ test('local LLM runtimes: one compact card per runtime a provider reported, noth
  const cards=byTag(node,'article');assert.equal(cards.length,4);
  const [omlx,swap,old,bare]=cards;
  assert.equal(byTag(omlx,'h3')[0].textContent,'oMLX');assert.deepEqual(texts(omlx,'hv-status'),['running']);
- assert.deepEqual(texts(omlx,'hv-runtime-meta'),['MLX · 0.32 · :8000'],'what it is, its version and where it listens on its own machine');
+ assert.deepEqual(texts(omlx,'hv-runtime-meta'),['MLX · 0.32 · :8000'],'what it is, its version and where it listens on its own device');
  assert.deepEqual(byTag(omlx,'dd').map(n=>n.textContent),['90.7','917']);assert.deepEqual(texts(omlx,'main'),['tokens/s90.7'],'the first figure is the large one');
  assert.deepEqual(texts(omlx,'hv-k'),['1 loaded model']);
  assert.deepEqual(byTag(omlx,'li').map(n=>n.textContent),['big21.4 GB · context 262k · unloads in 10 min','idle-a30 GB','idle-b'],'loaded first; a model that is not loaded has no countdown');
@@ -194,9 +194,9 @@ test('local LLM runtimes: one compact card per runtime a provider reported, noth
  // Older than three minutes: said so, in the warning colour.
  const stale=runtimesSection({runtimes:{source:'a provider',observedAt:new Date(Date.now()-600000).toISOString(),runtimes}},{staleAfterSeconds:180});
  assert.match(texts(stale,'warn')[0],/^a provider · stale · last read /);
- // A provider that is there but reports no runtime on this machine.
+ // A provider that is there but reports no runtime on this device.
  const none=runtimesSection({runtimes:{source:'',observedAt:null,runtimes:[]}},{});
- assert.equal(byTag(none,'article').length,0);assert.deepEqual(texts(none,'hv-note'),['The provider reports no runtime on this machine right now.']);assert.equal(texts(none,'hv-source').length,0);
+ assert.equal(byTag(none,'article').length,0);assert.deepEqual(texts(none,'hv-note'),['The provider reports no runtime on this device right now.']);assert.equal(texts(none,'hv-source').length,0);
 });
 
 test('what the GPU does: the models at work with their kind and runtime, said plainly when idle or busy with something unwatched',()=>{
@@ -243,14 +243,14 @@ test('what the GPU does: the models at work with their kind and runtime, said pl
 test('the page promises no runtimes from the telemetry agent, and draws the section only for a provider',async()=>{
  const read=name=>readFile(new URL(`../public/${name}`,import.meta.url),'utf8');
  const view=await read('home-view.js'),telemetry=await read('home-telemetry.js'),en=await read('i18n-en-home.js');
- assert.match(view,/machine\.runtimes\?section\(t\('Lokální LLM runtimy'\),null,runtimesSection\(machine,meta\)\):null/);
+ assert.match(view,/device\.runtimes\?section\(t\('Lokální LLM runtimy'\),null,runtimesSection\(device,meta\)\):null/);
  for(const [name,text] of [['home-view.js',view],['home-telemetry.js',telemetry],['i18n-en-home.js',en]]){
   assert.doesNotMatch(text,/potřebuje telemetrického agenta|ohlásí telemetrický agent|doplní telemetrický agent|needs the telemetry agent|filled in here by the telemetry agent/,name);
   assert.doesNotMatch(text,/hv-placeholder|hv-tag/,name);}
  assert.doesNotMatch(await read('home.css'),/hv-placeholder|hv-tag/);
 });
 
-// The stack panel of a machine page: an engine has no models of its own, so it lists those of the runtime
+// The stack panel of a device page: an engine has no models of its own, so it lists those of the runtime
 // blocks it carries, grouped by runtime; the hardware block says what they hold in memory.
 test('stack panel: an engine lists its runtimes\' models by runtime; the hardware block what is in memory',async()=>{
  installDom();

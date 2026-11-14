@@ -32,8 +32,8 @@ test('MCP tools follow scopes; inventory_update is hash-checked, secret-proof an
  const h=await hub(t);
  const agent=await h.account('agent-studio',['inventory:write']),reader=await h.account('reader-mini',[]);
  const names=async hd=>(await (await rpc(h,hd,'tools/list')).json()).result.tools.map(x=>x.name).sort();
- assert.deepEqual(await names(agent.headers),['backup_jobs_list','home_status','hub_version','integrations_status','inventory_bulk_upsert','inventory_delete','inventory_describe','inventory_get','inventory_search','inventory_update','machine_list','models_overview','review_get','review_list','runtime_endpoints_list','search','ticket_attachment_get','ticket_get','ticket_search','tickets_list','whoami']);
- assert.deepEqual(await names(reader.headers),['backup_jobs_list','home_status','hub_version','integrations_status','inventory_describe','inventory_get','inventory_search','machine_list','models_overview','review_get','review_list','runtime_endpoints_list','search','ticket_attachment_get','ticket_get','ticket_search','tickets_list','whoami']);
+ assert.deepEqual(await names(agent.headers),['backup_jobs_list','device_list','home_status','hub_version','integrations_status','inventory_bulk_upsert','inventory_delete','inventory_describe','inventory_get','inventory_search','inventory_update','models_overview','review_get','review_list','runtime_endpoints_list','search','ticket_attachment_get','ticket_get','ticket_search','tickets_list','whoami']);
+ assert.deepEqual(await names(reader.headers),['backup_jobs_list','device_list','home_status','hub_version','integrations_status','inventory_describe','inventory_get','inventory_search','models_overview','review_get','review_list','runtime_endpoints_list','search','ticket_attachment_get','ticket_get','ticket_search','tickets_list','whoami']);
  const tools=(await (await rpc(h,agent.headers,'tools/list')).json()).result.tools;
  assert.ok(tools.every(x=>x.inputSchema?.type==='object'&&typeof x.description==='string'&&!('scope'in x)));
 
@@ -55,11 +55,11 @@ test('MCP tools follow scopes; inventory_update is hash-checked, secret-proof an
  assert.equal(done.isError,false,done.content[0].text);assert.equal(done.structuredContent.by,'agent-studio');
  const onDisk=JSON.parse(await readFile(path.join(h.dir,'knowledge.json'),'utf8')).entries.find(e=>e.id==='studio-llama-swap');
  assert.equal(onDisk.version,'v191');assert.equal(onDisk.verified_by,'Home Hub API · agent-studio','the change names the service account');assert.ok(!JSON.stringify(onDisk).includes('hunter2'));
- const created=await call(h,agent.headers,'inventory_update',{entry:{id:'studio-omlx',kind:'runtime',machine:'studio',name:'oMLX',address:'127.0.0.1:8000'}});
+ const created=await call(h,agent.headers,'inventory_update',{entry:{id:'studio-omlx',kind:'runtime',device:'studio',name:'oMLX',address:'127.0.0.1:8000'}});
  assert.equal(created.isError,false,created.content[0].text);
 
  const status=await call(h,reader.headers,'home_status',{});
- assert.equal(status.isError,false);assert.ok(Array.isArray(status.structuredContent.machines));
+ assert.equal(status.isError,false);assert.ok(Array.isArray(status.structuredContent.devices));
  assert.equal((await (await rpc(h,agent.headers,'tools/call',{name:'rm_rf',arguments:{}})).json()).error.code,-32602);
 
  const audit=await (await fetch(h.origin+'/api/admin/audit',{headers:h.admin})).json();
@@ -80,7 +80,7 @@ test('the UI manifest lists the MCP tools of the running registry, without handl
  const listed=(await (await rpc(h,full.headers,'tools/list')).json()).result.tools;
  const manifest=await (await fetch(h.origin+'/api/ui/manifest',{headers:h.admin})).json();
  assert.deepEqual(manifest.tools.map(x=>x.name),listed.map(x=>x.name));
- for(const name of ['whoami','machine_list','machine_upsert','machine_remove','runtime_publish','inventory_describe','inventory_bulk_upsert','inventory_delete','software_watch_list','software_watch_put','ticket_search'])
+ for(const name of ['whoami','device_list','device_upsert','device_remove','runtime_publish','inventory_describe','inventory_bulk_upsert','inventory_delete','software_watch_list','software_watch_put','ticket_search'])
   assert.ok(manifest.tools.some(x=>x.name===name),name);
  for(const tool of manifest.tools){
   assert.deepEqual(Object.keys(tool).sort(),['description','module','name','scope','title','write'],tool.name);
@@ -90,7 +90,7 @@ test('the UI manifest lists the MCP tools of the running registry, without handl
  }
  const by=Object.fromEntries(manifest.tools.map(x=>[x.name,x]));
  assert.deepEqual([by.home_status.scope,by.home_status.write,by.home_status.module],['read',false,'core']);
- assert.deepEqual([by.machine_upsert.scope,by.machine_upsert.write,by.machine_upsert.module],['home:write',true,'home']);
+ assert.deepEqual([by.device_upsert.scope,by.device_upsert.write,by.device_upsert.module],['home:write',true,'home']);
  assert.deepEqual([by.software_watch_put.scope,by.software_watch_put.write],['software:write',true]);
  // a reader's manifest carries the same reference (what exists and what it needs), a signed-out one nothing
  assert.equal((await (await fetch(h.origin+'/api/ui/manifest')).json()).tools,undefined);
@@ -108,18 +108,18 @@ test('initialize instructions: an orientation assembled from the modules, cut to
  const tools=async k=>(await (await rpc(h,k.headers,'tools/list')).json()).result.tools.map(x=>x.name);
  const all=await read(full),plain=await read(reader),some=await read(inv);
  assert.match(all,/^Home Hub: /);assert.match(all,/service account "agent-full"/);assert.match(plain,/with scopes: read\./);
- // every area is covered: machines, runtime stacks, inventory (describe first, search before update, hashes), software watch, tracker, review
- for(const word of ['whoami','home_status','machine_list','machine_upsert','runtime_publish','inventory_describe','inventory_search','inventory_get','inventory_update','inventory_bulk_upsert','inventory_delete','software_watch_list','software_watch_put','tickets_list','ticket_search','ticket_get','ticket_create','review_list','review_get','review_publish'])
+ // every area is covered: devices, runtime stacks, inventory (describe first, search before update, hashes), software watch, tracker, review
+ for(const word of ['whoami','home_status','device_list','device_upsert','runtime_publish','inventory_describe','inventory_search','inventory_get','inventory_update','inventory_bulk_upsert','inventory_delete','software_watch_list','software_watch_put','tickets_list','ticket_search','ticket_get','ticket_create','review_list','review_get','review_publish'])
   assert.ok(all.includes(word),word);
  assert.match(all,/inventory_describe once[^\n]*inventory_search before you add/);assert.match(all,/hash you read as base/);assert.match(all,/Never store a secret/);
  assert.ok(all.length<4000&&plain.length<2100,`short: ${all.length} / ${plain.length} characters`);
  // a tool the text names is a tool that exists, and one the key can call
  const named=text=>[...new Set(text.match(/\b[a-z]+(?:_[a-z]+)+\b/g))];
  for(const [key,text] of [[full,all],[reader,plain],[inv,some]]){const listed=await tools(key);for(const name of named(text))assert.ok(listed.includes(name),`${key.account.name}: ${name} is named but not listed`);}
- for(const word of ['machine_upsert','runtime_publish','inventory_update','software_watch','ticket_create','review_publish','Never store a secret'])assert.ok(!plain.includes(word),`a read-only key is not told about ${word}`);
- assert.ok(some.includes('inventory_update')&&!some.includes('machine_upsert')&&!some.includes('ticket_create'));
+ for(const word of ['device_upsert','runtime_publish','inventory_update','software_watch','ticket_create','review_publish','Never store a secret'])assert.ok(!plain.includes(word),`a read-only key is not told about ${word}`);
+ assert.ok(some.includes('inventory_update')&&!some.includes('device_upsert')&&!some.includes('ticket_create'));
  // generic: nothing of one household, in either direction
  const {SITE}=await import('./hub-helper.mjs');
- for(const m of SITE.machines)assert.ok(!all.includes(m.name)&&!all.includes(m.hostname||'\u0000'),m.id);
+ for(const m of SITE.devices)assert.ok(!all.includes(m.name)&&!all.includes(m.hostname||'\u0000'),m.id);
  assert.ok(!all.includes(SITE.siteName));
 });

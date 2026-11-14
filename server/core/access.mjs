@@ -19,9 +19,9 @@ const appTokenError=(e,c)=>[({invalid:400,'not-found':404,conflict:409,busy:429}
 // legacy:false = a key from before service accounts (permission "write") never holds it.
 const scopeCatalog=hub=>Object.fromEntries(Object.entries(SCOPES).map(([id,{label,desc,readOnly,legacy}])=>[id,{label,desc,write:!readOnly,legacy:legacy!==false,module:hub.registry.scopes.get(id)?.module??null}]));
 const admin=routes=>routes.map(r=>({scope:null,error:adminError,...r}));
-// Push agent keys (docs/agent.md §2): issued for one machine of the overview, revoked here or by the hub itself when
-// that machine goes. The work is the agent module's (server/core/agent.mjs); these routes are administration.
-const agentError=e=>e?.message==='invalid'?[400,'AGENT_INVALID',e.detail||'Invalid request.']:e?.message==='limit'?[409,'AGENT_LIMIT','A machine has at most two agent keys, the hub 100 that are not revoked. Revoke one first.']
+// Push agent keys (docs/agent.md §2): issued for one device of the overview, revoked here or by the hub itself when
+// that device goes. The work is the agent module's (server/core/agent.mjs); these routes are administration.
+const agentError=e=>e?.message==='invalid'?[400,'AGENT_INVALID',e.detail||'Invalid request.']:e?.message==='limit'?[409,'AGENT_LIMIT','A device has at most two agent keys, the hub 100 that are not revoked. Revoke one first.']
  :e?.message==='not-found'?[404,'NOT_FOUND','That agent key does not exist.']:null;
 const agents=hub=>hub.state('agent').admin;
 // Who made the change, for the audit line.

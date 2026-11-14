@@ -12,8 +12,8 @@ import {deriveReading,snapshotFromData} from '../server/windows-telemetry.mjs';
 const record={mode:'winrm',host:'pc.example.lan',port:5986,scheme:'https',user:'homehub',password:'correct horse 1',tls:{mode:'pin',pin:'b'.repeat(64)}};
 const wrap=(inner,{ctx=null,end=true,pull=false}={})=>`<?xml version="1.0" encoding="UTF-8"?><s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:n="http://schemas.xmlsoap.org/ws/2004/09/enumeration" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><s:Header/><s:Body><n:${pull?'PullResponse':'EnumerateResponse'}>${ctx?`<n:EnumerationContext>${ctx}</n:EnumerationContext>`:''}<w:Items>${inner}</w:Items>${end?'<w:EndOfSequence/>':''}</n:${pull?'PullResponse':'EnumerateResponse'}></s:Body></s:Envelope>`;
 const frag=props=>`<w:XmlFragment>${Object.entries(props).map(([k,v])=>v===null?`<${k} xsi:nil="true"/>`:typeof v==='object'?`<${k}><cim:Datetime xmlns:cim="x">${v.dt}</cim:Datetime></${k}>`:`<${k}>${v}</${k}>`).join('')}</w:XmlFragment>`;
-// What a Windows machine answers at tick k (counters grow with k), keyed by the class in the WQL.
-function machine(k=0,{gpu=true,basic=true,denied=false}={}){
+// What a Windows device answers at tick k (counters grow with k), keyed by the class in the WQL.
+function device(k=0,{gpu=true,basic=true,denied=false}={}){
  const ts=String(130000000000000000n+BigInt(k)*300000000n);
  const by={Win32_OperatingSystem:[{Caption:'Microsoft Windows 11 Pro',Version:'10.0.26100',TotalVisibleMemorySize:'33554432',LastBootUpTime:{dt:'2026-11-10T07:00:00.123456+01:00'}}],
   Win32_Processor:[{Name:'Test CPU &amp; Co'}],
@@ -70,7 +70,7 @@ test('replies: XmlFragment or class elements, nil, datetimes; faults as codes wi
 });
 
 test('collection: Basic only over the pinned certificate, Pull pages, the SSH snapshot shape, honest GPU and adapter memory',async()=>{
- const m0=machine(0),m1=machine(1);
+ const m0=device(0),m1=device(1);
  const a=await collectWinrm(record,{request:m0.request,now:()=>1}),b=await collectWinrm(record,{request:m1.request,now:()=>2});
  assert.ok(m0.seen.every(o=>o.path==='/wsman'&&o.method==='POST'&&o.trust.mode==='pin'&&o.trust.pin==='b'.repeat(64)&&/^Basic /.test(o.headers.Authorization)));
  assert.equal(m0.seen.filter(o=>/<n:Pull>/.test(o.body)).length,2,'the network adapters came over two Pulls');
@@ -82,13 +82,13 @@ test('collection: Basic only over the pinned certificate, Pull pages, the SSH sn
  const facts=winrmCheck(b);assert.equal(facts.cpu.logical,2);assert.deepEqual(facts.gpus,['Test GPU']);
  // The same data object through the SSH parser gives the same snapshot.
  assert.deepEqual(snapshotFromData(dataFromItems({os:[{Caption:'X',Version:'1',TotalVisibleMemorySize:'1',LastBootUpTime:null}]},5)).os,{caption:'X',version:'1',memTotal:1024,bootUnix:null});
- const noGpu=await collectWinrm(record,{request:machine(0,{gpu:false}).request});assert.equal(noGpu.gmem.length,0,'no GPU counter classes: that part is empty, the rest is read');
+ const noGpu=await collectWinrm(record,{request:device(0,{gpu:false}).request});assert.equal(noGpu.gmem.length,0,'no GPU counter classes: that part is empty, the rest is read');
 });
 
 test('refusals: Basic off vs a wrong password, invalid records; the password never appears in what readers see',async()=>{
  assert.ok(validWinrmRecord({...record,password:'p'}),'accept an existing nonempty password without imposing a creation policy');
- await assert.rejects(collectWinrm(record,{request:machine(0,{denied:true,basic:false}).request}),/basic-disabled/);
- await assert.rejects(collectWinrm(record,{request:machine(0,{denied:true}).request}),/denied/);
+ await assert.rejects(collectWinrm(record,{request:device(0,{denied:true,basic:false}).request}),/basic-disabled/);
+ await assert.rejects(collectWinrm(record,{request:device(0,{denied:true}).request}),/denied/);
  await assert.rejects(collectWinrm(record,{request:async()=>{throw new Error('tls-pin');}}),/tls-pin/);
  await assert.rejects(collectWinrm(record,{request:async()=>({status:200,headers:{'content-type':'text/html'},body:Buffer.from('<html/>')})}),/bad-output/);
  for(const bad of [{scheme:'http'},{tls:null},{tls:{mode:'insecure'}},{password:''},{user:'a"b'},{host:'-x'}])assert.ok(!validWinrmRecord({...record,...bad}),JSON.stringify(bad));

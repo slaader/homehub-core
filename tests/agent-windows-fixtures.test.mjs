@@ -38,8 +38,8 @@ const sha=b=>createHash('sha256').update(b).digest('hex');
 const REPORTS=readdirSync(FIX).filter(f=>/^report-.*\.json$/.test(f)).sort();
 const vectors=json('vectors.json');
 const specsBytes=readFileSync(path.join(FIX,'specs.txt'));
-// What the hub keeps for a machine after it accepted a report (server/agent-store.mjs), for the readers.
-const stored=(report,receivedAt='2026-11-13T10:01:13.000Z')=>({schemaVersion:1,machine:'winbox',agentId:'0123456789abcdef',agentVersion:report.agentVersion,platform:report.platform,
+// What the hub keeps for a device after it accepted a report (server/agent-store.mjs), for the readers.
+const stored=(report,receivedAt='2026-11-13T10:01:13.000Z')=>({schemaVersion:1,device:'winbox',agentId:'0123456789abcdef',agentVersion:report.agentVersion,platform:report.platform,
  lastSeenAt:receivedAt,lastSentAt:report.sentAt,parts:Object.fromEntries(Object.entries(report.parts).map(([n,p])=>[n,{...p,receivedAt,digest:'0'.repeat(64),withheld:p.withheld||[]}]))});
 // The watch list the fixtures were made for: a winreg rule per item of specs.txt.
 const registry={categories:{tools:'Tools'},items:[
@@ -122,9 +122,9 @@ test('envelope fixtures: what the Windows agent emits passes the real validateRe
 
 test('the readers read the fixtures as reader kind "windows" with the Windows checks and the winreg rows',()=>{
  const now=Date.parse('2026-11-13T10:05:00Z');
- const doc=buildSystems({snapshot:null,upstream:null,registry,now,machines:[],
+ const doc=buildSystems({snapshot:null,upstream:null,registry,now,devices:[],
   agents:[{id:'winbox',name:'Win box',record:stored(json('report-full.json'))},{id:'winlap',name:'Win laptop',record:stored(json('report-degraded.json'))}]});
- const at=id=>doc.machines.find(m=>m.id===id),c=(m,id)=>m.checks.find(x=>x.id===id);
+ const at=id=>doc.devices.find(m=>m.id===id),c=(m,id)=>m.checks.find(x=>x.id===id);
  const w=at('winbox');
  assert.deepEqual([w.kind,w.source,w.reachable,w.stale,w.os.name,w.os.version,w.os.build,w.os.status],['windows','agent',true,false,'Windows 11 Pro','24H2','26100.2605','update']);
  assert.deepEqual(w.checks.map(x=>x.id),['defender','bitlocker','firewall','rdp','os-update','exposed']);
@@ -132,7 +132,7 @@ test('the readers read the fixtures as reader kind "windows" with the Windows ch
  assert.equal(c(w,'exposed').detail,'22 sshd · 135 svchost · 445 System','loopback ports are not exposed');
  assert.deepEqual(w.withheld,[{part:'updates',tag:'WINUP',field:1,reason:'invalid',count:1}]);
  assert.equal(w.uptimeSeconds,86400);assert.equal(w.hw.ramGb,17);
- const rows=Object.fromEntries(doc.software.filter(r=>r.machine==='winbox').map(r=>[r.id,r]));
+ const rows=Object.fromEntries(doc.software.filter(r=>r.device==='winbox').map(r=>[r.id,r]));
  assert.deepEqual([rows.git.installed,rows.git.path,rows.git.status],['2.47.1','Git','n/a']);
  assert.equal(rows['7zip'].installed,'24.08');
  assert.deepEqual([rows.node.installed,rows.node.status],[null,'missing']);
@@ -147,11 +147,11 @@ test('the readers read the fixtures as reader kind "windows" with the Windows ch
  assert.equal(parseSystemsProbe(json('report-full.json').parts.os.records.join('\n')).platform,'windows');
 });
 
-test('over HTTP: the hub takes each fixture from a Windows agent key, and /api/systems reads it as a Windows machine',async t=>{
+test('over HTTP: the hub takes each fixture from a Windows agent key, and /api/systems reads it as a Windows device',async t=>{
  const h=await readerHub(t,{thermoPoller:quiet});
  const writer=await h.account('agent-windows',['home:write']),report=reportTo(h);
  for(const [id,file] of [['winbox','report-full.json'],['winlap','report-degraded.json']]){
-  const r=await h.post('/api/home/devices',{machine:{id,name:id,hostname:`${id}.example.lan`,ip:id==='winbox'?'10.0.0.61':'10.0.0.62',role:'computer',platform:'windows'}},writer.headers);
+  const r=await h.post('/api/home/devices',{device:{id,name:id,hostname:`${id}.example.lan`,ip:id==='winbox'?'10.0.0.61':'10.0.0.62',role:'computer',platform:'windows'}},writer.headers);
   assert.ok(r.status<300,`add ${id}: ${r.status}`);
   const key=await issueAgent(h,id);
   const answer=await report(key.token,json(file));
@@ -161,10 +161,10 @@ test('over HTTP: the hub takes each fixture from a Windows agent key, and /api/s
   // The exact Content-Type matters: a charset is refused, which is why the agent sets it itself.
   assert.equal((await report(key.token,json('report-heartbeat.json'),{'Content-Type':'application/json; charset=utf-8'})).status,403);
  }
- // The first run on a real machine: an added device whose platform was never set takes the agent's report, as it
- // did (report-first-run.json has the shape of the envelope LocalService sent, every value invented, none the machine's).
+ // The first run on a real computer: an added device whose platform was never set takes the agent's report, as it
+ // did (report-first-run.json has the shape of the envelope LocalService sent, every value invented, none the device's).
  {
-  const r=await h.post('/api/home/devices',{machine:{id:'winnew',name:'winnew',hostname:'winnew.example.lan',ip:'10.0.0.63',role:'computer'}},writer.headers);
+  const r=await h.post('/api/home/devices',{device:{id:'winnew',name:'winnew',hostname:'winnew.example.lan',ip:'10.0.0.63',role:'computer'}},writer.headers);
   assert.ok(r.status<300,`add winnew: ${r.status}`);
   const key=await issueAgent(h,'winnew'),answer=await report(key.token,json('report-first-run.json'));
   assert.equal(answer.status,200);
@@ -172,8 +172,8 @@ test('over HTTP: the hub takes each fixture from a Windows agent key, and /api/s
   assert.deepEqual([accepted,refused],[['heartbeat','os','updates','packages'],[]],'a device without a platform');
  }
  const systems=await (await fetch(`${h.origin}/api/systems`,{headers:h.admin})).json();
- const box=systems.machines.find(m=>m.id==='winbox'),lap=systems.machines.find(m=>m.id==='winlap');
- const first=systems.machines.find(m=>m.id==='winnew');
+ const box=systems.devices.find(m=>m.id==='winbox'),lap=systems.devices.find(m=>m.id==='winlap');
+ const first=systems.devices.find(m=>m.id==='winnew');
  assert.deepEqual([first.kind,first.source,first.os.version,first.checks.find(c=>c.id==='os-update').state],['windows','agent','25H2','unknown'],'the update search refused to LocalService is unknown');
  assert.deepEqual([box.kind,box.source,box.os.name],['windows','agent','Windows 11 Pro']);
  assert.deepEqual([lap.kind,lap.checks.find(c=>c.id==='defender').state],['windows','unknown']);
@@ -235,10 +235,10 @@ test('the winreg detect kind: the watch list takes it, the specs generator write
  assert.ok(validateItem({...registry.items[0],detect:{winbox:{kind:'winreg',path:'C:\\x'}}},{categories:['tools']}).errors.length,'winreg takes displayName only');
  assert.equal(specsFileText(registry,'winbox'),specsBytes.toString('utf8'),'the fixture specs.txt is what the hub prints for the watch list');
  assert.equal(systemsSpecs(registry,'winbox').split('\n')[3],'example-agent|winreg|Example Agent*||ExampleSvc');
- const r=agentSpecs({registry,machine:'winbox',platform:'windows'});
+ const r=agentSpecs({registry,device:'winbox',platform:'windows'});
  assert.deepEqual([r.ok,r.errors],[true,[]]);
  const bad={...registry,items:[{...registry.items[0],detect:{winbox:{kind:'cmd',path:'/usr/bin/git',args:'--version'}}}]};
- assert.deepEqual(agentSpecs({registry:bad,machine:'winbox',platform:'windows'}).errors,[{line:1,reason:'kind'}],'a cmd rule is refused for a Windows machine');
+ assert.deepEqual(agentSpecs({registry:bad,device:'winbox',platform:'windows'}).errors,[{line:1,reason:'kind'}],'a cmd rule is refused for a Windows device');
 });
 
 test('the PowerShell scripts: nothing forbidden, nothing from elsewhere, read-only probes, TLS 1.2 and the exact Content-Type',()=>{
@@ -306,7 +306,7 @@ test('the PowerShell scripts are Windows PowerShell 5.1: no ternary, no ?? or ?.
  }
 });
 
-test('Windows PowerShell 5.1 at run time: the classes of error the first run on a real machine found',()=>{
+test('Windows PowerShell 5.1 at run time: the classes of error the first run on a real computer found',()=>{
  // 1. $null passed to a .NET method arrives as "" when the parameter is a string ([IO.File]::Replace($tmp, $full, $null)
  //    threw "The path is not of a legal form": no status.json after the first). [NullString]::Value is a real null.
  //    The pattern sees $null after at most one level of nested parentheses in the argument list: [X]::M((f (g)), $null)
@@ -434,9 +434,9 @@ test('the key is never a parameter: Module Logging (event 4103) records every pa
  const allowed=[/^\$script:Token = \$null$/,/^try \{ \$script:Token = Read-AgentToken \$KeyFile \} catch \{ \$script:Token = \$null \}$/,
   /^if \(\$null -eq \$script:Token\) \{ return (@\{ status = 0; retryAfter = \$null; ack = \$null; error = 'key-missing' \}|\(& \$no 'key-invalid' 'the key file does not hold an agent key'\)) \}$/,
   /^\$req\.Headers\.Add\('Authorization', 'Bearer ' \+ \$script:Token\)$/,
-  /^\$token = \$null(; \$agentId = \$null; \$machine = \$null)?$/,/^\$token = \$found\[0\]\.Value$/,/^\$masked = \$keyText\.Replace\(\$token, \$placeholder\); \$keyText = \$null; \$found = \$null$/,
-  /^if \(\(Get-Prop \$k 'schema'\) -ne 1 -or \(Get-Prop \$k 'token'\) -cne \$placeholder -or -not \(\(Get-Prop \$agentInfo 'machine'\) -is \[string\]\)\) \{ \$token = \$null; Stop-Install '[^']*' \}$/,
-  /^if \(\$token\) \{ Say \('  key        ' \+ \$token\.Substring\(0, 12\) \+ '\.\.\. for machine ' \+ \$machine \+ ' -> ' \+ \(Join-Path \$Dirs\.private 'agent\.key'\)\) \}$/,
+  /^\$token = \$null(; \$agentId = \$null; \$device = \$null)?$/,/^\$token = \$found\[0\]\.Value$/,/^\$masked = \$keyText\.Replace\(\$token, \$placeholder\); \$keyText = \$null; \$found = \$null$/,
+  /^if \(\(Get-Prop \$k 'schema'\) -ne 1 -or \(Get-Prop \$k 'token'\) -cne \$placeholder -or -not \(\(Get-Prop \$agentInfo 'device'\) -is \[string\]\)\) \{ \$token = \$null; Stop-Install '[^']*' \}$/,
+  /^if \(\$token\) \{ Say \('  key        ' \+ \$token\.Substring\(0, 12\) \+ '\.\.\. for device ' \+ \$device \+ ' -> ' \+ \(Join-Path \$Dirs\.private 'agent\.key'\)\) \}$/,
   /^\$keyBytes = \$Utf8\.GetBytes\(\$token \+ "`n"\)$/];
  for(const f of PS_FILES){
   const text=raw(f),codeLines=psCode(text).split('\n');
@@ -507,7 +507,7 @@ test('the installer never follows a link as an administrator, and touches only a
  const show=text.slice(...functionSpan(code,'Show-KeptFiles'));
  assert.match(show,/if \(\[IO\.Directory\]::Exists\(\$f\)\) \{\n[^\n]*not empty when it was removed last/,'a kept directory is named as one');
  assert.match(walk,/if \(\$Last -and \$e\.Name -eq \$Last\) \{ continue \}/,'-Last is skipped by the walk');
- // -Uninstall keeps .agent-install.json until nothing is left: found on a real machine, a hard link left in state made the
+ // -Uninstall keeps .agent-install.json until nothing is left: found on a real computer, a hard link left in state made the
  // next -Uninstall (and an install) refuse the directory, the marker being gone with the first.
  assert.match(text,/Remove-Tree \$Root -Last \$Marker\n  if \(-not \(Show-KeptFiles\)\) \{ Stop-Install/,'-Uninstall names what is left and exits 1');
  assert.match(text,/Remove-Tree \$old\n  \$null = Show-KeptFiles\n/);assert.match(text,/finally \{ Remove-Tree \$tmp; \$null = Show-KeptFiles \}/);
@@ -530,7 +530,7 @@ test('the installer never follows a link as an administrator, and touches only a
  const move=wd.indexOf('[IO.Directory]::Move($Path, $old)'),make=wd.indexOf('[IO.Directory]::CreateDirectory($Path)'),acl=wd.indexOf('Set-PrivateAcl -Path $Path'),carry=wd.indexOf('[IO.File]::Move($from, $to)'),gone=wd.indexOf('Remove-Tree $old');
  assert.ok(move>0&&move<make&&make<acl&&acl<carry&&carry<gone,'moved aside, made empty, ACL\'d while empty, then the old one removed');
  // Only what LocalService owns is carried over, and it is moved, never copied: a copy would be the administrator's and
- // the next update would drop it (found on a real machine). What arrives is checked again; a link or another owner's
+ // the next update would drop it (found on a real computer). What arrives is checked again; a link or another owner's
  // file is removed as a name.
  assert.match(wd,/if \(-not \$f\.Exists -or \(Test-Link \$f\) -or \(Get-FileOwnerSid \$from\) -cne \$SidLocalService\) \{ continue \}\n\s*\[IO\.File\]::Move\(\$from, \$to\)/);
  assert.match(wd,/if \(\(Test-Link \$t\) -or \(Get-FileOwnerSid \$to\) -cne \$SidLocalService\) \{ \[IO\.File\]::Delete\(\$to\) \}/);

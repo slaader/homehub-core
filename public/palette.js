@@ -1,9 +1,9 @@
 // The command palette (Cmd/Ctrl-K): one box to jump to any page, run a shell action, or search tickets and
 // review sets. app.js gives it the lists; it owns the dialog, the filtering and the keyboard.
-//   createPalette({pages, actions, machines, canSearch}) → {open(text), close(), toggle()}
+//   createPalette({pages, actions, devices, canSearch}) → {open(text), close(), toggle()}
 //     pages()     [{hash, label, group, icon}]            every page this account may open
 //     actions()   [{id, label, hint, icon, run}]           theme, language, sign out, …
-//     machines()  [{id, name}]                             machine pages known so far (may be empty)
+//     devices()  [{id, name}]                             device pages known so far (may be empty)
 //     canSearch() whether the hub has full-text search (the tracker module)
 // Built on <dialog>: the browser traps focus, closes on Escape and returns focus to where it was.
 // Matching ignores case and diacritics; every typed word must appear in the label or its group.
@@ -26,7 +26,7 @@ export function matchItems(items,query){
 }
 const KIND={ticket:'Ticket',review:'Review'};
 
-export function createPalette({pages=()=>[],actions=()=>[],machines=()=>[],canSearch=()=>false}={}){
+export function createPalette({pages=()=>[],actions=()=>[],devices=()=>[],canSearch=()=>false}={}){
  let dialog=null,input=null,list=null,options=[],active=0,timer=null,turn=0,results=[],resultsFor='';
  const go=hash=>{globalThis.location.hash=hash;};
  const option=(o,index)=>el('div',{class:'hh-palette-opt',role:'option',id:`hh-pal-${index}`,'aria-selected':String(index===active),
@@ -37,10 +37,10 @@ export function createPalette({pages=()=>[],actions=()=>[],machines=()=>[],canSe
  function sections(query){
   const q=query.trim(),out=[];
   const pageItems=matchItems(pages().map(p=>({...p,sub:p.group||null,iconNode:navIcon(p),run:()=>go(`#${p.hash}`)})),q);
-  const machineItems=matchItems(machines().map(m=>({label:m.name||m.id,group:t('Stroje'),sub:m.id,icon:'cpu',run:()=>go('#host-'+m.id)})),q);
+  const deviceItems=matchItems(devices().map(m=>({label:m.name||m.id,group:t('Stroje'),sub:m.id,icon:'cpu',run:()=>go('#host-'+m.id)})),q);
   const actionItems=matchItems(actions(),q);
   if(pageItems.length)out.push({title:t('Stránky'),items:pageItems});
-  if(q&&machineItems.length)out.push({title:t('Stroje'),items:machineItems.slice(0,8)});
+  if(q&&deviceItems.length)out.push({title:t('Stroje'),items:deviceItems.slice(0,8)});
   if(actionItems.length)out.push({title:t('Akce'),items:actionItems});
   if(q&&canSearch()){
    const hits=resultsFor===q?results.map(r=>({label:r.title,title:marked(r.title),sub:[KIND[r.kind]||r.kind,r.project].filter(Boolean).join(' · '),icon:r.kind==='review'?'eye':'list',run:()=>go(resultHref(r))})):[];

@@ -1,7 +1,7 @@
 // Where a git host's LFS files live, from the inventory (data/knowledge.json): the service whose address names the
-// host (its machine), and the object store it reaches through its dependencies (that store's machine). Only what the
+// host (its device), and the object store it reaches through its dependencies (that store's device). Only what the
 // inventory says; nothing is probed. No inventory, or no entry for the host: null (the page then says nothing).
-//   placementFor(web, entries) → {service:{id,name,machine,machineName}, storage:{id,name,machine,machineName}|null} | null
+//   placementFor(web, entries) → {service:{id,name,device,deviceName}, storage:{id,name,device,deviceName}|null} | null
 const STORE=/object (store|storage)|s3-compatible|blob (store|storage)/i;
 const MAX_HOPS=4,PROXY=/proxy|ingress|caddy|nginx|traefik|tunnel/i;
 
@@ -9,8 +9,8 @@ const hostOf=web=>{try{return new URL(web).hostname.toLowerCase();}catch{return 
 // The address field is free text ("https://git.example.lan (…); backend 127.0.0.1:3000"): the host must appear as a
 // whole name, not inside a longer one (git.example.lan is not in agit.example.lan or git.example.lan.other).
 const names=(text,host)=>typeof text==='string'&&new RegExp(`(^|[^a-z0-9.-])${host.replace(/[.]/g,'\\.')}($|[^a-z0-9-]|\\.(?![a-z0-9]))`,'i').test(text);
-const view=(e,byId)=>({id:e.id,name:typeof e.name==='string'?e.name:e.id,machine:typeof e.machine==='string'?e.machine:null,
- machineName:typeof e.machine==='string'&&byId.get(e.machine)?.kind==='machine'?byId.get(e.machine).name||e.machine:typeof e.machine==='string'?e.machine:null});
+const view=(e,byId)=>({id:e.id,name:typeof e.name==='string'?e.name:e.id,device:typeof e.device==='string'?e.device:null,
+ deviceName:typeof e.device==='string'&&byId.get(e.device)?.kind==='device'?byId.get(e.device).name||e.device:typeof e.device==='string'?e.device:null});
 
 export function placementFor(web,entries){
  const host=hostOf(web);if(!host||!Array.isArray(entries))return null;
@@ -28,7 +28,7 @@ export function placementFor(web,entries){
  for(let hop=0;hop<MAX_HOPS&&!storage&&frontier.length;hop++){
   const next=[];
   for(const e of frontier)for(const d of Array.isArray(e.depends_on)?e.depends_on:[]){
-   const t=byId.get(d?.id);if(!t||seen.has(t.id)||t.kind==='machine')continue;seen.add(t.id);
+   const t=byId.get(d?.id);if(!t||seen.has(t.id)||t.kind==='device')continue;seen.add(t.id);
    if(STORE.test(`${t.name||''} ${t.type||''}`)){storage=t;break;}
    next.push(t);}
   frontier=next;

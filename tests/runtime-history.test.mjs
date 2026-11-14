@@ -21,7 +21,7 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const DAY=86400000;
 const NOW=Date.parse('2026-11-10T12:00:00Z');
 const temp=async t=>{const dir=await mkdtemp(path.join(os.tmpdir(),'hub-hist-'));t.after(()=>rm(dir,{recursive:true,force:true}));return dir;};
-const MACHINES=[{id:'studio',ip:'10.0.0.151'},{id:'mini',ip:'10.0.0.25'}];
+const DEVICES=[{id:'studio',ip:'10.0.0.151'},{id:'mini',ip:'10.0.0.25'}];
 // One llama-swap activity record (v268), `ago` ms before NOW.
 const act=(id,ago,extra={})=>({id,timestamp:new Date(NOW-ago).toISOString(),src:'ip:127.0.0.1',model:'qwen-27b',req_path:'/v1/chat/completions',resp_content_type:'text/event-stream',
  resp_status_code:200,tokens:{cache_tokens:100,draft_tokens:-1,input_tokens:1000+id,output_tokens:50,prompt_per_second:400,tokens_per_second:90},duration_ms:4000,has_capture:true,...extra});
@@ -48,25 +48,25 @@ function fakeLlamaSwap({buffer=[],log=[]}={}){
 }
 const ALLOWED=u=>{const x=new URL(u);return historyPathAllowed(x.pathname+x.search);};
 
-test('the activity buffer becomes stored records: request fields only, the address, a site machine named by its address',()=>{
+test('the activity buffer becomes stored records: request fields only, the address, a site device named by its address',()=>{
  const raw=[act(917,60000,{src:'ip:10.0.0.25',prompt:'secret prompt'}),act(918,1000),{id:919},{timestamp:new Date(NOW).toISOString(),model:'x'}];
- const out=fromActivity(raw,{machine:'studio',runtime:'llama-swap',machines:MACHINES});
+ const out=fromActivity(raw,{device:'studio',runtime:'llama-swap',devices:DEVICES});
  assert.equal(out.length,2,'a record without a time or an id is left out');
- assert.deepEqual(out[0],{machine:'studio',runtime:'llama-swap',model:'qwen-27b',at:new Date(NOW-60000).toISOString(),metricId:917,path:'/v1/chat/completions',status:200,
-  inputTokens:1917,outputTokens:50,cacheTokens:100,promptTps:400,generationTps:90,durationMs:4000,client:'',clientMachine:'mini',clientAddress:'10.0.0.25'});
- assert.equal(out[1].clientAddress,'127.0.0.1');assert.ok(!('clientMachine' in out[1]),'loopback names no machine');
+ assert.deepEqual(out[0],{device:'studio',runtime:'llama-swap',model:'qwen-27b',at:new Date(NOW-60000).toISOString(),metricId:917,path:'/v1/chat/completions',status:200,
+  inputTokens:1917,outputTokens:50,cacheTokens:100,promptTps:400,generationTps:90,durationMs:4000,client:'',clientDevice:'mini',clientAddress:'10.0.0.25'});
+ assert.equal(out[1].clientAddress,'127.0.0.1');assert.ok(!('clientDevice' in out[1]),'loopback names no device');
  assert.ok(!JSON.stringify(out).includes('secret'),'nothing but the request fields');
- assert.equal(recordKey(out[0]),metricKey({machine:'studio',runtime:'llama-swap',metricId:917,at:NOW-60000}),'the key is metricKey with the time in ms');
- assert.equal(cleanRecord({machine:'Bad Id',at:NOW}),null);assert.equal(cleanRecord({machine:'studio',at:'never'}),null);
+ assert.equal(recordKey(out[0]),metricKey({device:'studio',runtime:'llama-swap',metricId:917,at:NOW-60000}),'the key is metricKey with the time in ms');
+ assert.equal(cleanRecord({device:'Bad Id',at:NOW}),null);assert.equal(cleanRecord({device:'studio',at:'never'}),null);
 });
 
 test('de-duplication: the same buffer twice adds nothing; after a llama-swap restart the reused ids are new records',async t=>{
  const store=createRequestHistory(await temp(t));
- const before=fromActivity([act(3,3000),act(2,60000),act(1,120000)],{machine:'studio',runtime:'llama-swap'});
+ const before=fromActivity([act(3,3000),act(2,60000),act(1,120000)],{device:'studio',runtime:'llama-swap'});
  assert.deepEqual(await store.ingest('studio',before,{now:NOW}),{added:3,known:0,skipped:0});
  assert.deepEqual(await store.ingest('studio',before,{now:NOW}),{added:0,known:3,skipped:0});
  // Restarted: ids from 1 again, at new times. Neither dropped (same id) nor doubled.
- const after=fromActivity([act(2,1000),act(1,2000)],{machine:'studio',runtime:'llama-swap'});
+ const after=fromActivity([act(2,1000),act(1,2000)],{device:'studio',runtime:'llama-swap'});
  assert.deepEqual(await store.ingest('studio',after,{now:NOW}),{added:2,known:0,skipped:0});
  // A fresh store on the same files (a hub restart) knows all five.
  const again=createRequestHistory(store.root.replace(/\/runtimes$/,''));
@@ -74,22 +74,22 @@ test('de-duplication: the same buffer twice adds nothing; after a llama-swap res
  const all=await again.read({from:0,to:NOW});
  assert.equal(all.length,5);assert.deepEqual(all.map(r=>r.metricId),[1,2,3,1,2],'oldest first');
  // Outside the window, or from the future: not kept.
- assert.equal((await again.ingest('studio',fromActivity([act(9,(DEDUP_DAYS+1)*DAY),act(10,-3600000)],{machine:'studio',runtime:'llama-swap'}),{now:NOW})).skipped,2);
+ assert.equal((await again.ingest('studio',fromActivity([act(9,(DEDUP_DAYS+1)*DAY),act(10,-3600000)],{device:'studio',runtime:'llama-swap'}),{now:NOW})).skipped,2);
 });
 
 test('monthly files: one per UTC month, 0600; files older than 13 months are pruned; the key set is bounded',async t=>{
  const dir=await temp(t),store=createRequestHistory(dir,{dedupCap:3});
  const months=['2025-09','2025-10','2025-11','2026-01','2026-10','2026-11'];
- const recs=months.map((m,i)=>cleanRecord({machine:'studio',runtime:'llama-swap',model:'m',at:`${m}-05T10:00:00Z`,metricId:i+1,path:'/v1/chat/completions'}));
+ const recs=months.map((m,i)=>cleanRecord({device:'studio',runtime:'llama-swap',model:'m',at:`${m}-05T10:00:00Z`,metricId:i+1,path:'/v1/chat/completions'}));
  await store.ingest('studio',recs,{now:NOW,window:false});
  const files=(await readdir(path.join(dir,'runtimes','studio'))).sort();
  assert.deepEqual(files,['requests-2025-11.jsonl','requests-2026-01.jsonl','requests-2026-10.jsonl','requests-2026-11.jsonl'],'13 months kept: 2025-11 … 2026-11');
  const {mode}=await import('node:fs/promises').then(f=>f.stat(path.join(dir,'runtimes','studio','requests-2026-11.jsonl')));
  assert.equal(mode&0o777,0o600);
  const line=JSON.parse((await readFile(path.join(dir,'runtimes','studio','requests-2026-11.jsonl'),'utf8')).trim());
- assert.deepEqual(Object.keys(line).sort(),['at','cacheTokens','client','durationMs','generationTps','inputTokens','machine','metricId','model','outputTokens','path','promptTps','runtime','status']);
+ assert.deepEqual(Object.keys(line).sort(),['at','cacheTokens','client','device','durationMs','generationTps','inputTokens','metricId','model','outputTokens','path','promptTps','runtime','status']);
  // The window holds at most dedupCap keys; the oldest go first.
- const live=fromActivity([act(1,4*60000),act(2,3*60000),act(3,2*60000),act(4,60000)],{machine:'mini',runtime:'llama-swap'});
+ const live=fromActivity([act(1,4*60000),act(2,3*60000),act(3,2*60000),act(4,60000)],{device:'mini',runtime:'llama-swap'});
  assert.equal((await store.ingest('mini',live,{now:NOW})).added,4);
  assert.equal(await store.has('mini',live[3],NOW),true);assert.equal(await store.has('mini',live[0],NOW),false,'evicted: the oldest');
  await assert.rejects(store.ingest('../etc',[],{now:NOW}),/invalid/);
@@ -98,14 +98,14 @@ test('monthly files: one per UTC month, 0600; files older than 13 months are pru
 test('the provider: records in the range, one per key with the one that names a client, client named again from the family',async t=>{
  const clients={deno:'Memory service'};
  const store=createRequestHistory(await temp(t),{clients:()=>clients});
- const base={machine:'studio',runtime:'llama-swap',model:'qwen-27b',path:'/v1/chat/completions',status:200,inputTokens:10,outputTokens:20};
+ const base={device:'studio',runtime:'llama-swap',model:'qwen-27b',path:'/v1/chat/completions',status:200,inputTokens:10,outputTokens:20};
  await store.ingest('studio',[{...base,at:NOW-3600000,metricId:1},{...base,at:NOW-7200000,metricId:2,uaFamily:'deno',client:'Deno'},{...base,at:NOW-40*DAY,metricId:3}],{now:NOW,window:false});
  // An attributed copy of record 1 arrives later (an import): appended, and preferred.
  assert.equal((await store.ingest('studio',[{...base,at:NOW-3600000,metricId:1,uaFamily:'claude-cli'}],{now:NOW,window:false})).added,1);
  assert.equal((await store.ingest('studio',[{...base,at:NOW-3600000,metricId:1}],{now:NOW,window:false})).added,0,'an unattributed copy of a known record adds nothing');
  const r=await store.provider.read({from:NOW-DAY,to:NOW,limit:100});
  assert.deepEqual(r.map(x=>[x.metricId,x.client]),[[2,'Memory service'],[1,'Claude Code']]);
- assert.deepEqual(Object.keys(r[0]).sort(),['at','cacheTokens','client','durationMs','generationTps','inputTokens','machine','metricId','model','outputTokens','path','promptTps','runtime','status']);
+ assert.deepEqual(Object.keys(r[0]).sort(),['at','cacheTokens','client','device','durationMs','generationTps','inputTokens','metricId','model','outputTokens','path','promptTps','runtime','status']);
  assert.equal((await store.provider.read({from:0,to:NOW,limit:1})).length,1);
  assert.equal(store.provider.id,'runtimes-history');
  const s=await store.summary('studio',{since:NOW-DAY,now:NOW});assert.equal(s.recordsToday,2);
@@ -127,8 +127,8 @@ test('only two reads exist: the activity pages with limit 200, and the stream; n
 test('the collector: the whole buffer first (at most 10 pages), then page 1 until a known record; GET only, the allowlist only',async t=>{
  const store=createRequestHistory(await temp(t)),now=()=>NOW;
  const fake=fakeLlamaSwap({buffer:Array.from({length:450},(_,i)=>act(450-i,60000+i*60000))});
- const e={id:'studio-llama-swap',machine:'studio',kind:'llama-swap',url:'http://127.0.0.1:8081'};
- const c=createHistoryCollector({store,endpoints:async()=>[e],runtimeIdOf:async()=>'llama-swap',kindOf:()=>null,tokens:{get:async()=>null},fetcher:fake.fetcher,now,machines:()=>MACHINES});
+ const e={id:'studio-llama-swap',device:'studio',kind:'llama-swap',url:'http://127.0.0.1:8081'};
+ const c=createHistoryCollector({store,endpoints:async()=>[e],runtimeIdOf:async()=>'llama-swap',kindOf:()=>null,tokens:{get:async()=>null},fetcher:fake.fetcher,now,devices:()=>DEVICES});
  t.after(()=>c.stopAll());
  await c.tick();
  const pages=fake.log.filter(l=>l.path==='/api/metrics/activity').map(l=>l.search);
@@ -173,7 +173,7 @@ test('clients: the access log line of a record names it; GET lines and other pat
  // End to end: a stream line and a record, joined; a record with no line stays unattributed.
  const store=createRequestHistory(await temp(t),{clients:()=>({deno:'Memory service'})});let clock=NOW;
  const fake=fakeLlamaSwap({buffer:[]});
- const e={id:'studio-llama-swap',machine:'studio',kind:'llama-swap',url:'http://127.0.0.1:8081'};
+ const e={id:'studio-llama-swap',device:'studio',kind:'llama-swap',url:'http://127.0.0.1:8081'};
  const c=createHistoryCollector({store,endpoints:async()=>[e],runtimeIdOf:async()=>'llama-swap',kindOf:()=>null,tokens:{get:async()=>null},fetcher:fake.fetcher,now:()=>clock,clients:()=>({deno:'Memory service'})});
  t.after(()=>c.stopAll());
  await c.tick();await new Promise(r=>setTimeout(r,20));
@@ -214,8 +214,8 @@ test('site.json → runtimeClients: User-Agent family → client name, validated
 });
 
 test('the runtimes module: history as runtimes.requests on the models page, the integration item, and the switch stops reads and the stream',async t=>{
- const site=validateSite({lanCidrs:['10.0.0.0/24'],machines:[{id:'studio',ip:'10.0.0.151'},{id:'mini',ip:'10.0.0.25'}],runtimeClients:{deno:'Memory service'},
-  runtimes:[{id:'studio-llama-swap',machine:'studio',kind:'llama-swap',url:'http://127.0.0.1:8081'}]});
+ const site=validateSite({lanCidrs:['10.0.0.0/24'],devices:[{id:'studio',ip:'10.0.0.151'},{id:'mini',ip:'10.0.0.25'}],runtimeClients:{deno:'Memory service'},
+  runtimes:[{id:'studio-llama-swap',device:'studio',kind:'llama-swap',url:'http://127.0.0.1:8081'}]});
  const now=Date.now(),recent=(id,ago,extra)=>({...act(id,0,extra),timestamp:new Date(now-ago).toISOString()});
  const fake=fakeLlamaSwap({buffer:[recent(2,120000,{src:'ip:10.0.0.25'}),recent(1,180000)]});
  const routes={'/v1/models':{data:[{id:'qwen-27b'}]},'/running':{running:[]}};
@@ -226,11 +226,11 @@ test('the runtimes module: history as runtimes.requests on the models page, the 
  t.after(()=>poller.stop(state,hubApi));
  await state.poller.poll({force:true});await state.history.tick();await new Promise(r=>setTimeout(r,20));
  fake.streams[0]?.push('[INFO] Request 10.0.0.25 "POST /v1/chat/completions HTTP/1.1" 200 99 "deno/2.1" 4s');
- const files=await readdir(path.join(h.dir,'runtimes','studio'));assert.ok(files.some(f=>/^requests-\d{4}-\d{2}\.jsonl$/.test(f)),'stored under <state>/runtimes/<machine>/');
+ const files=await readdir(path.join(h.dir,'runtimes','studio'));assert.ok(files.some(f=>/^requests-\d{4}-\d{2}\.jsonl$/.test(f)),'stored under <state>/runtimes/<device>/');
  const d=await (await fetch(h.origin+'/api/models',{headers:h.admin})).json();
  assert.equal(d.overview.requests,2);
  assert.ok(d.providers.requests.some(p=>p.module==='runtimes'&&p.id==='runtimes-history'&&p.count===2));
- assert.ok(d.clients.some(c=>c.clientMachine==='mini'),'the address of a site machine names it');
+ assert.ok(d.clients.some(c=>c.clientDevice==='mini'),'the address of a site device names it');
  const series=await (await fetch(h.origin+'/api/models/history?range=24h',{headers:h.admin})).json();assert.equal(series.available,true);assert.equal(series.totals.requests,2);
  const integration=h.handler.registry.integrations.find(g=>g.id==='runtimes.endpoints');
  const item=(await integration.status(state,hubApi)).items[0];
@@ -259,20 +259,20 @@ test('import: v1 history JSONL from a local file, de-duplicated, attributed copi
   {kind:'event',serviceId:'llama-swap',at:'2026-10-02T10:00:00.000Z',model:'qwen-27b',state:'loaded'},{kind:'request',at:'2026-10-02T10:02:00.000Z'}];
  await writeFile(file,v1.map(x=>JSON.stringify(x)).join('\n')+'\nnot json\n');
  const state=path.join(dir,'state');
- assert.deepEqual(await importFiles({machine:'studio',files:[file],state,now:NOW}),{read:5,valid:2,added:2,known:0,skipped:3});
- assert.deepEqual(await importFiles({machine:'studio',files:[file],state,now:NOW}),{read:5,valid:2,added:0,known:2,skipped:3},'twice adds nothing');
+ assert.deepEqual(await importFiles({device:'studio',files:[file],state,now:NOW}),{read:5,valid:2,added:2,known:0,skipped:3});
+ assert.deepEqual(await importFiles({device:'studio',files:[file],state,now:NOW}),{read:5,valid:2,added:0,known:2,skipped:3},'twice adds nothing');
  const r=await createRequestHistory(state,{clients:()=>({deno:'OB-like'})}).read({from:0,to:NOW});
  assert.deepEqual(r.map(x=>[x.metricId,x.client,x.path]),[[7,'OB-like','chat'],[8,'','chat']]);
- assert.equal(fromImportLine({machine:'mini',at:NOW,metricId:1},{machine:'studio'}),null,'another machine\'s line is left out');
- assert.equal(fromImportLine({machine:'studio',runtime:'llama-swap',at:NOW,metricId:1,path:'/v1/chat/completions'},{machine:'studio'}).metricId,1,'the store\'s own format');
- assert.throws(()=>parseArgs(['x.jsonl']),/--machine/);assert.throws(()=>parseArgs(['--machine','studio']),/file/);
- assert.throws(()=>parseArgs(['--machine','studio','https://example.lan/h.jsonl']),/not a URL/);
- assert.deepEqual(parseArgs(['--machine','studio','--dry-run','a.jsonl']),{machine:'studio',dryRun:true,files:['a.jsonl']});
+ assert.equal(fromImportLine({device:'mini',at:NOW,metricId:1},{device:'studio'}),null,'another device\'s line is left out');
+ assert.equal(fromImportLine({device:'studio',runtime:'llama-swap',at:NOW,metricId:1,path:'/v1/chat/completions'},{device:'studio'}).metricId,1,'the store\'s own format');
+ assert.throws(()=>parseArgs(['x.jsonl']),/--device/);assert.throws(()=>parseArgs(['--device','studio']),/file/);
+ assert.throws(()=>parseArgs(['--device','studio','https://example.lan/h.jsonl']),/not a URL/);
+ assert.deepEqual(parseArgs(['--device','studio','--dry-run','a.jsonl']),{device:'studio',dryRun:true,files:['a.jsonl']});
  assert.ok(!(await readFile(path.join(root,'scripts','import-runtime-history.mjs'),'utf8')).includes('fetch('),'the importer fetches nothing');
 });
 
 test('the models page: two providers of one request count it once (metricKey), keeping the copy that names a client',async t=>{
- const at=new Date(Date.now()-60000).toISOString(),base={machine:'studio',runtime:'llama-swap',model:'qwen-27b',at,path:'/v1/chat/completions',inputTokens:1,outputTokens:2};
+ const at=new Date(Date.now()-60000).toISOString(),base={device:'studio',runtime:'llama-swap',model:'qwen-27b',at,path:'/v1/chat/completions',inputTokens:1,outputTokens:2};
  const one=(id,items)=>({id,provides:{'runtimes.requests':()=>({id,read:async()=>items})}});
  const h=await hub(t,{plugins:[one('plain-history',[{...base,metricId:5},{...base,metricId:6,at:new Date(Date.now()-30000).toISOString()}]),one('named-history',[{...base,metricId:5,client:'Codex'}])]});
  const d=await (await fetch(h.origin+'/api/models',{headers:h.admin})).json();

@@ -1,4 +1,4 @@
-// The router panel on the router's machine page (GET /api/router): the client census and the router's
+// The router panel on the router's device page (GET /api/router): the client census and the router's
 // health from whatever adapter this hub uses (server/router-data.mjs). It says so when no adapter is
 // configured, when one is configured but has not reported yet, and when its last observation is stale
 // or failed; a failed read is never shown as "no clients".

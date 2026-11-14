@@ -512,7 +512,7 @@ test('tickets UI: a new item takes pasted and dropped files, shows them, and upl
  // Here the page's own load is the first use of the store (the other UI tests that draw from a store have used it
  // before the page is made), and a first use reads the disk: server/db.mjs looks for an old tickets.json to import. Every later call is
  // synchronous SQLite and settles on microtasks, which the few timer turns of flush() always cover; a disk they do
- // not promise, and on a loaded machine the list was not drawn yet and there was no button to click. So the button
+ // not promise, and on a loaded computer the list was not drawn yet and there was no button to click. So the button
  // is waited for, however long the read took.
  const add=()=>nodes(root,n=>n.tag==='button'&&n.textContent==='+ New item')[0];
  assert.ok(await until(add),'the list is drawn, with + New item on it');await flush();

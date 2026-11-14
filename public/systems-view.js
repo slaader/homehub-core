@@ -1,11 +1,11 @@
 // Two pages over one payload (GET /api/systems, admins only), plus the software watch list:
-//   #versions[/machine]   Verze a aktualizace: per machine, the operating system and the watched software
+//   #versions[/device]   Verze a aktualizace: per device, the operating system and the watched software
 //                         with update badges that link to the release notes, an "outdated only" filter and
 //                         the time each source was last checked. #versions/~watch is the watch list itself.
-//   #hardening[/machine]  Ochrana strojů: a pass / warning / fail checklist per machine with a reason for
+//   #hardening[/device]  Ochrana strojů: a pass / warning / fail checklist per device with a reason for
 //                         every check, and the ports open to the network.
 // The pill next to each title says where the page's data comes from (the answer's provenance): versions draw
-// the machine snapshot, the release check and the watch list; protection draws the machine snapshot alone.
+// the device snapshot, the release check and the watch list; protection draws the device snapshot alone.
 // Both say where the collector stands: not configured (what to add), configured without a snapshot yet,
 // a stale snapshot (older than the collector's interval), or fine. SSH keys and sudo stay on #security.
 import {el} from './views.js';
@@ -78,7 +78,7 @@ const setupSteps=()=>[
  t('Spusť kontrolu vydání: {command}',{command:'node scripts/check-upstream.mjs'}),
  t('Nainstaluj pravidelný sběr: {mac} (macOS), nebo systemd timery z {linux} (Linux).',{mac:'sh scripts/systems/install-launchd.sh',linux:'examples/systemd/'})];
 function setupState(collector){
- if(collector?.state==='waiting'){const n=collector.machines?.length||0;
+ if(collector?.state==='waiting'){const n=collector.devices?.length||0;
   return emptyState({icon:'◔',title:t('Sběr je nastavený, ale ještě neproběhl'),
    body:`${tp(n,'V konfiguraci je {n} stroj se sondou.|V konfiguraci jsou {n} stroje se sondou.|V konfiguraci je {n} strojů se sondou.')} ${t('Snímek vznikne prvním spuštěním sběru. Sběr jen čte: na strojích nic neinstaluje ani nemění.')}`,
    steps:setupSteps().slice(2)});}
@@ -87,9 +87,9 @@ function setupState(collector){
 }
 
 // --- where a record came from (docs/agent.md §3 → Who wins over the collectors) --------------------
-// A machine a push agent reports on says whose record won (source "agent" or "collector") and its time (sourceAt, the
+// A device a push agent reports on says whose record won (source "agent" or "collector") and its time (sourceAt, the
 // hub's clock). An agent's record past receivedAt + 3 × interval is "no news": its last report, never "unreachable" or
-// off. A machine no agent reports on carries no source and looks as it always did. Shared with the SSH keys page.
+// off. A device no agent reports on carries no source and looks as it always did. Shared with the SSH keys page.
 const NO_NEWS='Agent se odmlčel: ukazuje se jeho poslední zpráva. Neznamená to, že je stroj vypnutý.';
 export function stateBadge(m){
  if(!m)return null;
@@ -99,10 +99,10 @@ export function stateBadge(m){
 export function sourceBadge(m){
  if(m?.source!=='agent'&&m?.source!=='collector')return null;
  const at=m.sourceAt?when(m.sourceAt):'—';
- return m.source==='agent'?badge(t('od agenta'),'info',t('Záznam poslal agent na stroji; čas je příjem v hubu: {when}.',{when:at})+(m.machineCollectedAt?' '+t('Hodiny stroje: {when}.',{when:String(m.machineCollectedAt)}):''))
+ return m.source==='agent'?badge(t('od agenta'),'info',t('Záznam poslal agent na stroji; čas je příjem v hubu: {when}.',{when:at})+(m.deviceCollectedAt?' '+t('Hodiny stroje: {when}.',{when:String(m.deviceCollectedAt)}):''))
   :badge(t('z kolektoru'),'',t('Agent na stroji hlásí, ale vyhrál záznam kolektoru ({when}): je aktuální a vidí víc.',{when:at}));
 }
-// Lines the agent left out before sending (a secret-looking or too long value): the machine loses the line, not the part.
+// Lines the agent left out before sending (a secret-looking or too long value): the device loses the line, not the part.
 export function withheldBadge(m){
  const list=Array.isArray(m?.withheld)?m.withheld.filter(w=>w&&typeof w==='object'):[];if(!list.length)return null;
  const n=list.reduce((a,w)=>a+(Number.isFinite(w.count)?w.count:1),0);
@@ -111,14 +111,14 @@ export function withheldBadge(m){
 }
 const REASONS={secret:'vypadá jako tajemství',long:'příliš dlouhé',invalid:'neplatné'};
 
-// --- machine filter and tabs ----------------------------------------------------------------------
-function machineChips(mode,machine,doc){
- const chip=(id,label)=>{const m=id&&doc.machines.find(x=>x.id===id),on=(machine||'')===(id||'');
+// --- device filter and tabs ----------------------------------------------------------------------
+function deviceChips(mode,device,doc){
+ const chip=(id,label)=>{const m=id&&doc.devices.find(x=>x.id===id),on=(device||'')===(id||'');
   return el('a',{href:id?`#${mode}/${id}`:`#${mode}`,class:`col-chip${on?' on':''}`,'aria-current':on?'true':null},label,stateBadge(m));};
- return el('nav',{class:'col-chips','aria-label':t('Filtr strojů')},chip(null,t('Všechny stroje')),...doc.machines.map(m=>chip(m.id,m.name||m.id)));
+ return el('nav',{class:'col-chips','aria-label':t('Filtr strojů')},chip(null,t('Všechny stroje')),...doc.devices.map(m=>chip(m.id,m.name||m.id)));
 }
 const toggle=(label,on,change)=>el('label',{class:'col-switch'},el('input',{type:'checkbox',...(on?{checked:''}:{}),onchange:e=>change(e.currentTarget.checked)}),label);
-function machineHead(m,extra){
+function deviceHead(m,extra){
  const hw=[m.hw?.model,m.hw?.cpu,m.hw?.ramGb?`${m.hw.ramGb} GB RAM`:null].filter(Boolean).join(' · ');
  return el('header',{},el('h2',{},el('a',{class:'col-link',href:`#host-${m.id}`},m.name||m.id)),
   stateBadge(m),sourceBadge(m),withheldBadge(m),extra,
@@ -152,15 +152,15 @@ function softwareRow(r){
    r.note?el('div',{class:'col-dim col-note'},say(r.note,r.noteT)):null),
   cell(t('Zkontrolováno'),el('span',{class:'col-dim col-nowrap'},r.upstreamCheckedAt?when(r.upstreamCheckedAt):r.upstreamFailedAt?t('selhalo {when}',{when:when(r.upstreamFailedAt)}):'—')));
 }
-function machineCard(doc,m){
- const all=doc.software.filter(r=>r.machine===m.id),rows=all.filter(r=>!onlyUpdates||r.status==='update');
+function deviceCard(doc,m){
+ const all=doc.software.filter(r=>r.device===m.id),rows=all.filter(r=>!onlyUpdates||r.status==='update');
  const osUpdate=m.os?.status==='update',n=all.filter(r=>r.status==='update').length+(osUpdate?1:0);
  if(onlyUpdates&&!rows.length&&!osUpdate)return null;
  const cats=Object.keys(doc.categories).filter(c=>rows.some(r=>r.category===c));
  const body=cats.flatMap(c=>[el('tr',{class:'col-group'},el('th',{colspan:'5',scope:'colgroup'},t(doc.categories[c]))),...rows.filter(r=>r.category===c).map(softwareRow)]);
  const brew=m.brewOutdated||[];
  return el('section',{class:`col-card${n?' attn':''}`,'aria-label':m.name||m.id},
-  machineHead(m,n?badge(tp(n,'{n} aktualizace|{n} aktualizace|{n} aktualizací'),'warn solid'):m.reachable?badge(t('vše aktuální'),'good'):null),
+  deviceHead(m,n?badge(tp(n,'{n} aktualizace|{n} aktualizace|{n} aktualizací'),'warn solid'):m.reachable?badge(t('vše aktuální'),'good'):null),
   osBlock(m),
   rows.length?el('div',{class:'col-scroll'},el('table',{class:'col-table col-pairs'},
    el('thead',{},el('tr',{},...['Program','Nainstalováno','Nejnovější','Stav','Zkontrolováno'].map(h=>el('th',{scope:'col'},t(h))))),el('tbody',{},body)))
@@ -169,14 +169,14 @@ function machineCard(doc,m){
    el('p',{class:'col-dim'},t('Balíčky mimo sledovaný seznam (většinou knihovny), podle metadat, která si brew naposledy stáhl. Sběr nespouští brew update.')),
    el('div',{class:'col-brew'},brew.map(b=>el('div',{},el('span',{class:'col-mono'},b.name),' ',el('span',{class:'col-dim'},`${b.installed} → ${b.latest}`))))):null);
 }
-function machinesPanel(doc,machine){
- const cards=doc.machines.filter(m=>!machine||m.id===machine).map(m=>machineCard(doc,m)).filter(Boolean);
+function devicesPanel(doc,device){
+ const cards=doc.devices.filter(m=>!device||m.id===device).map(m=>deviceCard(doc,m)).filter(Boolean);
  return cards.length?el('div',{class:'col-cards'},cards):el('p',{class:'col-empty'},onlyUpdates?t('Žádný kandidát na aktualizaci.'):t('Nic ke zobrazení.'));
 }
 
 // The watch list (GET /api/software-watch): what is followed, and how to let an agent fill it.
-const watchPrompt=machines=>t('Připoj se k Home Hubu přes MCP klíčem servisního účtu se scope software:write. Zavolej software_watch_list: vrátí stroje, kategorie a povolené druhy pravidel. Zjisti, jaký software na strojích {machines} používám a stojí za to u něj hlídat verze (běhová prostředí, servery, nástroje pro vývoj). Pro každý přidej položku nástrojem software_watch_put: upstream, odkud se čte nejnovější verze (github, codeberg, pypi, npm, brew-formula, brew-cask), a pro každý stroj pravidlo detect (brew, cask, app, cmd s přepínačem verze, pydist nebo json). Na stroje se dívej jen pro čtení, nic neinstaluj a neměň. Nakonec vypiš, co jsi přidal a co jsi vynechal.',
- {machines:machines.length?machines.map(m=>m.id).join(', '):t('z local/site.json')});
+const watchPrompt=devices=>t('Připoj se k Home Hubu přes MCP klíčem servisního účtu se scope software:write. Zavolej software_watch_list: vrátí stroje, kategorie a povolené druhy pravidel. Zjisti, jaký software na strojích {devices} používám a stojí za to u něj hlídat verze (běhová prostředí, servery, nástroje pro vývoj). Pro každý přidej položku nástrojem software_watch_put: upstream, odkud se čte nejnovější verze (github, codeberg, pypi, npm, brew-formula, brew-cask), a pro každý stroj pravidlo detect (brew, cask, app, cmd s přepínačem verze, pydist nebo json). Na stroje se dívej jen pro čtení, nic neinstaluj a neměň. Nakonec vypiš, co jsi přidal a co jsi vynechal.',
+ {devices:devices.length?devices.map(m=>m.id).join(', '):t('z local/site.json')});
 const upstreamText=u=>!u?'—':u.type==='none'?t('bez kontroly'):[u.type,u.repo||u.package||u.name||''].filter(Boolean).join(' · ');
 const detectText=d=>[d.kind,d.formula||d.cask||d.path||d.glob||''].filter(Boolean).join(' · ');
 function watchPanel(){
@@ -185,11 +185,11 @@ function watchPanel(){
   try{
    const lost=authGuard(),r=await fetch('/api/software-watch');
    if(!r.ok){lost(r);throw Object.assign(new Error('watch'),{status:r.status});}
-   const doc=await r.json(),prompt=watchPrompt(doc.machines||[]);
+   const doc=await r.json(),prompt=watchPrompt(doc.devices||[]);
    if(!doc.items.length){
     fill(node,emptyState({icon:'◎',title:t('Zatím se nesleduje žádný software'),
      body:t('Operační systémy, aplikace na NAS a kontejnery se zjišťují samy. Programy, u kterých chceš hlídat verze, patří do seznamu sledovaného softwaru: odkud se čte nejnovější verze a jak se na stroji zjistí ta nainstalovaná.'),
-     steps:[...(doc.machines?.length?[]:[t('Nejdřív dej strojům v local/site.json položku ssh se sondou „mac“: pravidla se čtou na strojích s macOS.')]),
+     steps:[...(doc.devices?.length?[]:[t('Nejdřív dej strojům v local/site.json položku ssh se sondou „mac“: pravidla se čtou na strojích s macOS.')]),
       t('V sekci Uživatelé a API založ servisní účet se scope software:write a vydej mu klíč.'),
       t('Připoj svého agenta přes MCP (níže) a dej mu zadání. Použije nástroje software_watch_list a software_watch_put.'),
       t('Nebo zkopíruj položky z {example} do {file} a uprav je ručně.',{example:doc.example||'config/software-watch.json',file:doc.file||'local/software-watch.json'}),
@@ -216,19 +216,19 @@ function watchPanel(){
 }
 
 function versionsPage(box,doc,sub){
- // The watch list is its own address (#versions/~watch; no machine id can start with ~).
- const watch=sub==='~watch',machine=doc.machines.some(m=>m.id===sub)?sub:null;
+ // The watch list is its own address (#versions/~watch; no device id can start with ~).
+ const watch=sub==='~watch',device=doc.devices.some(m=>m.id===sub)?sub:null;
  const sw=doc.software.filter(r=>!['nas-apps','containers'].includes(r.category)),apps=doc.software.filter(r=>r.category==='nas-apps');
- const upd=doc.software.filter(r=>r.status==='update'),osUpd=doc.machines.filter(m=>m.os?.status==='update');
- const unknown=doc.software.filter(r=>r.status==='unknown').length,stale=doc.machines.filter(m=>m.stale||!m.reachable).length;
+ const upd=doc.software.filter(r=>r.status==='update'),osUpd=doc.devices.filter(m=>m.os?.status==='update');
+ const unknown=doc.software.filter(r=>r.status==='unknown').length,stale=doc.devices.filter(m=>m.stale||!m.reachable).length;
  const content=el('div',{}),filters=el('div',{class:'col-toolbar'});
  const paint=()=>{
   const list=!watch;
   fill(filters,el('nav',{class:'col-chips','aria-label':t('Pohled')},
     ...[[false,'#versions',t('Podle strojů')],[true,'#versions/~watch',t('Sledovaný software')]].map(([on,href,label])=>el('a',{href,class:`col-chip${watch===on?' on':''}`,'aria-current':watch===on?'true':null},label))),
-   list?machineChips('versions',machine,doc):null,
+   list?deviceChips('versions',device,doc):null,
    list?toggle(t('Jen zastaralé'),onlyUpdates,v=>{onlyUpdates=v;paint();}):null);
-  fill(content,list?machinesPanel(doc,machine):watchPanel());
+  fill(content,list?devicesPanel(doc,device):watchPanel());
  };
  const c=doc.collector||{};
  fill(box,
@@ -240,7 +240,7 @@ function versionsPage(box,doc,sub){
   doc.upstreamFailed?el('div',{class:'col-banner warn'},tp(doc.upstreamFailed,'{n} zdroj neověřen|{n} zdroje neověřeny|{n} zdrojů neověřeno'),' ',el('span',{},t('Poslední kontrola těchto zdrojů selhala; jejich řádky jsou označené.'))):null,
   el('div',{class:'col-stats'},
    stat(t('Kandidáti na aktualizaci'),upd.length+osUpd.length,apps.length?t('systém + software + aplikace NAS'):t('systém + software'),upd.length+osUpd.length?'warn':''),
-   stat(t('Systémy'),`${osUpd.length} / ${doc.machines.length}`,osUpd.map(m=>`${m.name} → ${m.os.updates.find(u=>u.kind!=='major'&&u.kind!=='app')?.version||''}`).join(', ')||t('všechny aktuální'),osUpd.length?'warn':''),
+   stat(t('Systémy'),`${osUpd.length} / ${doc.devices.length}`,osUpd.map(m=>`${m.name} → ${m.os.updates.find(u=>u.kind!=='major'&&u.kind!=='app')?.version||''}`).join(', ')||t('všechny aktuální'),osUpd.length?'warn':''),
    stat(t('Software'),sw.filter(r=>r.status==='update').length,tp(sw.length,'z {n} sledované instalace|z {n} sledovaných instalací|z {n} sledovaných instalací'),''),
    apps.length?stat(t('Aplikace NAS'),apps.filter(r=>r.status==='update').length,tp(apps.length,'z {n} aplikace v TrueNAS|z {n} aplikací v TrueNAS|z {n} aplikací v TrueNAS'),''):null,
    stat(t('Neověřeno'),unknown+stale,stale?tp(stale,'{n} stroj bez čerstvého snímku|{n} stroje bez čerstvého snímku|{n} strojů bez čerstvého snímku'):t('verze, které nešly porovnat'),unknown+stale?'warn':'')),
@@ -293,20 +293,20 @@ function hardeningCard(m){
  const summary=[n('crit')?badge(t('nesplněno: {n}',{n:n('crit')}),'bad solid'):null,n('warn')?badge(t('varování: {n}',{n:n('warn')}),'warn solid'):null,
   n('unknown')?badge(t('neověřeno: {n}',{n:n('unknown')})):null,badge(t('splněno: {n}',{n:n('ok')}),'good')];
  return el('section',{class:`col-card${n('crit')?' bad':n('warn')?' attn':''}`,'aria-label':m.name||m.id},
-  machineHead(m,summary),
+  deviceHead(m,summary),
   m.os?el('div',{class:'col-sub'},el('span',{class:'col-name'},`${m.os.name} ${m.os.version||''}`)):null,
   !m.checks.length?el('p',{class:'col-empty'},t(m.error||'Zatím neprozkoumáno.')):shown.length?el('ul',{class:'col-checks'},shown.map(checkItem)):el('p',{class:'col-empty'},t('Žádné varování ani nesplněná kontrola.')),
   portsBlock(m));
 }
 function hardeningPage(box,doc,sub){
- const machine=doc.machines.some(m=>m.id===sub)?sub:null;
- const all=doc.machines.flatMap(m=>m.checks.map(c=>({...c,machine:m.name})));
+ const device=doc.devices.some(m=>m.id===sub)?sub:null;
+ const all=doc.devices.flatMap(m=>m.checks.map(c=>({...c,device:m.name})));
  const count=s=>all.filter(c=>c.state===s),warn=count('warn'),crit=count('crit'),unknown=count('unknown');
- const exposed=doc.machines.reduce((s,m)=>s+new Set(m.listening.filter(l=>l.scope!=='loopback').map(l=>l.port)).size,0);
+ const exposed=doc.devices.reduce((s,m)=>s+new Set(m.listening.filter(l=>l.scope!=='loopback').map(l=>l.port)).size,0);
  const content=el('div',{}),filters=el('div',{class:'col-toolbar'});
  const paint=()=>{
-  fill(filters,machineChips('hardening',machine,doc),toggle(t('Jen problémy'),onlyIssues,v=>{onlyIssues=v;paint();}),toggle(t('Ukázat i porty jen pro tento stroj (127.0.0.1)'),showLoopback,v=>{showLoopback=v;paint();}));
-  const ms=doc.machines.filter(m=>!machine||m.id===machine);
+  fill(filters,deviceChips('hardening',device,doc),toggle(t('Jen problémy'),onlyIssues,v=>{onlyIssues=v;paint();}),toggle(t('Ukázat i porty jen pro tento stroj (127.0.0.1)'),showLoopback,v=>{showLoopback=v;paint();}));
+  const ms=doc.devices.filter(m=>!device||m.id===device);
   fill(content,ms.length?el('div',{class:'col-cards'},ms.map(hardeningCard)):el('p',{class:'col-empty'},t('Nic ke zobrazení.')));
  };
  const [before,after='']=t('Klíče, authorized_keys a sudo pravidla jsou na stránce {link}. Sběr je jen pro čtení: probe na Macích čte stav přes systémové nástroje (pfctl, sshd -T a lsof přes sudo -n), na NAS přes TrueNAS API.').split('{link}');
@@ -315,10 +315,10 @@ function hardeningPage(box,doc,sub){
    actions:[{label:t('SSH klíče'),href:'#security'},{label:t('Obnovit'),onclick:()=>{cache.clear();dispatchEvent(new Event('hashchange'));}}]}),
   freshnessBanner([{label:t('Stroje:'),...(doc.collector||{}),collectedAt:doc.collectedAt}]),
   el('div',{class:'col-stats'},
-   stat(t('Nesplněno'),crit.length,crit.map(c=>`${c.machine}: ${t(c.label)}`).join(', ')||t('žádné'),crit.length?'bad':''),
+   stat(t('Nesplněno'),crit.length,crit.map(c=>`${c.device}: ${t(c.label)}`).join(', ')||t('žádné'),crit.length?'bad':''),
    stat(t('Varování'),warn.length,[...new Set(warn.map(c=>t(c.label)))].join(', ')||'—',warn.length?'warn':''),
    stat(t('Neověřeno'),unknown.length,unknown.length?t('sonda neměla práva to zjistit'):'—',''),
-   stat(t('Splněno'),count('ok').length,tp(doc.machines.length,'na {n} stroji|na {n} strojích|na {n} strojích'),'good'),
+   stat(t('Splněno'),count('ok').length,tp(doc.devices.length,'na {n} stroji|na {n} strojích|na {n} strojích'),'good'),
    stat(t('Porty do sítě'),exposed,t('otevřené na všech rozhraních nebo adrese LAN'),'')),
   filters,content,
   el('p',{class:'col-foot'},before,el('a',{href:'#security',class:'col-link'},t('SSH klíče')),after));
@@ -350,5 +350,5 @@ export function systemsView(mode='versions',sub=null){
  return box;
 }
 // Page entry for the shell (app.js): every page module exports (context) => Node, and the server's UI
-// manifest names it. context = {me, page, sub, machine, site}.
+// manifest names it. context = {me, page, sub, device, site}.
 export const systemsPage=({page,sub})=>systemsView(page,sub);

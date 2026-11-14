@@ -1,4 +1,4 @@
-// Browser side of the overview, without a browser: what a machine's state is called, which picture a tile
+// Browser side of the overview, without a browser: what a device's state is called, which picture a tile
 // tries, what the device form refuses, and that the lists the form shows match the server's.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,17 +10,17 @@ globalThis.addEventListener=bus.addEventListener.bind(bus);
 globalThis.dispatchEvent=bus.dispatchEvent.bind(bus);
 const {statusOf,hasReadings,installSteps}=await import('../public/home-telemetry.js');
 const {validateDevice,inNetworks,PICTURES,telemetryChoices,choicesFor}=await import('../public/home-add-device.js');
-const {pictureChain,orderedMachines,moveId,sparkLabel}=await import('../public/home-view.js');
+const {pictureChain,orderedDevices,moveId,sparkLabel}=await import('../public/home-view.js');
 const server=await import('../server/home-devices.mjs');
-const {inCidrs,MACHINE_ROLES}=await import('../server/site-config.mjs');
+const {inCidrs,DEVICE_ROLES}=await import('../server/site-config.mjs');
 const {TELEMETRY_REPO_URL}=await import('../server/thermo-client.mjs');
 const {TELEMETRY_ADAPTERS}=await import('../server/home-data.mjs');
 const {dictionary}=await import('../public/i18n.js');
 
-test('a machine\'s state: readings decide for telemetry machines, a failed read is never "off"',()=>{
+test('a device\'s state: readings decide for telemetry devices, a failed read is never "off"',()=>{
  const mac=telemetry=>({kind:'thermo',online:'offline',telemetry});
  assert.deepEqual([statusOf(mac({state:'ok',lastSampleAt:new Date().toISOString()})).tone,statusOf(mac({state:'ok'})).text],['ok','online']);
- const stale=statusOf(mac({state:'stale',lastSampleAt:'2026-11-10T10:00:00Z',reason:'down'}));assert.equal(stale.tone,'warn');assert.match(stale.text,/^stale · last data /);assert.match(stale.title,/does not mean the machine is off/);
+ const stale=statusOf(mac({state:'stale',lastSampleAt:'2026-11-10T10:00:00Z',reason:'down'}));assert.equal(stale.tone,'warn');assert.match(stale.text,/^stale · last data /);assert.match(stale.title,/does not mean the device is off/);
  assert.deepEqual(['down','no-data','waiting'].map(reason=>statusOf(mac({state:'unreachable',reason})).text),Array(3).fill('telemetry not responding'));
  assert.equal(statusOf(mac({state:'unreachable',reason:'no-login'})).text,'telemetry not connected');
  assert.equal(statusOf(mac({state:'unreachable',reason:'denied'})).text,'login refused');
@@ -36,19 +36,19 @@ test('a machine\'s state: readings decide for telemetry machines, a failed read 
  // Live numbers are drawn only when there are readings, fresh or old.
  assert.deepEqual(['ok','stale','unreachable','not-installed'].map(state=>hasReadings({kind:'thermo',telemetry:{state}})),[true,true,false,false]);
  assert.equal(hasReadings({kind:'nas',telemetry:{state:'ok'}}),false);
- // How to install: an added device is connected in its dialog, a site machine in the site's files.
+ // How to install: an added device is connected in its dialog, a site device in the site's files.
  const meta={agent:'Thermo',repoUrl:TELEMETRY_REPO_URL};
  assert.match(installSteps({source:'agent'},meta)[1],/Edit device → Telemetry/);assert.match(installSteps({source:'agent',platform:'macos'},meta)[2],/Edit device → Telemetry/);assert.match(installSteps({source:'site'},meta)[2],/local\/site\.json/);assert.match(installSteps({source:'ui'},meta)[0],/Thermo/);
 });
 
-test('a tile tries the machine\'s own picture first, then the built-in one for what it is',()=>{
+test('a tile tries the device\'s own picture first, then the built-in one for what it is',()=>{
  assert.deepEqual(pictureChain({id:'studio',role:'computer',kind:'thermo',image:'/images/home/studio.jpg',picture:'/images/desktop.png'}),['/images/home/studio.jpg','/images/desktop.png','/images/generic/desktop.svg']);
  assert.deepEqual(pictureChain({id:'nas',role:'nas',kind:'nas',image:null,picture:null}),['/images/generic/nas.svg'],'the server said there is no site picture: none is asked for');
  assert.deepEqual(pictureChain({id:'old',kind:'router'}),['/images/home/old.jpg','/images/generic/router.svg'],'an older server did not say: the site picture is tried');
  assert.deepEqual(pictureChain({id:'pi',added:true,role:'other',kind:'other',image:null,picture:'/images/generic/board.svg'}),['/images/generic/board.svg','/images/generic/generic.svg']);
  assert.deepEqual(pictureChain({id:'m',added:true,role:'computer',kind:'thermo',image:'/images/home/m.jpg?v=1',picture:'/images/generic/desktop.svg'}),['/images/home/m.jpg?v=1','/images/generic/desktop.svg']);
  // Order helpers behind a moved tile.
- assert.deepEqual(orderedMachines([{id:'a'},{id:'b'},{id:'c'}],['c','a']).map(m=>m.id),['c','a','b']);
+ assert.deepEqual(orderedDevices([{id:'a'},{id:'b'},{id:'c'}],['c','a']).map(m=>m.id),['c','a','b']);
  assert.deepEqual(moveId(['a','b','c'],'c',0),['c','a','b']);assert.deepEqual(moveId(['a','b','c'],'a',9),['b','c','a']);
 });
 
@@ -57,7 +57,7 @@ test('the device form refuses what the server would, field by field',()=>{
  assert.deepEqual(validateDevice(ok,{lanCidrs:['10.0.0.0/24']}),{});
  const fields=(values,options)=>Object.keys(validateDevice({...ok,...values},options)).sort();
  assert.deepEqual(fields({name:'  '}),['name']);assert.deepEqual(fields({name:'x'.repeat(61)}),['name']);
- assert.deepEqual(fields({hostname:''}),['hostname']);assert.deepEqual(fields({hostname:''},{needHost:false}),[],'an existing machine may have no hostname');
+ assert.deepEqual(fields({hostname:''}),['hostname']);assert.deepEqual(fields({hostname:''},{needHost:false}),[],'an existing device may have no hostname');
  assert.deepEqual(fields({hostname:''},{needHost:false,thermo:true}).includes('hostname'),true,'but connecting Thermo needs one');
  assert.deepEqual(fields({hostname:'bad host'}),['hostname']);assert.deepEqual(fields({hostname:'10.0.0.30'}),[]);
  assert.deepEqual(fields({ip:'300.1.1.1'}),['ip']);assert.deepEqual(fields({ip:''}),[]);
@@ -78,7 +78,7 @@ test('the device form refuses what the server would, field by field',()=>{
 test('what the form offers is what the server accepts, and every built-in picture exists',async()=>{
  assert.deepEqual([...PICTURES],[...server.PICTURES]);
  for(const id of PICTURES){const svg=await readFile(new URL(`../public/images/generic/${id}.svg`,import.meta.url),'utf8');assert.match(svg,/^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg" viewBox="0 0 480 320"/);assert.doesNotMatch(svg,/<script|href=|url\(http/i,'a picture is a drawing, nothing else');}
- for(const role of MACHINE_ROLES)assert.ok(server.PICTURES.includes(server.defaultPicture(role)),role);
+ for(const role of DEVICE_ROLES)assert.ok(server.PICTURES.includes(server.defaultPicture(role)),role);
  // The view draws without innerHTML and without hex colours of its own: text-safe DOM, colours from tokens.
  for(const file of ['home-view.js','home-telemetry.js','home-add-device.js']){const src=await readFile(new URL(`../public/${file}`,import.meta.url),'utf8');
   assert.doesNotMatch(src,/innerHTML|insertAdjacentHTML|outerHTML/,file);assert.doesNotMatch(src,/['"`]#[0-9a-fA-F]{3,8}['"`]/,`${file}: colours belong in home.css`);}
@@ -89,7 +89,7 @@ test('what the form offers is what the server accepts, and every built-in pictur
 
 // A canvas does not follow CSS: the chart colours are read from the tokens when a chart is drawn, so a
 // theme change has to draw the live charts again (docs/design.md → Themes).
-test('machine charts are drawn again with the new colours when the theme changes',async()=>{
+test('device charts are drawn again with the new colours when the theme changes',async()=>{
  const COLORS={dark:{'--color-text':'#f3ede4','--home-cpu':'#d95926'},light:{'--color-text':'#1d1a26','--home-cpu':'#eb6834'}};
  let theme='dark';
  const before={getComputedStyle:globalThis.getComputedStyle,document:globalThis.document,ResizeObserver:globalThis.ResizeObserver};
@@ -156,7 +156,7 @@ test('the tile chart is a bare, smooth line with gaps, in the measure\'s colour 
   assert.equal(sparkOption({...spark,series:'cpu'}).series[0].lineStyle.color,'#d95926');
   // The scale: from zero to the next quarter above the peak, never tighter than 25 %.
   assert.deepEqual([o.yAxis.min,o.yAxis.max],[0,50]);
-  assert.equal(sparkOption({...spark,values:[1,2,3]}).yAxis.max,25,'an idle machine is a low line, not magnified noise');assert.equal(sparkOption({...spark,values:[96]}).yAxis.max,100);
+  assert.equal(sparkOption({...spark,values:[1,2,3]}).yAxis.max,25,'an idle device is a low line, not magnified noise');assert.equal(sparkOption({...spark,values:[96]}).yAxis.max,100);
   // Drawn on the tile, kept across refreshes, redrawn on a theme change, dropped with the tile.
   const options=[],made=[];
   const echarts={init(node){const chart={node,setOption:x=>options.push(x),dispose(){chart.gone=true;},resize(){}};made.push(chart);return chart;}};

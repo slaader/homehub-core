@@ -1,6 +1,6 @@
 // The push agent's runtimes part (docs/agent.md §5): the local LLM runtimes listed in agent.json, read through the
 // hub's own read-only adapters (server/runtime-adapters.mjs: GET only, an allowlist of paths, bounded bodies, short
-// timeouts) and only on loopback. → one machine's entry of home.runtimes, its documented fields only.
+// timeouts) and only on loopback. → one device's entry of home.runtimes, its documented fields only.
 import {createReader,readRuntime,errorCode,KIND_NAMES} from '../../server/runtime-adapters.mjs';
 import {loopbackOrigin} from '../../server/agent-report.mjs';
 

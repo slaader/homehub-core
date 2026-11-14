@@ -27,15 +27,15 @@ const TICKET_PROPS={
  refs:{type:'array',maxItems:20,items:{type:'string',minLength:1,maxLength:300},description:'Commits, pull-request links, related ticket ids.'}};
 
 export const MCP_TOOLS=Object.freeze([
- {name:'home_status',scope:'read',title:'Home Hub: machine status',
-  description:'Current state of the machines this Home Hub watches (computers, NAS, router): online/offline, CPU and GPU load in %, chip temperature in °C, memory in GB and running services.',
+ {name:'home_status',scope:'read',title:'Home Hub: device status',
+  description:'Current state of the devices this Home Hub watches (computers, NAS, router): online/offline, CPU and GPU load in %, chip temperature in °C, memory in GB and running services.',
   inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,openWorldHint:false}},
  {name:'inventory_search',scope:'read',title:'Home inventory: search',
-  description:'Search the home inventory (machines, runtimes/services, tools, models, network, outside services). Matches id, name, kind, machine, address and notes. Returns id, kind, name, machine, address and the entry hash.',
+  description:'Search the home inventory (devices, runtimes/services, tools, models, network, outside services). Matches id, name, kind, device, address and notes. Returns id, kind, name, device, address and the entry hash.',
   inputSchema:{type:'object',properties:{
-   query:{type:'string',minLength:1,maxLength:100,description:'Text to look for, e.g. a service name, a port such as "8081" or a machine id.'},
-   kind:{type:'string',maxLength:40,description:'Only entries of this kind, e.g. machine, runtime, tool.'},
-   machine:{type:'string',maxLength:64,description:'Only entries on this machine id, e.g. server or nas.'},
+   query:{type:'string',minLength:1,maxLength:100,description:'Text to look for, e.g. a service name, a port such as "8081" or a device id.'},
+   kind:{type:'string',maxLength:40,description:'Only entries of this kind, e.g. device, runtime, tool.'},
+   device:{type:'string',maxLength:64,description:'Only entries on this device id, e.g. server or nas.'},
    limit:{type:'integer',minimum:1,maximum:50,description:'Maximum results (default 20).'}},required:['query'],additionalProperties:false},
   annotations:{readOnlyHint:true,openWorldHint:false}},
  {name:'inventory_get',scope:'read',title:'Home inventory: read entry',
@@ -45,7 +45,7 @@ export const MCP_TOOLS=Object.freeze([
  {name:'inventory_update',scope:'inventory:write',title:'Home inventory: create or replace entry',
   description:'Create or replace one whole inventory entry. To change an existing entry, call inventory_get, edit the returned entry and pass its hash as base; if the entry changed in between, the update is refused and you must read it again. Omit base only to create a new entry. The checker rejects invalid entries and anything that looks like a secret: record where a password, token or key is stored, never its value.',
   inputSchema:{type:'object',properties:{
-   entry:{type:'object',description:'The complete entry (id, kind, name, machine, address, version, depends_on, notes, …).'},
+   entry:{type:'object',description:'The complete entry (id, kind, name, device, address, version, depends_on, notes, …).'},
    base:{type:'string',pattern:'^[a-f0-9]{64}$',description:'Hash from inventory_get. Required when the entry already exists.'}},required:['entry'],additionalProperties:false},
   annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false}},
  {name:'tickets_list',scope:'read',title:'Tickets: list',
@@ -141,7 +141,7 @@ export function createMcp({version='2',ctx,tools:extraTools=[],instructions=[]})
  const orientation=principal=>{
   const lines=new Map();
   for(const part of instructions)if(!part.scope||principal.scopes.includes(part.scope))lines.set(part.module,[...(lines.get(part.module)||[]),part.text]);
-  return [`Home Hub: one site's machines and their runtime stacks, an inventory of what runs where, a project tracker and design review, kept current by people and agents. You are service account "${principal.username}" with scopes: ${principal.scopes.join(', ')}. tools/list shows only what these scopes allow.${principal.permission==='write'?' Read a thing before you change it: the change takes the hash or rev you read and is refused when that is stale; then read again, never force. Never store a secret (password, token, key) here: record where it is kept.':''}`,
+  return [`Home Hub: one site's devices and their runtime stacks, an inventory of what runs where, a project tracker and design review, kept current by people and agents. You are service account "${principal.username}" with scopes: ${principal.scopes.join(', ')}. tools/list shows only what these scopes allow.${principal.permission==='write'?' Read a thing before you change it: the change takes the hash or rev you read and is refused when that is stale; then read again, never force. Never store a secret (password, token, key) here: record where it is kept.':''}`,
    ...[...lines.values()].map(parts=>parts.join(' '))].join('\n');
  };
  // Core tools first, then the tools modules registered; a name can only be claimed once (checked by the registry).
@@ -151,7 +151,7 @@ export function createMcp({version='2',ctx,tools:extraTools=[],instructions=[]})
  const run={...extraRun,
   async home_status(){
    const home=await ctx.home();
-   return {generatedAt:home.generatedAt||null,machines:(home.machines||[]).map(m=>({id:m.id,name:m.name,ip:m.ip||null,online:m.online||'unknown',
+   return {generatedAt:home.generatedAt||null,devices:(home.devices||[]).map(m=>({id:m.id,name:m.name,ip:m.ip||null,online:m.online||'unknown',
     cpuPercent:round(m.quad?.cpu),gpuPercent:round(m.quad?.gpu),chipTempC:round(m.quad?.temp),
     memoryUsedGb:gb(m.quad?.memUsed??m.memoryUsedBytes),memoryTotalGb:gb(m.quad?.memTotal??m.memoryTotalBytes),
     services:(m.services||[]).map(s=>({id:s.id,name:s.name,status:s.status||null})).slice(0,30)}))};
@@ -160,15 +160,15 @@ export function createMcp({version='2',ctx,tools:extraTools=[],instructions=[]})
    const query=text(args.query,100).toLowerCase().trim();if(!query)throw new ToolError('query must not be empty.');
    const limit=Number.isInteger(args.limit)?Math.min(50,Math.max(1,args.limit)):20;
    const doc=await inventory();
-   const hits=doc.entries.filter(e=>(!args.kind||e.kind===args.kind)&&(!args.machine||e.machine===args.machine)&&
-    [e.id,e.name,e.kind,e.machine,e.address,e.notes,e.category].filter(v=>typeof v==='string').join('\n').toLowerCase().includes(query));
-   return {updatedAt:doc.updated_at||null,count:hits.length,entries:hits.slice(0,limit).map(e=>({id:e.id,kind:e.kind,name:e.name,machine:e.machine||null,address:e.address||null,hash:entryHash(e)}))};
+   const hits=doc.entries.filter(e=>(!args.kind||e.kind===args.kind)&&(!args.device||e.device===args.device)&&
+    [e.id,e.name,e.kind,e.device,e.address,e.notes,e.category].filter(v=>typeof v==='string').join('\n').toLowerCase().includes(query));
+   return {updatedAt:doc.updated_at||null,count:hits.length,entries:hits.slice(0,limit).map(e=>({id:e.id,kind:e.kind,name:e.name,device:e.device||null,address:e.address||null,hash:entryHash(e)}))};
   },
   async inventory_get(args){
    if(typeof args.id!=='string'||!ID.test(args.id))throw new ToolError('id must be an inventory id such as server-llama-swap.');
    const doc=await inventory(),entry=doc.entries.find(e=>e.id===args.id);
    if(!entry)throw new ToolError(`No inventory entry "${args.id}". Use inventory_search to find the right id.`);
-   const dependents=doc.entries.flatMap(e=>[...(Array.isArray(e.depends_on)?e.depends_on.filter(d=>d?.id===entry.id).map(d=>({id:e.id,via:d.kind||'depends_on'})):[]),...(e.machine===entry.id?[{id:e.id,via:'runs-on'}]:[])]).slice(0,100);
+   const dependents=doc.entries.flatMap(e=>[...(Array.isArray(e.depends_on)?e.depends_on.filter(d=>d?.id===entry.id).map(d=>({id:e.id,via:d.kind||'depends_on'})):[]),...(e.device===entry.id?[{id:e.id,via:'runs-on'}]:[])]).slice(0,100);
    return {entry,hash:entryHash(entry),dependents};
   },
   async inventory_update(args,principal){

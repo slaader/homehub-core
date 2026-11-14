@@ -1,6 +1,6 @@
-// Overview → Add device / Edit device / Remove device: one dialog for a machine that is not in the site
+// Overview → Add device / Edit device / Remove device: one dialog for a device that is not in the site
 // configuration. Three parts: the picture (a built-in one, or your own with a 3:2 frame you move and resize,
-// cropped here to JPEG), what the machine is, and telemetry. Telemetry is optional, and the choices come
+// cropped here to JPEG), what the device is, and telemetry. Telemetry is optional, and the choices come
 // from the server: /api/home → telemetry.adapters lists the agents this hub can connect a device to, and
 // each one that has a form here (ADAPTER_FORMS) is offered. Connecting Thermo is checked before anything
 // is stored: "Check connection" reads the certificate fingerprint without sending anything, you confirm it
@@ -156,12 +156,12 @@ const choice=(name,value,checked,title,sub,onchange)=>el('label',{class:'had-cho
 
 // Part 1: the picture. value() → {picture: a built-in id, own: true when a new own picture was chosen,
 // keepOwn: true when the uploaded one stays, site: the site's own picture is kept}; crop() → the JPEG of a new own picture.
-// site: a machine of the site configuration, which has a third choice, the picture its site gives it (the default); its
+// site: a device of the site configuration, which has a third choice, the picture its site gives it (the default); its
 // uploaded picture is the one of its override (siteOverride.image), never the site's own file.
-function picturePart({machine,role,site=false}){
+function picturePart({device,role,site=false}){
  const info=el('span',{class:'had-dim'}),crop=cropper(()=>{info.textContent=crop.info();});
- const hadOwn=site?machine?.siteOverride?.image===true:Boolean(machine?.image);
- let picked=machine?.pictureId||null,mode=hadOwn?'own':site&&!machine?.siteOverride?.fields?.includes('picture')?'site':'builtin';
+ const hadOwn=site?device?.siteOverride?.image===true:Boolean(device?.image);
+ let picked=device?.pictureId||null,mode=hadOwn?'own':site&&!device?.siteOverride?.fields?.includes('picture')?'site':'builtin';
  const current=()=>picked||ROLE_PICTURE[role()]||'generic';
  const grid=el('div',{class:'had-pictures',role:'radiogroup','aria-label':t('Vestavěné obrázky')});
  const drawGrid=()=>grid.replaceChildren(...PICTURES.map(id=>el('label',{class:'had-picture',title:t(PICTURE_NAMES[id])},
@@ -169,8 +169,8 @@ function picturePart({machine,role,site=false}){
  const file=el('input',{type:'file',accept:'image/*','aria-label':t('Vlastní obrázek')});
  const failed=el('small',{class:'had-err',role:'alert'});
  file.addEventListener('change',async()=>{const f=file.files?.[0];if(!f)return;failed.textContent='';try{await crop.load(f);info.textContent=crop.info();}catch(e){failed.textContent=e.message;}});
- const kept=hadOwn?el('div',{class:'had-kept'},el('img',{src:machine.image,alt:''}),el('span',{},t('Teď se používá tenhle nahraný obrázek. Vyber jiný soubor, nebo přepni na vestavěný obrázek.'))):null;
- const sitePic=site?machine?.siteDefaults?.image||machine?.siteDefaults?.picture||null:null;
+ const kept=hadOwn?el('div',{class:'had-kept'},el('img',{src:device.image,alt:''}),el('span',{},t('Teď se používá tenhle nahraný obrázek. Vyber jiný soubor, nebo přepni na vestavěný obrázek.'))):null;
+ const sitePic=site?device?.siteDefaults?.image||device?.siteDefaults?.picture||null:null;
  const fromSite=site?el('div',{class:'had-kept'},sitePic?el('img',{src:sitePic,alt:''}):null,el('span',{},t('Obrázek, který stroji dává konfigurace webu (local/site.json).'))):null;
  const own=el('div',{class:'had-own'},kept,el('div',{class:'had-row'},file,info),crop.node,failed,
   el('small',{class:'had-hint'},t('Táhni rámeček, roh mění velikost (nebo šipky, Shift+šipky). Na dlaždici bude přesně to, co je v rámečku (3:2).')));
@@ -219,7 +219,7 @@ function thermoPart({host,agent,defaultPort=49286}){
 // (/api/home → telemetry.adapters, server/home-data.mjs → TELEMETRY_ADAPTERS); an adapter is offered when
 // both know it. A server from before the list is taken to support the one agent it names.
 // Part 3 for Windows: an SSH connection the hub manages itself. host() = the form's hostname or IP (the default
-// for the SSH host until it is edited), machineId = the device being edited (null when adding), current = how it
+// for the SSH host until it is edited), deviceId = the device being edited (null when adding), current = how it
 // is read now (/api/home → telemetry.connection: {mode:"managed", host, port, user, …} or {mode:"alias", target}),
 // onFacts(result) = what the test found. The connection is built step by step in a server-side draft (key, host
 // key, trust, test; server/windows-ssh.mjs); the browser never holds a private key after sending one, and only a
@@ -237,9 +237,9 @@ function copyable(label,text,hint){
 export const windowsSignature=v=>[String(v.whost||'').trim().toLowerCase(),String(v.wport||'').trim(),String(v.wuser||'').trim()].join('|');
 // os "linux": the same steps for Linux over SSH (POSIX user, ~/.ssh/authorized_keys, the read-only /proc collector),
 // through /api/home/devices/ssh/… with {os:"linux"}.
-function windowsPart({host,machineId=null,current=null,onFacts=()=>{},os='windows'}){
+function windowsPart({host,deviceId=null,current=null,onFacts=()=>{},os='windows'}){
  const linux=os==='linux',base=linux?'/api/home/devices/ssh':'/api/home/devices/windows',validUser=linux?validUnixUser:validWindowsUser;
- const created=()=>linux?(machineId?{id:machineId,os}:{os}):machineId?{id:machineId}:{};
+ const created=()=>linux?(deviceId?{id:deviceId,os}:{os}):deviceId?{id:deviceId}:{};
  const managed=current?.mode==='managed'?current:null,alias=current?.mode==='alias'?current.target:null;
  let draft=null,saved=false,followHost=!managed,testedSig=null,trustSig=null,scanned=null,busy=false;
  const whost=input({maxlength:'253',placeholder:'pc.example.lan',value:managed?.host||host()||''}),wport=input({type:'number',min:'1',max:'65535',inputmode:'numeric',value:String(managed?.port??22)}),
@@ -321,7 +321,7 @@ function windowsPart({host,machineId=null,current=null,onFacts=()=>{},os='window
     el('label',{class:'had-check'},confirm,t('Otisk sedí s tím, co ukázal Windows.')),el('div',{class:'had-row'},trust)):null);
   test.disabled=busy||!key||!nowTrusted;
  }
- // Linux: the key goes into the account's own ~/.ssh/authorized_keys; nothing else on the machine changes.
+ // Linux: the key goes into the account's own ~/.ssh/authorized_keys; nothing else on the device changes.
  function drawLinux(user,key){
   keyBox.replaceChildren(el('div',{class:'had-row'},generate,showImport),importBox,
    key?copyable(t('Veřejný klíč'),key.publicKey,t('{type} · otisk {fp}{reused}',{type:key.type,fp:key.fingerprint,reused:key.reused?' · '+t('klíč, se kterým se stroj čte teď'):''})):el('small',{class:'had-hint'},t('Klíč patří jen tomuhle spojení. Soukromou část drží server Home Hubu; tady uvidíš jen veřejnou.')));
@@ -364,8 +364,8 @@ function windowsPart({host,machineId=null,current=null,onFacts=()=>{},os='window
    section(t('5 · Vyzkoušet'),el('div',{class:'had-row'},test,message),out,
     el('small',{class:'had-hint'},linux?t('GPU a příkon se přes /proc nečtou, zůstanou prázdné. Teploty jen ty, které stroj hlásí v /sys/class/hwmon.'):t('Teploty, ventilátory a příkon Windows nehlásí, takže zůstanou prázdné.')))),
   // Editing a managed connection: its key and verified host key are shown (and reused) from the start.
-  fields,shown:()=>{void askTools();if(machineId&&managed&&!draft&&!busy){busy=true;ensureDraft().then(()=>{say('');},failed).finally(()=>{busy=false;draw();});}},
-  // The machine's address changed above: the SSH host follows it until it is edited here.
+  fields,shown:()=>{void askTools();if(deviceId&&managed&&!draft&&!busy){busy=true;ensureDraft().then(()=>{say('');},failed).finally(()=>{busy=false;draw();});}},
+  // The device's address changed above: the SSH host follows it until it is edited here.
   hostChanged:()=>{if(followHost){whost.value=host()||'';hostChanged();}},
   reset:hostChanged,setProbe:text=>{if(text)say(text);},
   value:()=>({...values(),windowsKey:Boolean(draft?.key),windowsTrusted:trusted(),windowsTested:draft?.tested?testedSig:null}),
@@ -426,7 +426,7 @@ export function endpointErrors(v,{provider}){
  return e;
 }
 export const endpointScheme=(provider,current)=>current?.scheme||(provider==='winrm'?'https':'http');
-function endpointPart({provider,host,machineId=null,current=null,onFacts=()=>{}}){
+function endpointPart({provider,host,deviceId=null,current=null,onFacts=()=>{}}){
  const spec=ENDPOINT[provider],mine=current?.mode===provider?current:null;
  const replacePresent=(node,...children)=>node.replaceChildren(...children.filter(child=>child!=null));
  let draft=null,saved=false,busy=false,testedSig=null,passwordDirty=false,cert=null,followHost=!mine;
@@ -444,7 +444,7 @@ function endpointPart({provider,host,machineId=null,current=null,onFacts=()=>{}}
   ejob:picked()?.job||'',einstance:picked()?.instance||''});
  const conn=()=>{const x=v();return {host:x.ehost.trim(),port:Number(x.eport),scheme:x.escheme,...(provider==='prometheus'?{auth:x.eauth}:{}),...(x.eauth!=='none'&&x.euser.trim()?{user:x.euser.trim()}:{}),...(x.epassword?{password:x.epassword}:{})};};
  const failed=e=>{if(e.reason==='draft-missing'){draft=null;cert=null;testedSig=null;}say(e.message);};
- async function ensureDraft(){if(draft)return draft;draft=(await post('/api/home/devices/endpoint/draft',{provider,...(machineId?{id:machineId}:{})})).draft;return draft;}
+ async function ensureDraft(){if(draft)return draft;draft=(await post('/api/home/devices/endpoint/draft',{provider,...(deviceId?{id:deviceId}:{})})).draft;return draft;}
  const run=async(button,label,fn)=>{if(busy)return;busy=true;say('');const text=button.textContent;button.disabled=true;button.textContent=label;
   try{await fn();}catch(e){failed(e);}finally{busy=false;button.disabled=false;button.textContent=text;draw();}};
  const confirm=el('input',{type:'checkbox'});
@@ -554,38 +554,38 @@ export const telemetryChoices=meta=>(Array.isArray(meta?.adapters)?meta.adapters
 export const choicesFor=(offered,platform)=>{const fit=platform&&platform!=='other'?offered.filter(a=>!a.platform||a.platform===platform):offered;
  return [...fit].sort((a,b)=>Number(b.recommended)-Number(a.recommended));};
 
-// machine = null adds a device; a machine from /api/home (added:true) edits it. meta = /api/home → telemetry.
-// A machine of the site configuration (source "site") opens the same dialog as its site editor: the picture (the
+// device = null adds a device; an added device from /api/home (added:true) edits it. meta = /api/home → telemetry.
+// A device of the site configuration (source "site") opens the same dialog as its site editor: the picture (the
 // site's, a built-in one or an own one), its name, address and hardware as the owner's override over the site's values
 // (POST /api/home/devices/site; each field says when it differs from the site and what the site says; Reset to site
 // defaults drops them all), and its telemetry where the site allows one (telemetryEditable: no thermoId, not the router).
 // Its id, role, system (when the site names one) and the collectors' wiring stay in local/site.json, which is never
-// written; it cannot be removed. Telemetry offers the agent-less providers (Thermo for a site machine is the site files'
+// written; it cannot be removed. Telemetry offers the agent-less providers (Thermo for a site device is the site files'
 // business), with the system to choose when the site does not name one; a Thermo Mac or the router says who reads it.
 // focus: 'telemetry' opens with the telemetry part. onSaved() after everything asked for is stored.
 // Telemetry is chosen among what fits the system (macOS: Thermo; Windows: SSH or WinRM; Linux: Node Exporter
 // (recommended), Prometheus or SSH); with no system said, every adapter is offered. Role is not platform.
 // A device read by an agent-less provider keeps its id and history when its connection is changed or switched to
 // another provider: switching is a deliberate choice, and saving it deletes the old connection's secrets.
-function deviceDialog({machine=null,meta,focus,onSaved}){
- const adding=!machine,siteMode=Boolean(machine&&machine.source==='site'),siteTelemetry=siteMode&&machine.telemetryEditable===true,agent=meta?.agent||'Thermo',lan=site().lanCidrs||[],offered=telemetryChoices(meta).filter(a=>!siteMode||a.id!=='thermo');
- const tel=machine?.telemetry||{},feed=machine&&Object.hasOwn(FEED_PLATFORM,tel.provider)?tel.provider:null,viaWindows=feed==='windows';
- const p=machine?.props||{},connected=Boolean(machine&&!feed&&tel.thermoId===machine.id&&tel.reason!=='no-login');
+function deviceDialog({device=null,meta,focus,onSaved}){
+ const adding=!device,siteMode=Boolean(device&&device.source==='site'),siteTelemetry=siteMode&&device.telemetryEditable===true,agent=meta?.agent||'Thermo',lan=site().lanCidrs||[],offered=telemetryChoices(meta).filter(a=>!siteMode||a.id!=='thermo');
+ const tel=device?.telemetry||{},feed=device&&Object.hasOwn(FEED_PLATFORM,tel.provider)?tel.provider:null,viaWindows=feed==='windows';
+ const p=device?.props||{},connected=Boolean(device&&!feed&&tel.thermoId===device.id&&tel.reason!=='no-login');
  const nameOf=id=>offered.find(a=>a.id===id)?.name||id;
  // retarget: a connected agent-less device is being changed (same provider) or switched (another one of its system).
- let hash=machine?.hash||null,retarget=Boolean(feed)&&focus==='telemetry',chosen=retarget?feed:null;
+ let hash=device?.hash||null,retarget=Boolean(feed)&&focus==='telemetry',chosen=retarget?feed:null;
  const wantThermo=()=>chosen==='thermo'&&!connected,wantFeed=()=>Boolean(chosen&&Object.hasOwn(FEED_PLATFORM,chosen))&&(!feed||retarget);
  const status=el('p',{class:'had-msg',role:'status'});
  const say=(text,error=false)=>{status.textContent=text||'';status.classList.toggle('error',error);};
- const name=input({required:'',maxlength:'60',placeholder:t('Mac mini (pracovna)'),value:machine?.name||''}),host=input({maxlength:'253',placeholder:'mini.example.lan',value:machine?.hostname||''}),
-  ip=input({maxlength:'15',placeholder:'10.0.0.30',inputmode:'decimal',value:machine?.ip||''}),cpu=input({maxlength:'60',placeholder:'10c M4',value:p.cpu||''}),gpu=input({maxlength:'40',placeholder:'10c',value:p.gpu&&p.gpu!=='—'?p.gpu:''}),
+ const name=input({required:'',maxlength:'60',placeholder:t('Mac mini (pracovna)'),value:device?.name||''}),host=input({maxlength:'253',placeholder:'mini.example.lan',value:device?.hostname||''}),
+  ip=input({maxlength:'15',placeholder:'10.0.0.30',inputmode:'decimal',value:device?.ip||''}),cpu=input({maxlength:'60',placeholder:'10c M4',value:p.cpu||''}),gpu=input({maxlength:'40',placeholder:'10c',value:p.gpu&&p.gpu!=='—'?p.gpu:''}),
   ram=input({type:'number',min:'1',max:'65536',step:'1',placeholder:'32',value:p.ramGb??''}),disk=input({type:'number',min:'1',step:'1',placeholder:'1000',value:p.diskTotalBytes?Math.round(p.diskTotalBytes/1e9):''});
- const role=el('select',{},ROLES.map(([id,label])=>el('option',{value:id,selected:(machine?.role||'computer')===id?'':null},t(label))));
- // A machine read by an agent-less provider keeps its system until it is disconnected.
- // A site machine: the system is chosen here only when site.json does not name one; only systems read without an agent.
- const platformOptions=siteMode&&!machine.platform?PLATFORMS.filter(([id])=>['','windows','linux'].includes(id)):PLATFORMS;
- const platform=el('select',{disabled:feed||(siteMode&&machine.platform)?'':null},platformOptions.map(([id,label])=>el('option',{value:id,selected:(machine?.platform||(feed?FEED_PLATFORM[feed]:''))===id?'':null},t(label))));
- const picture=picturePart({machine,role:()=>role.value,site:siteMode});
+ const role=el('select',{},ROLES.map(([id,label])=>el('option',{value:id,selected:(device?.role||'computer')===id?'':null},t(label))));
+ // A device read by an agent-less provider keeps its system until it is disconnected.
+ // A site device: the system is chosen here only when site.json does not name one; only systems read without an agent.
+ const platformOptions=siteMode&&!device.platform?PLATFORMS.filter(([id])=>['','windows','linux'].includes(id)):PLATFORMS;
+ const platform=el('select',{disabled:feed||(siteMode&&device.platform)?'':null},platformOptions.map(([id,label])=>el('option',{value:id,selected:(device?.platform||(feed?FEED_PLATFORM[feed]:''))===id?'':null},t(label))));
+ const picture=picturePart({device,role:()=>role.value,site:siteMode});
  role.addEventListener('change',()=>picture.roleChanged());
  const where=()=>host.value.trim()||ip.value.trim();
  // What a successful test found fills the hardware fields that are still empty. Linux volumes are never summed into a
@@ -593,20 +593,20 @@ function deviceDialog({machine=null,meta,focus,onSaved}){
  const fill=r=>{if(siteMode)return;if(!cpu.value.trim()&&r.cpu?.name)cpu.value=r.cpu.name.replace(/\s+/g,' ').slice(0,60);if(!gpu.value.trim()&&r.gpus?.[0])gpu.value=String(r.gpus[0]).slice(0,40);
   if(!ram.value&&r.memTotal)ram.value=String(Math.round(r.memTotal/GiB));
   if(!disk.value&&r.volumes?.length&&!r.disks&&!r.interfaces)disk.value=String(Math.round(r.volumes.reduce((a,v)=>a+(v.total||0),0)/GB));};
- // How the machine is read now: /api/home → telemetry.connection (an older Windows alias also from telemetry.target).
+ // How the device is read now: /api/home → telemetry.connection (an older Windows alias also from telemetry.target).
  const currentConn=feed?(tel.connection||(viaWindows&&tel.target?{mode:'alias',target:tel.target}:null)):null;
  const parts={};
  const part=id=>parts[id]??=id==='thermo'?thermoPart({host:where,agent,defaultPort:offered.find(a=>a.id==='thermo')?.defaultPort})
-  :ADAPTER_FORMS[id]({host:where,machineId:machine?.id||null,current:id===feed?currentConn:null,onFacts:fill});
+  :ADAPTER_FORMS[id]({host:where,deviceId:device?.id||null,current:id===feed?currentConn:null,onFacts:fill});
  host.addEventListener('input',()=>{for(const x of Object.values(parts)){x.reset?.();x.hostChanged?.();}});
- // A site machine: what each field holds now, what the site says, and whether the owner's override sets it.
- const form0=siteMode?siteForm(machine):null;
+ // A site device: what each field holds now, what the site says, and whether the owner's override sets it.
+ const form0=siteMode?siteForm(device):null;
  const siteHint=key=>form0?.overridden(key)?t('Upraveno; konfigurace webu: {value}',{value:form0.defaultText(key)}):null;
  const fields={name:field(t('Název'),name,siteHint('name')),hostname:field(t('Hostname nebo IP'),host,siteMode?siteHint('hostname')||t('jen k zobrazení; sondy a čtení dál používají adresu z konfigurace webu'):adding?null:t('kde je stroj v síti k zastižení')),
   ip:field(t('IP adresa'),ip,siteHint('ip')||(lan.length?t('v síti {networks}',{networks:lan.join(', ')}):t('když výše je jméno'))),role:field(t('Role'),role),
   platform:field(t('Systém'),platform,feed?t('čte se přes {name}; jiný systém až po odpojení telemetrie',{name:nameOf(feed)}):null),
   cpu:field(t('CPU'),cpu,siteHint('cpu')),gpu:field(t('GPU'),gpu,siteHint('gpu')),ramGb:field(t('RAM (GB)'),ram,siteHint('ramGb')),diskGb:field(t('Disk (GB)'),disk,siteHint('diskGb'))};
- // The form's values as it opened: a site machine's field the person did not touch keeps what it was (the site's, or
+ // The form's values as it opened: a site device's field the person did not touch keeps what it was (the site's, or
  // the override's), so opening and saving never turns a value the hub collected into an override.
  const initial={name:name.value,hostname:host.value,ip:ip.value,cpu:cpu.value,gpu:gpu.value,ramGb:String(ram.value),diskGb:String(disk.value)};
  const touched=key=>String(({name,hostname:host,ip,cpu,gpu,ramGb:ram,diskGb:disk})[key].value)!==initial[key];
@@ -627,13 +627,13 @@ function deviceDialog({machine=null,meta,focus,onSaved}){
  platform.addEventListener('change',()=>{drawChoices();sync();});
  const disconnect=el('button',{type:'button',class:'ui-button hv-danger',onclick:async()=>{
   if(!await confirmDialog({title:t('Odpojit telemetrii?'),body:t('Home Hub zapomene účet {name} tohoto zařízení a přestane z něj číst. Historie metrik zůstane na disku.',{name:agent}),confirm:t('Odpojit'),danger:true,
-   action:()=>post('/api/home/devices/thermo',{id:machine.id,thermo:null})}))return;
+   action:()=>post('/api/home/devices/thermo',{id:device.id,thermo:null})}))return;
   dialog.close();onSaved?.();}},t('Odpojit telemetrii'));
  const disconnectFeed=el('button',{type:'button',class:'ui-button hv-danger',onclick:async()=>{
   const body=viaWindows?t('Home Hub zapomene spojení SSH tohoto zařízení i jeho klíč a přestane z něj číst. Na Windows se nic nemění: veřejný klíč Home Hubu tam z authorized_keys odeber sám, pokud chceš. Historie metrik zůstane na disku.')
    :t('Home Hub zapomene spojení {name} tohoto zařízení i jeho klíč nebo heslo a přestane z něj číst. Na stroji se nic nemění. Historie metrik zůstane na disku.',{name:nameOf(feed)});
   if(!await confirmDialog({title:t('Odpojit telemetrii?'),body,confirm:t('Odpojit'),danger:true,
-   action:()=>viaWindows?post('/api/home/devices/windows',{id:machine.id,windows:null}):post('/api/home/devices/telemetry',{id:machine.id,telemetry:null})}))return;
+   action:()=>viaWindows?post('/api/home/devices/windows',{id:device.id,windows:null}):post('/api/home/devices/telemetry',{id:device.id,telemetry:null})}))return;
   dialog.close();onSaved?.();}},t('Odpojit telemetrii'));
  const change=el('button',{type:'button',class:'ui-button',onclick:()=>{retarget=!retarget;chosen=retarget?feed:null;change.textContent=retarget?t('Nechat jak je'):t('Změnit nebo přepnout');choices.hidden=!retarget;drawChoices();sync();}},retarget?t('Nechat jak je'):t('Změnit nebo přepnout'));
  const describe=c=>!c?t('Zařízení se čte přes {name}.',{name:nameOf(feed)})
@@ -644,10 +644,10 @@ function deviceDialog({machine=null,meta,focus,onSaved}){
  drawChoices();
  if(feed)choices.hidden=!retarget;
  const telTitle=t('3 · Telemetrie');
- // A site machine whose telemetry is not this dialog's: who reads it, and that editing its name or address changes none of it.
+ // A site device whose telemetry is not this dialog's: who reads it, and that editing its name or address changes none of it.
  const siteTelemetryNote=siteMode&&!siteTelemetry?el('section',{class:'had-sec',id:'had-telemetry'},el('h3',{},telTitle),
-  el('p',{class:'had-note'},machine.role==='router'?t('Router hlásí adaptér routeru (Administrace → Integrace), ne telemetrie hostitele; tady se nepřipojuje. Úprava názvu nebo adresy na jeho čtení nic nemění.')
-   :machine.telemetry?.thermoId||machine.kind==='thermo'?t('Živá čísla čte agent Thermo podle konfigurace webu (thermoId) a přihlášení v souborech webu; tady se nemění. Úprava názvu nebo adresy na čtení nic nemění.')
+  el('p',{class:'had-note'},device.role==='router'?t('Router hlásí adaptér routeru (Administrace → Integrace), ne telemetrie hostitele; tady se nepřipojuje. Úprava názvu nebo adresy na jeho čtení nic nemění.')
+   :device.telemetry?.thermoId||device.kind==='thermo'?t('Živá čísla čte agent Thermo podle konfigurace webu (thermoId) a přihlášení v souborech webu; tady se nemění. Úprava názvu nebo adresy na čtení nic nemění.')
    :t('Telemetrii tohoto stroje určuje konfigurace webu; tady se nemění.'))):null;
  const telemetry=siteTelemetryNote||(feed
   ?el('section',{class:'had-sec',id:'had-telemetry'},el('h3',{},telTitle),el('p',{class:'had-note'},describe(currentConn)),
@@ -660,14 +660,14 @@ function deviceDialog({machine=null,meta,focus,onSaved}){
     :t('Tenhle Home Hub zatím neumí připojit žádného telemetrického agenta. Zařízení bude mít dlaždici bez živých čísel.')),
    offered.length?choices:null,holder));
  if(siteMode&&!feed&&!fitting().length)holder.replaceChildren(el('p',{class:'had-note'},t('Pro systém, který uvádí konfigurace webu, tu žádný zdroj bez agenta není.')));
- if(!feed&&!connected&&focus==='telemetry'){const fit=fitting();chosen=(machine?.platform&&fit[0]?.id)||fit[0]?.id||null;drawChoices();}
+ if(!feed&&!connected&&focus==='telemetry'){const fit=fitting();chosen=(device?.platform&&fit[0]?.id)||fit[0]?.id||null;drawChoices();}
  sync();
  const save=el('button',{type:'submit',class:'ui-button primary'},adding?t('Přidat zařízení'):t('Uložit'));
  const values=()=>({name:name.value,hostname:host.value,ip:ip.value,cpu:cpu.value,gpu:gpu.value,ramGb:ram.value,diskGb:disk.value,...(wantThermo()?part('thermo').value():{}),...(chosen==='windows'&&wantFeed()?part('windows').value():{})});
  function check(){
   const feedPart=wantFeed()&&chosen!=='windows'?part(chosen):null;
   const errors=validateDevice(values(),{lanCidrs:lan,needHost:adding,thermo:wantThermo(),windows:wantFeed()&&chosen==='windows',feed:feedPart?()=>feedPart.errors():null});
-  // A site machine: a field the person left as it was is the site's (or the override's) business, not this form's.
+  // A site device: a field the person left as it was is the site's (or the override's) business, not this form's.
   if(siteMode)for(const key of Object.keys(fields))if(!Object.hasOwn(initial,key)||!touched(key))delete errors[key];
   const shownParts=chosen&&parts[chosen]?[parts[chosen]]:[];
   const all={...fields,...Object.assign({},...shownParts.map(x=>x.fields))};
@@ -694,27 +694,27 @@ function deviceDialog({machine=null,meta,focus,onSaved}){
    try{if(pic.own)await upload(created.id);}finally{onSaved?.(created);}
    return;
   }
-  // A site machine: the owner's override (never the machine API, never site.json), its own picture, then the connection.
+  // A site device: the owner's override (never the device API, never site.json), its own picture, then the connection.
   if(siteMode){
    const body=form0.body({name,hostname:host,ip,cpu,gpu,ramGb:ram,diskGb:disk},touched,pic);
    try{
-    if(JSON.stringify(body)!==JSON.stringify(form0.current())){say(t('Ukládám…'));await post('/api/home/devices/site',{id:machine.id,base:machine.siteOverride?.hash,machine:body});}
-    if(pic.own)await upload(machine.id);
-    else if(picture.hadOwn&&!pic.keepOwn)await post('/api/home/devices/image/remove',{id:machine.id});
-    if(viaFeed){say(t('Ukládám spojení…'));await (chosen==='windows'?post('/api/home/devices/windows',{id:machine.id,windows:x.body()}):post('/api/home/devices/telemetry',{id:machine.id,telemetry:x.body()}));x.saved();}
+    if(JSON.stringify(body)!==JSON.stringify(form0.current())){say(t('Ukládám…'));await post('/api/home/devices/site',{id:device.id,base:device.siteOverride?.hash,device:body});}
+    if(pic.own)await upload(device.id);
+    else if(picture.hadOwn&&!pic.keepOwn)await post('/api/home/devices/image/remove',{id:device.id});
+    if(viaFeed){say(t('Ukládám spojení…'));await (chosen==='windows'?post('/api/home/devices/windows',{id:device.id,windows:x.body()}):post('/api/home/devices/telemetry',{id:device.id,telemetry:x.body()}));x.saved();}
    }finally{onSaved?.();}
    return;
   }
   say(t('Ukládám…'));
   // Connecting an agent-less provider makes the platform the one it reads; the server checks the same.
-  const saved=await post('/api/home/devices',{machine:{id:machine.id,name:name.value.trim(),hostname:host.value.trim(),ip:ip.value.trim()||null,role:role.value,hardware:hardware(),thermoId:feed?null:machine.telemetry?.thermoId??null,picture:pic.picture,
+  const saved=await post('/api/home/devices',{device:{id:device.id,name:name.value.trim(),hostname:host.value.trim(),ip:ip.value.trim()||null,role:role.value,hardware:hardware(),thermoId:feed?null:device.telemetry?.thermoId??null,picture:pic.picture,
    platform:viaFeed?FEED_PLATFORM[chosen]:feed?FEED_PLATFORM[feed]:platform.value||null},...(hash?{base:hash}:{})});
   hash=saved.hash;
   try{
-   if(pic.own)await upload(machine.id);
-   else if(machine.image&&!pic.keepOwn)await post('/api/home/devices/image/remove',{id:machine.id});
-   if(wantThermo()){say(t('Přihlašuji se do Thermo a ukládám…'));await post('/api/home/devices/thermo',{id:machine.id,thermo:x.body()});x.clear();}
-   if(viaFeed){say(t('Ukládám spojení…'));await (chosen==='windows'?post('/api/home/devices/windows',{id:machine.id,windows:x.body()}):post('/api/home/devices/telemetry',{id:machine.id,telemetry:x.body()}));x.saved();}
+   if(pic.own)await upload(device.id);
+   else if(device.image&&!pic.keepOwn)await post('/api/home/devices/image/remove',{id:device.id});
+   if(wantThermo()){say(t('Přihlašuji se do Thermo a ukládám…'));await post('/api/home/devices/thermo',{id:device.id,thermo:x.body()});x.clear();}
+   if(viaFeed){say(t('Ukládám spojení…'));await (chosen==='windows'?post('/api/home/devices/windows',{id:device.id,windows:x.body()}):post('/api/home/devices/telemetry',{id:device.id,telemetry:x.body()}));x.saved();}
   }finally{onSaved?.();}
  }
  const form=el('form',{class:'had-form',novalidate:'',onsubmit:async e=>{
@@ -723,7 +723,7 @@ function deviceDialog({machine=null,meta,focus,onSaved}){
   try{await submit();dialog.close();}catch(err){say(err.message,true);save.disabled=false;}
  }},
   picture.node,
-  siteMode?siteIdentity(machine,fields,!(feed||machine.platform),{siteTelemetry,onReset:resetToSite})
+  siteMode?siteIdentity(device,fields,!(feed||device.platform),{siteTelemetry,onReset:resetToSite})
   :el('section',{class:'had-sec'},el('h3',{},t('2 · Co to je')),
    el('div',{class:'had-grid two'},fields.name.node,fields.role.node,fields.hostname.node,fields.ip.node,fields.platform.node),
    el('div',{class:'had-grid four'},fields.cpu.node,fields.gpu.node,fields.ramGb.node,fields.diskGb.node)),
@@ -731,13 +731,13 @@ function deviceDialog({machine=null,meta,focus,onSaved}){
   el('div',{class:'had-foot'},status,el('div',{class:'had-actions'},el('button',{type:'button',class:'ui-button',onclick:()=>dialog.close()},t('Zrušit')),save)));
  // Back to the site's values: the override and the uploaded picture go (the telemetry connection stays as it is).
  async function resetToSite(){
-  if(!await confirmDialog({title:t('Obnovit výchozí z konfigurace webu?'),body:t('Název, adresa, hardware a obrázek stroje {name} budou zase podle konfigurace webu (local/site.json); nahraný obrázek se smaže. Telemetrie, služby a historie zůstanou.',{name:machine.name}),
-   confirm:t('Obnovit výchozí'),action:()=>post('/api/home/devices/site/reset',{id:machine.id,base:machine.siteOverride?.hash})}))return;
+  if(!await confirmDialog({title:t('Obnovit výchozí z konfigurace webu?'),body:t('Název, adresa, hardware a obrázek stroje {name} budou zase podle konfigurace webu (local/site.json); nahraný obrázek se smaže. Telemetrie, služby a historie zůstanou.',{name:device.name}),
+   confirm:t('Obnovit výchozí'),action:()=>post('/api/home/devices/site/reset',{id:device.id,base:device.siteOverride?.hash})}))return;
   dialog.close();onSaved?.();
  }
  const title=el('h2',{id:'had-title'},adding?t('Přidat zařízení'):siteMode?(focus==='telemetry'||focus==='site'?t('Nastavení telemetrie'):t('Upravit stroj')):t('Upravit zařízení'));
  const dialog=el('dialog',{class:'had','aria-labelledby':'had-title'},
-  el('div',{class:'had-head'},el('div',{},title,el('p',{class:'had-dim'},adding?t('Zařízení se objeví jako další dlaždice v přehledu.'):siteMode?t('{name} · id {id} · z konfigurace webu',{name:machine.name,id:machine.id}):t('{name} · id {id}',{name:machine.name,id:machine.id}))),
+  el('div',{class:'had-head'},el('div',{},title,el('p',{class:'had-dim'},adding?t('Zařízení se objeví jako další dlaždice v přehledu.'):siteMode?t('{name} · id {id} · z konfigurace webu',{name:device.name,id:device.id}):t('{name} · id {id}',{name:device.name,id:device.id}))),
    el('button',{type:'button',class:'had-close','aria-label':t('Zavřít'),onclick:()=>dialog.close()},'×')),form);
  dialog.addEventListener('close',()=>{parts.thermo?.clear();picture.dispose();for(const x of Object.values(parts))x.dispose?.();dialog.remove();});
  document.body.append(dialog);dialog.showModal();
@@ -745,12 +745,12 @@ function deviceDialog({machine=null,meta,focus,onSaved}){
  return dialog;
 }
 export const openAddDevice=({meta,onSaved})=>deviceDialog({meta,onSaved});
-export const openEditDevice=({machine,meta,focus,onSaved})=>deviceDialog({machine,meta,focus,onSaved});
-// A machine of the site configuration, in its site editor: Edit machine opens at its name; its telemetry settings open the
+export const openEditDevice=({device,meta,focus,onSaved})=>deviceDialog({device,meta,focus,onSaved});
+// A device of the site configuration, in its site editor: Edit device opens at its name; its telemetry settings open the
 // same dialog at the telemetry part (unconnected: at the provider choice; connected: at what reads it now).
-export const openSiteEdit=({machine,meta,onSaved})=>deviceDialog({machine,meta,onSaved});
-export const openSiteTelemetry=({machine,meta,onSaved})=>deviceDialog({machine,meta,focus:machine?.telemetryBinding?'site':'telemetry',onSaved});
-// What the site editor needs of a site machine (GET /api/home → siteOverride, siteDefaults):
+export const openSiteEdit=({device,meta,onSaved})=>deviceDialog({device,meta,onSaved});
+export const openSiteTelemetry=({device,meta,onSaved})=>deviceDialog({device,meta,focus:device?.telemetryBinding?'site':'telemetry',onSaved});
+// What the site editor needs of a site device (GET /api/home → siteOverride, siteDefaults):
 //   overridden(key)  the owner's override sets this form field     defaultText(key)  what the site says, as text
 //   current()        the override as stored now (what the form would send unchanged)
 //   body(inputs, touched, picture)  the override to save: a field the person changed, or one already overridden, is sent;
@@ -773,7 +773,7 @@ export function siteForm(m){
    return assemble(k=>touched(k)?typed(k):overridden(k)?shown[k==='diskGb'?'diskTotalBytes':k]:undefined,!pic.site&&!pic.own&&!pic.keepOwn?pic.picture:null);
   }};
 }
-// A site machine in its editor: its name, address and hardware (the owner's override over the site's values), what stays
+// A site device in its editor: its name, address and hardware (the owner's override over the site's values), what stays
 // in the site configuration (id, role, the system when the site names one, the collectors' wiring), and the reset.
 function siteIdentity(m,fields,choosable,{siteTelemetry,onReset}){
  const role=ROLES.find(([id])=>id===m.role)?.[1]||'Jiné zařízení',system=PLATFORMS.find(([id])=>id===(m.platform||''))?.[1];
@@ -803,7 +803,7 @@ export function confirmDialog({title,body,confirm,danger=false,action}){
   document.body.append(dialog);dialog.showModal();
  });
 }
-// Removing an added device (its page → Remove device). Machines from the site configuration cannot be removed.
-export const removeDevice=machine=>confirmDialog({title:t('Odebrat {name}?',{name:machine.name}),danger:true,confirm:t('Odebrat zařízení'),
+// Removing an added device (its page → Remove device). Devices from the site configuration cannot be removed.
+export const removeDevice=device=>confirmDialog({title:t('Odebrat {name}?',{name:device.name}),danger:true,confirm:t('Odebrat zařízení'),
  body:t('Zmizí z přehledu i se svým obrázkem, uloženým přihlášením k telemetrii a zveřejněným runtime stackem. Historie metrik zůstane na disku.'),
- action:()=>post('/api/home/devices/remove',{id:machine.id,base:machine.hash})});
+ action:()=>post('/api/home/devices/remove',{id:device.id,base:device.hash})});

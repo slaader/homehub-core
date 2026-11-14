@@ -1,9 +1,9 @@
-// Overview: machine tiles (picture, state, hardware, live gauges, a small utilisation chart) that are put
-// in order by dragging them, and one page per machine (telemetry charts and volumes, the runtime stack as a
+// Overview: device tiles (picture, state, hardware, live gauges, a small utilisation chart) that are put
+// in order by dragging them, and one page per device (telemetry charts and volumes, the runtime stack as a
 // position-bound grid, and the local LLM runtimes when a provider reports them).
-// Renders /api/home. Machines come from the site configuration, from "Add device" here, or from an agent
-// over MCP (machine_upsert); an empty hub says so and how to fill it. Live numbers need the telemetry agent
-// (home-telemetry.js says what a machine shows without it). Deep link: #host-<id>/<stack block>.
+// Renders /api/home. Devices come from the site configuration, from "Add device" here, or from an agent
+// over MCP (device_upsert); an empty hub says so and how to fill it. Live numbers need the telemetry agent
+// (home-telemetry.js says what a device shows without it). Deep link: #host-<id>/<stack block>.
 // Text-safe DOM only: el() for HTML, svg() for drawings; colours come from the design tokens (home.css).
 import {el,date,onLeave} from './views.js';
 import {SERIES,renderCharts,disposeCharts,loadECharts,level,renderSpark,disposeSparks} from './home-charts.js';
@@ -16,10 +16,10 @@ import {timeZone} from './site.js';
 import {emptyState,pageHeader,toast,icon} from './ui.js';
 import {statusPill,hasReadings,tileNotice,telemetryNotice,runtimesSection,nativePanel,familyOf,FEED_NAMES} from './home-telemetry.js';
 import {agentLine,agentSection} from './home-agent.js';
-// Adding, editing and removing devices needs write access (the server checks it again). A machine of the site
+// Adding, editing and removing devices needs write access (the server checks it again). A device of the site
 // configuration is edited (its display metadata, over the site's values) only after a password sign-in: canEditSite.
 let canEdit=false,canEditSite=false,canAdmin=false;
-let cache=null,historyCache=new Map(),state={machine:null,blk:null,range:'30m'};
+let cache=null,historyCache=new Map(),state={device:null,blk:null,range:'30m'};
 // A different account must not be shown the previous one's tiles or history.
 onSessionReset(()=>{cache=null;historyCache.clear();});
 
@@ -36,9 +36,9 @@ async function loadOrder(){
   lost(r);return r.status===403?store('',{order:null,available:false}):{order:null,available:false};}
  catch{return {order:null,available:false};}
 }
-export function orderedMachines(machines,order){
- if(!Array.isArray(order))return machines;const rank=id=>{const i=order.indexOf(id);return i<0?order.length:i;};
- return machines.map((m,i)=>({m,i})).sort((a,b)=>rank(a.m.id)-rank(b.m.id)||a.i-b.i).map(x=>x.m);
+export function orderedDevices(devices,order){
+ if(!Array.isArray(order))return devices;const rank=id=>{const i=order.indexOf(id);return i<0?order.length:i;};
+ return devices.map((m,i)=>({m,i})).sort((a,b)=>rank(a.m.id)-rank(b.m.id)||a.i-b.i).map(x=>x.m);
 }
 // Move `id` to position `to` (0-based) in the list of ids.
 export function moveId(ids,id,to){const out=ids.filter(x=>x!==id);out.splice(Math.max(0,Math.min(out.length,to)),0,id);return out;}
@@ -56,9 +56,9 @@ const orderSaver=createOrderSaver({cache:orderCache,send:sendOrder});
 const SVG_NS='http://www.w3.org/2000/svg';
 function svg(tag,attrs={},...children){const n=document.createElementNS(SVG_NS,tag);for(const [k,v] of Object.entries(attrs))if(v!==undefined&&v!==null)n.setAttribute(k,v);n.append(...children.flat().filter(Boolean));return n;}
 async function load(){const lost=authGuard(),r=await fetch('/api/home');if(!r.ok){lost(r);throw new Error('home');}cache=await r.json();return cache;}
-async function loadHistory(machine,range,fresh=false){
- const key=`${machine}:${range}`;const hit=historyCache.get(key);if(!fresh&&hit&&Date.now()-hit.at<30000)return hit.value;
- const lost=authGuard(),r=await fetch(`/api/home/history?machine=${machine}&range=${range}`);if(!r.ok){lost(r);throw new Error('history');}
+async function loadHistory(device,range,fresh=false){
+ const key=`${device}:${range}`;const hit=historyCache.get(key);if(!fresh&&hit&&Date.now()-hit.at<30000)return hit.value;
+ const lost=authGuard(),r=await fetch(`/api/home/history?device=${device}&range=${range}`);if(!r.ok){lost(r);throw new Error('history');}
  const value=await r.json();historyCache.set(key,{at:Date.now(),value});return value;
 }
 const GiB=1073741824;
@@ -66,7 +66,7 @@ const size=b=>b==null?null:b>=1e12?`${Math.round(b/1e11)/10} TB`:`${Math.round(b
 // Memory pressure from Thermo (build 97): 0 normal · 1 warning · 2 critical.
 export const pressureName=v=>v==null?null:v>=2?t('kritický'):v>=1?t('zvýšený'):t('normální');
 const pressureLevel=v=>v==null?'':v>=2?'crit':v>=1?'hot':'';
-// The picture of a machine: its own (uploaded, or the site's), else the built-in one for what it is.
+// The picture of a device: its own (uploaded, or the site's), else the built-in one for what it is.
 // The next candidate is tried when one fails to load.
 const GENERIC={computer:'desktop',nas:'nas',router:'router'};
 export function pictureChain(m){
@@ -135,16 +135,16 @@ function propsLine(m){
 const hostLine=m=>[m.hostname,m.ip&&m.ip!==m.hostname?m.ip:null].filter(Boolean).join(' · ');
 // What decides a tile's structure; while it stays the same a refresh only swaps the numbers.
 const tileShape=m=>[m.kind,hasReadings(m),m.name,hostLine(m),m.image||m.picture||'',JSON.stringify(m.props||{}),m.spark?.series||'',sortable,Boolean(m.agent),Boolean(editorOf(m))].join('|');
-// Who edits what: an added device opens its own dialog, a machine of the site configuration the site editor (its display
+// Who edits what: an added device opens its own dialog, a device of the site configuration the site editor (its display
 // metadata over the site's values, and its telemetry where the site allows it). null = this account may not.
 let reloadHome=null;
 function editorOf(m){
  const onSaved=()=>reloadHome?.();
- if(m.added&&canEdit)return ()=>openEditDevice({machine:m,meta:cache?.telemetry,onSaved});
- if(m.source==='site'&&canEditSite)return ()=>openSiteEdit({machine:m,meta:cache?.telemetry,onSaved});
+ if(m.added&&canEdit)return ()=>openEditDevice({device:m,meta:cache?.telemetry,onSaved});
+ if(m.source==='site'&&canEditSite)return ()=>openSiteEdit({device:m,meta:cache?.telemetry,onSaved});
  return null;
 }
-// A tile is two siblings in one card: the link to the machine's page (all of the tile's content, so the whole card opens
+// A tile is two siblings in one card: the link to the device's page (all of the tile's content, so the whole card opens
 // it, by click or Enter) and, for someone who may edit it, an Edit button laid over its corner. A button is never put
 // inside the link. The card (class hv-tile, data-id) is what home-drag.js moves; the link holds the focus.
 function tile(m){
@@ -156,7 +156,7 @@ function tile(m){
    el('div',{class:'hv-tile-head'},el('h3',{},m.name),statusPill(m)),
    el('p',{class:'hv-host'},hostLine(m)||' '),
    propsLine(m),
-   // The push agent, for a machine that holds a key (home-agent.js); its online state does not follow it.
+   // The push agent, for a device that holds a key (home-agent.js); its online state does not follow it.
    agentLine(m,{refused:agentRefused()}),
    el('div',{class:'hv-live'},liveBlock(m)),
    tileSpark(m)));
@@ -189,7 +189,7 @@ function tileSpark(m){
  return el('div',{class:'hv-trend',role:'img','aria-label':label,title:label},chart);
 }
 
-// --- machine page: runtime stack ---------------------------------------------------------------
+// --- device page: runtime stack ---------------------------------------------------------------
 function overlap(a,b){return !(a.col1<b.col0||b.col1<a.col0);}
 // Layers of a published stack carry keys (translated here); a site's own stack names its layers itself.
 const LAYER_LABEL={input:'VSTUP',tool:'NÁSTROJ',runtime:'RUNTIME',engine:'ENGINE',hardware:'HARDWARE'};
@@ -229,23 +229,23 @@ function engineModels(stack,blk,sec){
 }
 // Detail panel beside the grid: empty hint until a block is picked, then the block's story.
 let animatePanel=false;
-export function stackPanel(machine,blk){
+export function stackPanel(device,blk){
  const still=animatePanel?'':' still';
  if(!blk)return el('aside',{class:'hv-panel empty'+still},
   el('div',{class:'hv-panel-icon','aria-hidden':'true'},el('i'),el('i'),el('i')),
   el('b',{},t('Vyber blok v diagramu')),
   el('span',{},t('Ukáže se, na čem stojí, co je nad ním, port, stav a modely.')));
- const stack=machine.stack;
+ const stack=device.stack;
  const below=stack.blocks.filter(b=>b.layer===blk.layer+1&&overlap(b,blk));
  const above=stack.blocks.filter(b=>b.layer===blk.layer-1&&overlap(b,blk));
  const models=blk.models||[];
- const chip=b=>el('button',{type:'button',class:`hv-chip ${b.state==='off'?'off':''}`,onclick:()=>selectBlock(machine,b.id)},t(b.title));
+ const chip=b=>el('button',{type:'button',class:`hv-chip ${b.state==='off'?'off':''}`,onclick:()=>selectBlock(device,b.id)},t(b.title));
  const sec=(label,...body)=>el('div',{class:'hv-panel-sec'},el('span',{class:'hv-k'},label),...body);
  const resident=blk.hw?residentOn(stack,blk):null;
  return el('aside',{class:`hv-panel${still}${blk.engine||blk.hw?'':engineClass(stack.cols[blk.col0])}`},
   el('div',{class:'hv-panel-head'},
    el('div',{},el('span',{class:'hv-k'},layerName(stack,blk.layer)),el('h3',{},t(blk.title))),
-   el('button',{type:'button',class:'hv-close','aria-label':t('Zavřít detail'),onclick:()=>selectBlock(machine,blk.id)},'×')),
+   el('button',{type:'button',class:'hv-close','aria-label':t('Zavřít detail'),onclick:()=>selectBlock(device,blk.id)},'×')),
   el('div',{class:'hv-badges'},
    blk.hw||blk.engine||isEngine(stack,blk)?null:el('span',{class:`hv-status ${blk.state==='off'?'dim':'ok'}`},el('i',{'aria-hidden':'true'}),blk.state==='off'?t('vypnuto'):t('běží')),
    blk.port?el('span',{class:'hv-badge'},say(blk.port,blk.portT)):null,
@@ -260,8 +260,8 @@ export function stackPanel(machine,blk){
   :isEngine(stack,blk)?engineModels(stack,blk,sec)
   :sec(t('Modely · {n}',{n:models.length}),models.length?el('ul',{class:'hv-models'},models.map(modelItem)):el('span',{class:'hv-none'},t('žádné'))));
 }
-function stackGrid(machine){
- const stack=machine.stack,cols=stack.cols.length;
+function stackGrid(device){
+ const stack=device.stack,cols=stack.cols.length;
  const grid=el('div',{class:'hv-stack'});grid.style.gridTemplateColumns=`64px repeat(${cols},minmax(84px,1fr))`;
  const layerCount=Math.max(...stack.blocks.map(b=>b.layer))+1,chosen=stack.blocks.find(x=>x.id===state.blk)||null;
  for(let L=0;L<layerCount;L++){
@@ -273,7 +273,7 @@ function stackGrid(machine){
    if(!b){const gap=el('div',{class:'hv-gap'},t('NIC'));gap.style.gridColumnStart=String(c+2);grid.append(gap);continue;}
    if(b.col0!==c)continue;
    const sel=state.blk===b.id?' sel':'',rel=chosen&&chosen.id!==b.id&&overlap(chosen,b)?' rel':'';
-   const btn=el('button',{type:'button',class:`hv-blk${b.engine?' engine':''}${b.hw?' hw':''}${b.state==='off'?' off':''}${sel}${rel}${b.engine||b.hw?'':engineClass(stack.cols[b.col0])}`,'aria-pressed':String(state.blk===b.id),onclick:()=>selectBlock(machine,b.id)},
+   const btn=el('button',{type:'button',class:`hv-blk${b.engine?' engine':''}${b.hw?' hw':''}${b.state==='off'?' off':''}${sel}${rel}${b.engine||b.hw?'':engineClass(stack.cols[b.col0])}`,'aria-pressed':String(state.blk===b.id),onclick:()=>selectBlock(device,b.id)},
     el('b',{},t(b.title)),el('small',{},say(b.port||'',b.portT)),b.state!=='off'&&!b.hw&&!b.engine?el('i',{class:'dot','aria-hidden':'true'}):null);
    btn.style.gridColumnStart=String(c+2);btn.style.gridColumnEnd=String(b.col1+3);grid.append(btn);
   }
@@ -283,18 +283,18 @@ function stackGrid(machine){
    ...Object.entries(stack.engines||{}).map(([k,v])=>el('span',{class:engineClass(k).trim()},el('i',{'aria-hidden':'true'}),t(v))),
    el('span',{},el('i',{class:'gap','aria-hidden':'true'}),t('nic mezi tím')),
    el('span',{},el('i',{class:'gap off','aria-hidden':'true'}),t('vypnuto (schopnost bez bloku)')))),
-  stackPanel(machine,chosen));
+  stackPanel(device,chosen));
 }
-function selectBlock(machine,id){
+function selectBlock(device,id){
  state.blk=state.blk===id?null:id;
- history.replaceState(null,'',`#host-${machine.id}${state.blk?'/'+state.blk:''}`);
+ history.replaceState(null,'',`#host-${device.id}${state.blk?'/'+state.blk:''}`);
  const old=document.querySelector('#hv-stack-slot');
- animatePanel=true;const fresh=stackGrid(machine);animatePanel=false;
+ animatePanel=true;const fresh=stackGrid(device);animatePanel=false;
  if(old)old.replaceWith(fresh);
 }
-addEventListener('keydown',e=>{if(e.key==='Escape'&&state.blk&&document.querySelector('#hv-stack-slot')){const m=cache?.machines.find(x=>location.hash.startsWith(`#host-${x.id}`));if(m)selectBlock(m,state.blk);}});
+addEventListener('keydown',e=>{if(e.key==='Escape'&&state.blk&&document.querySelector('#hv-stack-slot')){const m=cache?.devices.find(x=>location.hash.startsWith(`#host-${x.id}`));if(m)selectBlock(m,state.blk);}});
 const stamp=iso=>{const ms=Date.parse(iso);return Number.isFinite(ms)?new Intl.DateTimeFormat(locale(),{day:'numeric',month:'numeric',hour:'2-digit',minute:'2-digit',timeZone:timeZone()}).format(new Date(ms)):'';};
-// Where the drawn stack comes from: published by an agent, collected on the machine, or the site configuration.
+// Where the drawn stack comes from: published by an agent, collected on the device, or the site configuration.
 function stackSource(m){
  const s=m.stack;if(!s)return null;
  if(s.source==='published')return t('zveřejnil {who} · {when}',{who:s.publishedBy||'API',when:stamp(s.publishedAt)});
@@ -305,16 +305,16 @@ function stackSection(m){
  if(m.stack)return section(t('Runtime stack'),stackSource(m),stackGrid(m));
  return section(t('Runtime stack'),null,emptyState({icon:'▤',title:t('Runtime stack zatím není'),
   body:t('Vrstvený diagram toho, co na stroji běží: od API, které volají klienti, přes routery a servery modelů až po čip. Zveřejní ho agent, který stroj zná.'),
-  agentPrompt:t('Popiš runtime stack stroje „{id}“ v Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a home:write. Zjisti, co na stroji běží (brány a API, llama-swap, Ollama, LM Studio, llama.cpp, vLLM a podobně, na jakých portech, s jakými modely) a zveřejni to nástrojem runtime_publish: vrstvy input, tool, runtime, engine, hardware, jeden sloupec na rodinu enginu. Nezapisuj žádná hesla, tokeny ani klíče. Nakonec výsledek ověř nástrojem machine_list s runtime: true.',{id:m.id})}));
+  agentPrompt:t('Popiš runtime stack stroje „{id}“ v Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a home:write. Zjisti, co na stroji běží (brány a API, llama-swap, Ollama, LM Studio, llama.cpp, vLLM a podobně, na jakých portech, s jakými modely) a zveřejni to nástrojem runtime_publish: vrstvy input, tool, runtime, engine, hardware, jeden sloupec na rodinu enginu. Nezapisuj žádná hesla, tokeny ani klíče. Nakonec výsledek ověř nástrojem device_list s runtime: true.',{id:m.id})}));
 }
 
-// --- machine page ------------------------------------------------------------------------------
+// --- device page ------------------------------------------------------------------------------
 const RANGES={'30m':'30 min','7d':'7 dní','30d':'30 dní','6m':'6 měsíců'};
 const ROLES={computer:'počítač',nas:'NAS',router:'router',other:'jiné zařízení'};
 const PLATFORM_NAMES={macos:'macOS',windows:'Windows',linux:'Linux',other:'jiný systém'};
 // Windows reports no power or temperature: those charts would stay empty, so its page leaves them out, and
 // its memory is the system RAM alone (the GPU's own memory is in the Windows panel).
-// Linux: no GPU and no power (those sources do not measure them); temperature only when the machine reports any.
+// Linux: no GPU and no power (those sources do not measure them); temperature only when the device reports any.
 const ramOnly=d=>d.key==='mem'?{...d,title:'Paměť · RAM',extra:undefined,liveGpu:undefined}:d;
 const seriesFor=m=>familyOf(m)==='windows'?SERIES.filter(d=>d.key!=='power'&&d.key!=='temp').map(ramOnly)
  :familyOf(m)==='linux'?SERIES.filter(d=>d.key!=='power'&&d.key!=='gpu'&&(d.key!=='temp'||m.native?.temps?.length)).map(ramOnly):SERIES;
@@ -327,7 +327,7 @@ function sourceBadge(m){
  const when=m.createdAt?stamp(m.createdAt):'';
  return el('span',{class:'hv-badge',title:when||null},m.source==='agent'?t('přidal agent {name}',{name:m.createdBy||'API'}):t('přidáno v přehledu'));
 }
-// Machine header: picture and name left, hardware right — small labels, highlighted values.
+// Device header: picture and name left, hardware right — small labels, highlighted values.
 function hostProps(m){
  const p=m.props||{};
  const items=[['CPU',p.cpu],['GPU',p.gpu&&p.gpu!=='—'?p.gpu:null],['RAM',p.ramGb!=null?`${p.ramGb} GB`:null],[p.pools?t('Pooly'):'Disk',size(p.diskTotalBytes)],['IP',m.ip]].filter(([,v])=>v);
@@ -348,62 +348,62 @@ function services(m){
 }
 // What must be drawn again when it changes; anything else is refreshed in place.
 const hostShape=m=>[m.name,hostLine(m),m.telemetry?.state,m.telemetry?.reason,m.telemetry?.provider||'',m.telemetry?.detail||'',m.platform||'',m.hash||'',m.image||m.picture||'',Boolean(m.stack),m.stack?.source,m.stack?.hash||'',Boolean(m.runtimes),canEdit,canEditSite,m.telemetryBinding?.provider||'',m.telemetryEditable===true,m.siteOverride?.hash||'',JSON.stringify(m.props||{}),Boolean(m.agent)].join('|');
-function renderChild(slot,machine,{repaint:again,focus}={}){
+function renderChild(slot,device,{repaint:again,focus}={}){
  disposeCharts();childCards=null;
  const meta=cache?.telemetry;
  const reload=()=>{historyCache.clear();return load().then(()=>{built=false;again?.();}).catch(()=>{});};
- const edit=part=>openEditDevice({machine,meta,focus:part,onSaved:reload});
- // A machine of the site configuration: Edit machine changes its display metadata over the site's values (never
+ const edit=part=>openEditDevice({device,meta,focus:part,onSaved:reload});
+ // A device of the site configuration: Edit device changes its display metadata over the site's values (never
  // site.json; it cannot be removed here), and its telemetry connection where the site allows one (no thermoId, not the
  // router: the server says so, telemetryEditable). Both open the same site editor.
- const siteEdit=machine.source==='site'&&canEditSite?()=>openSiteEdit({machine,meta,onSaved:reload}):null;
- const siteTelemetry=machine.source==='site'&&machine.telemetryEditable===true&&canEditSite?()=>openSiteTelemetry({machine,meta,onSaved:reload}):null;
- const actions=machine.added&&canEdit?el('div',{class:'ui-head-actions'},
+ const siteEdit=device.source==='site'&&canEditSite?()=>openSiteEdit({device,meta,onSaved:reload}):null;
+ const siteTelemetry=device.source==='site'&&device.telemetryEditable===true&&canEditSite?()=>openSiteTelemetry({device,meta,onSaved:reload}):null;
+ const actions=device.added&&canEdit?el('div',{class:'ui-head-actions'},
   el('button',{type:'button',class:'ui-button','data-action':'edit',onclick:()=>edit()},icon('pencil'),t('Upravit zařízení')),
   el('button',{type:'button',class:'ui-button hv-danger',onclick:async e=>{const b=e.currentTarget;b.disabled=true;
-    try{if(await removeDevice(machine)){cache=null;historyCache.clear();location.hash='#overview';}else b.disabled=false;}catch{b.disabled=false;}}},t('Odebrat zařízení')))
+    try{if(await removeDevice(device)){cache=null;historyCache.clear();location.hash='#overview';}else b.disabled=false;}catch{b.disabled=false;}}},t('Odebrat zařízení')))
   :siteEdit?el('div',{class:'ui-head-actions'},el('button',{type:'button',class:'ui-button','data-action':'edit',onclick:siteEdit},icon('pencil'),t('Upravit stroj')),
-   siteTelemetry?el('button',{type:'button',class:'ui-button','data-action':'site-telemetry',onclick:siteTelemetry},machine.telemetryBinding?t('Nastavení telemetrie'):t('Připojit telemetrii')):null):null;
+   siteTelemetry?el('button',{type:'button',class:'ui-button','data-action':'site-telemetry',onclick:siteTelemetry},device.telemetryBinding?t('Nastavení telemetrie'):t('Připojit telemetrii')):null):null;
  const head=el('header',{class:'hv-host-head'},
   el('a',{href:'#overview',class:'hv-back'},t('← přehled')),
-  el('div',{class:'hv-host-main'},art(machine,'hv-host-art'),
-   el('div',{class:'hv-host-title'},el('h1',{},machine.name),el('p',{class:'hv-host'},hostLine(machine)||' '),
-    el('div',{class:'hv-badges'},statusPill(machine),el('span',{class:'hv-badge'},t(ROLES[machine.role]||ROLES.other)),machine.platform?el('span',{class:'hv-badge'},t(PLATFORM_NAMES[machine.platform]||machine.platform)):null,sourceBadge(machine),
-     machine.collectedAt?el('span',{class:'hv-badge'},t('sebráno {when}',{when:date(machine.collectedAt)})):null,
-     // What is set up for this machine across the hub (telemetry, backups, versions, …): Integrations → Machines.
-     canAdmin?el('a',{class:'hv-badge hv-badge-link',href:`#integrations/machine/${encodeURIComponent(machine.id)}`},t('Integrace stroje →')):null)),
+  el('div',{class:'hv-host-main'},art(device,'hv-host-art'),
+   el('div',{class:'hv-host-title'},el('h1',{},device.name),el('p',{class:'hv-host'},hostLine(device)||' '),
+    el('div',{class:'hv-badges'},statusPill(device),el('span',{class:'hv-badge'},t(ROLES[device.role]||ROLES.other)),device.platform?el('span',{class:'hv-badge'},t(PLATFORM_NAMES[device.platform]||device.platform)):null,sourceBadge(device),
+     device.collectedAt?el('span',{class:'hv-badge'},t('sebráno {when}',{when:date(device.collectedAt)})):null,
+     // What is set up for this device across the hub (telemetry, backups, versions, …): Integrations → Devices.
+     canAdmin?el('a',{class:'hv-badge hv-badge-link',href:`#integrations/device/${encodeURIComponent(device.id)}`},t('Integrace stroje →')):null)),
    actions),
-  hostProps(machine));
- const notice=telemetryNotice(machine,meta,{onConnect:machine.added&&canEdit?()=>edit('telemetry'):siteTelemetry});
+  hostProps(device));
+ const notice=telemetryNotice(device,meta,{onConnect:device.added&&canEdit?()=>edit('telemetry'):siteTelemetry});
  const telemetry=[notice];
- if(hasReadings(machine)){
+ if(hasReadings(device)){
   const bar=el('div',{class:'hv-ranges',role:'group','aria-label':t('Období grafů')},...Object.entries(RANGES).map(([r,label])=>el('button',{type:'button',class:state.range===r?'on':'','aria-pressed':String(state.range===r),
-   onclick:()=>{state.range=r;renderChild(slot,latest(machine.id)||machine,{repaint:again});},onmouseenter:()=>void loadHistory(machine.id,r).catch(()=>{})},t(label))));
+   onclick:()=>{state.range=r;renderChild(slot,latest(device.id)||device,{repaint:again});},onmouseenter:()=>void loadHistory(device.id,r).catch(()=>{})},t(label))));
   const source=el('span',{class:'hv-source'});
-  const cards=seriesFor(machine).map(def=>{const value=el('div',{class:'hv-val'},'–'),sub=el('div',{class:'hv-chart-sub'}),node=el('div',{class:'hv-chart'});
+  const cards=seriesFor(device).map(def=>{const value=el('div',{class:'hv-val'},'–'),sub=el('div',{class:'hv-chart-sub'}),node=el('div',{class:'hv-chart'});
    // Two lines in one chart (memory and what the GPU holds of it) need a legend; one line is named by the title.
    const legend=def.extra?el('div',{class:'hv-chart-legend'},el('span',{class:`key-${def.key}`},el('i',{'aria-hidden':'true'}),t(def.title).split(' ·')[0]),el('span',{class:'key-gpu'},el('i',{'aria-hidden':'true'}),t(def.extra.name))):null;
    return {def,value,sub,node,card:el('article',{class:`hv-card key-${def.key}`},el('h3',{},el('i',{'aria-hidden':'true'}),t(def.title)),value,sub,legend,node)};});
   childCards=cards;
-  telemetry.push(el('div',{class:'hv-chartbar'},bar,source),el('div',{class:'hv-charts'},cards.map(c=>c.card)),volumes(machine),nativePanel(machine),services(machine));
+  telemetry.push(el('div',{class:'hv-chartbar'},bar,source),el('div',{class:'hv-charts'},cards.map(c=>c.card)),volumes(device),nativePanel(device),services(device));
   const gen=++viewGen;
-  loadHistory(machine.id,state.range).then(h=>{if(gen!==viewGen)return;
-   source.textContent=historyCaption(h);return renderCharts(cards,h,state.range,{...machine.quad,telemetryProvider:familyOf(machine)==='windows'?'windows':machine.telemetry?.provider});})
+  loadHistory(device.id,state.range).then(h=>{if(gen!==viewGen)return;
+   source.textContent=historyCaption(h);return renderCharts(cards,h,state.range,{...device.quad,telemetryProvider:familyOf(device)==='windows'?'windows':device.telemetry?.provider});})
    .catch(()=>{source.textContent=t('Historie nedostupná.');});
- }else if(machine.kind==='router'){
-  const q=machine.quad;
+ }else if(device.kind==='router'){
+  const q=device.quad;
   telemetry.push(el('p',{class:'hv-note'},t('Router nemá telemetrického agenta: počty klientů dodává adaptér routeru.')),q?cells([[t('Klienti'),q.clients],['Wi-Fi',q.wifi]]):null);
- }else telemetry.push(services(machine));
+ }else telemetry.push(services(device));
  slot.replaceChildren(...[head,disabledBar(),
-  section(t('Telemetrie'),hasReadings(machine)?machine.telemetry?.provider==='windows'?t('Živá čísla a historie z Windows přes SSH: čítače výkonu, bez agenta, jedno čtení za interval.'):familyOf(machine)?t('Živá čísla a historie z {name}, bez agenta, jedno čtení za interval.',{name:FEED_NAMES[machine.telemetry.provider]}):t('Živá čísla a historie z agenta {name}.',{name:meta?.agent||'Thermo'}):null,telemetry),
-  // The push agent, for a machine that holds a key (home-agent.js).
-  agentSection(machine,{admin:canAdmin,refused:agentRefused()}),
-  stackSection(machine),
-  // Only where a provider reports on this machine; a machine nobody reports on has no such section.
-  machine.runtimes?section(t('Lokální LLM runtimy'),null,runtimesSection(machine,meta)):null].filter(Boolean));
- slot.dataset.shape=hostShape(machine);
- // The router's machine page ends with the adapter's census and health (router-view.js, module "router").
- if(machine.kind==='router')import('./router-view.js').then(v=>{if(slot.isConnected)slot.append(v.routerPanel());}).catch(()=>{});
+  section(t('Telemetrie'),hasReadings(device)?device.telemetry?.provider==='windows'?t('Živá čísla a historie z Windows přes SSH: čítače výkonu, bez agenta, jedno čtení za interval.'):familyOf(device)?t('Živá čísla a historie z {name}, bez agenta, jedno čtení za interval.',{name:FEED_NAMES[device.telemetry.provider]}):t('Živá čísla a historie z agenta {name}.',{name:meta?.agent||'Thermo'}):null,telemetry),
+  // The push agent, for a device that holds a key (home-agent.js).
+  agentSection(device,{admin:canAdmin,refused:agentRefused()}),
+  stackSection(device),
+  // Only where a provider reports on this device; a device nobody reports on has no such section.
+  device.runtimes?section(t('Lokální LLM runtimy'),null,runtimesSection(device,meta)):null].filter(Boolean));
+ slot.dataset.shape=hostShape(device);
+ // The router's device page ends with the adapter's census and health (router-view.js, module "router").
+ if(device.kind==='router')import('./router-view.js').then(v=>{if(slot.isConnected)slot.append(v.routerPanel());}).catch(()=>{});
  if(focus)slot.querySelector('h1')?.focus?.();
 }
 // The chart bar's caption: the history's source, and since when it has data. Set on every refresh as well, so a
@@ -411,26 +411,26 @@ function renderChild(slot,machine,{repaint:again,focus}={}){
 const historyCaption=h=>{const since=h.coverageSeconds?new Date(Date.now()-h.coverageSeconds*1000):null;
  return `${t(h.source||'')}${h.complete===false&&since?t(' · data teprve od {when}',{when:stamp(since.toISOString())}):''}`;};
 let childCards=null,viewGen=0,built=false;
-const latest=id=>cache?.machines.find(x=>x.id===id);
-// Machine page refresh: new numbers into the existing chart instances (no rebuild, no jump).
-function refreshChild(slot,machine,again){
- if(slot.dataset.shape!==hostShape(machine)){renderChild(slot,machine,{repaint:again});return;}
- slot.querySelector('.hv-host-head .hv-status')?.replaceWith(statusPill(machine));
- const agent=slot.querySelector('.hv-agent-sec'),agentNow=agentSection(machine,{admin:canAdmin,refused:agentRefused()});if(agent&&agentNow)agent.replaceWith(agentNow);
- const native=slot.querySelector('.hv-native'),updatedNative=nativePanel(machine);
+const latest=id=>cache?.devices.find(x=>x.id===id);
+// Device page refresh: new numbers into the existing chart instances (no rebuild, no jump).
+function refreshChild(slot,device,again){
+ if(slot.dataset.shape!==hostShape(device)){renderChild(slot,device,{repaint:again});return;}
+ slot.querySelector('.hv-host-head .hv-status')?.replaceWith(statusPill(device));
+ const agent=slot.querySelector('.hv-agent-sec'),agentNow=agentSection(device,{admin:canAdmin,refused:agentRefused()});if(agent&&agentNow)agent.replaceWith(agentNow);
+ const native=slot.querySelector('.hv-native'),updatedNative=nativePanel(device);
  if(native&&updatedNative)native.replaceWith(updatedNative);
  if(childCards){const gen=viewGen,cards=childCards,range=state.range;
-  loadHistory(machine.id,range,true).then(h=>{if(gen!==viewGen)return;const caption=slot.querySelector('.hv-source');if(caption)caption.textContent=historyCaption(h);return renderCharts(cards,h,range,{...machine.quad,telemetryProvider:familyOf(machine)==='windows'?'windows':machine.telemetry?.provider},{keep:true});}).catch(()=>{});}
+  loadHistory(device.id,range,true).then(h=>{if(gen!==viewGen)return;const caption=slot.querySelector('.hv-source');if(caption)caption.textContent=historyCaption(h);return renderCharts(cards,h,range,{...device.quad,telemetryProvider:familyOf(device)==='windows'?'windows':device.telemetry?.provider},{keep:true});}).catch(()=>{});}
  // Services/models change while the page is open: rebuild the stack from the latest data
  // (selection kept, no panel animation).
- const old=document.querySelector('#hv-stack-slot');if(old&&machine.stack)old.replaceWith(stackGrid(machine));
+ const old=document.querySelector('#hv-stack-slot');if(old&&device.stack)old.replaceWith(stackGrid(device));
  // The runtimes too: what is loaded and the counters change; an opened model list stays open.
  const cards=slot.querySelector('.hv-runtimes');
- if(cards&&machine.runtimes)cards.replaceWith(runtimesSection(machine,cache?.telemetry,{open:[...cards.querySelectorAll('details[open]')].map(d=>d.dataset.id)}));
+ if(cards&&device.runtimes)cards.replaceWith(runtimesSection(device,cache?.telemetry,{open:[...cards.querySelectorAll('details[open]')].map(d=>d.dataset.id)}));
 }
 
 // --- overview ----------------------------------------------------------------------------------
-// A hub without machines: what belongs here and the two ways to fill it (by hand, or through an agent).
+// A hub without devices: what belongs here and the two ways to fill it (by hand, or through an agent).
 // Integrations an administrator turned off (Administration → Integrations): one line saying their data
 // is missing on purpose, with a link for those who may change it.
 // The hub refuses push agent reports while the integration agent.reports is turned off (home-agent.js says so).
@@ -448,13 +448,13 @@ function emptyOverview(add){
   steps:[canEdit?t('Ručně: tlačítkem Přidat zařízení zadej název, adresu a vyber obrázek. Živá čísla připojíš kdykoli později.'):t('Ručně: zařízení přidává účet s právem zápisu tlačítkem Přidat zařízení.'),
    t('Přes agenta: v Uživatelé a API založ servisní účet se scopes read a home:write, připoj kódovacího agenta přes MCP (níže) a dej mu zadání.'),
    t('Živé metriky jsou volitelné: dodává je agent {name}, který běží na každém stroji. Dlaždice bez něj řekne, jak ho nainstalovat.',{name})],
-  agentPrompt:t('Naplň přehled tohoto Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a home:write. Nejdřív zavolej machine_list: uvidíš, co v přehledu je, jaké obrázky a role jsou k dispozici a do jakých sítí musí IP adresy patřit. Zeptej se mě, jaké stroje mám (název, hostname, IP, role: computer, nas, router nebo other, CPU, GPU, RAM), a každý založ nástrojem machine_upsert s vhodným obrázkem. Ke stroji, na kterém běží lokální AI, zveřejni runtime stack nástrojem runtime_publish (vrstvy input, tool, runtime, engine, hardware). Do žádného pole nepiš hesla, tokeny ani klíče. Nakonec zavolej machine_list a shrň, co jsi přidal.'),
+  agentPrompt:t('Naplň přehled tohoto Home Hubu. Připoj se přes MCP klíčem servisního účtu se scopes read a home:write. Nejdřív zavolej device_list: uvidíš, co v přehledu je, jaké obrázky a role jsou k dispozici a do jakých sítí musí IP adresy patřit. Zeptej se mě, jaké stroje mám (název, hostname, IP, role: computer, nas, router nebo other, CPU, GPU, RAM), a každý založ nástrojem device_upsert s vhodným obrázkem. Ke stroji, na kterém běží lokální AI, zveřejni runtime stack nástrojem runtime_publish (vrstvy input, tool, runtime, engine, hardware). Do žádného pole nepiš hesla, tokeny ani klíče. Nakonec zavolej device_list a shrň, co jsi přidal.'),
   mcpSnippet:true,
   actions:[canEdit?{label:t('⊕ Přidat zařízení'),onclick:add,primary:true}:null,canAdmin?{label:t('Uživatelé a API'),href:'#access'}:null]});
 }
 const summary=list=>{const counted=list.filter(m=>m.telemetry?.state!=='not-applicable'),ok=counted.filter(m=>m.telemetry?.state==='ok').length;
  return `${tp(list.length,'{n} stroj|{n} stroje|{n} strojů')} · ${t('telemetrie běží na {ok} z {all}',{ok,all:counted.length})}`;};
-export function homeView(machineId,me){
+export function homeView(deviceId,me){
  canEdit=me?.canWrite===true;canEditSite=canEdit&&me?.authKind==='session';canAdmin=me?.canAdmin===true;
  viewGen++;disposeCharts();disposeSparks();dragger?.destroy();dragger=null;childCards=null;built=false;
  onLeave(()=>{dragger?.destroy();dragger=null;disposeSparks();});
@@ -467,10 +467,10 @@ export function homeView(machineId,me){
  const paint=()=>{
   notifyShell();
   if(!cache){slot.replaceChildren(loading(t('Načítám data domovské stránky…')));return;}
-  if(!machineId){
+  if(!deviceId){
    if(dragger?.busy())return;// a tile is in the hand: this refresh waits for the drop
-   const saved=orderCache.get(),list=orderedMachines(cache.machines,saved?.order);
-   // A hub without machines yet: say what belongs here and how to add it.
+   const saved=orderCache.get(),list=orderedDevices(cache.devices,saved?.order);
+   // A hub without devices yet: say what belongs here and how to add it.
    if(!list.length){const head=pageHeader({eyebrow:t('Domov'),title:t('Přehled'),lead:t('Stroje, jejich stav a živé metriky na jednom místě.')});head.append(headActions());
     slot.replaceChildren(...[head,disabledBar(),emptyOverview(add)].filter(Boolean));built=false;return;}
    const movable=saved?.available===true&&list.length>1,ids=list.map(m=>m.id);
@@ -489,12 +489,12 @@ export function homeView(machineId,me){
    const hint=sortable?el('p',{id:'hv-order-hint',class:'ui-sr'},t('Pořadí změníš přetažením dlaždice, na dotykové obrazovce po jejím podržení, nebo šipkami na vybrané dlaždici.')):null;
    slot.replaceChildren(...[head,disabledBar(),hint,g].filter(Boolean));built=true;return;
   }
-  const machine=cache.machines.find(m=>m.id===machineId);
-  if(!machine){slot.replaceChildren(emptyState({icon:'◌',title:t('Neznámý stroj.'),body:t('Stroj s tímhle id v přehledu není. Mohl být odebrán.'),actions:[{label:t('← přehled'),href:'#overview',primary:true}]}));return;}
-  if(built&&slot.querySelector('.hv-host-head')){refreshChild(slot,machine,paint);return;}
+  const device=cache.devices.find(m=>m.id===deviceId);
+  if(!device){slot.replaceChildren(emptyState({icon:'◌',title:t('Neznámý stroj.'),body:t('Stroj s tímhle id v přehledu není. Mohl být odebrán.'),actions:[{label:t('← přehled'),href:'#overview',primary:true}]}));return;}
+  if(built&&slot.querySelector('.hv-host-head')){refreshChild(slot,device,paint);return;}
   const hash=(location.hash.split('/')[1]||'').replace(/[^a-z0-9_-]/g,'');
   state.blk=hash||null;
-  renderChild(slot,machine,{repaint:paint});built=true;
+  renderChild(slot,device,{repaint:paint});built=true;
  };
  repaint=paint;
  // A tile was dropped somewhere else, or moved with the arrow keys (home-drag.js): the new order shows at
@@ -512,10 +512,10 @@ export function homeView(machineId,me){
   if(gen!==viewGen||!slot.isConnected){if(outcome==='failed')repaint?.();return;}
   said?.close();
   if(outcome==='failed'){paint();said=toast.bad(t('Pořadí se neuložilo, dlaždice jsou zpátky.'));return;}
-  const name=cache?.machines.find(m=>m.id===id)?.name||id,pos=(orderCache.get()?.order||[]).indexOf(id)+1;
+  const name=cache?.devices.find(m=>m.id===id)?.name||id,pos=(orderCache.get()?.order||[]).indexOf(id)+1;
   said=toast.good(pos?t('{name} je {pos}. v pořadí. Uloženo pro tvůj účet.',{name,pos}):t('Pořadí uloženo pro tvůj účet.'),{timeout:8000,action:{label:t('Vrátit zpět'),onclick:()=>commit(before||[],id)}});
  }
- const orderReady=machineId||orderCache.get()?null:loadOrder();
+ const orderReady=deviceId||orderCache.get()?null:loadOrder();
  const failed=()=>slot.replaceChildren(emptyState({icon:'⚠',title:t('Data nejsou dostupná.'),body:t('Home Hub teď přehled nevrátil. Zkus to znovu.'),actions:[{label:t('Zkusit znovu'),onclick:()=>{slot.replaceChildren(loading(t('Načítám data domovské stránky…')));load().then(paint).catch(failed);},primary:true}]}));
  if(cache&&!orderReady)paint();else{slot.replaceChildren(loading(t('Načítám data domovské stránky…')));Promise.all([cache||load(),orderReady]).then(()=>{paint();arm();}).catch(failed);}
  // Browser refresh follows the hub's Thermo pull interval (15/30/60 s).
@@ -544,5 +544,5 @@ export async function refreshHome(){
  if(!r.ok){lost(r);throw new Error('refresh');}cache=await r.json();historyCache.clear();repaint?.();return cache;
 }
 // Page entry for the shell (app.js): every page module exports (context) => Node, and the server's UI
-// manifest names it. context = {me, page, sub, machine, site}.
-export const homePage=({machine,me})=>homeView(machine||undefined,me);
+// manifest names it. context = {me, page, sub, device, site}.
+export const homePage=({device,me})=>homeView(device||undefined,me);

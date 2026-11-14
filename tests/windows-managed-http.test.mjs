@@ -1,6 +1,6 @@
 // App-managed SSH over HTTP and in the device store: the dialog's whole flow (draft, key, host key, trust, test,
 // save, edit, cancel, disconnect, remove), with every OpenSSH tool faked (options.sshRun) so nothing connects.
-// What it guards: private keys never leave the server (no API reply, devices.json, machine_list, error), a
+// What it guards: private keys never leave the server (no API reply, devices.json, device_list, error), a
 // stale or foreign draft never saves, agents and API keys reach none of it, an older alias set-up keeps working.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -81,13 +81,13 @@ test('HTTP: add a Windows device with a key the hub made; nothing private leaves
  const hosts=await readFile(path.join(h.dir,'home','windows-hosts.json'),'utf8'),devicesFile=await readFile(path.join(h.dir,'home','devices.json'),'utf8');
  assert.match(hosts,/"mode": "managed"/);assert.doesNotMatch(hosts,/PRIVATE KEY/);assert.ok(!hosts.includes(pemLine));
  assert.ok(!devicesFile.includes(keyFile)&&!devicesFile.includes('pc.example.lan')&&!devicesFile.includes('alice'),'devices.json holds no connection');
- // The signed-in UI sees public facts; agents (machine_list) not even those; no reply anywhere has the private key or a path.
+ // The signed-in UI sees public facts; agents (device_list) not even those; no reply anywhere has the private key or a path.
  const home=await (await fetch(`${h.origin}/api/home`,{headers:h.admin})).json();
- const tile=home.machines.find(m=>m.id==='office-pc');
+ const tile=home.devices.find(m=>m.id==='office-pc');
  assert.deepEqual(tile.telemetry.connection,{mode:'managed',host:'pc.example.lan',port:22,user:'alice',keyFingerprint:r.key.fingerprint,hostKeyFingerprint:cfg.managed.hostKey.fingerprint});
  const list=await (await fetch(`${h.origin}/api/home/devices`,{headers:h.admin})).json();
  for(const body of [home,list,saved.body,stale.body])assert.ok(!JSON.stringify(body).includes(pemLine)&&!/PRIVATE KEY|known_hosts|\/home\/ssh/.test(JSON.stringify(body)));
- assert.ok(!JSON.stringify(list).includes(r.key.fingerprint)&&!JSON.stringify(list).includes('pc.example.lan'),'machine_list carries no connection');
+ assert.ok(!JSON.stringify(list).includes(r.key.fingerprint)&&!JSON.stringify(list).includes('pc.example.lan'),'device_list carries no connection');
  // A refused login: the code and its sentence, not ssh's output.
  const d2=(await call('/api/home/devices/windows/draft',{})).body.draft;
  await call('/api/home/devices/windows/draft/key',{draft:d2.id,generate:true});
@@ -165,9 +165,9 @@ test('HTTP: API keys and agents reach none of it; another person\'s draft does n
   ['/api/home/devices/windows/draft/scan',{draft:d.id,host:'pc',port:22}],['/api/home/devices/windows/draft/test',{draft:d.id,host:'pc',port:22,user:'a'}],
   ['/api/home/devices/windows/draft/discard',{draft:d.id}],['/api/home/devices/windows',{id:'x',windows:{draft:d.id,host:'pc',port:22,user:'a'}}]])
   assert.equal((await asAgent(url,body)).status,403,url);
- // machine_upsert takes no connection, key or path.
+ // device_upsert takes no connection, key or path.
  for(const extra of [{windows:{draft:d.id}},{telemetryProvider:'windows'},{sshKey:'x'},{keyFile:'/etc/passwd'}]){
-  const r=await asAgent('/api/home/devices',{machine:{id:'pc',name:'PC',hostname:'pc.example.lan',...extra}});assert.equal(r.status,400,JSON.stringify(extra));}
+  const r=await asAgent('/api/home/devices',{device:{id:'pc',name:'PC',hostname:'pc.example.lan',...extra}});assert.equal(r.status,400,JSON.stringify(extra));}
  // Unauthenticated: nothing.
  assert.equal((await fetch(`${h.origin}/api/home/devices/windows/draft`,{method:'POST',headers:{Origin:h.origin,'Content-Type':'application/json'},body:'{}'})).status,401);
  // A signed-in reader (no write access) reaches none of it either; whose draft it is was checked in the draft tests.
@@ -190,7 +190,7 @@ test('device store: an older alias set-up keeps working and is never rewritten b
   {id:'desk',name:'Desk',kind:'other',hostname:'desk.example.lan',ip:null,props:{},image:false,platform:'windows',telemetryProvider:'windows'},
   {id:'gaming',name:'Gaming',kind:'other',hostname:'gaming.example.lan',ip:null,props:{},image:false}]}));
  await writeFile(path.join(dir,'windows-hosts.json'),JSON.stringify(legacyHosts));
- const d=createHomeDevices(dir,{reserved:SITE.machines.map(m=>m.id)});
+ const d=createHomeDevices(dir,{reserved:SITE.devices.map(m=>m.id)});
  assert.deepEqual(await d.windowsHosts(),[{id:'desk',target:'pc-windows'}],'read as before');
  const hostKey=parseHostKey('ssh-ed25519',hostKeyBlob());
  const managed={mode:'managed',host:'gaming.example.lan',port:22,user:'alice',keyId:newId('k'),connId:newId('c'),keyType:'ssh-rsa',keyFingerprint:'SHA256:'+'C'.repeat(43),publicKey:'ssh-rsa AAAA home-hub',keySource:'generated',hostKey};

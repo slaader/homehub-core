@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Install or update a plugin's host agent on THIS machine: the code a plugin runs as a service on another machine
-// than the hub (docs/plugins.md → Host agents). Run it on the target machine, from a checkout of core with the plugin
+// Install or update a plugin's host agent on THIS computer: the code a plugin runs as a service on another computer
+// than the hub (docs/plugins.md → Host agents). Run it on the target device, from a checkout of core with the plugin
 // source; the hub never pushes code to another host.
 //
 //   node scripts/install-host-agent.mjs --plugin memory --agent bridge              install or update, restart, check, roll back on failure
@@ -10,9 +10,9 @@
 //
 // What it installs comes from three places, none of which holds a household value in code:
 //   plugin.json → hostAgents[]          the entry file, the kind of service, the health probe, the config module
-//   site.json → plugins.<id>.agents.<agent>.<machine>   where on this machine: {target, label, node, env, logs}
+//   site.json → plugins.<id>.agents.<agent>.<device>   where on this computer: {target, label, node, env, logs}
 //   the plugin's config module          what the agent needs to know, rendered to <target>/config/<agent>.json (0600)
-// Options: --machine ID (default: the site machine whose id or host name is this host's name), --wait S (default 30),
+// Options: --device ID (default: the site device whose id or host name is this host's name), --wait S (default 30),
 // --expect-like SOCKET (the new agent must answer with at least the services another agent's socket answers with),
 // --allow-dirty (a test: install files that have uncommitted changes).
 //
@@ -27,7 +27,7 @@
 // (systemd-user), from scripts/host-agent/. The agent gets HOME_HUB_HOME=<target> (its configuration, its private/)
 // and HOME_HUB_AGENT_SOCKET=<target>/<health.socket>.
 //
-// Core's own push agent (docs/agent.md §5), with no plugin and no site.json on the machine (scripts/host-agent/core.mjs):
+// Core's own push agent (docs/agent.md §5), with no plugin and no site.json on the device (scripts/host-agent/core.mjs):
 //   node scripts/install-host-agent.mjs --core --hub https://hub.example.lan [--pin SHA256 [--pin NEXT] | --ca /abs/hub-ca.pem]
 //     --key-file /abs/agent-key.json [--specs /abs/specs.txt] [--runtime ollama=http://127.0.0.1:11434 ...]
 //     [--keys own|all-accounts|off] [--account alice] [--service launchd-agent|launchd-daemon] [--dry-run] [--once]
@@ -38,7 +38,7 @@
 // (UserName, never root; --account must be the invoking user) from boot, without a login session; installing either
 // kind boots out and removes the other (an update without --service keeps the kind it runs). Linux: run as root; a systemd system unit (systemd-system) with
 // User=home-hub-agent. --key-file is the file create-agent-key --output wrote; --specs the
-// output of node scripts/agent-specs.mjs <machine> on the hub, whose lines are printed to confirm (--yes without a
+// output of node scripts/agent-specs.mjs <device> on the hub, whose lines are printed to confirm (--yes without a
 // terminal). Health is the first accepted report within --wait seconds; --once lays the copy out and prints one
 // envelope without sending it.
 import {spawnSync} from 'node:child_process';
@@ -71,11 +71,11 @@ const expand=(v,where,home=os.homedir())=>{
  if(!path.isAbsolute(p))refuse(`${where} must be absolute or start with ~/`);
  return path.resolve(p);
 };
-/** site.json → plugins.<plugin>.agents.<agent>.<machine>: where the agent goes on that machine. Strict. */
-export function readPlacement(site,{plugin,agent,machine}){
- const where=`site.json → plugins.${plugin}.agents.${agent}.${machine}`;
- const raw=site.plugins?.[plugin]?.agents?.[agent]?.[machine];
- if(raw===undefined)refuse(`${where} is missing: say where the agent goes on this machine ({"target", "label"}, optionally "node", "env", "logs")`);
+/** site.json → plugins.<plugin>.agents.<agent>.<device>: where the agent goes on that device. Strict. */
+export function readPlacement(site,{plugin,agent,device}){
+ const where=`site.json → plugins.${plugin}.agents.${agent}.${device}`;
+ const raw=site.plugins?.[plugin]?.agents?.[agent]?.[device];
+ if(raw===undefined)refuse(`${where} is missing: say where the agent goes on this computer ({"target", "label"}, optionally "node", "env", "logs")`);
  if(!plain(raw))refuse(`${where} must be an object`);
  const extra=Object.keys(raw).filter(k=>!['target','label','node','env','logs'].includes(k));if(extra.length)refuse(`${where} has unknown field(s): ${extra.join(', ')}`);
  if(typeof raw.label!=='string'||!LABEL.test(raw.label))refuse(`${where}.label must be a service label such as com.example.agent`);
@@ -86,12 +86,12 @@ export function readPlacement(site,{plugin,agent,machine}){
    if(typeof v!=='string'||v.length>500||/[\u0000-\u001f]/.test(v))refuse(`${where}.env.${k} must be a short text`);env[k]=v;}}
  return {target:expand(raw.target,`${where}.target`),label:raw.label,node:raw.node===undefined?process.execPath:expand(raw.node,`${where}.node`),env,logs:raw.logs===undefined?null:expand(raw.logs,`${where}.logs`)};
 }
-/** The site machine this host is: --machine, else the one whose id or first host-name label is this host's short name. */
-export function chooseMachine(site,explicit,hostname=os.hostname()){
- if(explicit){if(!site.machines.some(m=>m.id===explicit))refuse(`--machine ${explicit} is not a machine of the site`);return explicit;}
+/** The site device this host is: --device, else the one whose id or first host-name label is this host's short name. */
+export function chooseDevice(site,explicit,hostname=os.hostname()){
+ if(explicit){if(!site.devices.some(m=>m.id===explicit))refuse(`--device ${explicit} is not a device of the site`);return explicit;}
  const me=hostname.split('.')[0].toLowerCase();
- const hits=site.machines.filter(m=>m.id.toLowerCase()===me||m.hostname.split('.')[0].toLowerCase()===me);
- if(hits.length!==1)refuse(`Cannot tell which machine of the site this is (host name ${hostname}); pass --machine`);
+ const hits=site.devices.filter(m=>m.id.toLowerCase()===me||m.hostname.split('.')[0].toLowerCase()===me);
+ if(hits.length!==1)refuse(`Cannot tell which device of the site this is (host name ${hostname}); pass --device`);
  return hits[0].id;
 }
 const git=(dir,...args)=>{const r=spawnSync('git',['-C',dir,...args],{encoding:'utf8'});return r.status===0?r.stdout.trim():null;};
@@ -130,10 +130,10 @@ const sortKeys=v=>Array.isArray(v)?v.map(sortKeys):plain(v)?Object.fromEntries(O
 
 /**
  * Everything the install would do, worked out without changing anything. → the plan that formatPlan prints and
- * applyPlan carries out. options: plugin, agent, machine, target, label, stateHome, backups, allowDirty, env, site;
+ * applyPlan carries out. options: plugin, agent, device, target, label, stateHome, backups, allowDirty, env, site;
  * serviceHome: whose Library/LaunchAgents or .config/systemd/user the service file goes to (tests: a temp directory).
  */
-export async function planInstall({plugin,agent:agentId,machine:explicitMachine=null,target:targetOverride=null,label:labelOverride=null,stateHome=null,backups=null,
+export async function planInstall({plugin,agent:agentId,device:explicitDevice=null,target:targetOverride=null,label:labelOverride=null,stateHome=null,backups=null,
  allowDirty=false,env=process.env,site=loadSite(),directories=pluginsDirectories(env),root=coreRoot,hostname=os.hostname(),serviceHome=os.homedir()}){
  if(!plugin||!agentId)refuse('Say which agent: --plugin <id> --agent <id>');
  const directory=directories.find(d=>existsSync(path.join(d,plugin,'index.mjs')));
@@ -142,8 +142,8 @@ export async function planInstall({plugin,agent:agentId,machine:explicitMachine=
  if(!manifest)refuse(`plugin "${plugin}" has no plugin.json, so it declares no host agent`);
  const agent=manifest.hostAgents.find(a=>a.id===agentId);
  if(!agent)refuse(`plugin "${plugin}" declares no host agent "${agentId}" (plugin.json → hostAgents: ${manifest.hostAgents.map(a=>a.id).join(', ')||'none'})`);
- const machine=chooseMachine(site,explicitMachine,hostname);
- const placement=readPlacement(site,{plugin,agent:agentId,machine});
+ const device=chooseDevice(site,explicitDevice,hostname);
+ const placement=readPlacement(site,{plugin,agent:agentId,device});
  const target=targetOverride?expand(targetOverride,'--target'):placement.target,label=labelOverride??placement.label;
  if(!LABEL.test(label))refuse('--label must be a service label');
  const home=stateHome?expand(stateHome,'--state-home'):os.homedir();
@@ -163,10 +163,10 @@ export async function planInstall({plugin,agent:agentId,machine:explicitMachine=
  let config=null;
  if(agent.config){
   const make=(await import(pathToFileURL(path.join(pluginDir,agent.config)).href)).default;
-  if(typeof make!=='function')refuse(`plugin "${plugin}": ${agent.config} must default-export a function ({site, machine}) => object`);
-  const body=await make({site,machine,plugin,agent:agentId});
+  if(typeof make!=='function')refuse(`plugin "${plugin}": ${agent.config} must default-export a function ({site, device}) => object`);
+  const body=await make({site,device,plugin,agent:agentId});
   if(!plain(body))refuse(`plugin "${plugin}": ${agent.config} must return an object`);
-  const doc={$comment:`Written by scripts/install-host-agent.mjs from ${siteConfigPath(env)?path.basename(siteConfigPath(env)):'the site'} → plugins for the agent "${agentId}" of the plugin "${plugin}" on ${machine}. Do not edit: install again.`,plugin,agent:agentId,machine,...body};
+  const doc={$comment:`Written by scripts/install-host-agent.mjs from ${siteConfigPath(env)?path.basename(siteConfigPath(env)):'the site'} → plugins for the agent "${agentId}" of the plugin "${plugin}" on ${device}. Do not edit: install again.`,plugin,agent:agentId,device,...body};
   const text=JSON.stringify(doc,null,1)+'\n';
   config={to:`config/${agentId}.json`,text,sha256:sha256(Buffer.from(text))};
  }
@@ -183,17 +183,17 @@ export async function planInstall({plugin,agent:agentId,machine:explicitMachine=
  const fileState=f=>{const at=path.join(target,f.to);return !existsSync(at)?'new':sha256(readFileSync(at))===f.sha256?'same':'changed';};
  const changed=files.filter(f=>fileState(f)!=='same').map(f=>({to:f.to,state:fileState(f)}));
  const configState=config?(!existsSync(path.join(target,config.to))?'new':sha256(readFileSync(path.join(target,config.to)))===config.sha256?'same':'changed'):null;
- const record={schema:1,plugin,agent:agentId,version:manifest.version,core:readPackage(root).version,machine,label,service:agent.service,entry:entryInCopy,
+ const record={schema:1,plugin,agent:agentId,version:manifest.version,core:readPackage(root).version,device,label,service:agent.service,entry:entryInCopy,
   commits:{core:core.commit,plugin:plugins.commit},dirty:dirty.length>0,files:files.map(f=>({path:f.to,sha256:f.sha256})),...(config?{config:{path:config.to,sha256:config.sha256}}:{}),
   from:{core:root,plugins:sourceRoot}};
- return {plugin,agentId,agent,manifest,machine,placement,target,label,home,logs,socket,health:agent.health,files,config,configState,service,serviceChanged:!sameService(service.file,service.text),
+ return {plugin,agentId,agent,manifest,device,placement,target,label,home,logs,socket,health:agent.health,files,config,configState,service,serviceChanged:!sameService(service.file,service.text),
   old,legacyRecord,stale,legacy,changed,record,backups:backups?expand(backups,'--backups'):path.join(os.homedir(),'local-ai','backups')};
 }
 
 /** What the plan would do, as lines for a person. */
 export function formatPlan(p,{noService=false}={}){
  const c=p.record.commits,lines=[];
- lines.push(`Host agent "${p.agentId}" of plugin ${p.plugin} ${p.record.version} (core ${p.record.core}; commits core ${(c.core||'?').slice(0,10)}, plugin ${(c.plugin||'?').slice(0,10)}${p.record.dirty?', dirty':''}) for ${p.machine} → ${p.target}`);
+ lines.push(`Host agent "${p.agentId}" of plugin ${p.plugin} ${p.record.version} (core ${p.record.core}; commits core ${(c.core||'?').slice(0,10)}, plugin ${(c.plugin||'?').slice(0,10)}${p.record.dirty?', dirty':''}) for ${p.device} → ${p.target}`);
  lines.push(`  ${p.files.length} files, ${p.changed.length} new or changed${p.config?`; configuration ${p.config.to}: ${p.configState}`:''}${p.legacy.length?`; files of the older bridge copy to retire: ${p.legacy.length}`:''}${p.stale.length?`; no longer needed: ${p.stale.length}`:''}`);
  for(const f of p.changed)lines.push(`   ${f.state==='new'?'+':'~'} ${f.to}`);
  for(const f of [...p.legacy,...p.stale])lines.push(`   - ${f}`);
@@ -327,11 +327,11 @@ if(process.argv[1]===fileURLToPath(import.meta.url)&&process.argv.includes('--co
 }
 else if(process.argv[1]===fileURLToPath(import.meta.url)){
  const args=process.argv.slice(2),flag=name=>args.includes(name),value=name=>{const i=args.indexOf(name);return i>=0?args[i+1]:null;};
- const known=['--plugin','--agent','--machine','--target','--label','--state-home','--backups','--wait','--expect-like'],flags=['--dry-run','--no-service','--allow-dirty','--help'];
+ const known=['--plugin','--agent','--device','--target','--label','--state-home','--backups','--wait','--expect-like'],flags=['--dry-run','--no-service','--allow-dirty','--help'];
  const unknown=args.filter((a,i)=>a.startsWith('--')&&!known.includes(a)&&!flags.includes(a)||!a.startsWith('--')&&!known.includes(args[i-1]));
  if(flag('--help')||unknown.length){console.log(`${unknown.length?`Unknown: ${unknown.join(' ')}\n\n`:''}${readFileSync(fileURLToPath(import.meta.url),'utf8').split('\n').slice(1,23).map(l=>l.replace(/^\/\/ ?/,'')).join('\n')}`);process.exit(unknown.length?2:0);}
  try{
-  const plan=await planInstall({plugin:value('--plugin'),agent:value('--agent'),machine:value('--machine'),target:value('--target'),label:value('--label'),stateHome:value('--state-home'),backups:value('--backups'),allowDirty:flag('--allow-dirty')});
+  const plan=await planInstall({plugin:value('--plugin'),agent:value('--agent'),device:value('--device'),target:value('--target'),label:value('--label'),stateHome:value('--state-home'),backups:value('--backups'),allowDirty:flag('--allow-dirty')});
   for(const line of formatPlan(plan,{noService:flag('--no-service')}))console.log(line);
   if(flag('--dry-run')){console.log('Dry run: nothing changed.');process.exit(0);}
   const result=await applyPlan(plan,{noService:flag('--no-service'),wait:Number(value('--wait')||30),expectLike:value('--expect-like')?expand(value('--expect-like'),'--expect-like'):null});

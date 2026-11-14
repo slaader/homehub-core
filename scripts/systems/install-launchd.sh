@@ -1,12 +1,12 @@
 #!/bin/sh
 # Install the launchd jobs that keep the collected snapshots fresh, on the Mac that runs Home Hub:
-#   <prefix>.systems-collect   every 6 h   node scripts/collect-systems.mjs   (machines over SSH → data/systems)
+#   <prefix>.systems-collect   every 6 h   node scripts/collect-systems.mjs   (devices over SSH → data/systems)
 #   <prefix>.systems-upstream  every 12 h  node scripts/check-upstream.mjs    (public release feeds)
 #   <prefix>.security-collect  every 24 h  node scripts/collect-security.mjs  (SSH keys → data/security), with --with-security
 # <prefix> is --label-prefix (default local.home-hub). Use the prefix the jobs were installed with to
 # update or remove them: the labels are the jobs' identity.
 # All run once at load, as the logged-in user (they need ~/.ssh/config and its keys), at low priority.
-# The collectors are read-only on the machines they probe. On Linux use the units in examples/systemd/.
+# The collectors are read-only on the devices they probe. On Linux use the units in examples/systemd/.
 # --home DIR (default: $HOME_HUB_HOME when set) is an instance directory (server/paths.mjs): the jobs then get
 # HOME_HUB_HOME in their environment, so they read its config/site.json, and --data defaults to DIR/data.
 #   sh scripts/systems/install-launchd.sh [--repo DIR] [--data DIR] [--home DIR] [--node PATH] [--label-prefix P] [--with-security]   install or update

@@ -125,5 +125,5 @@ export function settingsView(me){
      :el('p',{class:'set-dim'},t('Heslo se dá změnit jen po přihlášení heslem v prohlížeči, ne přes token aplikace nebo API klíč.')))));
 }
 // Page entry for the shell (app.js): every page module exports (context) => Node, and the server's UI
-// manifest names it. context = {me, page, sub, machine, site}.
+// manifest names it. context = {me, page, sub, device, site}.
 export const settingsPage=({me})=>settingsView(me);

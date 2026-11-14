@@ -1,6 +1,6 @@
-// Windows telemetry without an agent: the hub logs in to the machine with key-only SSH and runs one fixed,
+// Windows telemetry without an agent: the hub logs in to the device with key-only SSH and runs one fixed,
 // read-only PowerShell script that reads CIM classes (performance counters and inventory). Nothing is installed
-// or changed on the machine. The hub may run on Linux, macOS or Windows; it needs the OpenSSH client tools
+// or changed on the device. The hub may run on Linux, macOS or Windows; it needs the OpenSSH client tools
 // (ssh, and ssh-keyscan for fetching a host key) on its own server, nothing else.
 //
 // Two kinds of connection:
@@ -32,7 +32,7 @@
 // invented: the first snapshot after a start, a reconnect or a long gap yields memory and volumes only.
 // GPU utilisation follows Task Manager: per engine (luid + physical index + engine), the running time of every
 // process on it is summed, divided by the elapsed time and capped at 100 %; a GPU is as busy as its busiest
-// engine; the machine's GPU figure is its busiest GPU. Engines of different processes are never added up
+// engine; the device's GPU figure is its busiest GPU. Engines of different processes are never added up
 // across engines, so the figure cannot exceed 100 %. Sensors (temperatures, fans, power) are not read:
 // Windows exposes none reliably without vendor drivers, so those stay null.
 // Numbers are read locale-independently: the script sets the invariant culture and sends counters as decimal
@@ -47,7 +47,7 @@ export const WINDOWS_ADAPTER_NAME='Windows (SSH)';
 export const WINDOWS_MIN_INTERVAL_MS=MIN_INTERVAL_MS;
 export const WINDOWS_TIMEOUT_MS=25000;
 const MAX_STDOUT=1_048_576,MAX_STDERR=16_384,MARK='HHWIN1 ';
-// A reading that would average over more than this (a missed poll, the machine slept) is not made: the gap stays a gap.
+// A reading that would average over more than this (a missed poll, the device slept) is not made: the gap stays a gap.
 export const WINDOWS_MAX_SPAN_SECONDS=300;
 
 // An SSH alias (Host entry in ~/.ssh/config) or user@host. Letters, digits, dot, dash, underscore; the first
@@ -57,7 +57,7 @@ const TARGET=/^(?:([A-Za-z0-9_][A-Za-z0-9._-]{0,63})@)?([A-Za-z0-9](?:[A-Za-z0-9
 export const validSshTarget=v=>typeof v==='string'&&v.length<=320&&TARGET.test(v)&&!v.includes('..');
 
 // --- managed connections: what may be set in the web UI ----------------------------------------------------
-// Host: a host name or an IPv4 address (the same rule as a machine's hostname); it starts with a letter or digit.
+// Host: a host name or an IPv4 address (the same rule as a device's hostname); it starts with a letter or digit.
 const HOST=/^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,62})(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}))*$/,IPV4=/^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
 export const validSshHost=h=>typeof h==='string'&&(IPV4.test(h)||HOST.test(h));
 export const validSshPort=p=>Number.isSafeInteger(p)&&p>=1&&p<=65535;
@@ -282,7 +282,7 @@ export function deriveReading(prev,cur,atSec){
  let rx=null,tx=null;
  if(usable)for(const n of cur.net){const p=usable.net.find(x=>x.name===n.name);if(!p)continue;const r=rate(p.rx,n.rx,p.ts,n.ts),s=rate(p.tx,n.tx,p.ts,n.ts);if(r!=null)rx=(rx||0)+r;if(s!=null)tx=(tx||0)+s;}
  const gpus=usable?gpuDevices(usable,cur):gpuDevices(null,cur);
- const counters=cur.gmem.length>0;// the GPU counter classes exist on this machine
+ const counters=cur.gmem.length>0;// the GPU counter classes exist on this device
  const utils=gpus.map(g=>g.util).filter(Number.isFinite);
  const memTotal=cur.os.memTotal,memUsed=memTotal!=null&&cur.avail!=null?Math.max(0,memTotal-cur.avail):null;
  const vram=gpus.map(g=>g.memUsed).filter(Number.isFinite);
@@ -297,7 +297,7 @@ export function deriveReading(prev,cur,atSec){
 // The volumes in the shape the overview reads from Thermo's disk replies.
 export const volumesOf=snap=>snap.volumes.filter(v=>v.size).slice(0,12).map(v=>({name:v.label?`${v.label} (${v.mount})`:v.mount,mount:v.mount,fs:v.fs||'',
  used:v.size!=null&&v.free!=null?Math.max(0,v.size-v.free):null,total:v.size}));
-// What a machine page shows beyond the common gauges.
+// What a device page shows beyond the common gauges.
 export function nativeOf(snap,reading,observedAt,provider=WINDOWS_PROVIDER){
  const uptime=snap.os.bootUnix!=null&&snap.t!=null?Math.max(0,Math.round(snap.t/1000-snap.os.bootUnix)):null;
  return {provider,observedAt,os:{caption:snap.os.caption,version:snap.os.version,uptimeSeconds:uptime},

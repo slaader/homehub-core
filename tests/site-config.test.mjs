@@ -6,11 +6,11 @@ import {mkdtemp,writeFile,rm,readFile} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import {validateSite,loadSite,EMPTY_SITE,ipv4,parseCidr,inCidrs,inLan,machineKind,sshHosts,siteConfigPath,softwareWatchPath,publicSite} from '../server/site-config.mjs';
+import {validateSite,loadSite,EMPTY_SITE,ipv4,parseCidr,inCidrs,inLan,deviceKind,sshHosts,siteConfigPath,softwareWatchPath,publicSite} from '../server/site-config.mjs';
 import {readEdition,isPublicRelease,repoRoot} from '../server/edition.mjs';
 import {createHandler} from '../server/index.mjs';
 import {readRouter} from '../server/router-data.mjs';
-import {systemMachines} from '../server/systems-data.mjs';
+import {systemDevices} from '../server/systems-data.mjs';
 import {hashPassword} from '../server/auth.mjs';
 import {SITE} from './hub-helper.mjs';
 
@@ -28,19 +28,23 @@ test('CIDR checks: real networks, host addresses only',()=>{
 test('a missing file is an empty generic site; a present but wrong file is an error',async t=>{
  const dir=await mkdtemp(path.join(os.tmpdir(),'site-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  assert.equal(loadSite({file:path.join(dir,'none.json')}),EMPTY_SITE);assert.equal(loadSite({file:null}),EMPTY_SITE);
- assert.deepEqual({name:EMPTY_SITE.siteName,lan:EMPTY_SITE.lanCidrs,zone:EMPTY_SITE.timeZone,lang:EMPTY_SITE.defaultLanguage,origin:EMPTY_SITE.publicOrigin,machines:EMPTY_SITE.machines,seeds:EMPTY_SITE.tracker.projects},
-  {name:'',lan:[],zone:null,lang:'en',origin:null,machines:[],seeds:[]});
+ assert.deepEqual({name:EMPTY_SITE.siteName,lan:EMPTY_SITE.lanCidrs,zone:EMPTY_SITE.timeZone,lang:EMPTY_SITE.defaultLanguage,origin:EMPTY_SITE.publicOrigin,devices:EMPTY_SITE.devices,seeds:EMPTY_SITE.tracker.projects},
+  {name:'',lan:[],zone:null,lang:'en',origin:null,devices:[],seeds:[]});
  const write=async v=>{const f=path.join(dir,'site.json');await writeFile(f,typeof v==='string'?v:JSON.stringify(v));return f;};
  await assert.rejects(async()=>loadSite({file:await write('{nope')}),/not valid JSON/);
  for(const [bad,why] of [[{sitename:'x'},/unknown field\(s\): sitename/],[{lanCidrs:['10.0.0.5/24']},/lanCidrs\[0\]/],[{timeZone:'Mars/Olympus'},/timeZone/],[{defaultLanguage:'de'},/defaultLanguage/],
-  [{publicOrigin:'https://hub.example.lan/path'},/publicOrigin/],[{machines:[{id:'Bad Id'}]},/machines\[0\]\.id/],[{machines:[{id:'aa'},{id:'aa'}]},/duplicate ids/],[{machines:[{id:'aa',ip:'10.0.0'}]},/ip must be/],
-  [{machines:[{id:'aa',role:'toaster'}]},/role must be/],[{machines:[{id:'aa',ssh:{alias:'x',probe:'windows'}}]},/ssh\.probe/],[{machines:[{id:'aa',picture:'http://x/y.png'}]},/picture/],
+  [{publicOrigin:'https://hub.example.lan/path'},/publicOrigin/],[{devices:[{id:'Bad Id'}]},/devices\[0\]\.id/],[{devices:[{id:'aa'},{id:'aa'}]},/duplicate ids/],[{devices:[{id:'aa',ip:'10.0.0'}]},/ip must be/],
+  [{devices:[{id:'aa',role:'toaster'}]},/role must be/],[{devices:[{id:'aa',ssh:{alias:'x',probe:'windows'}}]},/ssh\.probe/],[{devices:[{id:'aa',picture:'http://x/y.png'}]},/picture/],
   [{inventory:{secretStores:['Has Space']}},/secretStores\[0\]/],[{tracker:{projects:[{id:'x',key:'lower'}]}},/tracker\.projects\[0\]/],[{security:{order:['ghost']}},/security\.order\[0\]/]])
   await assert.rejects(async()=>loadSite({file:await write(bad)}),why,JSON.stringify(bad));
- const ok=loadSite({file:await write({siteName:'Home',lanCidrs:['10.1.0.0/16'],machines:[{id:'box',thermoId:'box'},{id:'store',role:'nas',ssh:{alias:'store-admin',probe:'nas'}},{id:'gw',role:'router',ip:'10.1.0.1'}],plugins:{demo:{anything:true}}})});
- assert.ok(Object.isFrozen(ok)&&Object.isFrozen(ok.machines[0]));
- assert.deepEqual(ok.machines.map(machineKind),['thermo','nas','router']);assert.equal(ok.machines[0].name,'box');
- assert.deepEqual([...sshHosts(ok)],[['store','store-admin']]);assert.deepEqual(systemMachines(ok),[{id:'store',name:'store',kind:'nas'}]);
+ // A site file of 1.x: the old key is refused by name and the message says what it is called now. No alias.
+ await assert.rejects(async()=>loadSite({file:await write({siteName:'Home',machines:[{id:'box'}]})}),/site config: "machines" was renamed in 2\.0: the key is now "devices"/);
+ await assert.rejects(async()=>loadSite({file:await write({machines:[],devices:[{id:'box'}]})}),/"machines" was renamed in 2\.0/,'also beside the new key');
+ await assert.rejects(async()=>loadSite({file:await write({devices:[{id:'box'}],runtimes:[{machine:'box',url:'http://127.0.0.1:11434'}]})}),/\.machine was renamed in 2\.0: the field is now "device"/);
+ const ok=loadSite({file:await write({siteName:'Home',lanCidrs:['10.1.0.0/16'],devices:[{id:'box',thermoId:'box'},{id:'store',role:'nas',ssh:{alias:'store-admin',probe:'nas'}},{id:'gw',role:'router',ip:'10.1.0.1'}],plugins:{demo:{anything:true}}})});
+ assert.ok(Object.isFrozen(ok)&&Object.isFrozen(ok.devices[0]));
+ assert.deepEqual(ok.devices.map(deviceKind),['thermo','nas','router']);assert.equal(ok.devices[0].name,'box');
+ assert.deepEqual([...sshHosts(ok)],[['store','store-admin']]);assert.deepEqual(systemDevices(ok),[{id:'store',name:'store',kind:'nas'}]);
  assert.equal(inLan(ok,'10.1.200.7'),true);assert.equal(inLan(ok,'10.2.0.1'),false);assert.equal(ok.plugins.demo.anything,true);
  assert.deepEqual(publicSite(ok),{name:'Home',timeZone:null,defaultLanguage:'en',lanCidrs:['10.1.0.0/16']});
 });
@@ -55,7 +59,7 @@ test('where the configuration comes from: local/site.json, HOME_HUB_SITE_CONFIG,
 
 test('the shipped example configuration is valid and uses placeholders only',async()=>{
  const example=loadSite({file:path.join(repoRoot,'config','site.example.json')});
- assert.equal(example.machines.length,4);assert.ok(example.machines.every(m=>inLan(example,m.ip)&&(/\.example\.lan$/.test(m.hostname)||m.hostname===m.ip)));
+ assert.equal(example.devices.length,4);assert.ok(example.devices.every(m=>inLan(example,m.ip)&&(/\.example\.lan$/.test(m.hostname)||m.hostname===m.ip)));
  assert.equal(example.defaultLanguage,'en');
 });
 
@@ -68,7 +72,7 @@ test('edition: the marker file, the environment override, and public when unmark
  assert.ok(['private','public'].includes(readEdition()));
 });
 
-test('a hub without a site configuration boots empty: no machines, no seeded projects, English',async t=>{
+test('a hub without a site configuration boots empty: no devices, no seeded projects, English',async t=>{
  const dir=await mkdtemp(path.join(os.tmpdir(),'hub-empty-'));t.after(()=>rm(dir,{recursive:true,force:true,maxRetries:10,retryDelay:25}));
  const credentials={username:'admin',...hashPassword('test-only-password')};
  const server=http.createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>{server.closeAllConnections();return new Promise(r=>server.close(r));});
@@ -78,7 +82,7 @@ test('a hub without a site configuration boots empty: no machines, no seeded pro
  assert.deepEqual(manifest.site,{name:'',timeZone:null,defaultLanguage:'en',lanCidrs:[]});
  const login=await fetch(origin+'/api/session',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({username:'admin',password:'test-only-password'})});
  const Cookie=login.headers.get('set-cookie').split(';')[0],get=async url=>{const r=await fetch(origin+url,{headers:{Cookie}});return {status:r.status,body:await r.json()};};
- const home=await get('/api/home');assert.equal(home.status,200);assert.deepEqual(home.body.machines,[]);assert.equal(home.body.router.status,'not-configured');
+ const home=await get('/api/home');assert.equal(home.status,200);assert.deepEqual(home.body.devices,[]);assert.equal(home.body.router.status,'not-configured');
  const tickets=await get('/api/tickets');assert.deepEqual(tickets.body.projects,[],'the tracker seeds nothing unless site.json asks for it');assert.deepEqual(tickets.body.tickets,[]);
  assert.deepEqual((await get('/api/review')).body.sets,[]);
  assert.equal((await get('/api/inventory')).status,404);assert.equal((await get('/api/security')).status,404);assert.equal((await get('/api/systems')).status,404);
@@ -88,12 +92,12 @@ test('a hub without a site configuration boots empty: no machines, no seeded pro
  assert.match(await (await fetch(origin+'/')).text(),/<title>Home Hub<\/title>/);
 });
 
-test('the site drives core data: the router adapter keeps only LAN clients, machines come from the fixture',async t=>{
+test('the site drives core data: the router adapter keeps only LAN clients, devices come from the fixture',async t=>{
  const dir=await mkdtemp(path.join(os.tmpdir(),'site-router-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  const devices=[{mac:'aa:bb:cc:dd:ee:01',ip:'10.0.0.5',name:'in'},{mac:'aa:bb:cc:dd:ee:02',ip:'10.0.0.255',name:'broadcast'},{mac:'aa:bb:cc:dd:ee:03',ip:'10.9.0.5',name:'elsewhere'},{mac:'nope',ip:'10.0.0.6'}];
  await writeFile(path.join(dir,'router-observations.json'),JSON.stringify({status:'ok',observedAt:new Date().toISOString(),devices}));
  assert.deepEqual((await readRouter(dir,{lanCidrs:SITE.lanCidrs})).devices.map(d=>d.name),['in']);
  assert.deepEqual((await readRouter(dir)).devices.map(d=>d.name),['in','broadcast','elsewhere'],'no LAN configured: every well-formed address');
- assert.deepEqual(systemMachines(SITE).map(m=>m.id),['mini','studio','mini_server','nas']);
+ assert.deepEqual(systemDevices(SITE).map(m=>m.id),['mini','studio','mini_server','nas']);
  const index=await readFile(new URL('../public/index.html',import.meta.url),'utf8');assert.doesNotMatch(index,/Example|Europe\//,'no site name or zone baked into the page');
 });

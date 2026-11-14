@@ -227,7 +227,7 @@ function rolesTab(status){
 
 // ---- service accounts -------------------------------------------------------------------------
 // What an agent can be told to do with a fresh key: the tools and scopes are named so it does not guess.
-const AGENT_PROMPT=origin=>`Connect to my Home Hub over MCP at ${origin}/mcp using the service-account key in $HOME_HUB_KEY (Authorization: Bearer). First call whoami to see which scopes the key holds. Then call home_status, machine_list and inventory_search to learn what runs here. With the inventory:write scope, keep the inventory current: call inventory_describe once for the rules, search before you add, read an entry with inventory_get, change it, and pass its hash as base to inventory_update (never store secrets, only where they are kept). With tickets:write, file what you find with ticket_create and report progress with ticket_comment.`;
+const AGENT_PROMPT=origin=>`Connect to my Home Hub over MCP at ${origin}/mcp using the service-account key in $HOME_HUB_KEY (Authorization: Bearer). First call whoami to see which scopes the key holds. Then call home_status, device_list and inventory_search to learn what runs here. With the inventory:write scope, keep the inventory current: call inventory_describe once for the rules, search before you add, read an entry with inventory_get, change it, and pass its hash as base to inventory_update (never store secrets, only where they are kept). With tickets:write, file what you find with ticket_create and report progress with ticket_comment.`;
 function accountsTab(status){
  let catalog={},presets=[];
  const showKey=(account,r)=>secretDialog({snippets:true,title:t('Klíč pro {name}',{name:account.name}),value:r.token,
@@ -332,30 +332,30 @@ function keysTab(status){
 
 // ---- push agents ------------------------------------------------------------------------------
 // Keys of the push agent (docs/agent.md §2; GET/POST /api/admin/agents, POST /api/admin/agents/revoke): each for one
-// machine of the overview, at most two per machine (one to rotate). The token appears once, in the one-time dialog, as
+// device of the overview, at most two per device (one to rotate). The token appears once, in the one-time dialog, as
 // the key file the installer takes (--key-file); it is never kept here, never put in a URL and never logged.
 // Who revoked a key, when the hub did it itself.
-const REVOKED_BY={'machine-removed':'hub: stroj byl odebrán','machine-changed':'hub: stroj už agenta nepřijímá','local administration':'místní správa'};
+const REVOKED_BY={'device-removed':'hub: stroj byl odebrán','device-changed':'hub: stroj už agenta nepřijímá','local administration':'místní správa'};
 // What agent keys can be issued for, as far as the page can tell (the server checks again: the NAS is refused there).
-export const agentMachines=list=>(Array.isArray(list)?list:[]).filter(m=>m&&m.role!=='router'&&m.platform!=='other');
+export const agentDevices=list=>(Array.isArray(list)?list:[]).filter(m=>m&&m.role!=='router'&&m.platform!=='other');
 // The file create-agent-key --output writes, which the installer reads (scripts/host-agent/core.mjs → readKeyFile).
-export const agentKeyFile=({token,agent})=>JSON.stringify({schema:1,agent:{id:agent.id,machine:agent.machine,name:agent.name,prefix:agent.prefix,createdAt:agent.createdAt},token});
+export const agentKeyFile=({token,agent})=>JSON.stringify({schema:1,agent:{id:agent.id,device:agent.device,name:agent.name,prefix:agent.prefix,createdAt:agent.createdAt},token});
 function agentsTab(status){
- let machines=[];
- const nameOf=id=>machines.find(m=>m.id===id)?.name||id;
+ let devices=[];
+ const nameOf=id=>devices.find(m=>m.id===id)?.name||id;
  async function issue(preset){
-  const offered=agentMachines(machines);
+  const offered=agentDevices(devices);
   if(!offered.length){status(t('V přehledu není stroj, kterému jde vydat klíč agenta.'),true);return;}
-  const select=el('select',{name:'machine',required:''},offered.map(m=>el('option',{value:m.id,selected:m.id===preset?'':null},`${m.name} · ${m.id}`)));
+  const select=el('select',{name:'device',required:''},offered.map(m=>el('option',{value:m.id,selected:m.id===preset?'':null},`${m.name} · ${m.id}`)));
   const name=el('input',{name:'name',maxlength:'80',autocomplete:'off',placeholder:t('Nepovinné')});
   let r=await formDialog({title:t('Nový klíč agenta'),label:t('Vydat klíč'),
    lead:t('Klíč patří jednomu stroji a smí jen posílat hlášení tohohle stroje. Nic nečte a nemá žádné oprávnění. Stroj může mít dva klíče, aby šel klíč vyměnit.'),
    body:[field(t('Stroj'),select),field(t('Název klíče'),name,t('Bez názvu dostane id stroje a datum.'))],
-   submit:()=>api('/api/admin/agents',{machine:select.value,...(name.value.trim()?{name:name.value.trim()}:{})})});
+   submit:()=>api('/api/admin/agents',{device:select.value,...(name.value.trim()?{name:name.value.trim()}:{})})});
   if(!r)return;
-  const machine=nameOf(r.agent.machine),file=agentKeyFile(r);r=null;
-  status(t('Klíč agenta pro {machine} je vydaný.',{machine}));list.reload();
-  secretDialog({title:t('Klíč agenta pro {machine}',{machine}),value:file,
+  const device=nameOf(r.agent.device),file=agentKeyFile(r);r=null;
+  status(t('Klíč agenta pro {device} je vydaný.',{device}));list.reload();
+  secretDialog({title:t('Klíč agenta pro {device}',{device}),value:file,
    caption:t('Ulož tenhle obsah do souboru agent-key.json, který čteš jen ty, a předej ho instalátoru na stroji: node scripts/install-host-agent.mjs --core --hub <adresa hubu> --key-file <cesta k souboru>. Uložený je jen otisk, znovu ho nezobrazím.')});
  }
  async function revoke(k){
@@ -371,19 +371,19 @@ function agentsTab(status){
  const group=(id,keys)=>el('section',{class:'ax-card'},
   el('header',{class:'ax-card-head'},el('div',{},el('h3',{},nameOf(id)),el('p',{class:'ax-note'},el('code',{},id))),
    el('div',{class:'ax-row-actions'},el('span',{class:'ax-count'},tp(keys.filter(k=>!k.revokedAt).length,'{n} platný klíč|{n} platné klíče|{n} platných klíčů')),
-    agentMachines(machines).some(m=>m.id===id)?button(t('+ Klíč'),()=>issue(id).catch(err=>status(err.message,true)),'small'):null)),
+    agentDevices(devices).some(m=>m.id===id)?button(t('+ Klíč'),()=>issue(id).catch(err=>status(err.message,true)),'small'):null)),
   el('div',{class:'ax-table-wrap flat'},el('table',{class:'ax-table'},
    el('thead',{},el('tr',{},...[t('Klíč'),t('Vydán'),t('Naposledy hlásil'),t('Stav'),el('span',{class:'ax-vh'},t('Akce'))].map(h=>el('th',{scope:'col'},h)))),
    el('tbody',{},keys.sort((a,b)=>Boolean(a.revokedAt)-Boolean(b.revokedAt)||String(b.createdAt).localeCompare(String(a.createdAt))).map(row)))));
  const list=loader(async()=>{
-  const [keys,listed]=await Promise.all([api('/api/admin/agents'),api('/api/home/devices').catch(()=>({machines:[]}))]);
-  machines=Array.isArray(listed.machines)?listed.machines:[];return Array.isArray(keys.agents)?keys.agents:[];},
+  const [keys,listed]=await Promise.all([api('/api/admin/agents'),api('/api/home/devices').catch(()=>({devices:[]}))]);
+  devices=Array.isArray(listed.devices)?listed.devices:[];return Array.isArray(keys.agents)?keys.agents:[];},
  keys=>{
   if(!keys.length)return emptyState({icon:'⚿',title:t('Zatím žádný push agent'),body:t('Push agent běží na stroji a sám posílá hubu systém, aktualizace, sledovaný software, SSH klíče a lokální LLM runtimy. Hub se na stroj nepřihlašuje.'),
    steps:[t('Vydej klíč pro stroj. Uvidíš ho jen jednou, jako obsah souboru s klíčem.'),t('Na stroji spusť instalátor s tímhle souborem (node scripts/install-host-agent.mjs --core).'),t('Stroj pak v přehledu ukáže, kdy se agent naposledy ozval.')],
    actions:[{label:t('+ Nový klíč agenta'),onclick:()=>issue().catch(err=>status(err.message,true)),primary:true}]});
-  const ids=[...new Set(keys.map(k=>k.machine))].sort((a,b)=>String(nameOf(a)).localeCompare(String(nameOf(b))));
-  return el('div',{class:'ax-stack'},ids.map(id=>group(id,keys.filter(k=>k.machine===id))));});
+  const ids=[...new Set(keys.map(k=>k.device))].sort((a,b)=>String(nameOf(a)).localeCompare(String(nameOf(b))));
+  return el('div',{class:'ax-stack'},ids.map(id=>group(id,keys.filter(k=>k.device===id))));});
  return el('div',{class:'ax-stack'},sectionHead(t('Push agenti'),t('Klíče agentů, kteří ze strojů posílají hlášení. Klíč patří jednomu stroji a nic jiného neotevře. Odvolaný klíč přestane fungovat hned.'),
   button(t('+ Nový klíč agenta'),()=>issue().catch(err=>status(err.message,true)),'primary')),list.host);
 }
@@ -451,7 +451,7 @@ function auditTab(){
 const WHO={security:['security:read','warn'],key:['klíč servisního účtu','warn'],public:['bez přihlášení','dim'],read:['čtení','good'],write:['zápis','warn'],admin:['admin heslem','bad'],adminRole:['admin / token aplikace','bad'],password:['přihlášení heslem','warn']};
 const ROUTES=[
  ['Účet',[['GET','/api/me','read','Kdo jsem a co smím: role, scopes, canWrite, canAdmin.'],['POST','/api/session','public','Přihlášení {username,password} → cookie homehub.'],['POST','/api/logout','read','Odhlášení.']]],
- ['Domov',[['GET','/api/home','read','Dlaždice strojů: Thermo, služby, router.'],['GET','/api/home/history?machine=<id>&range=30m|7d|30d|6m','read','Řady pro grafy.'],
+ ['Domov',[['GET','/api/home','read','Dlaždice strojů: Thermo, služby, router.'],['GET','/api/home/history?device=<id>&range=30m|7d|30d|6m','read','Řady pro grafy.'],
   ['POST','/api/home/refresh','read','Načíst Thermo hned (omezeno na 1× za 5 s).'],['POST','/api/home/settings','home:settings','Interval čtení Thermo {intervalSeconds: 15|30|60}.']]],
  ['Bezpečnost',[['GET','/api/security','security','Inventář SSH klíčů (snímek z collect-security).']]],
  ['Inventář',[['GET','/api/inventory','read','Celý inventář (knowledge.json) s hashi záznamů.'],['GET','/api/inventory/export','read','Stažení inventáře jako soubor.'],['GET','/api/services','read','Běžící služby (záznamy kind=runtime).'],
@@ -570,5 +570,5 @@ export function accessView(me,{open}={}){
  return box;
 }
 // Page entry for the shell (app.js): every page module exports (context) => Node, and the server's UI
-// manifest names it. context = {me, page, sub, machine, site}.
+// manifest names it. context = {me, page, sub, device, site}.
 export const accessPage=({me,sub})=>accessView(me,{open:typeof sub==='string'?sub:undefined});

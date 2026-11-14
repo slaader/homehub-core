@@ -25,5 +25,5 @@ export async function readerAnswers(h){
  const get=async url=>{const r=await fetch(h.origin+url,{headers:h.admin});return {status:r.status,body:steady(await r.json())};};
  const home=await get('/api/home');
  return {systems:await get('/api/systems'),security:await get('/api/security'),endpoints:await get('/api/runtimes/endpoints'),models:await get('/api/models'),
-  homeRuntimes:{status:home.status,body:(home.body.machines||[]).map(m=>({id:m.id,runtimes:m.runtimes??null,work:m.work??null}))}};
+  homeRuntimes:{status:home.status,body:(home.body.devices||[]).map(m=>({id:m.id,runtimes:m.runtimes??null,work:m.work??null}))}};
 }

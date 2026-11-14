@@ -1,4 +1,4 @@
-// What looks like a secret value rather than a description (the same idea as the inventory checker): machines,
+// What looks like a secret value rather than a description (the same idea as the inventory checker): devices,
 // runtime stacks, integration settings and agent reports are shown to every signed-in reader and to agents, so
 // none may hold one. A leaf module: it imports nothing, so the push agent (scripts/agent/) can check a line with
 // the same rules as the hub before it sends it (docs/agent.md → Leaf modules). server/home-devices.mjs re-exports

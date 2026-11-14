@@ -9,9 +9,9 @@ import {hub,credentials,SITE} from './hub-helper.mjs';
 import {createHandler} from '../server/index.mjs';
 import {createAccessStore} from '../server/access-store.mjs';
 import {homeOrder as order,validHomeOrder as validOrder} from '../server/home-data.mjs';
-// The known machines are the fixture site's; the helpers take them as their second argument.
-const HOME_MACHINE_IDS=SITE.machines.map(m=>m.id);
-const homeOrder=(saved,ids=HOME_MACHINE_IDS)=>order(saved,ids),validHomeOrder=(input,ids=HOME_MACHINE_IDS)=>validOrder(input,ids);
+// The known devices are the fixture site's; the helpers take them as their second argument.
+const HOME_DEVICE_IDS=SITE.devices.map(m=>m.id);
+const homeOrder=(saved,ids=HOME_DEVICE_IDS)=>order(saved,ids),validHomeOrder=(input,ids=HOME_DEVICE_IDS)=>validOrder(input,ids);
 
 const DEFAULT=['mini','studio','mini_server','nas','router'];
 const ROUTE='/api/profile/home-order';
@@ -23,7 +23,7 @@ async function viewer(h,username='reader'){
 const get=(h,headers)=>fetch(h.origin+ROUTE,{headers});
 
 test('order helpers: strict input, tolerant read-back',()=>{
- assert.deepEqual(HOME_MACHINE_IDS,DEFAULT);
+ assert.deepEqual(HOME_DEVICE_IDS,DEFAULT);
  assert.deepEqual(homeOrder(null),DEFAULT,'nothing saved = default');
  assert.deepEqual(homeOrder(['studio']),['studio','mini','mini_server','nas','router'],'missing ids follow in default order');
  assert.deepEqual(homeOrder(['gone','studio','studio','router']),['studio','router','mini','mini_server','nas'],'unknown and repeated stored ids are dropped');

@@ -64,7 +64,7 @@ test('M6: two jobs cannot share a destination: refused when saved, and the owner
 });
 
 test('S4: after a good run, the staging copy of a source that left the job is removed',async t=>{
- const s=await setup(t);const id=await readyJob(s);// docs (local) and projects (on another machine)
+ const s=await setup(t);const id=await readyJob(s);// docs (local) and projects (on another computer)
  assert.equal((await run(s,id)).result,'ok');
  const stagingDir=path.join(s.b.stateDirectory,id,'staging');
  assert.deepEqual(await readdir(stagingDir),['projects']);

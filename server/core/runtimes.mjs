@@ -1,6 +1,6 @@
 // Core module "runtimes": local LLM runtimes read directly over HTTP (llama-swap, Ollama, LM Studio,
 // llama.cpp server, vLLM, SGLang, oMLX, mlx-serve, anything OpenAI-compatible), for a hub that can reach
-// them: on loopback when it runs on the same machine, or on the LAN. No agent on the machine is needed.
+// them: on loopback when it runs on the same device, or on the LAN. No agent on the device is needed.
 //
 // It provides home.runtimes (docs/plugins.md), which home merges with any plugin that provides the same
 // (server/home-data.mjs → mergeRuntimeReports). Endpoints come from site.json → runtimes[] and from the API
@@ -8,16 +8,16 @@
 // and never returned. Every read is a GET on an allowlisted path (server/runtime-adapters.mjs).
 //
 // It also keeps its own request history of the llama-swap endpoints (server/runtime-history.mjs: the activity
-// buffer, joined to the access-log stream for the client) under <state>/runtimes/<machine>/, and provides it
+// buffer, joined to the access-log stream for the client) under <state>/runtimes/<device>/, and provides it
 // as runtimes.requests for the LLM & Diffusion page.
 //
 // It declares itself as an integration (id runtimes.endpoints) for the integrations page: status() and
 // test() return {state, summary, lastSuccessAt, lastError, configuredBy, items}; while hub.integrationEnabled
 // says it is off, nothing is read (no poll, no history read, no stream held open) and nothing is provided.
 import path from 'node:path';
-import {runtimesFacet} from '../machine-facet-sources.mjs';
+import {runtimesFacet} from '../device-facet-sources.mjs';
 import {privateFile} from '../paths.mjs';
-import {FACETS_POINT} from '../machine-facets.mjs';
+import {FACETS_POINT} from '../device-facets.mjs';
 import {toolError} from '../mcp.mjs';
 import {RUNTIME_KINDS,RUNTIME_ENDPOINT_ID,RUNTIME_ENDPOINT_LIMIT} from '../site-config.mjs';
 import {KIND_NAMES,READ_PATHS} from '../runtime-adapters.mjs';
@@ -56,8 +56,8 @@ async function listEndpoints(state,hub=null){
 }
 async function upsertEndpoint(state,hub,input,principal){
  only(input,['endpoint']);
- const existing=await state.endpoints(),machines=await hub.state('home').machineIds();
- const e=checkEndpoint(input.endpoint,{site:hub.site,machines,existing});
+ const existing=await state.endpoints(),devices=await hub.state('home').deviceIds();
+ const e=checkEndpoint(input.endpoint,{site:hub.site,devices,existing});
  const r=await state.store.upsert({...e,...actor(principal)});
  await settle(state.poller.poll({force:true}),5000);
  return {ok:true,id:e.id,created:r.created,changed:r.changed,by:principal.username,endpoint:{...e,source:r.entry.source,...state.poller.status(e.id)}};
@@ -74,7 +74,7 @@ async function removeEndpoint(state,input){
 // --- the integration --------------------------------------------------------------------------
 const hostOf=url=>{try{return new URL(url).host;}catch{return url;}};
 function itemOf(e,st,result){
- const label=`${e.name||KIND_NAMES[st.detectedKind]||KIND_NAMES[e.kind]||'runtime'} · ${e.machine} · ${hostOf(e.url)}`;
+ const label=`${e.name||KIND_NAMES[st.detectedKind]||KIND_NAMES[e.kind]||'runtime'} · ${e.device} · ${hostOf(e.url)}`;
  let summary;
  if(st.state==='ok'){const n=result?.models?.length||0,loaded=(result?.models||[]).filter(m=>m.state==='loaded').length;
   summary=tx('{kind} · modelů {n}, načteno {loaded}',{kind:KIND_NAMES[st.detectedKind]||st.detectedKind||e.kind,n,loaded});}
@@ -83,7 +83,7 @@ function itemOf(e,st,result){
  else if(st.state==='stale')summary=tx('stará data, poslední chyba: {error}',{error:st.lastError||'—'});
  else summary=tx('chyba: {error}',{error:st.lastError||'—'});
  return {id:e.id,label,state:st.state==='waiting'?'stale':st.state,summary,...(st.lastSuccessAt?{lastSuccessAt:st.lastSuccessAt}:{}),
-  ...(st.lastError?{lastError:st.lastError}:{}),machine:e.machine,url:e.url,kind:e.kind,detectedKind:st.detectedKind};
+  ...(st.lastError?{lastError:st.lastError}:{}),device:e.device,url:e.url,kind:e.kind,detectedKind:st.detectedKind};
 }
 // The start of today on the site's clock, and a time as HH:MM there (with the date when it is not today).
 function siteClock(timeZone,now){
@@ -98,7 +98,7 @@ function siteClock(timeZone,now){
 // "historie: naposledy 14:05, dnes 12 záznamů" for an endpoint whose history the hub keeps.
 async function historyOf(state,hub,e,now=Date.now()){
  const h=state.history.status(e.id);if(!h)return null;
- const clock=siteClock(hub.site?.timeZone,now),s=await state.requests.summary(e.machine,{since:clock.since,now}).catch(()=>null);
+ const clock=siteClock(hub.site?.timeZone,now),s=await state.requests.summary(e.device,{since:clock.since,now}).catch(()=>null);
  const out={lastSyncAt:h.lastSyncAt,lastIngestedAt:s?.lastAddedAt||null,recordsToday:s?.recordsToday??0,stream:h.stream.state,...(h.lastError?{lastError:h.lastError}:{})};
  const when=out.lastIngestedAt?clock.label(out.lastIngestedAt):'—';
  const stream=h.stream.state==='connected'?tx('· klienti z logu'):tx('· log klientů nedostupný');
@@ -110,7 +110,7 @@ export async function integrationStatus(state,hub){
  for(const e of list){const who=e.source==='site'?{source:'site',name:'site.json'}:{source:e.source,name:e.addedBy||'—'};
   if(!configuredBy.some(x=>x.source===who.source&&x.name===who.name))configuredBy.push(who);}
  if(!await isEnabled(hub))return {state:'disabled',summary:tx('Vypnuto: endpointy se nečtou.'),configuredBy,
-  items:list.map(e=>({id:e.id,label:`${e.name||KIND_NAMES[e.kind]||'runtime'} · ${e.machine} · ${hostOf(e.url)}`,state:'disabled',summary:''}))};
+  items:list.map(e=>({id:e.id,label:`${e.name||KIND_NAMES[e.kind]||'runtime'} · ${e.device} · ${hostOf(e.url)}`,state:'disabled',summary:''}))};
  if(!list.length)return {state:'not-configured',summary:tx('Žádný endpoint: přidej ho v site.json → runtimes, přes API nebo nástrojem runtime_endpoint_upsert.'),configuredBy,items:[]};
  const items=await Promise.all(list.map(async e=>{const item=itemOf(e,state.poller.status(e.id),state.poller.states.get(e.id)?.result),h=await historyOf(state,hub,e);
   return h?{...item,summary:sentences(item.summary,h.sentence)}:item;}));
@@ -121,24 +121,24 @@ export async function integrationStatus(state,hub){
   ...(successes.length?{lastSuccessAt:successes.at(-1)}:{}),...(errors.length?{lastError:`${errors[0].id}: ${errors[0].lastError}`}:{}),configuredBy,items};
 }
 
-const ENDPOINT_SCHEMA={type:'object',required:['machine','url'],additionalProperties:false,properties:{
- id:{type:'string',pattern:RUNTIME_ENDPOINT_ID.source,description:'Stable id of the endpoint; the key for updates and removal. Default: <machine>-<port>.'},
- machine:{type:'string',pattern:'^[a-z][a-z0-9_-]{1,31}$',description:'The machine the runtime runs on (an id from machine_list).'},
+const ENDPOINT_SCHEMA={type:'object',required:['device','url'],additionalProperties:false,properties:{
+ id:{type:'string',pattern:RUNTIME_ENDPOINT_ID.source,description:'Stable id of the endpoint; the key for updates and removal. Default: <device>-<port>.'},
+ device:{type:'string',pattern:'^[a-z][a-z0-9_-]{1,31}$',description:'The device the runtime runs on (an id from device_list).'},
  kind:{type:'string',enum:[...RUNTIME_KINDS],description:'What runs there; auto (default) detects it with read-only requests.'},
  url:{type:'string',maxLength:120,description:'Origin only, e.g. http://127.0.0.1:11434 or http://10.0.0.5:1234: no path, no user or password. Loopback, or an address inside the site networks.'},
- name:{type:'string',maxLength:60,description:'What the machine page calls it; default: the runtime\'s name.'}}};
+ name:{type:'string',maxLength:60,description:'What the device page calls it; default: the runtime\'s name.'}}};
 
 export default {
  id:'runtimes',title:'LLM runtimes',
  apiDocs:[{title:'LLM runtimy',routes:[
   ['GET','/api/runtimes/endpoints','read','Endpointy LLM runtimů, které hub čte přímo, se stavem posledního čtení. MCP runtime_endpoints_list.'],
-  ['POST','/api/runtimes/endpoints','home:write','Přidat nebo nahradit endpoint {endpoint: {id?, machine, kind, url, name?}}. MCP runtime_endpoint_upsert.'],
+  ['POST','/api/runtimes/endpoints','home:write','Přidat nebo nahradit endpoint {endpoint: {id?, device, kind, url, name?}}. MCP runtime_endpoint_upsert.'],
   ['POST','/api/runtimes/endpoints/remove','home:write','Odebrat přidaný endpoint {id}. MCP runtime_endpoint_remove.'],
   ['POST','/api/runtimes/endpoints/token','přihlášení heslem','Uložit nebo smazat bearer token endpointu {id, token|null}; token se nikdy nevrací.']]}],
  strings:{en:{
   'LLM runtimy':'LLM runtimes',
   'Endpointy LLM runtimů, které hub čte přímo, se stavem posledního čtení. MCP runtime_endpoints_list.':'LLM runtime endpoints the hub reads directly, with the state of the last read. MCP runtime_endpoints_list.',
-  'Přidat nebo nahradit endpoint {endpoint: {id?, machine, kind, url, name?}}. MCP runtime_endpoint_upsert.':'Add or replace an endpoint {endpoint: {id?, machine, kind, url, name?}}. MCP runtime_endpoint_upsert.',
+  'Přidat nebo nahradit endpoint {endpoint: {id?, device, kind, url, name?}}. MCP runtime_endpoint_upsert.':'Add or replace an endpoint {endpoint: {id?, device, kind, url, name?}}. MCP runtime_endpoint_upsert.',
   'Odebrat přidaný endpoint {id}. MCP runtime_endpoint_remove.':'Remove an added endpoint {id}. MCP runtime_endpoint_remove.',
   'Uložit nebo smazat bearer token endpointu {id, token|null}; token se nikdy nevrací.':'Store or delete an endpoint\'s bearer token {id, token|null}; the token is never returned.',
   'přihlášení heslem':'password sign-in',
@@ -153,7 +153,7 @@ export default {
   const poller=options.runtimePoller||createRuntimePoller({endpoints,tokens,fetcher:options.runtimeFetch||fetch,intervalMs,enabled:()=>isEnabled(hub),onRequest:options.runtimeOnRequest||null});
   const requests=options.runtimeHistory||createRequestHistory(stateDirectory,{clients:()=>site.runtimeClients});
   const history=createHistoryCollector({store:requests,endpoints,tokens,fetcher:options.runtimeFetch||fetch,streamFetcher:options.runtimeStreamFetch||options.runtimeFetch||fetch,
-   runtimeIdOf:async id=>(await poller.runtimeIds()).get(id),kindOf:id=>poller.status(id).detectedKind,machines:()=>site.machines,clients:()=>site.runtimeClients,
+   runtimeIdOf:async id=>(await poller.runtimeIds()).get(id),kindOf:id=>poller.status(id).detectedKind,devices:()=>site.devices,clients:()=>site.runtimeClients,
    enabled:()=>isEnabled(hub),onRequest:options.runtimeOnRequest||null,...(options.runtimeStreamWatch?{watch:options.runtimeStreamWatch}:{})});
   return {store,tokens,poller,endpoints,intervalMs,requests,history,historyTimer:null,unsubscribe:null};
  },
@@ -166,12 +166,12 @@ export default {
    state.historyTimer=setInterval(tick,state.intervalMs);state.historyTimer.unref?.();setTimeout(tick,2000).unref?.();
    if(typeof hub.onIntegrationChange==='function')state.unsubscribe=hub.onIntegrationChange(e=>{if(e.id!==INTEGRATION_ID)return;if(e.enabled)tick();else state.history.stopAll();});
   },stop:state=>{clearInterval(state.historyTimer);state.historyTimer=null;state.unsubscribe?.();state.unsubscribe=null;state.history.stopAll();}}],
- provides:{[FACETS_POINT]:()=>machines=>runtimesFacet(machines),
+ provides:{[FACETS_POINT]:()=>devices=>runtimesFacet(devices),
   'home.runtimes':state=>state.poller.report(),
   // The history, once there is one to keep or one was kept: an endpoint that is llama-swap, or files on disk.
   'runtimes.requests':async(state,hub)=>{
    if(!await isEnabled(hub))return null;
-   const keeps=(await state.endpoints()).some(e=>state.history.isLlamaSwap(e))||(await state.requests.machines()).length>0;
+   const keeps=(await state.endpoints()).some(e=>state.history.isLlamaSwap(e))||(await state.requests.devices()).length>0;
    return keeps?state.requests.provider:null;}},
  integrations:[{id:INTEGRATION_ID,title:'LLM runtimes',kind:'llm-runtimes',toggle:true,
   status:(state,hub)=>integrationStatus(state,hub),
@@ -182,7 +182,7 @@ export default {
  ],
  mcpTools:[
   {name:'runtime_endpoints_list',scope:'read',title:'LLM runtimes: list endpoints',
-   description:'The local LLM runtime endpoints the hub reads directly over HTTP: those from the site configuration (source "site", read-only) and those added through the API (source "ui" / "agent"). Each with its machine, kind, the detected kind, whether a bearer token is stored (never the token), and the last read: state ok | stale | error | off (nothing listens) | waiting, lastSuccessAt, lastError. Also the kinds and the exact read-only paths the adapters may request.',
+   description:'The local LLM runtime endpoints the hub reads directly over HTTP: those from the site configuration (source "site", read-only) and those added through the API (source "ui" / "agent"). Each with its device, kind, the detected kind, whether a bearer token is stored (never the token), and the last read: state ok | stale | error | off (nothing listens) | waiting, lastSuccessAt, lastError. Also the kinds and the exact read-only paths the adapters may request.',
    inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,openWorldHint:false},
    run:(args,{state,hub})=>tool(async()=>{only(args,[]);return listEndpoints(state,hub);})},
   {name:'runtime_endpoint_upsert',scope:'home:write',title:'LLM runtimes: add or replace an endpoint',

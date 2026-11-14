@@ -37,7 +37,7 @@ export function createEndpointStore(file){
   remove:id=>queue(async()=>{const all=await read();if(!all.some(e=>e.id===id))throw new Error('not-found');await writeJson(file,{schema:1,endpoints:all.filter(e=>e.id!==id)});return true;}),
  };
 }
-const stripMeta=e=>e?{id:e.id,machine:e.machine,kind:e.kind,url:e.url,name:e.name}:null;
+const stripMeta=e=>e?{id:e.id,device:e.device,kind:e.kind,url:e.url,name:e.name}:null;
 
 // Bearer tokens, one per endpoint id. has(id) and get(id) for the poller; set(id, token|null). The file is
 // 0600 in a 0700 directory, and nothing reads it but the poller.
@@ -61,15 +61,15 @@ export function createTokenStore(file){
 export async function allEndpoints(site,store){
  const fromSite=(site.runtimes||[]).map(e=>({...e,source:'site',readOnly:true}));
  const ids=new Set(fromSite.map(e=>e.id)),urls=new Set(fromSite.map(e=>e.url));
- const stored=(await store.list()).filter(e=>e&&!ids.has(e.id)&&!urls.has(e.url)).map(e=>({id:e.id,machine:e.machine,kind:e.kind,url:e.url,name:e.name||'',source:e.source==='agent'?'agent':'ui',readOnly:false,
+ const stored=(await store.list()).filter(e=>e&&!ids.has(e.id)&&!urls.has(e.url)).map(e=>({id:e.id,device:e.device,kind:e.kind,url:e.url,name:e.name||'',source:e.source==='agent'?'agent':'ui',readOnly:false,
   addedAt:e.addedAt||null,addedBy:e.addedBy||null,updatedAt:e.updatedAt||null,updatedBy:e.updatedBy||null}));
  return [...fromSite,...stored];
 }
-// Validates an endpoint for the API: the shape (site-config.runtimeEndpoint), a machine the hub knows, no
+// Validates an endpoint for the API: the shape (site-config.runtimeEndpoint), a device the hub knows, no
 // clash with another endpoint's id or URL, and room for it.
-export function checkEndpoint(input,{site,machines,existing}){
+export function checkEndpoint(input,{site,devices,existing}){
  let e;try{e=runtimeEndpoint(input,{lanCidrs:site.lanCidrs,where:'endpoint'});}catch(err){throw invalid(err.message);}
- if(!machines.includes(e.machine))throw invalid(`endpoint.machine "${e.machine}" is not a machine on the overview (machine_list)`);
+ if(!devices.includes(e.device))throw invalid(`endpoint.device "${e.device}" is not a device on the overview (device_list)`);
  const same=existing.find(x=>x.id===e.id);
  if(same?.readOnly)throw Object.assign(new Error('read-only'),{detail:`endpoint ${e.id} comes from the site configuration`});
  const clash=existing.find(x=>x.url===e.url&&x.id!==e.id);if(clash)throw Object.assign(new Error('conflict'),{detail:`${e.url} is already endpoint ${clash.id}`});
@@ -120,14 +120,14 @@ export function createRuntimePoller({endpoints,tokens,fetcher=fetch,intervalMs=D
  const status=id=>{const s=states.get(id);return {state:stateOf(s),detectedKind:s?.detected||s?.result?.kind||null,lastAttemptAt:iso(s?.attemptAt),lastSuccessAt:iso(s?.successAt),lastError:s?.error||null,lastErrorAt:iso(s?.errorAt)};};
  const kindOf=e=>{const s=states.get(e.id);return s?.result?.kind||s?.detected||(e.kind==='auto'?null:e.kind);};
  // The runtime id each endpoint has in home.runtimes: its kind, and the port after it when another endpoint
- // of the same machine has that kind already (in list order). The request history uses the same ids.
+ // of the same device has that kind already (in list order). The request history uses the same ids.
  function runtimeIds(list){
   const ids=new Map(),taken=new Map();
-  for(const e of list){const base=kindOf(e)||'runtime',used=taken.get(e.machine)||new Set();taken.set(e.machine,used);
+  for(const e of list){const base=kindOf(e)||'runtime',used=taken.get(e.device)||new Set();taken.set(e.device,used);
    const id=used.has(base)?`${base}-${new URL(e.url).port||'80'}`:base;used.add(id);ids.set(e.id,id);}
   return ids;
  }
- // home.runtimes: {machineId: {source, observedAt, runtimes[]}} for the endpoints read at least once.
+ // home.runtimes: {deviceId: {source, observedAt, runtimes[]}} for the endpoints read at least once.
  async function report(){
   if(await enabled()===false)return {};
   const list=await endpoints(),out={},ids=runtimeIds(list);
@@ -135,7 +135,7 @@ export function createRuntimePoller({endpoints,tokens,fetcher=fetch,intervalMs=D
    const s=states.get(e.id);if(!s?.attemptAt)continue;
    const st=stateOf(s),r=s.result,kind=kindOf(e);
    const fresh=st==='ok';
-   const entry=out[e.machine]??={source:'přímo z runtimu',observedAt:null,runtimes:[]};
+   const entry=out[e.device]??={source:'přímo z runtimu',observedAt:null,runtimes:[]};
    const seen=new Date(s.attemptAt).toISOString();if(!entry.observedAt||seen<entry.observedAt)entry.observedAt=seen;
    const id=ids.get(e.id);
    entry.runtimes.push({id,name:e.name||KIND_NAMES[kind]||new URL(e.url).host,kind:kind||'',source:'přímo z runtimu',observedAt:seen,

@@ -14,7 +14,7 @@ Two things kept apart on purpose:
 - **Core** — this repository. Generic: it knows no household. Sign-in, users, service accounts,
   scopes and API keys, the version, the update check and the update command, the overview with the Thermo telemetry client, the inventory map and services catalog,
   the tracker, review, search, the SSH-key and versions collectors, the router adapter, the Git LFS view (git hosts over their API and git), the integrations page
-  (what the hub reads from outside, the switch that turns each off, and every machine with what is set up for it), the MCP endpoint.
+  (what the hub reads from outside, the switch that turns each off, and every device with what is set up for it), the MCP endpoint.
 - **Plugins and configuration** — one household's, outside this repository. Plugins are `plugins/<id>/` (with
   `plugin.json` and `index.mjs`) in a **plugin source**, a directory with `plugins/` and a `package.json`, usually a
   repository of its own; the hub finds them through `HOME_HUB_HOME/instance.json → sources.plugins` or
@@ -40,7 +40,7 @@ Rules that keep the split honest:
   addresses, host names, user names or home paths. Use the placeholders (`example.lan`, `10.0.0.x`, `alice`).
   `tests/leak.test.mjs` scans the tracked files and fails `npm test` on a finding; `node scripts/leak-scan.mjs`
   lists them; the pre-push hook refuses a push that would publish one (Development).
-- **Machines, networks, names and time zone come from `server/site-config.mjs`**, never from a constant.
+- **Devices, networks, names and time zone come from `server/site-config.mjs`**, never from a constant.
   A missing site file must leave an empty, working hub.
 
 ## Verification tiers
@@ -52,7 +52,7 @@ Rules that keep the split honest:
 | **L — large** | Auth, tokens/scopes, MCP write path, the module contract, site config, knowledge/inventory schema, a collector that touches other hosts, anything that changes `docs/API.md`, the version and release tooling (`server/version.mjs`, `scripts/release.mjs`), the update check, the update command (`scripts/update.mjs`, `server/update-apply.mjs`, `server/update-config.mjs`), where things are (`server/paths.mjs`), `plugin.json` and the plugin API exports (`server/plugin-api.mjs`, `tests/plugin-testing.mjs`, `server/semver.mjs`), the host-agent installer and the push agent (`scripts/install-host-agent.mjs`, `scripts/host-agent/`, `server/agent-closure.mjs`, `scripts/agent/`), the leak scan and the pre-push hook (`scripts/leak-scan.mjs`, `scripts/pre-push.mjs`, `scripts/hooks/`) | `npm test` + the python suites + a live preview smoke test |
 
 `npm test` runs `scripts/run-tests.mjs`: the core tests (`tests/*.test.mjs`) on a generic fixture site
-(`tests/fixtures/site.json`) with no plugins. It takes about a minute (longer on a loaded machine). **Run the whole
+(`tests/fixtures/site.json`) with no plugins. It takes about a minute (longer on a loaded computer). **Run the whole
 thing every time, always**: a subset is no substitute for it, however long it takes. It ends with a summary and exits non-zero on a failure:
 
 ```
@@ -60,7 +60,7 @@ core     tests 880  pass 880  fail 0
 total    tests 880  pass 880  fail 0
 ```
 
-- **Core: 880 tests in 102 files (2026-11-14). None may fail and none is skipped, on any machine.** One of them,
+- **Core: 880 tests in 102 files (2026-11-14). None may fail and none is skipped, on any computer.** One of them,
   `public edition: no overlay in the tree…`, fails in a checkout that has `local/site.json` or `local/plugins/`:
   develop core without them.
 - **Plugins test themselves.** A plugin source runs its tests against this core with
@@ -75,8 +75,8 @@ python3 tests/router_unifi_test.py           # the UniFi collector (10 tests), s
 LOCAL_PREVIEW=1 PORT=8891 AUTH_FILE=/abs/path/test-auth.json DATA_DIR=/abs/scratch/data node server/index.mjs
 ```
 
-Core tests must pass on any machine: they use the fixture site, placeholder addresses and no network. A test
-that needs a household's own data or machines belongs in that household's plugin source.
+Core tests must pass on any computer: they use the fixture site, placeholder addresses and no network. A test
+that needs a household's own data or devices belongs in that household's plugin source.
 
 ## Versioning: semver, released from tags
 
@@ -155,7 +155,7 @@ Rules:
 This repository is where core is developed. `main` here is canonical: a change is an ordinary commit, and
 releases are tags on `main`. There is no private tree any more, and the export that published one is deprecated.
 A private mirror for work in progress is fine: same history, and pushes to it go through the same hook. The hook
-runs on the machine that pushes, so it protects only a checkout that has it enabled.
+runs on the computer that pushes, so it protects only a checkout that has it enabled.
 
 Once per checkout (the settings are the checkout's own, `git config` without `--global`; worktrees share them):
 

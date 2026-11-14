@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Publish a Review set (or its next round) to Home Hub from the machine where the variants were made.
+// Publish a Review set (or its next round) to Home Hub from the computer where the variants were made.
 //   HOME_HUB_URL=https://… HOME_HUB_TOKEN=hhk_… node scripts/review-push.mjs review.json [--dry-run]
 // review.json has the shape of POST /api/review/publish (docs/review.md), except that media may name a local
 // file instead of a sha256:  {"file":"mockups/login-a.html"}  (relative to review.json; type from the extension).

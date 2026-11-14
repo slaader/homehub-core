@@ -10,7 +10,7 @@
 //   health    {"url": "http://127.0.0.1:8781/healthz", "seconds": 60}
 //   backups   {"keep": 5}
 // A system service is stopped and started through `sudo -n` unless the command already runs as root: the rule that
-// allows it belongs to the machine (sudoers), never to this file.
+// allows it belongs to the device (sudoers), never to this file.
 import os from 'node:os';
 import path from 'node:path';
 

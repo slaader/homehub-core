@@ -1,4 +1,4 @@
-// Reachability (server/reachability.mjs): a TCP connect from the hub to each machine's ports, a signal of its own
+// Reachability (server/reachability.mjs): a TCP connect from the hub to each device's ports, a signal of its own
 // beside "online". Every connect is injected here, so no test touches a network; the waits are a few milliseconds.
 import test from 'node:test';
 import net from 'node:net';
@@ -8,7 +8,7 @@ import {validateSite} from '../server/site-config.mjs';
 import {hub,SITE} from './hub-helper.mjs';
 
 const NEVER=()=>new Promise(()=>{});
-const machine=(extra={})=>({id:'alpha',name:'Alpha',hostname:'alpha.example.lan',ip:'10.0.0.5',role:'computer',...extra});
+const device=(extra={})=>({id:'alpha',name:'Alpha',hostname:'alpha.example.lan',ip:'10.0.0.5',role:'computer',...extra});
 
 test('an open port answers, and the check says it was open',async()=>{
  assert.deepEqual(await checkHost({host:'10.0.0.5',ports:[22],timeoutMs:20,connect:async()=>'open'}),{state:'answering',port:22,open:true});
@@ -51,13 +51,13 @@ test('a reading older than three minutes is unknown, and its time is kept',()=>{
  assert.deepEqual(reachabilityOf(undefined,now),{state:'unknown',checkedAt:null,port:null});
 });
 
-test('reach:false machines are never checked; absent reach means port 22; a machine with no address is left out',()=>{
- const site=validateSite({machines:[machine({id:'alpha'}),machine({id:'beta',ip:'10.0.0.6',reach:false}),machine({id:'gamma',ip:'10.0.0.7',reach:{ports:[2222,22]}}),machine({id:'delta',ip:'',hostname:''})]});
+test('reach:false devices are never checked; absent reach means port 22; a device with no address is left out',()=>{
+ const site=validateSite({devices:[device({id:'alpha'}),device({id:'beta',ip:'10.0.0.6',reach:false}),device({id:'gamma',ip:'10.0.0.7',reach:{ports:[2222,22]}}),device({id:'delta',ip:'',hostname:''})]});
  assert.deepEqual(reachTargets(site),[{id:'alpha',host:'10.0.0.5',ports:[22]},{id:'gamma',host:'10.0.0.7',ports:[2222,22]}]);
  assert.deepEqual(reachTargets(validateSite({})),[]);
 });
 
-test('the poller runs one pass at a time, at most four machines at once, and keeps one result per machine',async()=>{
+test('the poller runs one pass at a time, at most four devices at once, and keeps one result per device',async()=>{
  const targets=Array.from({length:6},(_,i)=>({id:`m${i}`,host:`10.0.0.${i+1}`,ports:[22]}));
  let inFlight=0,peak=0,calls=0;
  const connect=async()=>{calls++;inFlight++;peak=Math.max(peak,inFlight);await new Promise(r=>setTimeout(r,2));inFlight--;return 'open';};
@@ -71,7 +71,7 @@ test('the poller runs one pass at a time, at most four machines at once, and kee
  assert.equal(Object.keys(p.status()).length,6);
 });
 
-test('paused: no check runs and nothing is kept, so every machine reads unknown; resumed, it checks again',async()=>{
+test('paused: no check runs and nothing is kept, so every device reads unknown; resumed, it checks again',async()=>{
  let calls=0;
  const p=createReachabilityPoller({targets:()=>[{id:'m0',host:'10.0.0.1',ports:[22]}],connect:async()=>{calls++;return 'open';}});
  await p.poll();assert.equal(calls,1);
@@ -102,11 +102,11 @@ test('a hub built by the test helper never calls the real connect from the reach
  t.mock.method(net,'connect',function(...args){if(new Error().stack.includes('reachability.mjs'))fromPoller++;return real.apply(this,args);});
  const h=await hub(t);
  await h.handler.start();
- // The inert poller does run: its pass gives every checked machine a time, even though its connects fail.
+ // The inert poller does run: its pass gives every checked device a time, even though its connects fail.
  let checked=false;
  for(let i=0;i<200&&!checked;i++){
   const doc=await (await fetch(h.origin+'/api/home',{headers:h.admin})).json();
-  checked=doc.machines.some(m=>m.reachability?.checkedAt);
+  checked=doc.devices.some(m=>m.reachability?.checkedAt);
   if(!checked)await new Promise(r=>setTimeout(r,10));
  }
  await h.handler.stop();
@@ -115,14 +115,14 @@ test('a hub built by the test helper never calls the real connect from the reach
 });
 
 test('site.json reach: absent or null is port 22, false is never checked, {ports} takes 1 to 4 ports; anything else is named',()=>{
- const one=reach=>validateSite({machines:[machine({reach})]}).machines[0].reach;
+ const one=reach=>validateSite({devices:[device({reach})]}).devices[0].reach;
  assert.deepEqual(one(undefined),{ports:[22]});
  assert.deepEqual(one(null),{ports:[22]});
  assert.equal(one(false),false);
  assert.deepEqual(one({ports:[22,2222,80,443]}),{ports:[22,2222,80,443]});
- const refuses=(reach,pattern)=>assert.throws(()=>validateSite({machines:[machine({reach})]}),pattern);
- refuses(true,/machines\[0\]\.reach must be false, or/);
- refuses('22',/machines\[0\]\.reach must be false, or/);
+ const refuses=(reach,pattern)=>assert.throws(()=>validateSite({devices:[device({reach})]}),pattern);
+ refuses(true,/devices\[0\]\.reach must be false, or/);
+ refuses('22',/devices\[0\]\.reach must be false, or/);
  refuses({},/reach\.ports must be a list of 1 to 4/);
  refuses({ports:[]},/reach\.ports must be a list of 1 to 4/);
  refuses({ports:[22,2222,80,443,8080]},/reach\.ports must be a list of 1 to 4/);
@@ -135,16 +135,16 @@ test('site.json reach: absent or null is port 22, false is never checked, {ports
 });
 
 test('GET /api/home and /api/home/devices carry reachability; online does not change; disabling the integration reads unknown',async t=>{
- // The fixture's studio answers with a refusal (it is there), every other machine times out.
- const reach=createReachabilityPoller({targets:()=>reachTargets(SITE),connect:async({host})=>{if(host===SITE.machines.find(m=>m.id==='studio').ip)return 'refused';throw new Error('timeout');}});
+ // The fixture's studio answers with a refusal (it is there), every other device times out.
+ const reach=createReachabilityPoller({targets:()=>reachTargets(SITE),connect:async({host})=>{if(host===SITE.devices.find(m=>m.id==='studio').ip)return 'refused';throw new Error('timeout');}});
  const h=await hub(t,{reachability:reach});
  const get=async path=>(await fetch(h.origin+path,{headers:h.admin})).json();
- const byId=doc=>Object.fromEntries(doc.machines.map(m=>[m.id,m]));
+ const byId=doc=>Object.fromEntries(doc.devices.map(m=>[m.id,m]));
  const before=byId(await get('/api/home'));
- for(const m of SITE.machines)assert.deepEqual(before[m.id].reachability,{state:'unknown',checkedAt:null,port:null},`${m.id} before the first pass`);
+ for(const m of SITE.devices)assert.deepEqual(before[m.id].reachability,{state:'unknown',checkedAt:null,port:null},`${m.id} before the first pass`);
  await reach.poll();
  const after=byId(await get('/api/home'));
- for(const m of SITE.machines){
+ for(const m of SITE.devices){
   assert.equal(after[m.id].online,before[m.id].online,`${m.id}: online is unchanged by the check`);
   assert.deepEqual(Object.keys(after[m.id].reachability).sort(),['checkedAt','port','state']);
  }
@@ -154,8 +154,8 @@ test('GET /api/home and /api/home/devices carry reachability; online does not ch
  assert.equal(after.mini.reachability.port,null);
  assert.match(after.mini.reachability.checkedAt,/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
  const list=await get('/api/home/devices');
- for(const m of list.machines.filter(x=>x.source==='site'))assert.deepEqual(m.reachability,after[m.id].reachability,`${m.id} on the machine list`);
- // The integration on the integrations page: disabled, the poller stops and every machine reads unknown.
+ for(const m of list.devices.filter(x=>x.source==='site'))assert.deepEqual(m.reachability,after[m.id].reachability,`${m.id} on the device list`);
+ // The integration on the integrations page: disabled, the poller stops and every device reads unknown.
  const off=await h.post('/api/admin/integrations/toggle',{id:'home.reachability',enabled:false},h.admin);
  assert.equal(off.status,200);
  assert.equal(reach.paused(),true);

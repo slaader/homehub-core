@@ -1,13 +1,13 @@
 # Home Hub
 <!-- home-hub:public-readme -->
 
-Home Hub is a self-hosted hub for the machines of a home: how each machine is doing, what it runs, what depends
+Home Hub is a self-hosted hub for the devices of a home: how each device is doing, what it runs, what depends
 on it and what needs attention. Live telemetry, a services catalog, inventory, software versions, security checks
 and local AI runtimes sit next to a project tracker and a review space.
 
 It is built so your AI agent can do half the work. Agents read and update the same inventory through the HTTP
-API and MCP endpoint, add machines and their runtime stacks, keep tickets and publish work for you to review.
-**Integrations → Machines** shows what is connected on each machine and hands you a prompt for your agent to set
+API and MCP endpoint, add devices and their runtime stacks, keep tickets and publish work for you to review.
+**Integrations → Devices** shows what is connected on each device and hands you a prompt for your agent to set
 up the rest. Scoped service accounts decide what access it gets.
 
 One Node process, zero third-party npm dependencies, a vanilla-JavaScript UI, and files you can back up.
@@ -15,12 +15,12 @@ A fresh checkout starts empty, with no household configuration or plugins.
 
 ## Screenshots
 
-Examples from a configured hub, with identifying site and network labels replaced. Machine artwork and
+Examples from a configured hub, with identifying site and network labels replaced. Device artwork and
 project content are examples, not data bundled with a fresh installation.
 
-**Overview — machine status, live telemetry and services at a glance.**
+**Overview — device status, live telemetry and services at a glance.**
 
-![Home Hub overview with six machine cards and live telemetry](docs/screenshots/overview.jpg)
+![Home Hub overview with six device cards and live telemetry](docs/screenshots/overview.jpg)
 
 **Projects — work, activity and the next release in one place.**
 
@@ -48,9 +48,9 @@ LOCAL_PREVIEW=1 PORT=8799 node server/index.mjs
 ```
 
 Open http://127.0.0.1:8799 and sign in (default name `admin`). A new hub opens on **Getting started**, a
-checklist that ticks itself as you go: connect an agent, add your machines, fill the inventory. Each step has a
+checklist that ticks itself as you go: connect an agent, add your devices, fill the inventory. Each step has a
 ready prompt to hand to an agent; [docs/getting-started.md](docs/getting-started.md) has the same steps in detail.
-`LOCAL_PREVIEW=1` is plain HTTP on this machine only; for the rest of your network see
+`LOCAL_PREVIEW=1` is plain HTTP on this computer only; for the rest of your network see
 [Running it for real](#running-it-for-real).
 
 ## Docker
@@ -85,7 +85,7 @@ http_headers = { Authorization = "Bearer hhk_…" }
 ```
 
 The hub shows these snippets with your own address, plus the JSON for other MCP clients, on Getting started and
-wherever a page is still empty. The agent sees only the tools its scopes allow (`home_status`, `machine_upsert`,
+wherever a page is still empty. The agent sees only the tools its scopes allow (`home_status`, `device_upsert`,
 `inventory_update`, `ticket_create`, `review_publish` and more), and a short orientation when it connects.
 **Users and API → Connect and API** lists every tool with its scope; the same key works on the HTTP API
 ([docs/API.md](docs/API.md)).
@@ -110,8 +110,8 @@ models, video and audio.
 | Feature | Without anything else | Needs |
 |---|---|---|
 | Sign-in, roles, service accounts, API keys, access audit; getting-started checklist | Works | Nothing |
-| Overview: a tile per machine | Empty, and says how to fill it | `local/site.json`, **Add device**, or an agent (`machine_upsert`) |
-| Runtime stack on a machine page | Says how to publish one | An agent (`runtime_publish`) or `stack` in `site.json` |
+| Overview: a tile per device | Empty, and says how to fill it | `local/site.json`, **Add device**, or an agent (`device_upsert`) |
+| Runtime stack on a device page | Says how to publish one | An agent (`runtime_publish`) or `stack` in `site.json` |
 | Live CPU, GPU, power, temperature, memory | Static facts, "telemetry not installed" | The telemetry agent, or agent-less Windows / Linux reads |
 | Local LLM runtimes, what the GPU is generating | Not shown | A runtime the hub can reach, or a plugin |
 | Inventory map, table and services catalog | Empty, with a template and an agent prompt | An agent (`inventory_update`) or you in the form |
@@ -141,18 +141,18 @@ Edit it and restart. Every field is optional, and a wrong one stops the server w
 | `lanCidrs` | Your networks, for example `["10.0.0.0/24"]` |
 | `timeZone`, `defaultLanguage` | The zone every time is shown in; `en` or `cs` until a browser chooses |
 | `publicOrigin` | The address browsers use, for example `https://hub.example.lan` |
-| `machines[]` | The machines on the overview: name, address, role, picture, hardware, how collectors reach them |
+| `devices[]` | The devices on the overview: name, address, role, picture, hardware, how collectors reach them |
 | `inventory.places[]`, `inventory.secretStores[]` | Your vocabulary for the inventory map |
 | `tracker.projects[]` | Projects a new tracker starts with |
 | `router` | Which router adapter feeds the client census |
-| `runtimes[]` | Local LLM runtimes the hub reads directly: `{machine, kind, url, name?}` |
+| `runtimes[]` | Local LLM runtimes the hub reads directly: `{device, kind, url, name?}` |
 | `plugins.<id>` | Settings for a plugin |
 
 [docs/plugins.md](docs/plugins.md) describes every field. Pictures in `local/images/` are served under `/images/`.
 
 ## Telemetry and LLM runtimes
 
-**Telemetry (optional).** Live load, power draw and temperature come from a small telemetry agent on the machine
+**Telemetry (optional).** Live load, power draw and temperature come from a small telemetry agent on the device
 (Thermo), read over a pinned TLS connection. Its address is a placeholder until it has a public home:
 `https://example.com/home-hub/telemetry-agent`. Other systems need no agent:
 
@@ -161,7 +161,7 @@ Edit it and restart. Every field is optional, and a wrong one stops the server w
 - **Linux:** Node Exporter (the hub reads `/metrics` on port 9100; no Prometheus server needed), a Prometheus you
   already run (one node_exporter target through `/api/v1/query`), or SSH with a fixed script that only reads
   `/proc`, `/sys` and `df`.
-- Every machine says where its telemetry stands (not installed, unreachable, stale or fine); a failed read is never
+- Every device says where its telemetry stands (not installed, unreachable, stale or fine); a failed read is never
   shown as "off", and without telemetry a tile shows the facts from your configuration.
 
 **LLM runtimes.** The hub reads reachable runtimes itself every 30 seconds, read-only, and never loads, unloads or
@@ -169,11 +169,11 @@ prompts a model: llama-swap, Ollama, LM Studio, llama.cpp server, vLLM, SGLang, 
 OpenAI-compatible.
 
 ```json
-"runtimes": [{"machine": "studio", "kind": "ollama", "url": "http://127.0.0.1:11434"}]
+"runtimes": [{"device": "studio", "kind": "ollama", "url": "http://127.0.0.1:11434"}]
 ```
 
-A machine page then shows each runtime with its models, which of them are generating or queued, and the processes
-with the most GPU time. A runtime the hub cannot reach can come from a plugin or a small bridge on that machine.
+A device page then shows each runtime with its models, which of them are generating or queued, and the processes
+with the most GPU time. A runtime the hub cannot reach can come from a plugin or a small bridge on that device.
 
 The **LLM & Diffusion** page charts requests, tokens and tokens per second, and which clients sent them. For a
 llama-swap the hub keeps that history itself: it reads the request log without emptying it, names each client from
@@ -183,7 +183,7 @@ never a prompt or a body, for 13 months.
 
 ## Collectors and plugins
 
-Collectors are scripts you schedule. They read your machines over SSH, never install or change anything there, and
+Collectors are scripts you schedule. They read your devices over SSH, never install or change anything there, and
 write files under `data/` that the hub serves:
 
 ```sh
@@ -212,7 +212,7 @@ Home Hub is meant for a home network, not the open internet: keep it on your LAN
   |---|---|
   | `read` | Every read endpoint except security (always included) |
   | `inventory:write` | Create and change inventory and service entries |
-  | `home:write` | Machines on the overview, their runtime stacks, LLM runtime endpoints |
+  | `home:write` | Devices on the overview, their runtime stacks, LLM runtime endpoints |
   | `home:settings` | The telemetry read interval |
   | `tickets:write` | Tickets, comments, releases, projects |
   | `review:write` | Publish review sets and store decisions |
@@ -280,7 +280,7 @@ changelog entry has a **Data** part: then the on-disk format changed, and `rollb
 12 hours) the hub asks GitHub whether a newer release exists: two requests,
 `GET https://api.github.com/repos/<repository>/releases?per_page=20` and `…/releases/latest`, where the repository is
 the one named in `package.json → homeHub.updates.repo`. The requests carry the constant `User-Agent`
-`home-hub-update-check` and nothing else: no version, no instance id, no site name, nothing about your machines.
+`home-hub-update-check` and nothing else: no version, no instance id, no site name, nothing about your devices.
 Nothing is sent to the project; GitHub sees an address and a time, as for any `git fetch`. A token is not needed (if
 you already keep one in `GITHUB_TOKEN` or `private/github-token` for the versions collector, it is used, for
 `api.github.com` only). The result is on **Administration → Integrations** (card "Home Hub update check", with the
@@ -296,8 +296,8 @@ repository (`repo`, for a fork), takes pre-releases (`channel: "prerelease"`) or
 
 | Read | For |
 |---|---|
-| [docs/getting-started.md](docs/getting-started.md) | The first hour: install, sign in, connect an agent, add machines |
-| [docs/features.md](docs/features.md) | Every part of the hub in detail: machines, inventory, tracker, access, telemetry, LLM runtimes, collectors, security |
+| [docs/getting-started.md](docs/getting-started.md) | The first hour: install, sign in, connect an agent, add devices |
+| [docs/features.md](docs/features.md) | Every part of the hub in detail: devices, inventory, tracker, access, telemetry, LLM runtimes, collectors, security |
 | [docs/docker.md](docs/docker.md) | Docker in full |
 | [docs/updating.md](docs/updating.md) | The update command: preflight, apply, rollback, the data epoch, rehearsing a rollback |
 | [docs/plugins.md](docs/plugins.md) | Site configuration, the plugin contract, keeping household details out of core |

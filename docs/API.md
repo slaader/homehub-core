@@ -94,8 +94,8 @@ scope), `ADMIN_REQUIRED` (administration) or `SESSION_REQUIRED` (password sign-i
 - `GET /api/admin/accounts` → `{accounts:[{id, name, description, scopes, fullAccess, effectiveScopes, disabled, createdAt, lastUsedAt, keys[]}], scopes, presets}`. `scopes` is what is stored (`["*"]` for full access), `effectiveScopes` what that means now. `presets` is what an account can be created from: `read`, one per role (`role:editor`, `role:admin`, `role:<custom id>`: a snapshot of that role's scopes) and `full` (`scopes:["*"]`, `warn:true`). The role presets are worked out from the scope table when asked, so `role:editor` holds every write scope there is now (`home:write`, `software:write` and a plugin's included).
 - `POST /api/admin/accounts` `{name, description?, scopes[]}` → `201 {account}`; `scopes` is a list of scope ids or `["*"]`. `POST /api/admin/accounts/action` `{id, scopes}` | `{id, description}` | `{id, disabled}` | `{id, remove:true}` (removing revokes the account's keys). `POST /api/admin/accounts/keys` `{accountId, name?}` → `201 {token, key, account}`: the token appears only here.
 - `GET /api/admin/keys` → every key without its value; `POST /api/admin/keys/revoke` `{id}`. `POST /api/admin/keys` `{name, permission: read|write}` still issues a key without a service account (kept for scripts that use it).
-- `GET /api/admin/agents` → `{agents:[{id, machine, name, prefix, createdAt, createdBy, revokedAt, revokedBy, lastReportAt, agentVersion, platform}]}`: push agent keys, revoked ones included, never a token or its hash. `lastReportAt`, `agentVersion` and `platform` are those of the key's last accepted report (`null` before one). `POST /api/admin/agents` `{machine, name?}` → `201 {token, agent}`: the token (`hha_` + 64 hex) appears only here. `machine` is an id of the overview (a machine of `site.json` or an added device); `400 AGENT_INVALID` for an id that names nothing, the router, the NAS (`ssh.probe: "nas"`) and a machine whose `platform` is `other`, `409 AGENT_LIMIT` beyond two keys per machine (one to rotate) or 100 that are not revoked. `POST /api/admin/agents/revoke` `{id}` → `200 {agent}`, `404 NOT_FOUND`. A key whose machine is removed, or removed and added again under the same id, is revoked by the hub itself (`revokedBy: "machine-removed"`), and so is one whose machine would now be refused at issue (`revokedBy: "machine-changed"`). The same with the hub stopped: `node scripts/manage-access.mjs create-agent-key --machine <id> [--name <n>] --output /abs/file` (writes `{"schema": 1, "agent": {id, machine, name, prefix, createdAt}, "token": "hha_…"}`, 0600, only to a file that does not exist), `revoke-agent-key --id <id>` (also while the hub runs: it reads `agents.json` again when the file changes); `list` shows the keys without secrets.
-- `GET /api/admin/audit?kind=access|app|api|agent&q=<text>&limit=1..1000` (default 200) → `{events:[{at, kind, event, id, subject, detail?, by?, status?}]}`, newest first. `access` = changes to users, roles, accounts, keys and agent keys (`agent-key-created`, `agent-key-revoked`; `by` is the administrator, `local administration`, `machine-removed` or `machine-changed`); `app` = app tokens (`app-token-issued`, `app-token-revoked`); `api` = every write through a key or MCP tool, refused ones included; `agent` = what a push agent did that changed something (`agent-refused` with its code, at most once per key and code in ten minutes; `agent-first-report`; `agent-report-after-no-news`; `agent-version-changed`; `agent-platform-changed`; the last three at most once per key and event in ten minutes), `id` the agent key, `subject` the machine. No event holds a password, a token or a request body.
+- `GET /api/admin/agents` → `{agents:[{id, device, name, prefix, createdAt, createdBy, revokedAt, revokedBy, lastReportAt, agentVersion, platform}]}`: push agent keys, revoked ones included, never a token or its hash. `lastReportAt`, `agentVersion` and `platform` are those of the key's last accepted report (`null` before one). `POST /api/admin/agents` `{device, name?}` → `201 {token, agent}`: the token (`hha_` + 64 hex) appears only here. `device` is an id of the overview (a site device, from `site.json`, or an added device); `400 AGENT_INVALID` for an id that names nothing, the router, the NAS (`ssh.probe: "nas"`) and a device whose `platform` is `other`, `409 AGENT_LIMIT` beyond two keys per device (one to rotate) or 100 that are not revoked. `POST /api/admin/agents/revoke` `{id}` → `200 {agent}`, `404 NOT_FOUND`. A key whose device is removed, or removed and added again under the same id, is revoked by the hub itself (`revokedBy: "device-removed"`), and so is one whose device would now be refused at issue (`revokedBy: "device-changed"`). The same with the hub stopped: `node scripts/manage-access.mjs create-agent-key --device <id> [--name <n>] --output /abs/file` (writes `{"schema": 1, "agent": {id, device, name, prefix, createdAt}, "token": "hha_…"}`, 0600, only to a file that does not exist), `revoke-agent-key --id <id>` (also while the hub runs: it reads `agents.json` again when the file changes); `list` shows the keys without secrets.
+- `GET /api/admin/audit?kind=access|app|api|agent&q=<text>&limit=1..1000` (default 200) → `{events:[{at, kind, event, id, subject, detail?, by?, status?}]}`, newest first. `access` = changes to users, roles, accounts, keys and agent keys (`agent-key-created`, `agent-key-revoked`; `by` is the administrator, `local administration`, `device-removed` or `device-changed`); `app` = app tokens (`app-token-issued`, `app-token-revoked`); `api` = every write through a key or MCP tool, refused ones included; `agent` = what a push agent did that changed something (`agent-refused` with its code, at most once per key and code in ten minutes; `agent-first-report`; `agent-report-after-no-news`; `agent-version-changed`; `agent-platform-changed`; the last three at most once per key and event in ten minutes), `id` the agent key, `subject` the device. No event holds a password, a token or a request body.
 
 Limits: 100 users, 30 custom roles, 50 service accounts, 100 active keys, 100 active agent keys (`409`). Invalid input is `400 ACCESS_FAILED` (`AGENT_INVALID` for agent keys).
 
@@ -106,9 +106,9 @@ modules (`docs/plugins.md` → Integrations). The UI is Administration → Integ
 key reaches these routes; MCP has only the read-only tool `integrations_status` (scope `read`:
 `{integrations:[{id, kind, state, summary}]}`).
 
-- `GET /api/admin/machines` → `{schemaVersion:1, generatedAt, telemetry, facets:[{id, title, icon, page, howTo, off}], machines:[…]}`: Integrations → Machines. Every machine of the overview once, with what each module knows about it (extension point `machines.facets`, `docs/plugins.md`).
-  A machine: `{id, name, hostname, ip, kind, role, platform, source: site|added, online, lastSeen, state: ok|warn|error|not-configured, counts:{ok, attention, notConfigured, off}, facets:[{id, title, icon, how?:{by, text}, state, summary?, summaryT?, details?:[{label, value, valueT?}], href, prompt?, promptT?}]}`. `how.by` is `hub`, `source`, `collector`, `agent` or `integration`; `prompt` (a ready prompt for the person's own agent, the machine filled in) comes only where the part is not set up or needs attention. An integration that declares `machines` shows as a facet `int-<id>` on those machines only. The push agents' facet is `int-agent-reports`, on each machine that holds an agent key that is not revoked and is bound to it as it is now (Push agent): `ok` while the agent is fresh, `stale` once it is no news, `not-configured` while the key has not reported, `off` while the integration `agent.reports` is turned off; its `summary` is the integration item's.
-  A facet's `state` is `ok`, `warn`, `stale`, `error`, `off`, `not-configured` or `not-applicable`; `href` is the page where that part is set up. `telemetry` is what the add-machine dialog needs (as in `GET /api/home`). Read-only.
+- `GET /api/admin/devices` → `{schemaVersion:1, generatedAt, telemetry, facets:[{id, title, icon, page, howTo, off}], devices:[…]}`: Integrations → Devices. Every device of the overview once, with what each module knows about it (extension point `devices.facets`, `docs/plugins.md`).
+  A device: `{id, name, hostname, ip, kind, role, platform, source: site|added, online, lastSeen, state: ok|warn|error|not-configured, counts:{ok, attention, notConfigured, off}, facets:[{id, title, icon, how?:{by, text}, state, summary?, summaryT?, details?:[{label, value, valueT?}], href, prompt?, promptT?}]}`. `how.by` is `hub`, `source`, `collector`, `agent` or `integration`; `prompt` (a ready prompt for the person's own agent, the device filled in) comes only where the part is not set up or needs attention. An integration that declares `devices` shows as a facet `int-<id>` on those devices only. The push agents' facet is `int-agent-reports`, on each device that holds an agent key that is not revoked and is bound to it as it is now (Push agent): `ok` while the agent is fresh, `stale` once it is no news, `not-configured` while the key has not reported, `off` while the integration `agent.reports` is turned off; its `summary` is the integration item's.
+  A facet's `state` is `ok`, `warn`, `stale`, `error`, `off`, `not-configured` or `not-applicable`; `href` is the page where that part is set up. `telemetry` is what the add-device dialog needs (as in `GET /api/home`). Read-only.
 - `GET /api/admin/integrations` → `{schemaVersion:1, generatedAt, kinds[], integrations:[…], plugins:[{id, title, version?, source?, integrations:[id]}], pluginsDirectory}`. `pluginsDirectory` names the plugin directories, comma-separated when there are several.
   An integration: `{id, module, moduleTitle, core, title, titleKey?, kind, description, howTo, page, docs, toggle, toggleNote?, enabled, disabledBy?, disabledAt?, test, settings, status}`.
   `status` = `{state, summary, summaryT?, lastSuccessAt, lastError, configuredBy:[{source, name}], items:[{id, label, state, summary, summaryT?, lastSuccessAt, lastError?}]}`;
@@ -130,11 +130,11 @@ file means every integration is on. While one is off its data routes answer **`2
 | `home.windows` | No SSH connection to any Windows device; their tiles carry no telemetry; their `GET /api/home/history` → `{points:[], source:"vypnuto", disabled}` |
 | `home.winrm`, `home.node-exporter`, `home.prometheus`, `home.linux-ssh` | The same for the devices read by that provider: no request to WinRM, a Node Exporter or Prometheus, no Linux SSH connection |
 | `router.adapter` | `GET /api/router` → `state: "disabled"`, no census; the file and the adapter are not read |
-| `security.systems` | `GET /api/systems` → `{disabled, machines:[], collector:{state:"disabled"}}`; `snapshot.json` is not read |
+| `security.systems` | `GET /api/systems` → `{disabled, devices:[], collector:{state:"disabled"}}`; `snapshot.json` is not read |
 | `security.upstream` | `GET /api/systems` answers without the newest releases and with `upstreamDisabled`; `upstream.json` is not read |
-| `security.keys` | `GET /api/security` → `{disabled, machines:[], keys:[]}` |
-| `home.reachability` | No TCP connect to any machine; every `reachability` in `GET /api/home` and `GET /api/home/devices` reads `unknown` (the poller keeps no result) |
-| `agent.reports` | The push agents' reports are not taken: `POST /api/agent/report` → `409 INTEGRATION_DISABLED` (after the key check: an unknown or revoked key is still `401`), nothing is stored. No agent record is read: `GET /api/systems`, `GET /api/security` and `home.runtimes` answer as on a hub without agents. The keys and what was stored stay; `machines[].agent` keeps saying when each machine was last heard from, and goes `no-news` as the parts age |
+| `security.keys` | `GET /api/security` → `{disabled, devices:[], keys:[]}` |
+| `home.reachability` | No TCP connect to any device; every `reachability` in `GET /api/home` and `GET /api/home/devices` reads `unknown` (the poller keeps no result) |
+| `agent.reports` | The push agents' reports are not taken: `POST /api/agent/report` → `409 INTEGRATION_DISABLED` (after the key check: an unknown or revoked key is still `401`), nothing is stored. No agent record is read: `GET /api/systems`, `GET /api/security` and `home.runtimes` answer as on a hub without agents. The keys and what was stored stay; `devices[].agent` keeps saying when each device was last heard from, and goes `no-news` as the parts age |
 | `updates.check` | No request to GitHub about releases; `GET /api/updates` → `state: "disabled"` with `disabled` and `latest: null`; `POST /api/updates/check` → `409 INTEGRATION_DISABLED` |
 
 `GET /api/collectors` reports a collector that is off as `state: "disabled"`. `GET /api/home` lists what is off in
@@ -163,7 +163,7 @@ A hub without `private/auth.json` (or `AUTH_FILE`) starts with no owner: `GET /a
   list a person can read is `tools` in `GET /api/ui/manifest` (below); the web UI shows it under
   Users and API → Connect.
 - **`initialize` → `instructions`** is a short orientation: what the hub is, who the key is and which
-  scopes it holds, then a few lines per module (machines and runtime stacks, the inventory, the software
+  scopes it holds, then a few lines per module (devices and runtime stacks, the inventory, the software
   watch list, the tracker, review, and whatever a plugin adds through `mcpInstructions`). A line about a
   write tool is left out for a key without that scope.
 - `whoami` (`read`) tells a key what it is: `{account, key, kind, fullAccess, canWrite, scopes:[{id, allows, write}], never[]}`.
@@ -182,9 +182,9 @@ role of that name, an account's explicit scope list is used unchanged, and a key
 
 ## Push agent
 
-A machine can run a push agent that **sends** what it knows to the hub (design and threat model: `docs/agent.md`). It
-reports with an agent key, `Authorization: Bearer hha_<64 hex>`, issued by an administrator for **one** machine of the
-overview (Administration, above). The machine is the key's and never part of the report.
+A device can run a push agent that **sends** what it knows to the hub (design and threat model: `docs/agent.md`). It
+reports with an agent key, `Authorization: Bearer hha_<64 hex>`, issued by an administrator for **one** device of the
+overview (Administration, above). The device is the key's and never part of the report.
 
 **The key reaches one route.** An agent key is a principal of its own kind (`authKind: "agent"`) and holds no scope. The
 pipeline goes by the route that matched, never by a path prefix: with an agent key, every page, every other `/api/` route
@@ -211,7 +211,7 @@ one. The key needs no `Origin`. An older Home Hub does not know `hha_`: such a k
 ```
 
 **Envelope.** Exactly `v` (1), `agentVersion` (semver, `+dev` allowed), `platform` (`macos`, `linux` or `windows`),
-`sentAt` (ISO time, `YYYY-MM-DDTHH:MM:SSZ`, milliseconds allowed) and `parts` (1 to 16). Any other key (a `machine`
+`sentAt` (ISO time, `YYYY-MM-DDTHH:MM:SSZ`, milliseconds allowed) and `parts` (1 to 16). Any other key (a `device`
 field included) or a wrong value refuses the report: `400 AGENT_REPORT_INVALID` with `error.field` naming it. More than
 8000 record lines in all is `field: "parts"`. A body that is not JSON is `400 INVALID_INPUT`, as on every route. An
 unknown part name is refused alone (`unknown-part`), so a newer agent degrades part by part against an older hub. A
@@ -230,7 +230,7 @@ one run of the systems probe: sent together, with the same `collectedAt` and `in
 | `updates` | pending system and package updates | as `os` | 1000 lines |
 | `packages` | watched software, its processes, containers, the specs digest | as `os` | 2000 lines |
 | `sshkeys` | the `ssh-probe.sh` output | 21600, 900–86400 | 4000 lines |
-| `runtimes` | `data: {runtimes: [...]}`, one machine's entry of `home.runtimes` (`docs/plugins.md`), its documented fields only | 120, 30–3600 | 64 KiB; 20 runtimes, 30 models, 12 stats |
+| `runtimes` | `data: {runtimes: [...]}`, one device's entry of `home.runtimes` (`docs/plugins.md`), its documented fields only | 120, 30–3600 | 64 KiB; 20 runtimes, 30 models, 12 stats |
 
 **Records** are the probes' tab-separated lines: at most 4096 bytes, no control character but the tab (C0, DEL and
 C1, U+0080–U+009F). A part takes only its own tags (never an inherited name such as `constructor`), each with the fields counted after the tag ("rest" = every remaining field). Types: `text N` (at most N
@@ -282,9 +282,9 @@ string, a long random-looking string), which a version, an image digest, a `sudo
 The hub checks every line and trusts nothing: a failing line refuses its part (`invalid`, or `secret` naming tag and
 field, never the value); an `os` or `sshkeys` part needs exactly one `HOST` and ends with `END ok`, else `invalid`;
 `HOST` field 2 must match the envelope (`Darwin`–`macos`, `Linux`–`linux`, `Windows`–`windows`), else
-`platform-mismatch`. A machine whose `platform` is set (in `site.json` or on the device) must report that one, or every
+`platform-mismatch`. A device whose `platform` is set (in `site.json` or on the device) must report that one, or every
 part is refused `platform-mismatch`. A `runtimes` part passes each string through the secret check and each `url`
-through the rules of `site.json → runtimes[].url` for the bound machine (an origin on loopback or inside `lanCidrs`);
+through the rules of `site.json → runtimes[].url` for the bound device (an origin on loopback or inside `lanCidrs`);
 no string in it may hold a control character, and a `url` is stored as its origin.
 
 **Answers.**
@@ -295,57 +295,57 @@ no string in it may hold a control character, and a `url` is stored as its origi
 | 400 | `AGENT_REPORT_INVALID` | the envelope is wrong (an unknown key, a missing `parts`, …); `error.field` names it |
 | 401 | `AUTH_REQUIRED` | unknown or revoked key, also one revoked while its report was still arriving (nothing is stored) |
 | 403 | `AGENT_ONLY`, `AGENT_CREDENTIAL_REQUIRED`, `ORIGIN_REJECTED` | the gate (above); a `Content-Type` that is not exactly `application/json` |
-| 409 | `AGENT_MACHINE_GONE` | the bound machine is gone or was added again, or is now the router, the NAS or platform `other`; the key is revoked in the same step, and every later request is `401` |
-| 409 | `INTEGRATION_DISABLED` | an administrator turned the integration `agent.reports` off (Administration → Integrations): nothing is stored; the agent waits for its next interval. Checked after the key and its machine: a key whose machine is gone or changed still gets `AGENT_MACHINE_GONE` and is revoked |
+| 409 | `AGENT_DEVICE_GONE` | the bound device is gone or was added again, or is now the router, the NAS or platform `other`; the key is revoked in the same step, and every later request is `401` |
+| 409 | `INTEGRATION_DISABLED` | an administrator turned the integration `agent.reports` off (Administration → Integrations): nothing is stored; the agent waits for its next interval. Checked after the key and its device: a key whose device is gone or changed still gets `AGENT_DEVICE_GONE` and is revoked |
 | 413 | `TOO_LARGE` | over 512 KiB |
 | 429 | `AGENT_TOO_SOON` | less than 20 s after this key's previous `200`, or while another report of this key is being taken; `Retry-After` says when |
-| 500 | `UNAVAILABLE` | the machine's stored record (`<state>/agent/<machine>.json`) was written by a newer Home Hub: refused, never overwritten |
+| 500 | `UNAVAILABLE` | the device's stored record (`<state>/agent/<device>.json`) was written by a newer Home Hub: refused, never overwritten |
 
 A part sent again before the minimum of its range is `too-soon` and not stored; the rest of the report is. Only a part
-the same key stored counts for that: a key's first report after the machine's other key reported is not held back by
+the same key stored counts for that: a key's first report after the device's other key reported is not held back by
 the other key's parts (the 20 s floor stays per key). An agent sends
 every part that falls due within 20 s of another in **one** report, so the floor never splits a batch.
 
-**Time.** `collectedAt`, `sentAt` and the `HOST` time are the machine's clock: information only. The hub's receive time
+**Time.** `collectedAt`, `sentAt` and the `HOST` time are the device's clock: information only. The hub's receive time
 (`receivedAt`) is authoritative. A part is fresh until `receivedAt + 3 × interval`, then it is **no news**, never off.
 More than five minutes between `sentAt` and receipt is clock skew: shown, never corrected.
 
-**Storage.** One file per machine, `<state>/agent/<machine>.json` (0600, directory 0700): the latest copy of each part
+**Storage.** One file per device, `<state>/agent/<device>.json` (0600, directory 0700): the latest copy of each part
 with its `receivedAt` and a SHA-256 `digest`, so it is bounded by the caps; nothing is appended per report. Beside it,
-`<state>/agent/history.jsonl` keeps the trend of the agents' machines: one line `{at, machines: {<id>: {os, software,
-apps, warn, crit, stale}}}` (the shape of the collector's `history.jsonl`) per machine at most every six hours, when an
+`<state>/agent/history.jsonl` keeps the trend of the agents' devices: one line `{at, devices: {<id>: {os, software,
+apps, warn, crit, stale}}}` (the shape of the collector's `history.jsonl`) per device at most every six hours, when an
 `os` part is accepted, at most 3000 lines.
 
 **Where it shows.** `os`, `updates` and `packages` join `GET /api/systems` and `sshkeys` joins `GET /api/security`, each
-machine read from the collector's record or the agent's, whichever wins (Collectors → `GET /api/systems` and `GET
+device read from the collector's record or the agent's, whichever wins (Collectors → `GET /api/systems` and `GET
 /api/security` → Push agents). `runtimes` is the core module `agent`'s `home.runtimes` (`GET /api/home` →
-`machines[].runtimes`, `GET /api/models`): `{"source": "agent", "observedAt": <receivedAt>, "runtimes": […]}`, merged
+`devices[].runtimes`, `GET /api/models`): `{"source": "agent", "observedAt": <receivedAt>, "runtimes": […]}`, merged
 with the other providers; once the part is no news each runtime is `status: "unknown"` with `stats: []` and without
 `activity` or `pids`, and its models `state: "unknown"` without `active`, `queued`, `since` or `pids`. Only records of
-machines that exist now, would still be given a key and hold a key that is not revoked are read: revoking a machine's
+devices that exist now, would still be given a key and hold a key that is not revoked are read: revoking a device's
 last key stops its records showing. A record whose last report came with a key revoked since is not read either, even
-while the machine's other key is live (during a rotation, a report of either live key counts), and of a record that is
+while the device's other key is live (during a rotation, a report of either live key counts), and of a record that is
 read, only the parts received since the earliest live key was issued. A part received before an added device was created is not read, nor a record of
-another platform than the machine now has. `GET /api/collectors` and Integrations → Machines (the versions,
+another platform than the device now has. `GET /api/collectors` and Integrations → Devices (the versions,
 protection and SSH key facets) stay the collectors' alone in this release.
 
-**The overview** (`GET /api/home`, `GET /api/home/devices`, the MCP tool `machine_list`) shows each machine's agent in
-`machines[].agent` (Home: the overview), worked out from the same records the readers read; a `heartbeat` counts there
+**The overview** (`GET /api/home`, `GET /api/home/devices`, the MCP tool `device_list`) shows each device's agent in
+`devices[].agent` (Home: the overview), worked out from the same records the readers read; a `heartbeat` counts there
 and nowhere else, and never towards `online`. The integration `agent.reports` (kind `agent`) is the agents' card on
-Administration → Integrations, one item per machine that holds a key (`ok` fresh, `stale` no news, `not-configured` not
-heard from yet), and the facet `int-agent-reports` on those machines under Integrations → Machines. Turned off, the hub
+Administration → Integrations, one item per device that holds a key (`ok` fresh, `stale` no news, `not-configured` not
+heard from yet), and the facet `int-agent-reports` on those devices under Integrations → Devices. Turned off, the hub
 takes no report (`409 INTEGRATION_DISABLED`) and the readers join no agent record (Integrations, above). The keys are
 issued and revoked on Users and API → Push agents (`#access/agents`), which shows the token once, as the key file the
 installer reads (`{"schema": 1, "agent": {…}, "token": "hha_…"}`, the same as `create-agent-key --output`).
 
-### The agent on a machine
+### The agent on a device
 
-Core's agent for macOS and Linux is `scripts/agent/agent.mjs`, installed on the machine, by a person, with
+Core's agent for macOS and Linux is `scripts/agent/agent.mjs`, installed on the device, by a person, with
 `node scripts/install-host-agent.mjs --core` (the hub never delivers code, probes or configuration; `docs/agent.md` §5
 has where everything goes and what each account sees):
 
 ```sh
-node scripts/agent-specs.mjs <machine> [--platform macos|linux] > specs.txt       # on the hub: the machine's watch list
+node scripts/agent-specs.mjs <device> [--platform macos|linux] > specs.txt       # on the hub: the device's watch list
 node scripts/install-host-agent.mjs --core --hub https://hub.example.lan [--pin <sha256> [--pin <next>] | --ca /abs/hub-ca.pem] \
   --key-file /abs/agent-key.json [--specs /abs/specs.txt] [--runtime ollama=http://127.0.0.1:11434 ...] \
   [--keys own|all-accounts|off] [--account alice] [--service launchd-agent|launchd-daemon] [--dry-run] [--once] \
@@ -384,16 +384,16 @@ node scripts/agent/agent.mjs --config DIR [--state DIR] [--key FILE] [--once [--
 - A failed health check puts the previous agent back, its sudoers rules and root-owned probe copy included; after a
   first install those are removed.
 
-**Windows** has its own agent in Windows PowerShell 5.1, with no Node on the machine (`scripts/agent/windows/`;
+**Windows** has its own agent in Windows PowerShell 5.1, with no Node on the device (`scripts/agent/windows/`;
 `docs/agent.md` → Step 5 as built has the install steps and the first-run checks). It sends the same envelope
 (`platform: "windows"`): `heartbeat` and one run of its probe for `os` (`HOST`, `OS`, `HW`, `UPTIME`, `DEFENDER`,
 `BITLOCKER`, `WINFW`, `RDP`, `LISTEN`, `END`), `updates` (`WINUP`, `WINUP_NONE`, `WINUP_ERR`, from Windows Update's own
 cache, never a download or an install) and `packages` (`SW`, `RUN`, `SPECS`); no `sshkeys`, `runtimes` or `PRIV`. A
 `winreg` rule's matches are `SW <id> app <version> <display name> <x64|x86>`. It runs as a Scheduled Task under
-`NT AUTHORITY\LocalService`, installed by a person on the machine as an administrator:
+`NT AUTHORITY\LocalService`, installed by a person on the device as an administrator:
 
 ```powershell
-node scripts/agent-specs.mjs <machine> --platform windows > specs.txt     # on the hub
+node scripts/agent-specs.mjs <device> --platform windows > specs.txt     # on the hub
 powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\agent\windows\install-agent.ps1 -Hub https://hub.example.lan `
   -KeyFile C:\path\agent-key.json [-Specs C:\path\specs.txt] [-Pin <sha256> [-Pin <next>] | -Ca C:\path\hub-ca.pem] `
   [-Yes] [-Wait 90] [-DryRun | -WhatIf] [-Once]
@@ -426,9 +426,9 @@ Every JSON error has this shape:
 | 413 | `TOO_LARGE` | Body over 16 KB |
 | 403 | `SCOPE_REQUIRED`, `SESSION_REQUIRED`, `READ_ONLY`, `ADMIN_REQUIRED` | The credential may not do this: a role or API key without the scope, a route that needs a password sign-in, a read-only account, a non-administrator |
 | 403 | `AGENT_ONLY`, `AGENT_CREDENTIAL_REQUIRED` | An agent key outside the agent report; another credential on the agent report (Push agent) |
-| 400/409/429 | `AGENT_REPORT_INVALID`, `AGENT_INVALID`, `AGENT_LIMIT`, `AGENT_MACHINE_GONE`, `AGENT_TOO_SOON` | The push agent's report and keys (Push agent; Administration) |
+| 400/409/429 | `AGENT_REPORT_INVALID`, `AGENT_INVALID`, `AGENT_LIMIT`, `AGENT_DEVICE_GONE`, `AGENT_TOO_SOON` | The push agent's report and keys (Push agent; Administration) |
 | 409 | `SETUP_REQUIRED`, `ROLE_IN_USE` | No owner account exists yet (run `node scripts/setup.mjs`); a role people still hold cannot be deleted without `reassignTo` |
-| 400/403/404/409/422 | `MACHINE_INVALID`, `MACHINE_SECRET`, `MACHINE_NOT_FOUND`, `MACHINE_CONFLICT`, `MACHINE_DUPLICATE`, `MACHINE_LIMIT`, `MACHINE_READ_ONLY` | The machine API (see Machines below): one code per refusal |
+| 400/403/404/409/422 | `DEVICE_INVALID`, `DEVICE_SECRET`, `DEVICE_NOT_FOUND`, `DEVICE_CONFLICT`, `DEVICE_DUPLICATE`, `DEVICE_LIMIT`, `DEVICE_READ_ONLY` | The device API (see Devices below): one code per refusal |
 | 400/404/409/429/503 | `HOME_UNAVAILABLE`, `DEVICE_FAILED`, `INVENTORY_EDIT_FAILED`, `INVENTORY_UPDATE_FAILED`, `TICKETS_FAILED`, `REVIEW_FAILED`, `SEARCH_FAILED`, `ACCESS_FAILED`, `UPDATE_FAILED`, `MODELS_UNAVAILABLE`, `INVALID_QUERY` (plugins add their own) | Feature errors: 400 invalid request, 404 unknown id, 409 conflict (read again, reapply), 429 another action is running (retry shortly), 503 the feature cannot answer right now |
 | 500 | `UNAVAILABLE` | Anything else |
 
@@ -468,7 +468,7 @@ A source has `kind` and only the fields that apply:
 | `agent` | Written with a service-account key, over MCP or the API; `accounts` names them | Inventory `verified_by: "Home Hub API · <account>"`; authors that are service accounts (or a key's name) |
 | `config` | Read from a configuration file; `source` names it | Tracker projects seeded from `site.json → tracker.projects`; the software watch list (`local/software-watch.json`) |
 | `collector` | Written by an automated, read-only job; `source` is its script | The collector state (`collectedAt`, interval, `state`) and the snapshot's `run` stamp |
-| `telemetry` | Reported live by an agent on a machine (Thermo) | Reserved for the overview's telemetry; no page above sends it yet |
+| `telemetry` | Reported live by an agent on a device (Thermo) | Reserved for the overview's telemetry; no page above sends it yet |
 | `plugin` | Supplied by a plugin; `source` is the plugin or adapter id | The router adapter, when a plugin provides it |
 | `other` | A stamp or name nobody on this hub carries: an import, a hand edit of the file, a removed account; `detail` lists them | Anything the rows above do not match |
 
@@ -476,8 +476,8 @@ A source has `kind` and only the fields that apply:
 |---|---|
 | `id` | A stable name of the source inside one answer (`systems`, `upstream`, `watch`, `security`), for a page that shows one part |
 | `source` | The script, file, plugin or adapter |
-| `host` | The machine the collector ran on, when the snapshot says so |
-| `count`, `unit` | How many records come from it; `unit` is `entries` (inventory), `items` (tickets), `records` (the tracker list: projects, releases and items together), `projects`, `rounds`, `machines`, `sources` or `clients` |
+| `host` | The device the collector ran on, when the snapshot says so |
+| `count`, `unit` | How many records come from it; `unit` is `entries` (inventory), `items` (tickets), `records` (the tracker list: projects, releases and items together), `projects`, `rounds`, `devices`, `sources` or `clients` |
 | `changes` | Later changes by this kind of source to records it did not necessarily create (comments, edits, decisions) |
 | `accounts`, `people` | Service-account names and user names, busiest first, at most 8 (`accountsMore` / `peopleMore` count the rest) |
 | `lastAt` | When it last wrote: an ISO time, or a `YYYY-MM-DD` day for inventory stamps |
@@ -503,7 +503,7 @@ it may open. The web shell draws its sidebar, its pages and the Connect tab from
            {"hash": "versions", "admin": true, "module": "security"}],
  "nav": [{"label": null, "labelKey": "Domov", "items": [{"hash": "overview", "label": null, "labelKey": "Přehled", "soon": false, "module": "home"}]}],
  "modules": [{"id": "home", "core": true, "title": "Overview", "version": "1.2.0", "source": "core"}],
- "tools": [{"name": "machine_upsert", "title": "Overview: create or replace a machine", "scope": "home:write", "write": true, "description": "…", "module": "home"}],
+ "tools": [{"name": "device_upsert", "title": "Overview: create or replace a device", "scope": "home:write", "write": true, "description": "…", "module": "home"}],
  "apiDocs": [{"title": "Router", "routes": [["GET", "/api/router", "read", "…"]]}],
  "strings": {"en": {"source text": "translation"}},
  "inventory": {"places": [], "secretStores": []},
@@ -534,104 +534,104 @@ and `pages` marks it `admin: true`. The data routes behind a page check the scop
 
 ## Home: the overview
 
-- `GET /api/home` → `{"poll","schemaVersion":1,"generatedAt","machines":[…],"telemetry","router"}`. One entry per machine from the site configuration (site.json → `machines`) and per added machine: identity (`id`, `name`, `hostname`, `ip`, `kind`: `thermo`, `nas`, `router` or `other`), `props` (static hardware), `online` (`online`, `stale`, `offline`, `unknown`), `lastSeen`, `quad` (CPU, GPU, power, temperature and memory averaged over the poll interval, from Thermo or from Windows telemetry), `volumes`, `services` and `stack`. `kind: "thermo"` means "has a telemetry feed", whichever provider (`telemetry.provider`) delivers it; a field a provider does not measure is `null`, never `0`.
-  - `reachability` = `{"state","checkedAt","port"}` on every machine: whether its address answers on the network. The hub makes a TCP connect every 60 s to the ports of its `machines[].reach` in site.json (default port 22; `false` = never checked). Only the machines of site.json are checked: a machine added in the UI reads `unknown`. The check uses the site file's `ip` (else `hostname`), not a tile's address override. `state` is `answering` (a port completed the connect, or was refused: something on the host answered; `port` is that port), `not-answering` (no port answered within 2 s each) or `unknown` (not checked, no result yet, the integration `home.reachability` is disabled, or the last result is older than 3 minutes; `checkedAt` keeps that result's time). It is a signal of its own: `online` is computed as before and does not change with it, and `not-answering` says nothing certain about whether the machine is running.
-  - `agent` = `{"lastReportAt","freshness","agentVersion","behind","specsDiffer"}` for a machine that holds a push agent key that is not revoked and is bound to the machine as it is now (an added device removed and added again under its id is another machine), and that would still be given one (not the router, the NAS or platform `other`) (Push agent); else `null`. `lastReportAt` is the hub's receive time of the machine's last report (`null` before one). `freshness` is `fresh` (a part it sent is within `receivedAt + 3 × interval`, the 60 s heartbeat included), `no-news` (none is) or `never` (nothing received since the machine's earliest such key was issued and sent with one of those keys: a report sent with a key revoked since, also one sent after this key was issued, or to an earlier machine of that id, is not this key's, so a re-issued key starts at `never` and `lastReportAt` is `null` until it reports); there is no "off": a quiet agent says nothing about whether the machine runs, and `online` is computed as before and never from it. `agentVersion` is what the last report said; `behind` is `true` when it has a lower precedence than the hub's own version (build metadata ignored, so `1.6.0+dev` is not behind `1.6.0`; `null` when either is unknown). `specsDiffer` is `true` when the agent's watch list (its `SPECS` digest) is not the hub's current list for that machine (`node scripts/agent-specs.mjs <machine>`), `false` when it is, `null` when the agent sent none or the hub's watch list cannot be read (as `agent-specs.mjs` then refuses). Only what the readers would read and what arrived since that key counts: parts received before it was issued or before an added device was created, or of another platform than the machine says, do not.
-  - Every machine also carries `platform` (`macos`, `windows`, `linux`, `other` or `null`; the operating system, apart from `role`), `native` (below; `null` unless the machine is read through Windows telemetry), `role` (`computer`, `nas`, `router`, `other`), `source` (`site` = the site configuration, `ui` = added on the overview, `agent` = written through the machine API), `readOnly`, `picture` (a path), `image` (its own picture or `null`), `telemetry`, `runtimes` and `spark`. Added machines have `added:true`, `hash`, `pictureId`, `createdAt`/`createdBy` and `updatedAt`/`updatedBy`.
-  - `telemetry` = `{"state","thermoId","lastSampleAt","ageSeconds","reason"}`; a machine read through Windows telemetry also has `"provider":"windows"`, `"hostId"` (its own id), `"target"` (the label of the connection it is read through: `user@host` with `:port` when not 22 for an app-managed one, the SSH alias for an older one), `"connection"` (`{"mode":"managed","host","port","user","keyFingerprint","hostKeyFingerprint"}` or `{"mode":"alias","target"}`; public facts only, never a key or a path; `machine_list` carries neither `target` nor `connection`), `"detail"` (the collector's last error code while not `ok`, else `null`) and `"hint"` (that code's source-language sentence: what to do), and its `thermoId` is `null`. `state` is `not-installed` (the machine names no telemetry host), `not-applicable` (a router), `ok` (newest reading at most 3 minutes old), `stale` (readings exist, the newest is older) or `unreachable` (a host is named and nothing was ever read). `reason` for the last two: `no-login` (the hub has no login for that host), `denied`, `down`, `no-data`, `waiting`. A failed read never means the machine is off; `online` keeps its earlier meaning for existing clients.
+- `GET /api/home` → `{"poll","schemaVersion":1,"generatedAt","devices":[…],"telemetry","router"}`. One entry per device from the site configuration (site.json → `devices`) and per added device: identity (`id`, `name`, `hostname`, `ip`, `kind`: `thermo`, `nas`, `router` or `other`), `props` (static hardware), `online` (`online`, `stale`, `offline`, `unknown`), `lastSeen`, `quad` (CPU, GPU, power, temperature and memory averaged over the poll interval, from Thermo or from Windows telemetry), `volumes`, `services` and `stack`. `kind: "thermo"` means "has a telemetry feed", whichever provider (`telemetry.provider`) delivers it; a field a provider does not measure is `null`, never `0`.
+  - `reachability` = `{"state","checkedAt","port"}` on every device: whether its address answers on the network. The hub makes a TCP connect every 60 s to the ports of its `devices[].reach` in site.json (default port 22; `false` = never checked). Only the devices of site.json are checked: a device added in the UI reads `unknown`. The check uses the site file's `ip` (else `hostname`), not a tile's address override. `state` is `answering` (a port completed the connect, or was refused: something on the host answered; `port` is that port), `not-answering` (no port answered within 2 s each) or `unknown` (not checked, no result yet, the integration `home.reachability` is disabled, or the last result is older than 3 minutes; `checkedAt` keeps that result's time). It is a signal of its own: `online` is computed as before and does not change with it, and `not-answering` says nothing certain about whether the device is running.
+  - `agent` = `{"lastReportAt","freshness","agentVersion","behind","specsDiffer"}` for a device that holds a push agent key that is not revoked and is bound to the device as it is now (an added device removed and added again under its id is another device), and that would still be given one (not the router, the NAS or platform `other`) (Push agent); else `null`. `lastReportAt` is the hub's receive time of the device's last report (`null` before one). `freshness` is `fresh` (a part it sent is within `receivedAt + 3 × interval`, the 60 s heartbeat included), `no-news` (none is) or `never` (nothing received since the device's earliest such key was issued and sent with one of those keys: a report sent with a key revoked since, also one sent after this key was issued, or to an earlier device of that id, is not this key's, so a re-issued key starts at `never` and `lastReportAt` is `null` until it reports); there is no "off": a quiet agent says nothing about whether the device runs, and `online` is computed as before and never from it. `agentVersion` is what the last report said; `behind` is `true` when it has a lower precedence than the hub's own version (build metadata ignored, so `1.6.0+dev` is not behind `1.6.0`; `null` when either is unknown). `specsDiffer` is `true` when the agent's watch list (its `SPECS` digest) is not the hub's current list for that device (`node scripts/agent-specs.mjs <device>`), `false` when it is, `null` when the agent sent none or the hub's watch list cannot be read (as `agent-specs.mjs` then refuses). Only what the readers would read and what arrived since that key counts: parts received before it was issued or before an added device was created, or of another platform than the device says, do not.
+  - Every device also carries `platform` (`macos`, `windows`, `linux`, `other` or `null`; the operating system, apart from `role`), `native` (below; `null` unless the device is read through Windows telemetry), `role` (`computer`, `nas`, `router`, `other`), `source` (`site` = the site configuration, `ui` = added on the overview, `agent` = written through the device API), `readOnly`, `picture` (a path), `image` (its own picture or `null`), `telemetry`, `runtimes` and `spark`. Added devices have `added:true`, `hash`, `pictureId`, `createdAt`/`createdBy` and `updatedAt`/`updatedBy`.
+  - `telemetry` = `{"state","thermoId","lastSampleAt","ageSeconds","reason"}`; a device read through Windows telemetry also has `"provider":"windows"`, `"hostId"` (its own id), `"target"` (the label of the connection it is read through: `user@host` with `:port` when not 22 for an app-managed one, the SSH alias for an older one), `"connection"` (`{"mode":"managed","host","port","user","keyFingerprint","hostKeyFingerprint"}` or `{"mode":"alias","target"}`; public facts only, never a key or a path; `device_list` carries neither `target` nor `connection`), `"detail"` (the collector's last error code while not `ok`, else `null`) and `"hint"` (that code's source-language sentence: what to do), and its `thermoId` is `null`. `state` is `not-installed` (the device names no telemetry host), `not-applicable` (a router), `ok` (newest reading at most 3 minutes old), `stale` (readings exist, the newest is older) or `unreachable` (a host is named and nothing was ever read). `reason` for the last two: `no-login` (the hub has no login for that host), `denied`, `down`, `no-data`, `waiting`. A failed read never means the device is off; `online` keeps its earlier meaning for existing clients.
   - Top-level `telemetry` = `{"agent":"Thermo","repoUrl","staleAfterSeconds":180,"adapters":[…]}`: the optional telemetry agent and where to get it (one constant, `TELEMETRY_REPO_URL` in `server/thermo-client.mjs`, still a placeholder until its repository is published). `adapters` lists what this hub can connect a device to, each `{"id","name","repoUrl","connect","defaultPort","summary"}` (`summary` is a source-language sentence). The Telemetry step of Add device offers exactly these: `thermo` (`connect:"account"`, the agent) and `windows` (`connect:"ssh"`, no agent, `repoUrl:null`, also `"platform":"windows"` and `"minIntervalSeconds":30`; see [Windows telemetry](#windows-telemetry-ssh--powershell)). Also `winrm` (`connect:"endpoint"`, platform `windows`), `node-exporter` (`connect:"endpoint"`, platform `linux`, `"recommended":true`), `prometheus` (`connect:"endpoint"`, platform `linux`) and `linux-ssh` (`connect:"ssh"`, platform `linux`); `thermo` has `"platform":"macos"`. The dialog offers the adapters of the chosen platform (all of them when none is said). See [Agent-less telemetry](#agent-less-telemetry-winrm-node-exporter-prometheus-linux-ssh).
   - `native` (Windows telemetry over SSH or WinRM; Linux sources: see Agent-less telemetry) = `{"provider":"windows","observedAt","os":{"caption","version","uptimeSeconds"},"cpu":{"name","logical","cores":[%…]},"disk":{"readBps","writeBps"},"net":{"rxBps","txBps"},"gpus":[{"id","name","util","engine","memUsed","memTotal"}],"gpuCounters","span","sensors":"unsupported"}`: per-core load, disk and network rates and each GPU, averaged over the last poll interval (`span` seconds; `null` rates after the first poll, a failure or a gap). `gpus[].name` and `memTotal` are set only when one GPU and one display adapter can be paired.
-  - `spark` = `{"series":"cpu"|"gpu","end","stepSeconds":10,"windowSeconds":600,"values":[…60]}` on a machine with telemetry readings in the window, else `null`: the tile's small chart. `values` are percentages per 10 s step, the last one ending at `end` (unix seconds); `null` is a step without a reading and is drawn as a gap. `series` is `gpu` for a machine that has `runtimes`, else `cpu`.
-  - `stack.source` is `published` (with `publishedAt`, `publishedBy`, `hash`, `layerKeys`) when an agent published it, `collected` for a collected descriptor, absent for the site configuration. `runtimes` is `null` unless a `home.runtimes` provider reports local LLM runtimes for the machine (docs/plugins.md); the machine page then has no such section. Otherwise it is `{"source","observedAt","runtimes":[{"id","name","kind","status","url","version","source"?,"mode"?,"activity"?,"models":[{"id","state","kind","sizeGb","contextTokens","ttlRemainingSeconds","active"?,"queued"?,"since"?}],"stats":[{"label","value"}]}]}`; `activity` (`{active, queued}`: requests or jobs running and waiting) and a model's `active`, `queued`, `since` appear only where a runtime reports them and its data is fresh; `mode: "cli"` is a command-line tool (mflux) whose models are those of its jobs. `work` is `null` without runtimes, else what generates now on that machine: `{items:[…], active, queued, watching:[names], blind:[names]}` (as [`GET /api/models`](#llm--diffusion-ui-models) → `work`), a request through a gateway counted once; `gpuProcesses` is `null` unless the machine's telemetry agent reports the processes on its GPU (Thermo, from its 30-second snapshot), else `{observedAt, gpu, attributedPercent, rows:[{pid, name, percent, runtime?, model?}]}`: the five busiest, each with its time in the GPU's queues in per cent (100 = one GPU-second per second, averaged over 5 s; the agent's estimate, not a share of the GPU load: queues overlap, so the rows can add up to more than `gpu`), named by the runtime or model whose `pids` include it; `gpu` is the device utilization in the same snapshot and `attributedPercent` the queue time of all processes together; when more than one provider contributed (the hub's own direct reads, see [LLM runtime endpoints](#llm-runtime-endpoints), and a plugin), also `"sources":[…]`, and each runtime appears once (docs/plugins.md → `home.runtimes` from more than one provider). A stack block whose service is reported live gets its `port` and `desc` rewritten as source-language sentences (`":8081 · živě"`); `portT` and `descT` carry the same as translatable parts, like the collector texts below.
-- `GET /api/home/history?machine=<id>&range=30m|7d|30d|6m` → chart buckets for a machine that reports through Thermo or Windows telemetry; other machines answer with `points: []` and a `reason`. A Windows reading is the average over its poll interval and fills the 30 s buckets (and the tile's 10 s spark steps) it covers, at most 120 s back; a gap stays a gap.
+  - `spark` = `{"series":"cpu"|"gpu","end","stepSeconds":10,"windowSeconds":600,"values":[…60]}` on a device with telemetry readings in the window, else `null`: the tile's small chart. `values` are percentages per 10 s step, the last one ending at `end` (unix seconds); `null` is a step without a reading and is drawn as a gap. `series` is `gpu` for a device that has `runtimes`, else `cpu`.
+  - `stack.source` is `published` (with `publishedAt`, `publishedBy`, `hash`, `layerKeys`) when an agent published it, `collected` for a collected descriptor, absent for the site configuration. `runtimes` is `null` unless a `home.runtimes` provider reports local LLM runtimes for the device (docs/plugins.md); the device page then has no such section. Otherwise it is `{"source","observedAt","runtimes":[{"id","name","kind","status","url","version","source"?,"mode"?,"activity"?,"models":[{"id","state","kind","sizeGb","contextTokens","ttlRemainingSeconds","active"?,"queued"?,"since"?}],"stats":[{"label","value"}]}]}`; `activity` (`{active, queued}`: requests or jobs running and waiting) and a model's `active`, `queued`, `since` appear only where a runtime reports them and its data is fresh; `mode: "cli"` is a command-line tool (mflux) whose models are those of its jobs. `work` is `null` without runtimes, else what generates now on that device: `{items:[…], active, queued, watching:[names], blind:[names]}` (as [`GET /api/models`](#llm--diffusion-ui-models) → `work`), a request through a gateway counted once; `gpuProcesses` is `null` unless the device's telemetry agent reports the processes on its GPU (Thermo, from its 30-second snapshot), else `{observedAt, gpu, attributedPercent, rows:[{pid, name, percent, runtime?, model?}]}`: the five busiest, each with its time in the GPU's queues in per cent (100 = one GPU-second per second, averaged over 5 s; the agent's estimate, not a share of the GPU load: queues overlap, so the rows can add up to more than `gpu`), named by the runtime or model whose `pids` include it; `gpu` is the device utilization in the same snapshot and `attributedPercent` the queue time of all processes together; when more than one provider contributed (the hub's own direct reads, see [LLM runtime endpoints](#llm-runtime-endpoints), and a plugin), also `"sources":[…]`, and each runtime appears once (docs/plugins.md → `home.runtimes` from more than one provider). A stack block whose service is reported live gets its `port` and `desc` rewritten as source-language sentences (`":8081 · živě"`); `portT` and `descT` carry the same as translatable parts, like the collector texts below.
+- `GET /api/home/history?device=<id>&range=30m|7d|30d|6m` → chart buckets for a device that reports through Thermo or Windows telemetry; other devices answer with `points: []` and a `reason`. A Windows reading is the average over its poll interval and fills the 30 s buckets (and the tile's 10 s spark steps) it covers, at most 120 s back; a gap stays a gap.
 - `POST /api/home/refresh` `{}` → the same document after an immediate Thermo pull (rate limited) and a Windows poll (at most one every 10 s). `POST /api/home/settings` `{"intervalSeconds":15|30|60}` changes the pull interval (scope `home:settings`); Windows polls follow it but never run more often than every 30 s.
 - `GET /api/ui/manifest` → what the web shell draws itself from; see [The UI manifest](#the-ui-manifest).
 ### Overview tile order (web UI, password sign-in only)
 
-- `GET /api/profile/home-order` → `{"order":["studio","mini",…],"saved":true|false,"known":["studio","mini","nas","router"]}`. `order` always lists every known machine: the saved ones first, then any missing in the default order (`saved:false` = nothing saved).
+- `GET /api/profile/home-order` → `{"order":["studio","mini",…],"saved":true|false,"known":["studio","mini","nas","router"]}`. `order` always lists every known device: the saved ones first, then any missing in the default order (`saved:false` = nothing saved).
 - `POST /api/profile/home-order` with body `{"order":["studio","nas"]}` → `{"order":[…full list…],"saved":true}`. Only known ids, each at most once; a partial list is fine, `[]` returns to the default order. `400 INVALID_ORDER` otherwise. Read-only viewers may set their own order.
 - Stored per account in `state/access.json` (`prefs.<account id>.homeOrder`); deleting the user deletes it. Session cookie only: app tokens and API keys get `403 SESSION_REQUIRED`, and the POST needs the same `Origin` and `Content-Type` as every browser write. The app keeps the default order.
 
-### Machines (web UI with write access, or an API key with `home:write`; MCP tools)
+### Devices (web UI with write access, or an API key with `home:write`; MCP tools)
 
-Machines that are not in the site configuration: added on the overview, or written by an agent. The site's own machines
-(`local/site.json`) are listed too but stay read-only (`403 MACHINE_READ_ONLY`). All of them live in
+Devices that are not in the site configuration: added on the overview, or written by an agent. The site's own devices
+(`local/site.json`) are listed too but stay read-only (`403 DEVICE_READ_ONLY`). All of them live in
 `state/home/devices.json` (schema 1; fields added later are optional, so a file from an older hub loads unchanged).
 
-A machine: `{"id","name","hostname","ip","role","hardware":{"cpu","gpu","ramGb","diskTotalBytes"},"thermoId","picture","platform"}`. Every machine of this list, site or added, also carries `reachability` and `agent` as `GET /api/home` gives them.
+A device: `{"id","name","hostname","ip","role","hardware":{"cpu","gpu","ramGb","diskTotalBytes"},"thermoId","picture","platform"}`. Every device of this list, site or added, also carries `reachability` and `agent` as `GET /api/home` gives them.
 `id` is `[a-z][a-z0-9_-]{1,31}` and never changes; `role` is `computer` (default), `nas`, `router` or `other`; `ip` must
-be a host address inside the site's `lanCidrs` when those are set; `thermoId` names the telemetry host the machine
+be a host address inside the site's `lanCidrs` when those are set; `thermoId` names the telemetry host the device
 reports through (`null` = not installed); `picture` is one of the built-in ids `desktop`, `laptop`, `mini`, `tower`,
 `server`, `nas`, `router`, `board`, `printer`, `generic` (served at `/images/generic/<id>.svg`), or `null` for the
 role's default; `platform` is `macos`, `windows`, `linux`, `other` or `null` (not said). An upsert that omits `platform`
-keeps the machine's; `null` clears it. A machine without a platform hashes exactly as before the field existed, so a
+keeps the device's; `null` clears it. A device without a platform hashes exactly as before the field existed, so a
 `hash` read from an older hub still matches. While Windows telemetry is connected (web UI only), `platform` must stay
-`windows` and `thermoId` must stay `null` (`400 MACHINE_INVALID`). Values that look like a secret (keys, tokens, `password=…`, credentials in a URL) are refused.
+`windows` and `thermoId` must stay `null` (`400 DEVICE_INVALID`). Values that look like a secret (keys, tokens, `password=…`, credentials in a URL) are refused.
 
-- `GET /api/home/devices[?stack=1]` (`read`) → `{"machines":[…],"pictures":[{"id","url"}],"roles","platforms","runtimeLayers","lanCidrs","limits":{"machines":20},"telemetry"}`.
-  Each machine has the fields above plus `source`, `readOnly`, `hash` (`null` for site machines), `customPicture`,
+- `GET /api/home/devices[?stack=1]` (`read`) → `{"devices":[…],"pictures":[{"id","url"}],"roles","platforms","runtimeLayers","lanCidrs","limits":{"devices":20},"telemetry"}`.
+  Each device has the fields above plus `source`, `readOnly`, `hash` (`null` for site devices), `customPicture`,
   `telemetry` and `runtime` = `{"source":"published"|"collected"|"site"|null,"publishedAt","publishedBy","hash"}`
-  (with `stack=1` also `stack`, in the form `POST /api/home/runtime` takes). A site machine lists its effective `name`,
+  (with `stack=1` also `stack`, in the form `POST /api/home/runtime` takes). A site device lists its effective `name`,
   `hostname`, `ip`, `hardware` and `picture` (the owner's override applied, below) and `siteOverride`
   (`{"fields":["name","hardware.ramGb",…],"updatedAt","updatedBy"}`, or `null`); it stays `readOnly` here.
-- `POST /api/home/devices` `{"machine":{…},"base"?}` → `201` created or `200` → `{"ok","id","hash","created","changed","by","machine"}`.
+- `POST /api/home/devices` `{"device":{…},"base"?}` → `201` created or `200` → `{"ok","id","hash","created","changed","by","device"}`.
   The whole record is replaced. Like inventory entries: omit `base` to create, pass the `hash` you read to change. Without
-  `base`, a machine that already holds exactly these fields is left alone (`changed:false`), so a repeated create is harmless;
-  different fields without `base`, or a stale `base`, are `409 MACHINE_CONFLICT`.
+  `base`, a device that already holds exactly these fields is left alone (`changed:false`), so a repeated create is harmless;
+  different fields without `base`, or a stale `base`, are `409 DEVICE_CONFLICT`.
 - `POST /api/home/devices/remove` `{"id","base"?}` → `{"ok":true,"id","removed":true}`. One route for keys, apps and the
   overview's **Remove device**. `base` (the `hash` read) is required, with one exception: a person signed in with a
-  password may leave it out. A `base` that is sent is always checked (`409 MACHINE_CONFLICT` when stale). The tile, the
+  password may leave it out. A `base` that is sent is always checked (`409 DEVICE_CONFLICT` when stale). The tile, the
   uploaded picture, the stored Thermo login or Windows connection (with the hub's key and known_hosts for it), any
   other telemetry connection and a published runtime stack go with it; metric history stays.
-- `POST /api/home/runtime` (≤ 64 kB) `{"machine","stack"|null,"base"?}` → `{"ok","id","hash","changed","published","publishedAt","by"}`.
-  Publishes the runtime stack drawn on the machine's page (site machines included). It replaces the stack from the site
+- `POST /api/home/runtime` (≤ 64 kB) `{"device","stack"|null,"base"?}` → `{"ok","id","hash","changed","published","publishedAt","by"}`.
+  Publishes the runtime stack drawn on the device's page (site devices included). It replaces the stack from the site
   configuration or a collected descriptor, or adds one; `stack:null` takes the publication back. Optional `base` = the
   published stack's hash. `stack` = `{"cols":[engine key per column, 1–12],"engines"?:{key: label},"blocks":[1–60]}`;
   a block is `{"id","layer","col0","col1","title","port"?,"desc"?,"state"?:"on"|"off","service"?,"models"?:[{"id","state"?,"sizeGb"?,"path"?}]}`
   with `layer` one of `input`, `tool`, `runtime`, `engine`, `hardware`. A block spans columns `col0..col1` of its
   layer; two blocks of one layer may not overlap.
-- Errors: `400 MACHINE_INVALID` (with `details` naming the field), `422 MACHINE_SECRET`, `404 MACHINE_NOT_FOUND`,
-  `409 MACHINE_CONFLICT` / `MACHINE_DUPLICATE` (hostname already used) / `MACHINE_LIMIT` (20 added machines),
-  `403 MACHINE_READ_ONLY`.
-- MCP: `machine_list` (`read`; `runtime:true` includes the published stacks), `machine_upsert`, `machine_remove`,
+- Errors: `400 DEVICE_INVALID` (with `details` naming the field), `422 DEVICE_SECRET`, `404 DEVICE_NOT_FOUND`,
+  `409 DEVICE_CONFLICT` / `DEVICE_DUPLICATE` (hostname already used) / `DEVICE_LIMIT` (20 added devices),
+  `403 DEVICE_READ_ONLY`.
+- MCP: `device_list` (`read`; `runtime:true` includes the published stacks), `device_upsert`, `device_remove`,
   `runtime_publish` (`home:write`). Same arguments and rules as the routes above. `home:write` is never given to keys
-  created before scopes existed. Every call of a write tool is in the write log with the machine id.
+  created before scopes existed. Every call of a write tool is in the write log with the device id.
 
-### Editing a machine of the site configuration (web UI, password sign-in with write access only)
+### Editing a device of the site configuration (web UI, password sign-in with write access only)
 
-Every tile on the overview, a site machine's included, has an **Edit** button for a writer. For a machine from
+Every tile on the overview, a site device's included, has an **Edit** button for a writer. For a device from
 `site.json` it changes **display metadata only**, stored as the owner's override over the site's values in
 `state/home/site-overrides.json` (0600, no secrets):
 `{"schema":1,"overrides":[{"id","fields":{"name"?,"hostname"?,"ip"?,"hardware"?:{"cpu"?,"gpu"?,"ramGb"?,"diskTotalBytes"?},"picture"?},"image"?,"imageAt"?,"updatedAt","updatedBy"}]}`.
 `site.json` is never written; `id`, `role`, `platform`, `thermoId`, `ssh`, `stack`, the telemetry binding, the service
 probes, Thermo and the router adapter keep reading the site's values (a changed hostname or ip is shown, not probed).
 
-- `GET /api/home` → every site machine carries `siteOverride` (`{"fields":[names],"hash","image","updatedAt","updatedBy"}`;
+- `GET /api/home` → every site device carries `siteOverride` (`{"fields":[names],"hash","image","updatedAt","updatedBy"}`;
   `hash` is the `base` an edit sends, also when nothing is overridden) and `siteDefaults` (`{"name","hostname","ip","hardware","picture","image"}`,
   the site's own values). The tile shows the override's values; a collected descriptor never wins over it.
-- `POST /api/home/devices/site` `{"id","base","machine":{"name"?,"hostname"?,"ip"?,"hardware"?,"picture"?}}` →
+- `POST /api/home/devices/site` `{"id","base","device":{"name"?,"hostname"?,"ip"?,"hardware"?,"picture"?}}` →
   `{"id","override","hash","changed"}`. The whole override is replaced: an absent field, or one sent with the site's own
-  value, goes back to the site's (not stored). Rules as for an added machine (name 1–60, a host name or IPv4, an ip inside
+  value, goes back to the site's (not stored). Rules as for an added device (name 1–60, a host name or IPv4, an ip inside
   `lanCidrs`, cpu ≤ 60, gpu ≤ 40, positive numbers or `null`, a built-in picture id; secret-looking values are
-  `422 MACHINE_SECRET`). `role`, `platform`, `thermoId`, `id`, `ssh`, `stack` are refused by name (`400 MACHINE_INVALID`).
-  A stale or missing `base` is `409 MACHINE_CONFLICT` / `400`; another machine's hostname `409 MACHINE_DUPLICATE`;
-  an id that is not a site machine (an added device included) `404 MACHINE_NOT_FOUND`.
+  `422 DEVICE_SECRET`). `role`, `platform`, `thermoId`, `id`, `ssh`, `stack` are refused by name (`400 DEVICE_INVALID`).
+  A stale or missing `base` is `409 DEVICE_CONFLICT` / `400`; another device's hostname `409 DEVICE_DUPLICATE`;
+  an id that is not a site device (an added device included) `404 DEVICE_NOT_FOUND`.
 - `POST /api/home/devices/site/reset` `{"id","base"}` → back to the site's defaults: the override and the uploaded picture go.
-  An override whose machine left `site.json` is kept on disk, ignored, and cleared only here.
+  An override whose device left `site.json` is kept on disk, ignored, and cleared only here.
 - Own picture: `PUT /api/home/devices/<id>/image` and `POST /api/home/devices/image/remove` `{"id"}` work for a site
-  machine too (its override's `image`); it is served at `GET /api/home/devices/<id>/image` (not under `/images/home/`,
+  device too (its override's `image`); it is served at `GET /api/home/devices/<id>/image` (not under `/images/home/`,
   where the site's own picture is a static file).
-- API keys, app tokens and accounts signed in otherwise are refused (`403`); `machine_upsert` /
-  `machine_remove` keep refusing site machines (`MACHINE_READ_ONLY`). A Thermo Mac and the router are editable the same
+- API keys, app tokens and accounts signed in otherwise are refused (`403`); `device_upsert` /
+  `device_remove` keep refusing site devices (`DEVICE_READ_ONLY`). A Thermo Mac and the router are editable the same
   way; their editor says who reads their telemetry, which this edit never changes.
 
 ### Devices on the overview: pictures and Thermo logins (web UI, write access, never API keys)
 
 What needs a person: uploading a picture and giving the hub a Thermo login. A device's Thermo login is kept in
 `state/home/thermo-hosts.json` (mode 0600, sealed with the hub's key: docs/storage.md → Secrets at rest; opened, the same shape as `private/thermo-hosts.json`) and its uploaded picture in
-`state/home/images/<id>.jpg`. Added machines appear in `GET /api/home` with `added:true` and `kind` derived from
+`state/home/images/<id>.jpg`. Added devices appear in `GET /api/home` with `added:true` and `kind` derived from
 `thermoId` and `role` (`thermo`, `nas`, `router`, `other`); their ids join `known` in the tile order. These form
-routes refuse with one code, `DEVICE_FAILED` (and `details` naming the field where one was at fault); the machine API
+routes refuse with one code, `DEVICE_FAILED` (and `details` naming the field where one was at fault); the device API
 above has a code per refusal.
 
 - `POST /api/home/devices/probe` `{"host","port"?}` → `{"fingerprint","subject","validTo"}`: a TLS handshake with
@@ -646,7 +646,7 @@ above has a code per refusal.
   that is already on the overview (for example one an agent created). The login is tried once with the pinned certificate
   first; then the device is its own telemetry host (`thermoId` = its id). `{"id","thermo":null}` forgets the login.
 - `POST /api/home/devices/image/remove` `{"id"}` → the device, back on its built-in picture.
-- Removing a device is `POST /api/home/devices/remove` of the machine API above (`machine_remove` over MCP); the
+- Removing a device is `POST /api/home/devices/remove` of the device API above (`device_remove` over MCP); the
   overview sends the `hash` it read as `base`.
 - `POST /api/home/devices/add` also takes `"kind":"windows"` (and optional `"platform":"windows"`) with
   `"windows":{"draft","host","port","user"}`: an app-managed connection whose set-up draft (below, made for a new device) passed
@@ -710,7 +710,7 @@ The hub may run on Linux, macOS or Windows, and the browser's system does not ma
 OpenSSH Client; Linux: `openssh-client` or `openssh`; macOS has them). Nothing else: no `~/.ssh/config`, no agent, no key
 files made by hand. Missing tools are reported (`/tools`, `no-ssh`, `no-keyscan`).
 
-**Set-up** (the Add/Edit device dialog, under Telemetry → Windows): host (by default the machine's address), SSH port (22) and
+**Set-up** (the Add/Edit device dialog, under Telemetry → Windows): host (by default the device's address), SSH port (22) and
 Windows user; *Create a new key* (or import one); copy the PowerShell step it shows and run it on Windows as administrator;
 *Fetch the host key*, compare the fingerprint with what the PowerShell fingerprint snippet prints on Windows and confirm it;
 *Test connection*; save. The only Windows-side steps are, as copyable PowerShell (`public/windows-setup.js`):
@@ -754,7 +754,7 @@ Windows user; *Create a new key* (or import one); copy the PowerShell step it sh
   (`Win32_PerfRawData_*`): a reading is the difference between two polls, the true average over that interval (`span`),
   stamped when it was read. The first poll after a start, a failure or a gap over 300 s gives memory and volumes only.
   GPU: running time per engine (all processes on it), divided by the elapsed time and capped at 100 %; a GPU is as busy
-  as its busiest engine, the machine's `gpu` is its busiest GPU. Memory is RAM (`memUsed`, `memTotal`, `swapUsed` from the
+  as its busiest engine, the device's `gpu` is its busiest GPU. Memory is RAM (`memUsed`, `memTotal`, `swapUsed` from the
   page file); VRAM is in `native.gpus`. Volumes are the fixed drives. Temperatures, fans and power are not read
   (`null`, `sensors:"unsupported"`). Values are parsed locale-independently (invariant culture, counters as decimal strings).
 - **Polling**: one SSH connection per device per interval, never more often than every 30 s, at most four devices at a time,
@@ -829,7 +829,7 @@ Four more providers beside Thermo (the agent) and Windows over SSH, in core modu
   - `POST …/draft/discard` `{"draft"}`.
   - Refusals: `TELEMETRY_SETUP_FAILED` with `reason` (`draft-missing`, `busy`, `needs-probe`, `needs-trust`, `needs-test`,
     `needs-password`, `needs-targets`, `target-unknown`, `stale`, `trust-mismatch`, `ca-unverified`, `plain-credentials`,
-    `limit`); failures at the machine: `422 TELEMETRY_FAILED` with `provider`, `reason` and the sentence (never the
+    `limit`); failures at the device: `422 TELEMETRY_FAILED` with `provider`, `reason` and the sentence (never the
     remote text).
   - Linux SSH: the SSH draft routes under `/api/home/devices/ssh/…` (`tools`, `draft` with `{"os":"linux","id"?}`, `draft/key`,
     `draft/scan`, `draft/trust`, `draft/test`, `draft/discard`); the user is a POSIX name (`^[A-Za-z_][A-Za-z0-9._-]{0,31}$`).
@@ -839,50 +839,50 @@ Four more providers beside Thermo (the agent) and Windows over SSH, in core modu
   agent-less provider (Windows SSH included): its id, picture and history stay; the old connection's poller entry, key
   files and stored secret go. `{"id","telemetry":null}` disconnects whichever agent-less provider reads it. Both take only
   a draft made for that device whose test (at most 15 min old) matches what is sent (`stale`, `needs-test`). Thermo must be
-  disconnected first. `platform` becomes the provider's (`windows` or `linux`) and `machine_upsert` cannot change it
+  disconnected first. `platform` becomes the provider's (`windows` or `linux`) and `device_upsert` cannot change it
   while connected.
-- **A machine of the site configuration** (`source:"site"`) is connected the same way, on its own tile (page → Telemetry
+- **A device of the site configuration** (`source:"site"`) is connected the same way, on its own tile (page → Telemetry
   settings), with the same drafts, tests, trust, permissions, switching and disconnecting: pass its id as `id` to the draft
   routes (`…/endpoint/draft`, `…/ssh/draft` with `os:"linux"`, `…/windows/draft`) and to `POST /api/home/devices/telemetry`
   or `POST /api/home/devices/windows` (Windows over SSH: a managed connection only, never an SSH alias). Its identity
-  stays in `site.json` and is never written; `machine_upsert` / `machine_remove` still refuse it (`MACHINE_READ_ONLY`),
+  stays in `site.json` and is never written; `device_upsert` / `device_remove` still refuse it (`DEVICE_READ_ONLY`),
   nothing is added to `devices.json`, and it cannot be removed (its display metadata is the owner's override: below,
-  "Editing a machine of the site configuration"). What the hub stores is a
+  "Editing a device of the site configuration"). What the hub stores is a
   **binding** in `state/home/site-telemetry.json` (`{"schema":1,"bindings":[{"id","provider","platform","configuredAt","configuredBy"}]}`,
   0600, no secrets); the connection itself (key ids, passwords, trust) is in `windows-hosts.json` /
-  `telemetry-hosts.json` under the same id, as for an added device. Which site machines can take one, and the rule
-  that keeps two feeds from reading one machine:
-  - **Thermo wins where the site says so.** A site machine with `thermoId` is read through Thermo (`site.json` +
+  `telemetry-hosts.json` under the same id, as for an added device. Which site devices can take one, and the rule
+  that keeps two feeds from reading one device:
+  - **Thermo wins where the site says so.** A site device with `thermoId` is read through Thermo (`site.json` +
     `private/thermo-hosts.json`) and refuses a binding (`400`, detail names `thermoId`); the router is reported by the
-    router adapter and refuses one too. `POST /api/home/devices/thermo` does not apply to site machines (`404`).
-  - The site's `platform` (`machines[].platform`, optional: `macos`, `windows`, `linux`, `other`), when set, limits the
+    router adapter and refuses one too. `POST /api/home/devices/thermo` does not apply to site devices (`404`).
+  - The site's `platform` (`devices[].platform`, optional: `macos`, `windows`, `linux`, `other`), when set, limits the
     providers to that system's; without it every agent-less provider is offered and the binding records the platform
     its provider reads. Disconnecting returns the tile to what the site configuration says; it never falls back to
     another stored or default connection.
-  - Only ids that are site machines now count. A binding whose machine left `site.json` (or got a `thermoId`, or another
+  - Only ids that are site devices now count. A binding whose device left `site.json` (or got a `thermoId`, or another
     platform) is neither polled nor shown anywhere; its connection stays on disk, so an edit of `site.json` never
     deletes a key, until `POST /api/home/devices/telemetry {"id","telemetry":null}` clears it. Pollers, restarts and the
     SSH key sweep include the effective bindings, so a connection survives a restart.
   - Reading side: the site tile keeps `source:"site"`, `readOnly:true`, `hash:null`, its name, role, picture, hardware
     and (a NAS) its probed services, and gains `kind:"thermo"` (has a telemetry feed), `platform`, `telemetry.provider`,
-    gauges, history, volumes and `native`. Every site machine carries `telemetryEditable` (it can take a binding) and
-    `telemetryBinding` (`{"provider","platform","configuredAt"}` or `null`); `machine_list` lists the `platform` and
+    gauges, history, volumes and `native`. Every site device carries `telemetryEditable` (it can take a binding) and
+    `telemetryBinding` (`{"provider","platform","configuredAt"}` or `null`); `device_list` lists the `platform` and
     `telemetry.provider` but never the connection.
 - **Reading side**: `GET /api/home` tiles carry `telemetry.provider`, `target` and `connection` (public facts:
   `{"mode","host","port","scheme","tls":{"mode","fingerprint"?},"auth","user"?,"job"?,"instance"?}`; never a password or
-  token; `machine_list` carries neither). Polls: never more often than 30 s, at most four devices at a time per provider.
+  token; `device_list` carries neither). Polls: never more often than 30 s, at most four devices at a time per provider.
 - **Not supported** (said so, never faked): Windows Exporter, GPU utilisation and power on Linux, IPv6 addresses,
   Kerberos/NTLM for WinRM, a custom CA bundle per connection (use pin mode or `NODE_EXTRA_CA_CERTS`).
 
 ### LLM runtime endpoints
 
 Local LLM runtimes the hub reads itself over HTTP (core module `runtimes`), every 30 s (`RUNTIMES_POLL_SECONDS`,
-10–600). What they report appears in `GET /api/home` → `machines[].runtimes` and fills the stack blocks that name
+10–600). What they report appears in `GET /api/home` → `devices[].runtimes` and fills the stack blocks that name
 their service. Endpoints come from `site.json → runtimes` (`source: "site"`, read-only here) and from this API
 (`source: "ui"` or `"agent"`, stored in `state/runtimes-config.json`).
 
-An endpoint: `{"id"?,"machine","kind"?,"url","name"?}`. `id` is `[a-z][a-z0-9-]{1,47}` (default `<machine>-<port>`);
-`machine` is a machine on the overview; `kind` is `auto` (default: recognised by its answers), `llama-swap`,
+An endpoint: `{"id"?,"device","kind"?,"url","name"?}`. `id` is `[a-z][a-z0-9-]{1,47}` (default `<device>-<port>`);
+`device` is a device on the overview; `kind` is `auto` (default: recognised by its answers), `llama-swap`,
 `ollama`, `lmstudio`, `llama-cpp`, `vllm`, `sglang`, `omlx`, `mlx-serve` or `openai`; `url` is an origin only:
 `http(s)://<IPv4 or localhost>:<port>`, no path, query, user or password, on loopback or inside the site's
 `lanCidrs` (any private range when none are set). At most 40 endpoints, each URL once.
@@ -893,7 +893,7 @@ What the hub requests, and nothing else: `GET` on `/v1/models`, `/running`, `/ap
 or unload route (llama-swap's `/upstream/…`, `/unload`, `/api/models/unload`), never `/slots`, never a prompt.
 For the request history of a llama-swap endpoint, two more reads, also GET only: `/api/metrics/activity?page=<1–10>&limit=200`
 (exactly those parameters) and the access-log stream `/logs/stream/http?no-history`, held open. The history goes to
-`state/runtimes/<machine>/requests-YYYY-MM.jsonl` and feeds [LLM & Diffusion](#llm--diffusion-ui-models).
+`state/runtimes/<device>/requests-YYYY-MM.jsonl` and feeds [LLM & Diffusion](#llm--diffusion-ui-models).
 
 - `GET /api/runtimes/endpoints` (`read`) → `{"endpoints":[…],"kinds","readPaths","historyReadPaths","limits":{"endpoints":40},"intervalSeconds"}`.
   `historyReadPaths` lists the two history reads. A llama-swap endpoint also has `history`:
@@ -1002,7 +1002,7 @@ description, round notes, item and variant texts, notes, comments). `read` is en
 
 ## Collectors: versions, host protection, SSH keys, software watch, router
 
-These screens show snapshots that read-only collectors write into the data directory. Nothing here makes the hub contact another machine: a request only reads files. `docs/plugins.md` says how a machine gets an `ssh` entry; `examples/systemd/` and `scripts/systems/install-launchd.sh` schedule the collectors.
+These screens show snapshots that read-only collectors write into the data directory. Nothing here makes the hub contact another computer: a request only reads files. `docs/plugins.md` says how a device gets an `ssh` entry; `examples/systemd/` and `scripts/systems/install-launchd.sh` schedule the collectors.
 
 | Collector | Writes | Every | Read by |
 |---|---|---|---|
@@ -1022,14 +1022,14 @@ These screens show snapshots that read-only collectors write into the data direc
 
 | `state` | Meaning |
 |---|---|
-| `not-configured` | No machine in the site configuration has an `ssh` entry the collector could use. `machines` is `[]` |
-| `waiting` | Machines are configured (`machines` lists them) but no snapshot has been written yet |
+| `not-configured` | No device in the site configuration has an `ssh` entry the collector could use. `devices` is `[]` |
+| `waiting` | Devices are configured (`devices` lists them) but no snapshot has been written yet |
 | `stale` | The snapshot is older than `staleAfterSeconds` (the interval plus a quarter): the scheduled job did not run when it should have |
 | `ok` | A snapshot of the expected age |
 
 On `/api/systems` the object also has `upstream` (the same fields for the release check, 12 h) and `watch: {"source": "local" | "none", "items": n}`.
 `collector` is always the collector's own state, also when push agents report: on `/api/systems` it then also has
-`agents: {"machines", "fresh", "noNews"}` (machines with an agent record, and how many of them are fresh), and the
+`agents: {"devices", "fresh", "noNews"}` (devices with an agent record, and how many of them are fresh), and the
 state of the SSH key collector on `/api/security` comes from `collectorCollectedAt` (below), not from the newest time.
 
 `GET /api/collectors` (admins, or a role or key with `security:read`) gives the states alone and always answers
@@ -1042,16 +1042,16 @@ state of the SSH key collector on `/api/security` comes from `collectorCollected
   "router": {"state": "not-configured", "collectedAt": null}}}
 ```
 
-`upstream` is present once a machine snapshot exists. `router.state` is the status of `GET /api/router`.
+`upstream` is present once a device snapshot exists. `router.state` is the status of `GET /api/router`.
 Use this route to ask "has anything arrived?" (the getting-started checklist does): the data routes are a
 `404` until a collector has run, and a browser logs every one of those.
 
 ### `GET /api/systems` and `GET /api/security` (admins, or API keys with `security:read`)
 
-- `/api/systems` → `{"schemaVersion":1,"generatedAt","collectedAt","oldestCollectedAt","collectedFrom","upstreamCheckedAt","upstreamFailed","categories","machines":[…],"software":[…],"collector","provenance"}` (sources `systems`, `upstream`, `watch`, and `agents` (kind `telemetry`) when push agents report; the protection page shows `systems` alone). A machine: `id`, `name`, `kind` (the reader kind: `mac` | `nas` from `site.json → ssh.probe`, `mac` | `linux` | `windows` from a push agent's platform), `reachable`, `stale` (the last probe failed and this is its previous record; for an agent's record: no news), `error`, `collectedAt`, `hw`, `uptimeSeconds`, `os` (`name`, `version`, `status`, `updates[]`), `checks[]`, `listening[]`, `brewOutdated[]`, `summary`. A check: `{"id","label","state","value","detail"}` with `state` one of `ok`, `warn`, `crit`, `info`, `unknown`. A software row: `id`, `name`, `category`, `machine`, `installed`, `path`, `source` (`label`, `url`), `latest`, `latestUrl` (the release page, when the source has one), `publishedAt`, `status` (`update`, `current`, `ahead`, `unknown`, `missing`, `n/a`, `floating`), `note`, `running`, `stale`, `upstreamStale`, `upstreamError`, `upstreamCheckedAt`, `upstreamFailedAt`, `inventory` (inventory entry ids this row describes).
-- `/api/security` → `{"schemaVersion":1,"collectedAt","collectedFrom","machines":[…],"keys":[…],"otherKeys":[…],"unknownAuthorized":[…],"forgejo","findings":[…],"collector","provenance"}`. A key: `fingerprint`, `type`, `bits`, `name`, `comment`, `copies[]` (`machine`, `owner`, `path`, `mode`, `mtime`, `encrypted`, `backup`), `access[]` (what it opens), `routes[]`. Private key material is never collected: fingerprints, paths and public `authorized_keys` lines only.
+- `/api/systems` → `{"schemaVersion":1,"generatedAt","collectedAt","oldestCollectedAt","collectedFrom","upstreamCheckedAt","upstreamFailed","categories","devices":[…],"software":[…],"collector","provenance"}` (sources `systems`, `upstream`, `watch`, and `agents` (kind `telemetry`) when push agents report; the protection page shows `systems` alone). A device: `id`, `name`, `kind` (the reader kind: `mac` | `nas` from `site.json → ssh.probe`, `mac` | `linux` | `windows` from a push agent's platform), `reachable`, `stale` (the last probe failed and this is its previous record; for an agent's record: no news), `error`, `collectedAt`, `hw`, `uptimeSeconds`, `os` (`name`, `version`, `status`, `updates[]`), `checks[]`, `listening[]`, `brewOutdated[]`, `summary`. A check: `{"id","label","state","value","detail"}` with `state` one of `ok`, `warn`, `crit`, `info`, `unknown`. A software row: `id`, `name`, `category`, `device`, `installed`, `path`, `source` (`label`, `url`), `latest`, `latestUrl` (the release page, when the source has one), `publishedAt`, `status` (`update`, `current`, `ahead`, `unknown`, `missing`, `n/a`, `floating`), `note`, `running`, `stale`, `upstreamStale`, `upstreamError`, `upstreamCheckedAt`, `upstreamFailedAt`, `inventory` (inventory entry ids this row describes).
+- `/api/security` → `{"schemaVersion":1,"collectedAt","collectedFrom","devices":[…],"keys":[…],"otherKeys":[…],"unknownAuthorized":[…],"forgejo","findings":[…],"collector","provenance"}`. A key: `fingerprint`, `type`, `bits`, `name`, `comment`, `copies[]` (`device`, `owner`, `path`, `mode`, `mtime`, `encrypted`, `backup`), `access[]` (what it opens), `routes[]`. Private key material is never collected: fingerprints, paths and public `authorized_keys` lines only.
 - **Push agents** (docs/agent.md §3 → Who wins over the collectors). Without any agent report both answers are the
-  collectors' alone, unchanged. When agents report, each machine is read from one record, the collector's or the
+  collectors' alone, unchanged. When agents report, each device is read from one record, the collector's or the
   agent's: a record that is not current loses to one that is (the collector's when complete, not marked `stale` and
   younger than its stale-after, 7.5 h for systems and 30 h for SSH keys; the agent's while its part is fresh,
   `receivedAt` + 3 × interval); when both are current the agent's wins only if it covers at least what the
@@ -1059,12 +1059,12 @@ Use this route to ask "has anything arrived?" (the getting-started checklist doe
   its `PRIV` lines report `ok` and whose records it carries; SSH keys: `HOST` root, as the agent's `HOST` line states
   it); otherwise the newer wins, a tie to the agent. The agent's time is the hub's receive time; the collector's is
   the earlier of the record's `probedAt` and the file's modification time on the hub (a record from before `probedAt`:
-  the earlier of the file's `collectedAt` and its own `HOST` time; a placeholder for a machine the collector never
-  reached has none and loses). Every time shown for an agent's record is the hub's receive time: the machine's own
+  the earlier of the file's `collectedAt` and its own `HOST` time; a placeholder for a device the collector never
+  reached has none and loses). Every time shown for an agent's record is the hub's receive time: the device's own
   clock is kept as information only.
-  - `/api/systems`: the machines are the site's `ssh.probe` machines and every machine with an agent `os` part; the NAS
-    stays agent-less. A machine with an agent record carries `source` (`collector` | `agent`) and `sourceAt` (that
-    record's time); when the agent's won, also `machineCollectedAt` (the `HOST` time on the machine's clock) and
+  - `/api/systems`: the devices are the site's `ssh.probe` devices and every device with an agent `os` part; the NAS
+    stays agent-less. A device with an agent record carries `source` (`collector` | `agent`) and `sourceAt` (that
+    record's time); when the agent's won, also `deviceCollectedAt` (the `HOST` time on the device's clock) and
     `withheld` (`[{part, tag, field, reason, count}]`, lines the agent left out). `collectedAt` (top level) is the
     newest of the snapshot's and the agents' receive times; the answer is `404 SYSTEMS_MISSING` only when there is
     neither a snapshot nor an agent `os` part. Reader kind `linux`: `os` adds `base`, `securityUpdates`, `channel`
@@ -1074,18 +1074,18 @@ Use this route to ask "has anything arrived?" (the getting-started checklist doe
     `error`, `os.updates[]` are `{title, version, kb, severity, restart, kind: "update"}`, and the checks are `defender`, `bitlocker`, `firewall`, `rdp`, `os-update` and
     `exposed`. A check whose read was denied (`PRIV <id> denied`) is `unknown` and says which read needs sudo.
   - `/api/security`: when an agent has an `sshkeys` part, the inventory is rebuilt from `probes.json` (written by
-    `collect-security.mjs` beside `ssh-keys.json`) with each machine's winning record; Forgejo and the router entry stay
-    the collector's. A machine with an agent `sshkeys` part then carries `source`, `sourceAt` and, for an agent's
-    record, `machineCollectedAt` and `stale` (`true` once the part is no news) (other machines are as they were); a key's `copies[]`, `access[]` and `routes[]`
+    `collect-security.mjs` beside `ssh-keys.json`) with each device's winning record; Forgejo and the router entry stay
+    the collector's. A device with an agent `sshkeys` part then carries `source`, `sourceAt` and, for an agent's
+    record, `deviceCollectedAt` and `stale` (`true` once the part is no news) (other devices are as they were); a key's `copies[]`, `access[]` and `routes[]`
     entries that an agent's record added carry `source: "agent"`;
     `collectedAt` is the newest of the collector's and the agents' receive times, `collectorCollectedAt` the
-    collector's alone, and `agents: {"joined": true, "machines", "fresh", "noNews"}`. When `probes.json` is missing,
+    collector's alone, and `agents: {"joined": true, "devices", "fresh", "noNews"}`. When `probes.json` is missing,
     unreadable or from another run than `ssh-keys.json` (an older collector wrote only the inventory), the answer is
     `ssh-keys.json` as it was plus `agents: {"joined": false, "reason": "probes-missing" | "probes-unreadable" |
-    "probes-outdated", …}`. An agent's `HOST` name and `NET` addresses never decide which machine another machine's
-    route reaches; its addresses come from the site or the machine descriptors only.
+    "probes-outdated", …}`. An agent's `HOST` name and `NET` addresses never decide which device another device's
+    route reaches; its addresses come from the site or the device descriptors only.
   - `GET /api/models` → `providers.runtimes` and the MCP tool `models_overview` list the core module `agent` as one more
-    `home.runtimes` provider (`{"module": "agent", "source": "agent", "machines": 0, …}` while no agent reports
+    `home.runtimes` provider (`{"module": "agent", "source": "agent", "devices": 0, …}` while no agent reports
     runtimes). This is the one answer that changes on a hub without agent reports.
 - **Text in two forms.** Labels, values, details, notes and finding titles are Czech sentences (the UI's source language). A sentence built from data also comes as parts, in a sibling field ending in `T`, so a client can show it in another language: `"value": "zapnutý · 12 pravidel", "valueT": [{"key": "zapnutý · {rules} pravidel", "params": {"rules": 12}}]`. The fields are `valueT`, `detailT` (checks), `noteT`, `source.labelT` (software rows) and `titleT`, `detailT` (findings). Translate each `key` (English is in `public/i18n-en-*.js`), fill the parameters, join the parts with a space; a parameter that is a list holds labels to translate one by one. A snapshot written before the parts existed has only the text.
 
@@ -1095,7 +1095,7 @@ Which programs the versions page follows. A site keeps its own list in `local/so
 
 Both routes need the `software:write` scope with an API key (old read/write keys never hold it), or an administrator's session in the browser.
 
-- `GET /api/software-watch` → `{"schemaVersion":1,"source":"local"|"none","file","writable","example","categories":{id:label},"items":[{…item,"hash"}],"machines":[{"id","name"}],"detectKinds","upstreamTypes","cmdArgs","schemes","limits","provenance"}` (`config`, naming the file, while a list exists). `machines` are the machine ids a detect rule may name (the ones probed with `"probe": "mac"`).
+- `GET /api/software-watch` → `{"schemaVersion":1,"source":"local"|"none","file","writable","example","categories":{id:label},"items":[{…item,"hash"}],"devices":[{"id","name"}],"detectKinds","upstreamTypes","cmdArgs","schemes","limits","provenance"}` (`config`, naming the file, while a list exists). `devices` are the device ids a detect rule may name (the ones probed with `"probe": "mac"`).
 - `POST /api/software-watch` applies one change and saves the file atomically:
 
 | Body | Does |
@@ -1122,7 +1122,7 @@ An item:
 | `id`, `name`, `category` | `id`: 1–40 of `a-z 0-9 . _ -`. `category`: an existing category id (`nas-apps` and `containers` are reserved) |
 | `scheme` | Optional: `node` (LTS lines) or `llamacpp` (build numbers before semver) |
 | `upstream` | `github` / `codeberg` `{repo, tagPrefix?, tagPattern?, allowPrerelease?}`, `pypi` `{package}`, `npm` `{package, tag?}`, `brew-formula` / `brew-cask` `{name}`, `node`, `none` `{note?}`. A `thermo-feed` upstream names a URL the checker fetches, so it is set in the file only; the API keeps an existing one unchanged |
-| `detect.<machine>` | `brew` `{formula}` (up to 4 names, comma-separated), `cask` `{cask}`, `app` `{path}` ending in `.app`, `cmd` `{path, args, match?}`, `pydist` `{glob, package}`, `json` `{path, key?}`, `winreg` `{displayName}` (the Windows push agent: the machine-wide uninstall entries whose `DisplayName` matches, `*` for any run of characters, at most four; letters, digits, space and `. _ + , -` otherwise); plus optional `launchd` (a systemd unit for a Linux agent, a service name for a Windows one), `upstream` (override for this machine), `source {label, url}`, `inventory [ids]` |
+| `detect.<device>` | `brew` `{formula}` (up to 4 names, comma-separated), `cask` `{cask}`, `app` `{path}` ending in `.app`, `cmd` `{path, args, match?}`, `pydist` `{glob, package}`, `json` `{path, key?}`, `winreg` `{displayName}` (the Windows push agent: the system-wide uninstall entries whose `DisplayName` matches, `*` for any run of characters, at most four; letters, digits, space and `. _ + , -` otherwise); plus optional `launchd` (a systemd unit for a Linux agent, a service name for a Windows one), `upstream` (override for this device), `source {label, url}`, `inventory [ids]` |
 
 **A detect rule is data, never shell.** Paths are absolute or start with `~/`, contain no `..` and none of the characters a shell acts on; `*` and `?` are allowed in `cmd.path` and `pydist.glob` only. `cmd.args` is one of `--version`, `-version`, `-v`, `-V`, `version`: the probe runs the binary only to print its version, as the SSH user, never as root. Regular expressions (`match`, `tagPattern`) are at most 200 characters without nested quantifiers. The collector applies the argument rule again when it builds the probe input, so a hand-edited rule with other arguments is not run either (its row reads "unverified" with the reason).
 
@@ -1130,7 +1130,7 @@ An item:
 
 The client census and the router's health from the router adapter (`docs/plugins.md` → router adapter).
 
-→ `{"schemaVersion":1,"generatedAt","state","status","adapter":{"id","title"}|null,"freshness","staleAfterSeconds","observedAt","attemptedAt","error","model","firmware","routerMac","devices":[{"mac","id","ip","name","connection","presence"}],"health":{"status","softwareVersion","hardware":[{"name","model","state","firmware","ip"}],"hardwareDown","clients":{"connected","wired","wireless","other","known"}}|null,"configured":{"adapter","host","lanCidrs"},"siteMachine":{"id","name","ip"}|null,"provenance"}` (`collector` for the included adapter, `plugin` for one a plugin provides)
+→ `{"schemaVersion":1,"generatedAt","state","status","adapter":{"id","title"}|null,"freshness","staleAfterSeconds","observedAt","attemptedAt","error","model","firmware","routerMac","devices":[{"mac","id","ip","name","connection","presence"}],"health":{"status","softwareVersion","hardware":[{"name","model","state","firmware","ip"}],"hardwareDown","clients":{"connected","wired","wireless","other","known"}}|null,"configured":{"adapter","host","lanCidrs"},"siteDevice":{"id","name","ip"}|null,"provenance"}` (`collector` for the included adapter, `plugin` for one a plugin provides)
 
 | `state` | Meaning |
 |---|---|
@@ -1151,7 +1151,7 @@ The client census and the router's health from the router adapter (`docs/plugins
 
 ## Inventory map and services catalog (UI: #inventory-map, #inventory-map/table, #inventory-map/services)
 
-One file, `data/knowledge.json`, is the source of truth for machines, services, tools, model stores, outside services, what depends on what and **where** each credential is kept (never its value). The map, the table and the services view are views of one page (`#services` still opens the services view); a hub without the file is an empty inventory and the first write creates it. Every write, by a person or an agent, goes through the same checker (`public/inventory-rules.js`, also `node scripts/check-knowledge.mjs`): a write that would leave the file invalid is refused and nothing changes.
+One file, `data/knowledge.json`, is the source of truth for devices, services, tools, model stores, outside services, what depends on what and **where** each credential is kept (never its value). The map, the table and the services view are views of one page (`#services` still opens the services view); a hub without the file is an empty inventory and the first write creates it. Every write, by a person or an agent, goes through the same checker (`public/inventory-rules.js`, also `node scripts/check-knowledge.mjs`): a write that would leave the file invalid is refused and nothing changes.
 
 **Concurrency.** Optimistic, per entry. Every entry has a hash (sha256 of the entry as stored; `GET /api/inventory` → `hashes`). To change or delete an entry send the hash you read as `base`; if the entry changed in between you get `409`: read again and reapply. Omit `base` only to create. An entry nobody touched keeps its hash across writes to other entries.
 
@@ -1159,24 +1159,24 @@ One file, `data/knowledge.json`, is the source of truth for machines, services, 
 |---|---|---|
 | `GET /api/inventory` | read | `{"doc","gaps","hashes","provenance"}`: the checked document, the gaps (facts not recorded: a secret whose store is `unknown`, a runtime without an address) and one hash per entry id; `provenance` counts the entries by their `verified_by` stamp ([Provenance](#provenance)). `404 INVENTORY_MISSING` while there is no file; `500 INVENTORY_INVALID` when the file fails the checker |
 | `GET /api/inventory/export` | read | The file as a download (`home-inventory-<date>.json`) |
-| `GET /api/inventory/schema` | read | How to fill it, as data: `entry.fields`, `kinds`, `categories`, `linkKinds`, `secrets.stores` (built-ins, this site's own from site.json → `inventory.secretStores`, and the prefix forms), `places` (site.json → `inventory.places`, then every machine entry), `rules`, `limits`, `examples`, and `inventory: {entries, updatedAt}`: how many entries there are (`0` while there is no file, `null` when the file fails the checker). Never fails for a missing file, so ask here when you only need the count |
+| `GET /api/inventory/schema` | read | How to fill it, as data: `entry.fields`, `kinds`, `categories`, `linkKinds`, `secrets.stores` (built-ins, this site's own from site.json → `inventory.secretStores`, and the prefix forms), `places` (site.json → `inventory.places`, then every device entry), `rules`, `limits`, `examples`, and `inventory: {entries, updatedAt}`: how many entries there are (`0` while there is no file, `null` when the file fails the checker). Never fails for a missing file, so ask here when you only need the count |
 | `GET /api/services` | read | `{"updatedAt","services","hashes","provenance"}`: the entries of kind `runtime` |
 | `POST /api/inventory/entries` | `inventory:write` | `{"entry":{…},"base"?}`: create or replace one whole entry → `{"ok","published","entry","hash"}`. The hub stamps `verified_at`, `verified_by` ("Home Hub API · <account>") and a default `confidence` |
 | `POST /api/services` | `inventory:write` | The same, for entries of kind `runtime` only |
-| `POST /api/inventory/entry` | `inventory:write` | `{"id","base","fields":{…}}`: the web form's field edit → `{"ok","published","doc","hashes"}`. `fields` may hold `name`, `type`, `category`, `address`, `version`, `config`, `data`, `managed_by`, `login`, `notes` (an empty string removes the field), `machine`, `secrets` (`[{what, store, ref, check}]`) and `depends_on` (`[{id, kind, label}]`). `{}` only re-stamps the entry as verified today |
+| `POST /api/inventory/entry` | `inventory:write` | `{"id","base","fields":{…}}`: the web form's field edit → `{"ok","published","doc","hashes"}`. `fields` may hold `name`, `type`, `category`, `address`, `version`, `config`, `data`, `managed_by`, `login`, `notes` (an empty string removes the field), `device`, `secrets` (`[{what, store, ref, check}]`) and `depends_on` (`[{id, kind, label}]`). `{}` only re-stamps the entry as verified today |
 | `POST /api/inventory/bulk` | `inventory:write` | `{"entries":[{"entry":{…},"base"?}, …],"dryRun"?}`: create or replace up to 500 entries, all or nothing; the result is checked as a whole, so entries may refer to each other → `{"ok","published","summary":{"create","update","unchanged"},"entries":[{"id","action","hash"}]}`. An entry identical to the stored one is `unchanged` and needs no `base`. `dryRun: true` writes nothing and always answers `200`: the planned actions, or `{"ok":false,"errors","issues"}` / `{"ok":false,"conflicts":[ids]}`. Body up to 1 MB. `keepVerified: true` (password sign-in only; the import in the web UI) keeps each entry's own `verified_at` / `verified_by` |
 | `POST /api/inventory/entries/delete` | `inventory:write` | `{"id","base"}` → `{"ok","published","id","deleted":true}`. `base` is required. `422 INVENTORY_IN_USE` (with the ids in `details`) while other entries depend on it or run on it |
 
 Errors of these routes: `400` malformed request (unknown field, bad id, a limit exceeded), `404` unknown id, `409` stale or missing `base` (bulk: the ids are in `details`), `422 INVENTORY_INVALID` when the checker refuses the result — `details` holds its messages and `issues` the same with structure (`{id, field, code, message, text}`, `field` being a path such as `secrets[0].store`) — `429` while another write is being saved, `501` when this hub forwards edits to a writer that cannot bulk or delete, `503` when the file cannot be read or written.
 
-An entry: `id` (lowercase letters, digits, hyphens; never changes), `kind` (`network`, `machine`, `runtime`, `tool`, `model-store`, `secret-store`, `skill-store`, `external`), `name`, `machine` (the id of a machine entry; required for everything that runs on one), and optionally `type`, `category`, `address`, `version`, `config`, `data`, `managed_by`, `login`, `notes`, `secrets`, `depends_on`, `models`, `skills`, `confidence`. Any text that looks like a secret (a key or token, a private key block, a JWT, `password=…`, credentials inside a URL, a long hex or random-looking string) is refused, as is a `check` command that would print one.
+An entry: `id` (lowercase letters, digits, hyphens; never changes), `kind` (`network`, `device`, `runtime`, `tool`, `model-store`, `secret-store`, `skill-store`, `external`), `name`, `device` (the id of a device entry; required for everything that runs on one), and optionally `type`, `category`, `address`, `version`, `config`, `data`, `managed_by`, `login`, `notes`, `secrets`, `depends_on`, `models`, `skills`, `confidence`. Any text that looks like a secret (a key or token, a private key block, a JWT, `password=…`, credentials inside a URL, a long hex or random-looking string) is refused, as is a `check` command that would print one.
 
 **MCP tools** (`POST /mcp`, a service-account key; a tool is listed only for a key that holds its scope):
 
 | Tool | Scope | |
 |---|---|---|
 | `inventory_describe` | `read` | The schema above, `inventory: {entries, updatedAt}` included. Call it once before writing |
-| `inventory_search` | `read` | Text search with optional `kind` and `machine`; returns ids and hashes |
+| `inventory_search` | `read` | Text search with optional `kind` and `device`; returns ids and hashes |
 | `inventory_get` | `read` | One entry in full, its hash and its dependents |
 | `inventory_update` | `inventory:write` | Create or replace one whole entry (`entry`, `base`) |
 | `inventory_bulk_upsert` | `inventory:write` | `entries: [{entry, base?}]`, `dryRun?`: as `POST /api/inventory/bulk` (one MCP request is at most 64 kB) |
@@ -1184,21 +1184,21 @@ An entry: `id` (lowercase letters, digits, hyphens; never changes), `kind` (`net
 
 ## LLM & Diffusion (UI: #models)
 
-Local language and generative models on every machine, built only from the `home.runtimes` and `runtimes.requests`
-providers and the machines' stacks (`docs/plugins.md` → extension points). Scope `read`; MCP `models_overview`
+Local language and generative models on every device, built only from the `home.runtimes` and `runtimes.requests`
+providers and the devices' stacks (`docs/plugins.md` → extension points). Scope `read`; MCP `models_overview`
 (`{range?, graph?}`) returns the same overview, models, clients and known tools, the graph only with `graph:true`.
 
-- `GET /api/models?range=24h|7d|30d` (default `24h`) → `{"schemaVersion":1,"generatedAt","range","empty","providers":{"runtimes":[…],"requests":[…]},"overview","machines","models","clients","graph","known","provenance"}`.
+- `GET /api/models?range=24h|7d|30d` (default `24h`) → `{"schemaVersion":1,"generatedAt","range","empty","providers":{"runtimes":[…],"requests":[…]},"overview","devices","models","clients","graph","known","provenance"}`.
   - `empty` is true when no provider reports a runtime and none holds a request: the page then explains how to connect one.
-  - `overview` = `{machines, runtimes:{total,up,down,unknown}, models:{total,loaded,loading,generating,queued,byKind}, memory:[{machine,name,ramGb,residentGb,loaded,models,pools:[{runtime,name,usedGb,capacityGb,basis}]}], range, requests, inputTokens, outputTokens, medianTps, attributed, lastRequestAt, observedAt}`. `residentGb` counts what engines hold; a router's budget is a pool, not residency. `medianTps` is the median generation speed of requests with at least 8 output tokens.
-  - `models[]` = one entry per model name across machines: `{key, name, kind, state, active, queued, since, machines, sizeGb, contextTokens, ttlRemainingSeconds, lastRequestAt, requests, tokens, placements:[{machine, runtime, role, engine, gateways, aliases, id, state, active, queued, since, sizeGb, contextTokens, ttlRemainingSeconds, lastRequestAt, requests, tokens}]}`. `active` / `queued` are `null` where no runtime says how busy the model is; models that generate come first. A gateway alias (`qwen-27b` on llama-swap for an oMLX model) is folded into the engine's placement (`gateways`, `aliases`). `kind`: `llm`, `embedding`, `image`, `video`, `music`, `audio`, `other`.
-  - `work` = what generates now: `{items:[{machine, runtime, runtimeName, gateways, mode, id, name, kind, active, queued, since}], active, queued, watching:[{machine, id, name}], blind:[…]}`; running first, oldest first. `watching` are the runtimes that report how busy they are, `blind` the running ones that cannot. The same per machine is `GET /api/home` → `machines[].work` (`watching` and `blind` as names there).
-  - `clients[]` = `{client, attributed, clientMachine, via:[provider|address|loopback], requests, inputTokens, outputTokens, recent, lastAt, cross, targets:[{machine, runtime, requests, tokens, models:[{model, requests}]}]}`. `client` is `"Unattributed"` and `clientMachine` `null` where the data does not say; `loopback` means the address was 127.0.0.1 (this machine, or a tunnel into it).
-  - `graph` = `{lanes:[{id, name}], nodes:[{id, column: client|door|engine|model, lane, label, sub, state, kind?, machine, runtime?, model?, known?, history?, active?, queued?, requests, tokens, recent, lastAt}], edges:[{id, from, to, requests, tokens, recent, tokensRecent, cross, lastAt}], maxRequests, maxRecent, crossRequests, recentMinutes, truncated}`. Lanes are machines plus `unknown` for clients whose machine is not known; `recent` counts the last `recentMinutes` (15).
-  - `known[]` = tools a machine's stack names (site configuration or `runtime_publish`) that no provider reports: `{machine, machineName, role: client|runtime, title, description, state, source, models, kind}`.
-- `GET /api/models/history?range=24h|7d|30d` → `{"schemaVersion":1,"available","range","stepMs","from","to","buckets":[ISO…],"totals":{requests,inputTokens,outputTokens,medianTps,attributed},"requests":[…],"inputTokens":[…],"outputTokens":[…],"tps":[…],"series":{"model"|"machine"|"client"|"kind":{"keys":[…],"values":{key:[…]}}},"top":{"model"|"machine"|"client"|"kind":[{key,requests,inputTokens,outputTokens,medianTps,medianDurationMs}]}}`. Buckets are hours (24h), six hours (7d) or days (30d) on the site's clock; each series keeps its eight largest keys and folds the rest into `other`. `available` is false when no provider supplies `runtimes.requests`.
+  - `overview` = `{devices, runtimes:{total,up,down,unknown}, models:{total,loaded,loading,generating,queued,byKind}, memory:[{device,name,ramGb,residentGb,loaded,models,pools:[{runtime,name,usedGb,capacityGb,basis}]}], range, requests, inputTokens, outputTokens, medianTps, attributed, lastRequestAt, observedAt}`. `residentGb` counts what engines hold; a router's budget is a pool, not residency. `medianTps` is the median generation speed of requests with at least 8 output tokens.
+  - `models[]` = one entry per model name across devices: `{key, name, kind, state, active, queued, since, devices, sizeGb, contextTokens, ttlRemainingSeconds, lastRequestAt, requests, tokens, placements:[{device, runtime, role, engine, gateways, aliases, id, state, active, queued, since, sizeGb, contextTokens, ttlRemainingSeconds, lastRequestAt, requests, tokens}]}`. `active` / `queued` are `null` where no runtime says how busy the model is; models that generate come first. A gateway alias (`qwen-27b` on llama-swap for an oMLX model) is folded into the engine's placement (`gateways`, `aliases`). `kind`: `llm`, `embedding`, `image`, `video`, `music`, `audio`, `other`.
+  - `work` = what generates now: `{items:[{device, runtime, runtimeName, gateways, mode, id, name, kind, active, queued, since}], active, queued, watching:[{device, id, name}], blind:[…]}`; running first, oldest first. `watching` are the runtimes that report how busy they are, `blind` the running ones that cannot. The same per device is `GET /api/home` → `devices[].work` (`watching` and `blind` as names there).
+  - `clients[]` = `{client, attributed, clientDevice, via:[provider|address|loopback], requests, inputTokens, outputTokens, recent, lastAt, cross, targets:[{device, runtime, requests, tokens, models:[{model, requests}]}]}`. `client` is `"Unattributed"` and `clientDevice` `null` where the data does not say; `loopback` means the address was 127.0.0.1 (this device, or a tunnel into it).
+  - `graph` = `{lanes:[{id, name}], nodes:[{id, column: client|door|engine|model, lane, label, sub, state, kind?, device, runtime?, model?, known?, history?, active?, queued?, requests, tokens, recent, lastAt}], edges:[{id, from, to, requests, tokens, recent, tokensRecent, cross, lastAt}], maxRequests, maxRecent, crossRequests, recentMinutes, truncated}`. Lanes are devices plus `unknown` for clients whose device is not known; `recent` counts the last `recentMinutes` (15).
+  - `known[]` = tools a device's stack names (site configuration or `runtime_publish`) that no provider reports: `{device, deviceName, role: client|runtime, title, description, state, source, models, kind}`.
+- `GET /api/models/history?range=24h|7d|30d` → `{"schemaVersion":1,"available","range","stepMs","from","to","buckets":[ISO…],"totals":{requests,inputTokens,outputTokens,medianTps,attributed},"requests":[…],"inputTokens":[…],"outputTokens":[…],"tps":[…],"series":{"model"|"device"|"client"|"kind":{"keys":[…],"values":{key:[…]}}},"top":{"model"|"device"|"client"|"kind":[{key,requests,inputTokens,outputTokens,medianTps,medianDurationMs}]}}`. Buckets are hours (24h), six hours (7d) or days (30d) on the site's clock; each series keeps its eight largest keys and folds the rest into `other`. `available` is false when no provider supplies `runtimes.requests`.
 - Requests come from every `runtimes.requests` provider, the hub's own llama-swap history among them
-  ([LLM runtime endpoints](#llm-runtime-endpoints)). One request reported by two providers counts once (by machine,
+  ([LLM runtime endpoints](#llm-runtime-endpoints)). One request reported by two providers counts once (by device,
   runtime, the runtime's record id and time), and the copy that names a client is kept. A client is named from the
   User-Agent of llama-swap's access log (`site.json → runtimeClients` for a household's own names).
 - Errors: `400 INVALID_QUERY` for another range or parameter, `503 MODELS_UNAVAILABLE`.
@@ -1223,7 +1223,7 @@ hub reads and where it sends it.
 read, logged or returned; the API returns the public key and an `authorized_keys` line,
 `restrict[,from="<hub address>"] ssh-ed25519 … home-hub-backup-<id>` (`from` only when the hub has an address inside
 `lanCidrs`). Host keys are **trust on first use**: `test` scans the host (`ssh-keyscan`) and returns the fingerprints
-(`SHA256:…`, as `ssh-keygen -l` prints them); a person compares one with the machine and sends it to `trust`, which
+(`SHA256:…`, as `ssh-keygen -l` prints them); a person compares one with the device and sends it to `trust`, which
 scans again and pins only a key with exactly that fingerprint. From then on every connection uses the job's own
 `ssh_config` (`IdentitiesOnly`, no agent, `UserKnownHostsFile` holding only the pinned keys,
 `StrictHostKeyChecking yes`, `BatchMode`, no forwarding or multiplexing, `~/.ssh/config` not read). A changed host key
@@ -1240,7 +1240,7 @@ audit (`backup-job-created`, `backup-host-key-pinned`, `backup-snapshot-deleted`
 ```
 
 **One destination, one job.** Saving a target that equals, contains or lies inside another job's (same host and
-port) is refused (`409 BACKUP_DEST_SHARED`). What validation cannot see (an IP and a name for one machine, a symlink)
+port) is refused (`409 BACKUP_DEST_SHARED`). What validation cannot see (an IP and a name for one device, a symlink)
 the owner marker catches: the first run writes the job id into `.home-hub-backup-job`, and every later prepare,
 rename, prune and delete-snapshot refuses a destination whose marker names another job (`dest-owned`); the
 connection test reports it too.
@@ -1249,7 +1249,7 @@ Each source is pushed with `rsync -a --delete --numeric-ids --stats --timeout=60
 so unchanged files are hard links into the previous snapshot: every snapshot is a full, browsable tree that costs only
 what changed. A source on another SSH host is first mirrored into `state/backup-jobs/<id>/staging/<name>/` on the hub
 (incremental `rsync` pull; `BACKUP_STAGING_DIR` moves it), then pushed like a local one: rsync cannot copy between two
-remote hosts, and the job's key is never handed to another machine. After a good run the staging copy of a source that
+remote hosts, and the job's key is never handed to another computer. After a good run the staging copy of a source that
 is no longer in the job is removed (the hub does not check its own free space before staging: the size of a remote
 source is not known without a full rsync dry run).
 
@@ -1296,7 +1296,7 @@ minute after the start, however many slots were missed. While the integration is
 
 | Method | Path | Who | What |
 |---|---|---|---|
-| GET | `/api/backup-jobs` | read | `{jobs, suggestions, timeZone, canManage, disabled?}`; `suggestions` are the site's machines for the wizard |
+| GET | `/api/backup-jobs` | read | `{jobs, suggestions, timeZone, canManage, disabled?}`; `suggestions` are the site's devices for the wizard |
 | GET | `/api/backup-jobs/detail?id=` | read | `{job, publicKey, authorizedKeys: {line, plain, address}, runs, snapshots}` |
 | GET | `/api/backup-jobs/log?id=&run=` | read | One run's log as `text/plain` |
 | POST | `/api/backup-jobs/create` | admin | `{name}` → 201 with the detail; a draft job with its own key |
@@ -1331,8 +1331,8 @@ MCP: `backup_jobs_list` (scope `read`) returns every job as in `GET /api/backup-
 **On the target, once per job** (the wizard shows the same): a user with a real shell (not `nologin`), the destination
 directory owned by it, the `authorized_keys` line in `~<user>/.ssh/authorized_keys` (`.ssh` 0700, file 0600), SSH on,
 rsync present. That user's login shell must accept POSIX `sh -c '…'` quoting (sh, bash, zsh, dash, ksh; fish works;
-csh and tcsh do not). A source on another machine needs the same public key for the user the job names there. The key
-gives a shell on each of those machines (restricted by `restrict`, and by `from="…"` when given). On the target an
+csh and tcsh do not). A source on another computer needs the same public key for the user the job names there. The key
+gives a shell on each of those devices (restricted by `restrict`, and by `from="…"` when given). On the target an
 `rrsync` forced command is not possible, because the hub runs `mkdir`, `mv`, `rm`, `ln`, `cat` and `df` in the
 destination; on a source that only has to be read, `command="rrsync -ro <path>"` before the key narrows it to read-only
 rsync (the wizard's connection test then reports `no-shell`; the runs work).
@@ -1347,7 +1347,7 @@ answers `409 INTEGRATION_DISABLED`.
 
 - `GET /api/git-lfs` → `{"schemaVersion":1,"enabled","graceHours","refreshMinutes","maxDelete","git":{ok,version},"providers":[…],"connections":[…]}`.
   - `providers[]` = `{id, title, kind: builtin|plugin, capabilities:{listRepos, checkObjects, listObjects, deleteObjects, tokenScopes}, fixedBaseUrl, token:{permissions[], note, url, urlTemplate}}`. `urlTemplate` holds `{web}` for the host's address.
-  - `connections[]` = `{id, provider, providerTitle, name, baseUrl, web, plainHttp, repoMode: all|owner|selected, owner, repos, login, scopes, tokenSet, createdAt, createdBy, updatedAt, updatedBy, capabilities, placement: {service:{id,name,machine,machineName}, storage:{…}|null}|null (where the inventory says the host and its LFS object store run; server/git-lfs-placement.mjs), scan:{running, startedAt, finishedAt, error, truncated, repos:[{fullName, state: ok|error, error, scannedAt, complete, incomplete: no-refs|no-default-branch|null, storedCheck: listed|ok|partial|failed|skipped, defaultBranch, refs, objects, bytes, url}]}}`. The token itself is never in an answer; `tokenSet` says whether one is stored.
+  - `connections[]` = `{id, provider, providerTitle, name, baseUrl, web, plainHttp, repoMode: all|owner|selected, owner, repos, login, scopes, tokenSet, createdAt, createdBy, updatedAt, updatedBy, capabilities, placement: {service:{id,name,device,deviceName}, storage:{…}|null}|null (where the inventory says the host and its LFS object store run; server/git-lfs-placement.mjs), scan:{running, startedAt, finishedAt, error, truncated, repos:[{fullName, state: ok|error, error, scannedAt, complete, incomplete: no-refs|no-default-branch|null, storedCheck: listed|ok|partial|failed|skipped, defaultBranch, refs, objects, bytes, url}]}}`. The token itself is never in an answer; `tokenSet` says whether one is stored.
 - `GET /api/git-lfs/objects?connection=&repo=&q=&ext=&status=all|current|branch|history|orphaned&minSize=&maxSize=&sort=size|path|repo|status|commit|lastSeen|oid&dir=asc|desc&offset=&limit=` (`commit` = the date of `lastCommit`; `limit` 1–200, default 50; sizes in bytes; `ext=-` = no extension) → `{"total","offset","limit","totals","filtered","extensions":[{ext,count}],"items":[…]}`.
   - `totals` (for the chosen connection or repository) and `filtered` (after every filter) = `{count, bytes, reclaimableCount, reclaimableBytes, byStatus:{current|branch|history|orphaned:{count, bytes}}}`.
   - An item = `{oid, size, status, stored: true|false|null, paths[], pathCount, currentPaths[], refs[] (tips that contain it), refCount, via[] (refs its commits were reached from), firstCommit:{sha,at}, lastCommit, commits, remembered, firstSeenAt, lastSeenAt, lastReferencedAt, unreferencedSince, createdAt, connection, connectionName, provider, repo, repoUrl, extension, reclaimable, canDelete, deleteBlocked, manual?}`. `deleteBlocked` is `current`, `history`, `unverified`, `storage-unknown`, `grace`, `unsupported` or `null`. `manual` = `{text, url}`: how to remove a reclaimable object by hand on a host that cannot delete.
@@ -1430,7 +1430,7 @@ curl -s -c jar -H "Origin: $H" -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"…"}' "$H/api/session"
 TOKEN=$(curl -s -b jar -H "Origin: $H" -H 'Content-Type: application/json' \
   -d '{"name":"curl test"}' "$H/api/app-tokens" | jq -r .token)
-curl -s -H "Authorization: Bearer $TOKEN" "$H/api/home" | jq '.machines[] | {id, online}'
+curl -s -H "Authorization: Bearer $TOKEN" "$H/api/home" | jq '.devices[] | {id, online}'
 curl -s -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"project":"my-app","title":"Filed from curl"}' "$H/api/tickets"
 ```

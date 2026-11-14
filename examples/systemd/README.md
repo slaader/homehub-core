@@ -10,12 +10,12 @@ They do the same thing at the same intervals.
 | `home-hub-systems-upstream` | `node scripts/check-upstream.mjs` | 12 h | `data/systems/upstream.json` |
 | `home-hub-security-collect` | `node scripts/collect-security.mjs` | 24 h | `data/security/ssh-keys.json` |
 
-The collectors are read-only: they never install, upgrade or write anything on a machine they probe.
+The collectors are read-only: they never install, upgrade or write anything on a device they probe.
 
 ## Before you install them
 
-1. Describe your machines in `local/site.json` and give each one the collector should read an `ssh` entry
-   (`docs/plugins.md` → Site configuration). `"alias": "local"` is the machine the collector runs on.
+1. Describe your devices in `local/site.json` and give each one the collector should read an `ssh` entry
+   (`docs/plugins.md` → Site configuration). `"alias": "local"` is the device the collector runs on.
 2. Make sure `ssh <alias> true` works from the collector's user without a prompt (`BatchMode=yes` is used).
 3. Run each collector once by hand and look at its output:
 
@@ -25,8 +25,8 @@ The collectors are read-only: they never install, upgrade or write anything on a
    node scripts/collect-security.mjs
    ```
 
-The probes that exist today read macOS (`"probe": "mac"`) and TrueNAS (`"probe": "nas"`) machines. A Linux
-host can run the collectors and read those machines over SSH.
+The probes that exist today read macOS (`"probe": "mac"`) and TrueNAS (`"probe": "nas"`) devices. A Linux
+host can run the collectors and read those devices over SSH.
 
 ## Install
 

@@ -1,6 +1,6 @@
 # Storage
 
-Everything Home Hub keeps is a file on the machine that runs it, under its state and data directories (`STATE_DIR`, `DATA_DIR`).
+Everything Home Hub keeps is a file on the computer that runs it, under its state and data directories (`STATE_DIR`, `DATA_DIR`).
 
 ## Where everything is
 
@@ -33,17 +33,17 @@ code directory.
 | `state/hub.db` (+ `-wal`, `-shm`) | Tickets (projects, releases, tickets with comments and history), the review index (sets → rounds → items → feedback, blob metadata), browser sign-in sessions, the full-text search index | SQLite, `node:sqlite` built into Node, no npm package |
 | `state/review/blobs/` | Review files (mockups, images, `.glb`), content-addressed by sha256 | files |
 | `state/access.json`, `state/app-tokens.json` | Users and their roles, custom roles, service accounts, API keys, per-account preferences, app tokens (hashes only; `{schemaVersion: 2, tokens}`). A `device-tokens.json` and `device-tokens-audit.jsonl` written by 1.0 are moved to `app-tokens.json` and `app-tokens-audit.jsonl` once, at the first start of 2.0 | JSON |
-| `state/agents.json`, `state/agent/` | Push agent keys (hashes only, each bound to one machine), and per machine (`agent/<machine>.json`) the latest copy of each part its agent reported, with the hub's receive time (0600, directory 0700); `agent/history.jsonl`, the agents' trend (one line per machine at most every six hours, at most 3000 lines) | JSON / JSONL |
+| `state/agents.json`, `state/agent/` | Push agent keys (hashes only, each bound to one device), and per device (`agent/<device>.json`) the latest copy of each part its agent reported, with the hub's receive time (0600, directory 0700); `agent/history.jsonl`, the agents' trend (one line per device at most every six hours, at most 3000 lines) | JSON / JSONL |
 | `state/compute/`, `state/thermo/`, `state/windows/`, `state/linux/` | Telemetry history, one line per sample (`windows/`: Windows over SSH or WinRM; `linux/`: Node Exporter, Prometheus or SSH; a device that switches within a family keeps its history) | JSONL, monthly files |
-| `state/home/` | Machines added on the overview (`devices.json`), their telemetry logins (`thermo-hosts.json`), Windows SSH connections (`windows-hosts.json`) and the other agent-less connections (`telemetry-hosts.json`: WinRM, Node Exporter, Prometheus, Linux SSH; holds the WinRM password, a Node Exporter's Basic password and a Prometheus password or bearer token; **this file and `thermo-hosts.json` are sealed**, see Secrets at rest), and which machines of the site configuration are read through one of them (`site-telemetry.json`: id, provider, platform, who and when; no secrets; their connections are in the two files above under the same id; `site.json` is never written), and the owner's display edits of those machines over the site's values (`site-overrides.json`: name, hostname, ip, hardware, picture, who and when; their uploaded picture in `images/`), all 0600 | JSON |
+| `state/home/` | Devices added on the overview (`devices.json`), their telemetry logins (`thermo-hosts.json`), Windows SSH connections (`windows-hosts.json`) and the other agent-less connections (`telemetry-hosts.json`: WinRM, Node Exporter, Prometheus, Linux SSH; holds the WinRM password, a Node Exporter's Basic password and a Prometheus password or bearer token; **this file and `thermo-hosts.json` are sealed**, see Secrets at rest), and which devices of the site configuration are read through one of them (`site-telemetry.json`: id, provider, platform, who and when; no secrets; their connections are in the two files above under the same id; `site.json` is never written), and the owner's display edits of those devices over the site's values (`site-overrides.json`: name, hostname, ip, hardware, picture, who and when; their uploaded picture in `images/`), all 0600 | JSON |
 | `state/home/ssh/` | **Private SSH keys** of the hub's Windows and Linux SSH connections, each connection's verified host key, an empty ssh configuration (directories 0700, files 0600; on Windows an ACL for the hub's account and SYSTEM only) | PEM / OpenSSH text |
-| `state/backup-jobs/` | Backup jobs (`jobs.json`, 0600), per job `<id>/runs.json` (≤ 200 runs, the last snapshot listing and free space), `<id>/logs/<run>.log` (≤ 256 KiB each), `<id>/run.lock`, and `<id>/staging/` (the hub's mirror of a source on another machine) | JSON / text |
+| `state/backup-jobs/` | Backup jobs (`jobs.json`, 0600), per job `<id>/runs.json` (≤ 200 runs, the last snapshot listing and free space), `<id>/logs/<run>.log` (≤ 256 KiB each), `<id>/run.lock`, and `<id>/staging/` (the hub's mirror of a source on another computer) | JSON / text |
 | `state/*-audit.jsonl` | Audit logs, among them `app-tokens-audit.jsonl` (app tokens issued and revoked) and `agent-audit.jsonl` (the push agents' refusals and changes) | JSONL |
 | `state/integrations.json` | Which integrations an administrator turned off | JSON |
 | `state/updates.json` | The update check: the newest release it found, when, the ETags of GitHub's answers, a dismissed release (0600). Deleting it costs one full check | JSON |
 | `state/run.json` | Written at every start: `{version, commit, exact, dataEpoch, pid, startedAt, plugins}` (0600). Not state to back up: it says what is answering right now | JSON |
 | `data/` | Inventory (`knowledge.json`), collector output | JSON |
-| `data/security/probes.json` | Written by `scripts/collect-security.mjs` beside `ssh-keys.json` (0600): each machine's raw probe output with `probedAt` (fingerprints, paths, public `authorized_keys` lines, `ssh -G` routes, `sudo -l` rules; never a private key), Forgejo and the router entry, so the hub can join the push agents' records | JSON |
+| `data/security/probes.json` | Written by `scripts/collect-security.mjs` beside `ssh-keys.json` (0600): each device's raw probe output with `probedAt` (fingerprints, paths, public `authorized_keys` lines, `ssh -G` routes, `sudo -l` rules; never a private key), Forgejo and the router entry, so the hub can join the push agents' records | JSON |
 | `data/plugins/<id>/` | A plugin's own files (`hub.pluginData(id)`) | the plugin's |
 | `private/` | `auth.json` (the owner's hash and `passwordAt`; written by `scripts/setup.mjs`), TLS key, tokens; `backup-jobs/<id>/` (0700): each backup job's ed25519 key pair (private key 0600), its generated `ssh_config` and `known_hosts` with the pinned host keys | JSON / PEM |
 
@@ -139,7 +139,7 @@ When no key opens a file:
 A plain file from an older hub (or one sealed before files named their key) is read as before and sealed again on
 first read (retried every ten minutes while no key can be made).
 
-- Moving a hub to another machine with its passwords: carry `private/` along (or set the key as `HOME_HUB_SECRET_KEY`
+- Moving a hub to another computer with its passwords: carry `private/` along (or set the key as `HOME_HUB_SECRET_KEY`
   there). Without it the devices just need their passwords again.
 - A container with a read-only `private/` cannot make its key: create it outside (`openssl rand -hex 32`, 0600, owned
   by the container's user) or pass `HOME_HUB_SECRET_KEY`.

@@ -1,6 +1,6 @@
 #!/bin/sh
 # Home Hub security probe. Read-only: lists SSH private keys, authorized_keys, client routes
-# (ssh -G per Host alias), sudo rights and sshd settings on THIS machine, one tab-separated
+# (ssh -G per Host alias), sudo rights and sshd settings on THIS computer, one tab-separated
 # record per line on stdout.
 #
 # It never prints private key material. Private key files are only opened by ssh-keygen on

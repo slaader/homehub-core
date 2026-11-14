@@ -8,13 +8,13 @@ import {readFile, writeFile, mkdir, rename, readdir} from 'node:fs/promises';
 import path from 'node:path';
 import {randomUUID, createHash} from 'node:crypto';
 
-// Thermo is a soft dependency: a separate telemetry agent that runs on each machine and has its own
+// Thermo is a soft dependency: a separate telemetry agent that runs on each device and has its own
 // repository. Without it the hub works and the overview says how to get it. This is the one place that
 // names the agent and where to find it.
 // TO BE FILLED: replace OWNER with the account the telemetry repository is published under.
 export const TELEMETRY_AGENT_NAME='Thermo';
 export const TELEMETRY_REPO_URL='https://github.com/OWNER/home-hub-telemetry';
-// A machine whose newest reading is older than this is "stale", not "ok" (AGENTS.md: stale after 3 minutes).
+// A device whose newest reading is older than this is "stale", not "ok" (AGENTS.md: stale after 3 minutes).
 export const TELEMETRY_STALE_SECONDS=180;
 // The processes on the GPU (Thermo's snapshot → gpuConsumers): the busiest few with their share of the GPU
 // in per cent, and the share Thermo could attribute to a process at all. Older than this is not "now".

@@ -1,5 +1,5 @@
 // The software watch list: which programs the versions page follows, where their newest version is read
-// (the upstream) and how the installed version is read on each machine (one detect rule per machine).
+// (the upstream) and how the installed version is read on each device (one detect rule per device).
 //   local/software-watch.json    a site's own list: the file next to its site.json
 //                                (SOFTWARE_WATCH_FILE selects another file; no site overlay, no list)
 //   config/software-watch.json   a generic example to copy from; it is never the active list
@@ -19,7 +19,7 @@ import {resolvePaths} from './paths.mjs';
 import {CMD_ARGS,WINREG_NAME} from './watch-rules.mjs';
 
 export const WATCH_SCHEMA=1;
-export const WATCH_LIMITS=Object.freeze({items:200,categories:20,machinesPerItem:50,bytes:262144});
+export const WATCH_LIMITS=Object.freeze({items:200,categories:20,devicesPerItem:50,bytes:262144});
 export const DETECT_KINDS=Object.freeze(['brew','cask','app','cmd','pydist','json','winreg']);
 export const UPSTREAM_TYPES=Object.freeze(['github','codeberg','pypi','npm','brew-formula','brew-cask','node','none','thermo-feed']);
 // The only arguments a cmd rule may pass to the watched binary (server/watch-rules.mjs, a leaf module the push agent shares).
@@ -30,14 +30,14 @@ export const RESERVED_CATEGORIES=Object.freeze(['nas-apps','containers']);
 
 const ITEM_ID=/^[a-z0-9][a-z0-9._-]{0,39}$/;
 const CATEGORY_ID=/^[a-z][a-z0-9-]{0,29}$/;
-const MACHINE_ID=/^[a-z][a-z0-9_-]{1,31}$/;
+const DEVICE_ID=/^[a-z][a-z0-9_-]{1,31}$/;
 const PACKAGE=/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 const NPM_PACKAGE=/^(@[a-z0-9][a-z0-9._-]{0,99}\/)?[a-z0-9][a-z0-9._-]{0,99}$/;
 const BREW_NAME=/^[a-z0-9][a-z0-9@._+-]{0,79}$/;
 const REPO=/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}\/[A-Za-z0-9._-]{1,100}$/;
 const LAUNCHD=/^(system\/)?[A-Za-z0-9][A-Za-z0-9._-]{0,119}$/;
 const JSON_KEY=/^[A-Za-z_][A-Za-z0-9_.-]{0,59}$/;
-// A file path on the probed machine: absolute or under the home directory, printable, and free of
+// A file path on the probed device: absolute or under the home directory, printable, and free of
 // everything a shell would act on. * and ? are allowed only where the probe expands a glob.
 const PATH_CHARS=/^(~\/|\/)[A-Za-z0-9 ._@+,:=%()\[\]\/-]{1,298}$/;
 const GLOB_CHARS=/^(~\/|\/)[A-Za-z0-9 ._@+,:=%()\[\]*?\/-]{1,298}$/;
@@ -116,7 +116,7 @@ function validDetect(raw,where,errors,previous=null){
   if(need(filePath(raw.path),`path ${pathRule}`))out.path=raw.path;
   if(raw.key!==undefined&&need(typeof raw.key==='string'&&JSON_KEY.test(raw.key),'key must be a JSON field name (default: version)'))out.key=raw.key;
  }else if(k==='winreg'){
-  // The Windows agent: a DisplayName of the machine-wide uninstall keys, * for any run of characters (watch-rules.mjs).
+  // The Windows agent: a DisplayName of the system-wide uninstall keys, * for any run of characters (watch-rules.mjs).
   if(need(typeof raw.displayName==='string'&&WINREG_NAME.test(raw.displayName),'displayName must be 1-120 characters of letters, digits, space and . _ + , - with * as the only wildcard, at most four'))out.displayName=raw.displayName;
  }
  if(raw.launchd!==undefined&&need(typeof raw.launchd==='string'&&LAUNCHD.test(raw.launchd),'launchd must be a launchd label, optionally prefixed with system/'))out.launchd=raw.launchd;
@@ -127,10 +127,10 @@ function validDetect(raw,where,errors,previous=null){
 }
 /**
  * One item as the API accepts it → {item, errors}. item is a normalized copy (known fields only).
- * machines: ids a detect rule may name (the site's machines probed with the mac probe); null = any machine id.
+ * devices: ids a detect rule may name (the site's devices probed with the mac probe); null = any device id.
  * categories: the category ids that exist; previous: the stored item it replaces, if any.
  */
-export function validateItem(raw,{machines=null,categories=null,previous=null}={}){
+export function validateItem(raw,{devices=null,categories=null,previous=null}={}){
  const errors=[];
  if(!plain(raw))return {item:null,errors:['item must be an object']};
  const extra=unknownKeys(raw,['id','name','category','scheme','match','upstream','detect']);
@@ -144,18 +144,18 @@ export function validateItem(raw,{machines=null,categories=null,previous=null}={
  if(raw.scheme!==undefined){if(VERSION_SCHEMES.includes(raw.scheme))item.scheme=raw.scheme;else errors.push(`scheme must be one of ${VERSION_SCHEMES.join(', ')} (or left out)`);}
  if(raw.match!==undefined){if(safePattern(raw.match))item.match=raw.match;else errors.push('match must be a simple regular expression of at most 200 characters');}
  const upstream=validUpstream(raw.upstream,'upstream',errors,previous?.upstream);if(upstream)item.upstream=upstream;
- if(!plain(raw.detect)||!Object.keys(raw.detect).length||Object.keys(raw.detect).length>WATCH_LIMITS.machinesPerItem)errors.push(`detect must map 1-${WATCH_LIMITS.machinesPerItem} machine ids to a detect rule`);
+ if(!plain(raw.detect)||!Object.keys(raw.detect).length||Object.keys(raw.detect).length>WATCH_LIMITS.devicesPerItem)errors.push(`detect must map 1-${WATCH_LIMITS.devicesPerItem} device ids to a detect rule`);
  else{item.detect={};
-  for(const [machine,rule] of Object.entries(raw.detect)){
-   if(!MACHINE_ID.test(machine)){errors.push(`detect: "${machine.slice(0,40)}" is not a machine id`);continue;}
-   if(machines&&!machines.includes(machine)){errors.push(`detect.${machine}: no machine "${machine}" with ssh.probe "mac" in the site configuration${machines.length?` (known: ${machines.join(', ')})`:' (add machines[].ssh to local/site.json first)'}`);continue;}
-   const detect=validDetect(rule,`detect.${machine}`,errors,previous?.detect?.[machine]);if(detect)item.detect[machine]=detect;
+  for(const [device,rule] of Object.entries(raw.detect)){
+   if(!DEVICE_ID.test(device)){errors.push(`detect: "${device.slice(0,40)}" is not a device id`);continue;}
+   if(devices&&!devices.includes(device)){errors.push(`detect.${device}: no device "${device}" with ssh.probe "mac" in the site configuration${devices.length?` (known: ${devices.join(', ')})`:' (add devices[].ssh to local/site.json first)'}`);continue;}
+   const detect=validDetect(rule,`detect.${device}`,errors,previous?.detect?.[device]);if(detect)item.detect[device]=detect;
   }}
  return {item:errors.length?null:item,errors};
 }
 // A whole list as found on disk → problems worth telling its owner. Lenient on purpose: a hand-written
 // file keeps working, and the collector prints these instead of refusing to run.
-export function checkWatch(registry,{machines=null}={}){
+export function checkWatch(registry,{devices=null}={}){
  const errors=[],warnings=[];
  if(!plain(registry)||!Array.isArray(registry.items))return {errors:['the file must be an object with an items list'],warnings};
  if(registry.items.length>WATCH_LIMITS.items)errors.push(`more than ${WATCH_LIMITS.items} items`);
@@ -164,8 +164,8 @@ export function checkWatch(registry,{machines=null}={}){
   const id=typeof raw?.id==='string'?raw.id:`#${i}`;
   if(seen.has(id))errors.push(`${id}: duplicate id`);seen.add(id);
   // A stored thermo-feed upstream is checked against itself: it is allowed in the file.
-  const r=validateItem(raw,{machines,categories,previous:raw});
-  for(const e of r.errors)(/no machine "/.test(e)?warnings:errors).push(`${id}: ${e}`);
+  const r=validateItem(raw,{devices,categories,previous:raw});
+  for(const e of r.errors)(/no device "/.test(e)?warnings:errors).push(`${id}: ${e}`);
  }
  return {errors,warnings};
 }
@@ -181,10 +181,10 @@ export async function readWatch({file=watchPath()}={}){
  return {source:'local',file,registry:{...registry,categories:plain(registry.categories)?registry.categories:{}}};
 }
 // What the API and the MCP tool return: the list with a hash per item, and what a rule may contain.
-export function describeWatch({source,registry},{machines=[]}={}){
+export function describeWatch({source,registry},{devices=[]}={}){
  return {schemaVersion:WATCH_SCHEMA,source,categories:{...registry.categories},
   items:registry.items.map(item=>({...item,hash:itemHash(item)})),
-  machines,detectKinds:[...DETECT_KINDS],upstreamTypes:UPSTREAM_TYPES.filter(t=>t!=='thermo-feed'),cmdArgs:[...CMD_ARGS],schemes:[...VERSION_SCHEMES],
+  devices,detectKinds:[...DETECT_KINDS],upstreamTypes:UPSTREAM_TYPES.filter(t=>t!=='thermo-feed'),cmdArgs:[...CMD_ARGS],schemes:[...VERSION_SCHEMES],
   limits:{items:WATCH_LIMITS.items,categories:WATCH_LIMITS.categories}};
 }
 
@@ -198,7 +198,7 @@ export function formatWatch(registry){
   ` "items": [${items.length?'\n'+items.map(item=>`  ${spaced(item)}`).join(',\n')+'\n ':''}]`];
  return `{\n${lines.join(',\n')}\n}\n`;
 }
-const ABOUT='Software this Home Hub watches for versions and update candidates. One upstream per item (where the newest version is read) and one detect rule per machine id from site.json (how the installed version is read there). config/software-watch.json is an annotated example; docs/API.md describes every field.';
+const ABOUT='Software this Home Hub watches for versions and update candidates. One upstream per item (where the newest version is read) and one detect rule per device id from site.json (how the installed version is read there). config/software-watch.json is an annotated example; docs/API.md describes every field.';
 class WatchError extends Error{constructor(code,details=[]){super(code);this.code=code;this.details=details;}}
 export const isWatchError=e=>e instanceof WatchError;
 
@@ -208,10 +208,10 @@ export const isWatchError=e=>e instanceof WatchError;
  *   {remove, base}    delete the item with this id
  *   {categories}      add or relabel categories, alone or together with an item
  * Throws WatchError: invalid (details = messages), conflict, not-found, limit, unavailable (a hub
- * without a site overlay has no file to keep a list in). machines() names the
- * machine ids a rule may use.
+ * without a site overlay has no file to keep a list in). devices() names the
+ * device ids a rule may use.
  */
-export function createWatchStore({file=watchPath(),machines=()=>null}={}){
+export function createWatchStore({file=watchPath(),devices=()=>null}={}){
  let queue=Promise.resolve();
  const serial=fn=>{const run=queue.then(fn,fn);queue=run.catch(()=>{});return run;};
  async function apply(change){
@@ -235,7 +235,7 @@ export function createWatchStore({file=watchPath(),machines=()=>null}={}){
    registry.items.splice(at,1);result={ok:true,id:change.remove,removed:true,hash:null};
   }else if(change.item!==undefined){
    const at=registry.items.findIndex(i=>i.id===change.item?.id),previous=at>=0?registry.items[at]:null;
-   const {item,errors}=validateItem(change.item,{machines:machines(),categories:Object.keys(registry.categories),previous});
+   const {item,errors}=validateItem(change.item,{devices:devices(),categories:Object.keys(registry.categories),previous});
    if(errors.length)throw new WatchError('invalid',errors.slice(0,20));
    // A replace needs the hash it was read with; a create must not name a hash or an id that exists.
    if(previous?change.base!==itemHash(previous):change.base!==undefined)throw new WatchError('conflict');

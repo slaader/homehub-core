@@ -67,7 +67,7 @@ test('moving between key sources: a file opens with whichever key there is; brok
  const dir=await tmp(t),k=fakeKeychain();
  const env=await createSecretBox({env:{HOME_HUB_SECRET_KEYCHAIN:'1'},platform:'darwin',keychain:k.source,keyFile:path.join(dir,'none')}).seal({a:1},'p');
  assert.equal(env.kid,'keychain');
- assert.deepEqual(await createSecretBox({env:{HOME_HUB_SECRET_KEY:k.store},platform:'linux',keyFile:NOFILE}).open(env,'p'),{a:1},'the same key from the environment on another machine');
+ assert.deepEqual(await createSecretBox({env:{HOME_HUB_SECRET_KEY:k.store},platform:'linux',keyFile:NOFILE}).open(env,'p'),{a:1},'the same key from the environment on another device');
  await writeFile(path.join(dir,'secret.key'),k.store+'\n',{mode:0o600});
  assert.deepEqual(await createSecretBox({env:{},platform:'linux',keyFile:path.join(dir,'secret.key')}).open(env,'p'),{a:1},'or from a key file');
  const box=createSecretBox({env:{HOME_HUB_SECRET_KEY:KEY},keyFile:NOFILE}),good=await box.seal({a:1},'p');

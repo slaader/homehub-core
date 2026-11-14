@@ -29,7 +29,7 @@ export async function setup(t,extra={}){
  const update=async(id,change)=>{const d=await detail(id);return call('update',{id,base:d.job.hash,...change});};
  return {...h,b,keys,fake,get,call,detail,update,target:path.join(h.dir,'nas','backup'),src:path.join(h.dir,'docs'),remote:path.join(h.dir,'mini','projects')};
 }
-// Through the wizard: target, its key, sources (one on the hub, one on another machine) with theirs, schedule.
+// Through the wizard: target, its key, sources (one on the hub, one on another computer) with theirs, schedule.
 export async function readyJob(s,{sources,retention={keepLast:2},target=s.target,name='Dokumenty'}={}){
  const made=await s.call('create',{name});assert.equal(made.status,201);const id=made.body.job.id;
  assert.equal((await s.update(id,{target:{host:'nas.example.lan',user:'backup',path:target}})).status,200);

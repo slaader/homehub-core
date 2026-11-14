@@ -1,6 +1,6 @@
 // The push agent's credential in the request pipeline (docs/agent.md §1, §2, §6 → A stolen agent key): an agent key
-// reaches the agent report and nothing else, nothing else reaches the agent report, the machine is the key's, and a
-// key dies with its machine or its revocation.
+// reaches the agent report and nothing else, nothing else reaches the agent report, the device is the key's, and a
+// key dies with its device or its revocation.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile,readdir,writeFile} from 'node:fs/promises';
@@ -117,23 +117,23 @@ test('no scope is added: the wildcard, the editor, legacy keys and app tokens ga
  assert.equal(h.handler.registry.match('POST','/api/agent/report').route.write,false);
 });
 
-test('the machine comes from the key: a body naming another machine is 400; records land only in agent/<A>.json',async t=>{
+test('the device comes from the key: a body naming another device is 400; records land only in agent/<A>.json',async t=>{
  let clock=Date.parse('2026-11-13T10:00:00Z');
  const h=await hub(t,{thermoPoller:quiet,agentClock:()=>clock});
  const report=reportTo(h);
  const a=await issue(h,'studio');
- for(const extra of [{machine:'mini'},{machineId:'mini'}]){
+ for(const extra of [{device:'mini'},{deviceId:'mini'}]){
   const r=await report(a.token,envelope(undefined,extra));assert.equal(r.status,400);
   const body=await r.json();assert.equal(body.error.code,'AGENT_REPORT_INVALID');assert.equal(body.error.field,Object.keys(extra)[0]);
  }
  // The HOST name of the records says "mini": stored for studio, as studio's.
  const ok=await report(a.token,envelope({heartbeat:{schema:1,interval:60},...systemsParts({name:'mini'})}));
  assert.equal(ok.status,200);assert.deepEqual((await ok.json()).accepted,['heartbeat','os','updates','packages']);
- // Beside it, the trend's history.jsonl (one line per machine at most every six hours; docs/agent.md §3).
+ // Beside it, the trend's history.jsonl (one line per device at most every six hours; docs/agent.md §3).
  assert.deepEqual((await readdir(path.join(h.dir,'agent'))).sort(),['history.jsonl','studio.json']);
- assert.deepEqual(Object.keys(JSON.parse(await readFile(path.join(h.dir,'agent','history.jsonl'),'utf8')).machines),['studio']);
+ assert.deepEqual(Object.keys(JSON.parse(await readFile(path.join(h.dir,'agent','history.jsonl'),'utf8')).devices),['studio']);
  const stored=JSON.parse(await readFile(path.join(h.dir,'agent','studio.json'),'utf8'));
- assert.equal(stored.machine,'studio');assert.equal(stored.agentId,a.agent.id);
+ assert.equal(stored.device,'studio');assert.equal(stored.agentId,a.agent.id);
  // A Content-Type that is not exactly application/json is refused, as for every POST.
  clock+=60_000;
  const charset=await report(a.token,envelope(),{'Content-Type':'application/json; charset=utf-8'});
@@ -142,33 +142,33 @@ test('the machine comes from the key: a body naming another machine is 400; reco
  assert.equal((await report(a.token,envelope(),{Origin:'https://evil.example.com'})).status,200);
 });
 
-test('a reused id: remove a device, add one that gets the same id, the old key gets 409 then 401, audited machine-removed',async t=>{
+test('a reused id: remove a device, add one that gets the same id, the old key gets 409 then 401, audited device-removed',async t=>{
  let clock=Date.parse('2026-11-13T10:00:00Z');
  const h=await hub(t,{thermoPoller:quiet,agentClock:()=>clock});
  const report=reportTo(h),writer=await h.account('agent-home',['home:write']);
  const pi={id:'pi-hole',name:'Pi-hole',hostname:'pi.example.lan',ip:'10.0.0.53',role:'other',platform:'linux'};
- const made=await (await h.post('/api/home/devices',{machine:pi},writer.headers)).json();
+ const made=await (await h.post('/api/home/devices',{device:pi},writer.headers)).json();
  const key=await issue(h,'pi-hole');
  const linux=envelope(undefined,{platform:'linux'});
  assert.equal((await report(key.token,linux)).status,200);
  // The device goes and an agent adds one with the same id: a new createdAt.
  assert.equal((await h.post('/api/home/devices/remove',{id:'pi-hole',base:made.hash},writer.headers)).status,200);
  await new Promise(r=>setTimeout(r,3));
- assert.equal((await h.post('/api/home/devices',{machine:pi},writer.headers)).status,201);
+ assert.equal((await h.post('/api/home/devices',{device:pi},writer.headers)).status,201);
  clock+=60_000;
- const gone=await report(key.token,linux);assert.equal(gone.status,409);assert.equal(await code(gone),'AGENT_MACHINE_GONE');
+ const gone=await report(key.token,linux);assert.equal(gone.status,409);assert.equal(await code(gone),'AGENT_DEVICE_GONE');
  const after=await report(key.token,linux);assert.equal(after.status,401);assert.equal(await code(after),'AUTH_REQUIRED');
  const audit=(await readFile(path.join(h.dir,'access-audit.jsonl'),'utf8')).trim().split('\n').map(l=>JSON.parse(l)).filter(e=>e.event.startsWith('agent-key-'));
- assert.deepEqual(audit.map(e=>[e.event,e.by??null]),[['agent-key-created','admin'],['agent-key-revoked','machine-removed']]);
+ assert.deepEqual(audit.map(e=>[e.event,e.by??null]),[['agent-key-created','admin'],['agent-key-revoked','device-removed']]);
  const listed=(await (await fetch(h.origin+'/api/admin/agents',{headers:h.admin})).json()).agents;
- assert.equal(listed[0].revokedBy,'machine-removed');
+ assert.equal(listed[0].revokedBy,'device-removed');
  const events=(await (await fetch(h.origin+'/api/admin/audit?kind=agent',{headers:h.admin})).json()).events;
- assert.ok(events.some(e=>e.event==='agent-refused'&&e.detail.includes('AGENT_MACHINE_GONE')&&e.subject==='pi-hole'));
+ assert.ok(events.some(e=>e.event==='agent-refused'&&e.detail.includes('AGENT_DEVICE_GONE')&&e.subject==='pi-hole'));
  // A new key for the new device works; without a report, the hub revokes on its own sweep.
  const fresh=await issue(h,'pi-hole');
  assert.equal((await report(fresh.token,linux)).status,200);
  const now=await (await fetch(h.origin+'/api/home/devices',{headers:h.admin})).json();
- const again=now.machines.find(m=>m.id==='pi-hole');
+ const again=now.devices.find(m=>m.id==='pi-hole');
  assert.equal((await h.post('/api/home/devices/remove',{id:'pi-hole',base:again.hash},writer.headers)).status,200);
  assert.equal(await h.handler.state('agent').sweep(),1,'the sweep (start, devices.json changed) revokes it');
  clock+=60_000;
@@ -181,17 +181,17 @@ test('revoked through the admin API: the next report is 401; the admin API is fo
  const report=reportTo(h);
  const key=await issue(h,'studio','Studio agent');
  assert.deepEqual(Object.keys(key).sort(),['agent','token']);
- assert.deepEqual(Object.keys(key.agent).sort(),['agentVersion','createdAt','createdBy','id','lastReportAt','machine','name','platform','prefix','revokedAt','revokedBy']);
+ assert.deepEqual(Object.keys(key.agent).sort(),['agentVersion','createdAt','createdBy','device','id','lastReportAt','name','platform','prefix','revokedAt','revokedBy']);
  assert.equal((await report(key.token,envelope())).status,200);
  const list=await (await fetch(h.origin+'/api/admin/agents',{headers:h.admin})).json();
  assert.equal(list.agents.length,1);
  assert.deepEqual([list.agents[0].lastReportAt,list.agents[0].agentVersion,list.agents[0].platform],['2026-11-13T10:00:00.000Z','1.6.0','macos']);
  assert.ok(!JSON.stringify(list).includes(key.token)&&!('hash' in list.agents[0]),'never the token or its hash');
- // Refusals: unknown machine, the router, the NAS, a malformed body; a third key; an unknown id.
- for(const body of [{machine:'ghost'},{machine:'router'},{machine:'nas'},{machine:'studio',extra:1},{},{machine:'studio',name:'x'.repeat(81)}]){
+ // Refusals: unknown device, the router, the NAS, a malformed body; a third key; an unknown id.
+ for(const body of [{device:'ghost'},{device:'router'},{device:'nas'},{device:'studio',extra:1},{},{device:'studio',name:'x'.repeat(81)}]){
   const r=await h.post('/api/admin/agents',body,h.admin);assert.equal(r.status,400,JSON.stringify(body));assert.equal(await code(r),'AGENT_INVALID');}
  await issue(h,'studio');
- const third=await h.post('/api/admin/agents',{machine:'studio'},h.admin);assert.equal(third.status,409);assert.equal(await code(third),'AGENT_LIMIT');
+ const third=await h.post('/api/admin/agents',{device:'studio'},h.admin);assert.equal(third.status,409);assert.equal(await code(third),'AGENT_LIMIT');
  const missing=await h.post('/api/admin/agents/revoke',{id:'0'.repeat(16)},h.admin);assert.equal(missing.status,404);assert.equal(await code(missing),'NOT_FOUND');
  // Only an administrator signed in with a password.
  const full=await h.account('agent-full',['*']);
@@ -199,7 +199,7 @@ test('revoked through the admin API: the next report is 401; the admin API is fo
  await h.post('/api/admin/users',{username:'eddie',role:'editor',password:'editor-test-password'},h.admin);
  const editor={Cookie:(await h.post('/api/session',{username:'eddie',password:'editor-test-password'})).headers.get('set-cookie').split(';')[0]};
  for(const [who,headers,expected] of [['full key',full.headers,'ADMIN_REQUIRED'],['app token',appToken,'ADMIN_REQUIRED'],['editor',editor,'ADMIN_REQUIRED']]){
-  for(const [url,body] of [['/api/admin/agents',{machine:'mini'}],['/api/admin/agents/revoke',{id:key.agent.id}]]){
+  for(const [url,body] of [['/api/admin/agents',{device:'mini'}],['/api/admin/agents/revoke',{id:key.agent.id}]]){
    const r=await h.post(url,body,headers);assert.equal(r.status,403,`${who} ${url}`);assert.equal(await code(r),expected,`${who} ${url}`);}
   assert.equal((await fetch(h.origin+'/api/admin/agents',{headers})).status,403,who);
  }
@@ -216,11 +216,11 @@ test('revoked through the admin API: the next report is 401; the admin API is fo
  assert.ok(events.includes('agent-key-created')&&events.includes('agent-key-revoked'));
 });
 
-test('a machine whose platform is said must report that one, else every part is platform-mismatch',async t=>{
+test('a device whose platform is said must report that one, else every part is platform-mismatch',async t=>{
  let clock=Date.parse('2026-11-13T10:00:00Z');
  const h=await hub(t,{thermoPoller:quiet,agentClock:()=>clock});
  const report=reportTo(h),writer=await h.account('agent-home',['home:write']);
- await h.post('/api/home/devices',{machine:{id:'box',name:'Box',hostname:'box.example.lan',ip:'10.0.0.60',role:'computer',platform:'linux'}},writer.headers);
+ await h.post('/api/home/devices',{device:{id:'box',name:'Box',hostname:'box.example.lan',ip:'10.0.0.60',role:'computer',platform:'linux'}},writer.headers);
  const key=await issue(h,'box');
  const r=await report(key.token,envelope({heartbeat:{schema:1,interval:60},...systemsParts({name:'box'})}));
  assert.equal(r.status,200);const body=await r.json();
@@ -251,30 +251,30 @@ test('a key revoked while its report is still on the way stores nothing: 401',as
  assert.equal(listed[0].lastReportAt,null,'no last report either');
 });
 
-test('a key whose machine would now be refused at issue is revoked: platform "other", the router; "other" is refused at issue',async t=>{
+test('a key whose device would now be refused at issue is revoked: platform "other", the router; "other" is refused at issue',async t=>{
  let clock=Date.parse('2026-11-13T10:00:00Z');
  const h=await hub(t,{thermoPoller:quiet,agentClock:()=>clock});
  const report=reportTo(h),writer=await h.account('agent-home',['home:write']);
  const box={id:'box',name:'Box',hostname:'box.example.lan',ip:'10.0.0.60',role:'computer',platform:'linux'};
- const made=await (await h.post('/api/home/devices',{machine:box},writer.headers)).json();
- await h.post('/api/home/devices',{machine:{id:'odd',name:'Odd',hostname:'odd.example.lan',ip:'10.0.0.61',role:'computer',platform:'other'}},writer.headers);
- const odd=await h.post('/api/admin/agents',{machine:'odd'},h.admin);assert.equal(odd.status,400);
+ const made=await (await h.post('/api/home/devices',{device:box},writer.headers)).json();
+ await h.post('/api/home/devices',{device:{id:'odd',name:'Odd',hostname:'odd.example.lan',ip:'10.0.0.61',role:'computer',platform:'other'}},writer.headers);
+ const odd=await h.post('/api/admin/agents',{device:'odd'},h.admin);assert.equal(odd.status,400);
  const oddBody=await odd.json();assert.equal(oddBody.error.code,'AGENT_INVALID');assert.match(oddBody.error.message,/platform/);
  const key=await issue(h,'box'),linux=envelope(undefined,{platform:'linux'});
  assert.equal((await report(key.token,linux)).status,200);
- // The device becomes the router: the next report is 409 and the key is dead, revoked as machine-changed.
- const changed=await h.post('/api/home/devices',{machine:{...box,role:'router'},base:made.hash},writer.headers);assert.equal(changed.status,200,await changed.clone().text());
+ // The device becomes the router: the next report is 409 and the key is dead, revoked as device-changed.
+ const changed=await h.post('/api/home/devices',{device:{...box,role:'router'},base:made.hash},writer.headers);assert.equal(changed.status,200,await changed.clone().text());
  clock+=60_000;
- const r=await report(key.token,linux);assert.equal(r.status,409);assert.equal(await code(r),'AGENT_MACHINE_GONE');
+ const r=await report(key.token,linux);assert.equal(r.status,409);assert.equal(await code(r),'AGENT_DEVICE_GONE');
  assert.equal((await report(key.token,linux)).status,401);
  const listed=(await (await fetch(h.origin+'/api/admin/agents',{headers:h.admin})).json()).agents;
- assert.equal(listed.find(a=>a.id===key.agent.id).revokedBy,'machine-changed');
- // Without a report: the sweep revokes a key whose machine got platform "other".
- const now=(await (await fetch(h.origin+'/api/home/devices',{headers:h.admin})).json()).machines.find(m=>m.id==='box');
- assert.equal((await h.post('/api/home/devices',{machine:{...box,role:'computer'},base:now.hash},writer.headers)).status,200);
+ assert.equal(listed.find(a=>a.id===key.agent.id).revokedBy,'device-changed');
+ // Without a report: the sweep revokes a key whose device got platform "other".
+ const now=(await (await fetch(h.origin+'/api/home/devices',{headers:h.admin})).json()).devices.find(m=>m.id==='box');
+ assert.equal((await h.post('/api/home/devices',{device:{...box,role:'computer'},base:now.hash},writer.headers)).status,200);
  const second=await issue(h,'box');
- const again=(await (await fetch(h.origin+'/api/home/devices',{headers:h.admin})).json()).machines.find(m=>m.id==='box');
- assert.equal((await h.post('/api/home/devices',{machine:{...box,platform:'other'},base:again.hash},writer.headers)).status,200);
+ const again=(await (await fetch(h.origin+'/api/home/devices',{headers:h.admin})).json()).devices.find(m=>m.id==='box');
+ assert.equal((await h.post('/api/home/devices',{device:{...box,platform:'other'},base:again.hash},writer.headers)).status,200);
  assert.equal(await h.handler.state('agent').sweep(),1);
  clock+=60_000;
  assert.equal((await report(second.token,linux)).status,401);
@@ -299,7 +299,7 @@ test('revoke-agent-key from the command line takes effect in a running hub, and 
  assert.equal(doc.agents.find(a=>a.id===key.agent.id).revokedBy,'local administration');
 });
 
-test('a machine record written by a newer hub: 500 UNAVAILABLE, never overwritten',async t=>{
+test('a device record written by a newer hub: 500 UNAVAILABLE, never overwritten',async t=>{
  // The second server (below) closes before the hub's teardown, which removes the directory both serve: hooks run in
  // the order they were registered and one that fails skips the rest, so registered after the hub's, a removal that
  // failed would leave this server listening and the run would never end.
@@ -307,7 +307,7 @@ test('a machine record written by a newer hub: 500 UNAVAILABLE, never overwritte
  const h=await hub(t,{thermoPoller:quiet});
  const {mkdir}=await import('node:fs/promises');
  await mkdir(path.join(h.dir,'agent'),{recursive:true});
- const newer=JSON.stringify({schemaVersion:2,machine:'studio',parts:{}});
+ const newer=JSON.stringify({schemaVersion:2,device:'studio',parts:{}});
  await writeFile(path.join(h.dir,'agent','studio.json'),newer);
  // A second handler over the same state loads the store as a restarted hub would.
  const {createHandler}=await import('../server/index.mjs');

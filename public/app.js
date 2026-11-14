@@ -1,10 +1,10 @@
-// Home Hub shell: sidebar + top bar + one page. Sign-in → the overview (#overview) → a machine page (#host-<id>).
+// Home Hub shell: sidebar + top bar + one page. Sign-in → the overview (#overview) → a device page (#host-<id>).
 // What the sidebar lists and which module draws #<page>[/sub] is not written here: it comes from the
 // server's UI manifest (GET /api/ui/manifest), built from the modules that are loaded there: core ones
 // (overview, inventory, security, tracker, review, access, settings, search) and whatever plugins a site
 // adds. The manifest is already filtered for the signed-in account; admin-only pages are refused here too.
-// A page module exports one function, (context) => Node, with context = {me, page, sub, machine, site}.
-// Machine pages (#host-<id>) have no sidebar entries; they open from the overview tiles.
+// A page module exports one function, (context) => Node, with context = {me, page, sub, device, site}.
+// Device pages (#host-<id>) have no sidebar entries; they open from the overview tiles.
 //
 // Around the page the shell provides: the sidebar (a rail when collapsed, a drawer on a phone), the command
 // palette (Cmd/Ctrl-K, palette.js), the loading bar and toasts (ui.js), a banner while the hub does not
@@ -25,7 +25,7 @@ import {watchNetwork,pingHub,hubState} from './net.js';
 import {loadOnboarding,offersOnboarding,isDismissed} from './onboarding.js';
 import {loadUpdates,footerHint} from './updates-view.js';
 const root=document.querySelector('#root');
-let me=null,loginMessage='',manifest={pages:[],nav:[]},knownMachines=[];
+let me=null,loginMessage='',manifest={pages:[],nav:[]},knownDevices=[];
 const WELCOME='welcome';
 const clock=el('span',{class:'hh-clock'});
 const tick=()=>{clock.textContent=new Intl.DateTimeFormat(locale(),{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',timeZone:timeZone()}).format(new Date());};
@@ -123,10 +123,10 @@ function paintStart(){
  const next=startEntry(pageOf(location.hash)),old=side.querySelector('.hh-start');
  if(old&&next)old.replaceWith(next);else if(old)old.remove();else if(next)side.querySelector('.hh-acct-wrap')?.before(next);
 }
-function sidebar(machine,page){
- const current=machine?HOME_PAGE:page||HOME_PAGE;
+function sidebar(device,page){
+ const current=device?HOME_PAGE:page||HOME_PAGE;
  const link=item=>{const label=labelOf(item);return item.soon?el('a',{class:'soon','aria-disabled':'true',title:label},navIcon({...item,label}),el('span',{class:'hh-nav-label'},label))
-  :el('a',{href:`#${item.hash}`,class:item.hash===current?'on':'',title:label,'aria-current':item.hash===current&&!machine?'page':null},navIcon({...item,label}),el('span',{class:'hh-nav-label'},label));};
+  :el('a',{href:`#${item.hash}`,class:item.hash===current?'on':'',title:label,'aria-current':item.hash===current&&!device?'page':null},navIcon({...item,label}),el('span',{class:'hh-nav-label'},label));};
  const group=g=>{const title=labelOf(g);return g.items.length?el('div',{class:'hh-nav-group',role:'group','aria-label':title},el('div',{class:'hh-nav-h','aria-hidden':'true'},title),...g.items.map(link)):null;};
  const nav=el('nav',{class:'hh-nav','aria-label':t('Hlavní navigace')},...manifest.nav.map(group));
  nav.addEventListener('scroll',()=>{navScroll=nav.scrollTop;},{passive:true});
@@ -146,8 +146,8 @@ const MAC=/Mac|iPhone|iPad/.test(globalThis.navigator?.platform||'');
 const jumpButton=()=>el('button',{type:'button',class:'hh-jump','aria-label':t('Hledat nebo přejít na…'),'aria-keyshortcuts':MAC?'Meta+K':'Control+K',onclick:e=>{e.stopPropagation();palette.open();}},
  icon('search'),el('span',{class:'hh-jump-text'},t('Hledat nebo přejít na…')),el('kbd',{class:'hh-kbd'},MAC?'⌘K':'Ctrl K'));
 const bannerSlot=el('div',{class:'hh-banner'});
-const shell=(machine,page,main,withSearch=true)=>el('div',{class:`hh-shell${railed?' rail':''}`},
- sidebar(machine,page),
+const shell=(device,page,main,withSearch=true)=>el('div',{class:`hh-shell${railed?' rail':''}`},
+ sidebar(device,page),
  el('button',{type:'button',class:'hh-scrim',tabindex:'-1','aria-label':t('Zavřít nabídku'),onclick:()=>setDrawer(false,{refocus:true})}),
  el('header',{class:'hh-top'},
   el('button',{type:'button',class:'hh-icon-btn hh-menu-btn','aria-label':t('Nabídka'),'aria-expanded':'false','aria-controls':'hh-side',onclick:e=>{e.stopPropagation();setDrawer(!drawer,{refocus:true});}},icon('menu')),
@@ -157,12 +157,12 @@ const shell=(machine,page,main,withSearch=true)=>el('div',{class:`hh-shell${rail
  bannerSlot,
  el('main',{id:'main',class:'hh-main',tabindex:'-1'},main),
  footer());
-// The browser tab says which page this is: "Inventory map · Home Hub · <site>". A machine page is named by
-// the machine's name once the overview data has told the shell what it is (until then, by its id).
-function pageTitle(machine,page){
+// The browser tab says which page this is: "Inventory map · Home Hub · <site>". A device page is named by
+// the device's name once the overview data has told the shell what it is (until then, by its id).
+function pageTitle(device,page){
  const base=site().name?`Home Hub · ${site().name}`:'Home Hub';
  const item=manifest.nav.flatMap(g=>g.items).find(i=>i.hash===(page||HOME_PAGE));
- const label=machine?knownMachines.find(m=>m.id===machine)?.name||machine:item?labelOf(item):page===WELCOME?t('První kroky'):page==='settings'?t('Nastavení'):page==='search'?t('Hledání'):'';
+ const label=device?knownDevices.find(m=>m.id===device)?.name||device:item?labelOf(item):page===WELCOME?t('První kroky'):page==='settings'?t('Nastavení'):page==='search'?t('Hledání'):'';
  return label?`${label} · ${base}`:base;
 }
 // Each call takes a number; a page whose module arrives after a newer call (or a sign-out) is dropped.
@@ -170,7 +170,7 @@ let drawn=0,shownPage=null;
 async function render(){
  if(!me)return;
  const turn=++drawn;
- const machine=route(),page=pageOf(location.hash);
+ const device=route(),page=pageOf(location.hash);
  // Admin-only pages are guarded here too, not just hidden from the sidebar.
  if(page&&!pageAllowed(page,me)){leaveView();root.replaceChildren(shell(null,null,
   emptyState({icon:'shield',title:t('Jen pro administrátora'),body:t('Tahle stránka je dostupná jen správci.'),actions:[{label:`← ${t('Přehled')}`,href:`#${HOME_PAGE}`}]}),false));afterDraw(null,page);return;}
@@ -182,23 +182,23 @@ async function render(){
  if(turn!==drawn||!me)return;
  leaveView();// the page being replaced lets go of its document/window listeners and timers
  let main;
- try{main=typeof view==='function'?view({me,page:page||HOME_PAGE,sub:location.hash.slice(1).split('/')[1]||null,machine,site:site()})
+ try{main=typeof view==='function'?view({me,page:page||HOME_PAGE,sub:location.hash.slice(1).split('/')[1]||null,device,site:site()})
   :failed||entry
    ?errorState({title:t('Stránku se nepodařilo načíst'),body:t('Modul téhle stránky se nenačetl. Zkus ji otevřít znovu.'),retry:()=>render()})
    :emptyState({icon:'box',title:t('Tady zatím nic není'),body:t('Tenhle Home Hub nemá žádnou úvodní stránku. Zkontroluj, které moduly server načetl.')});}
  // A page that throws while it draws must not take the shell with it.
  catch{leaveView();main=errorState({title:t('Stránku se nepodařilo zobrazit'),body:t('Při vykreslení téhle stránky nastala chyba. Zkus ji otevřít znovu.'),retry:()=>render()});}
- root.replaceChildren(shell(machine,page,main));
- afterDraw(machine,page);
+ root.replaceChildren(shell(device,page,main));
+ afterDraw(device,page);
 }
 // After the shell is drawn again: the sidebar keeps its scroll position, a new page starts at its top with
 // the keyboard at the content, and the tab title names it.
-function afterDraw(machine,page){
- const key=machine?`host-${machine}`:page||HOME_PAGE,moved=shownPage!==null&&shownPage!==key;shownPage=key;
+function afterDraw(device,page){
+ const key=device?`host-${device}`:page||HOME_PAGE,moved=shownPage!==null&&shownPage!==key;shownPage=key;
  drawer=false;document.documentElement.classList.remove('hh-lock');
  const nav=root.querySelector('.hh-nav');if(nav)nav.scrollTop=navScroll;
  paintCollapse();paintRefresh();paintFresh();paintBanner();
- document.title=pageTitle(machine,page);
+ document.title=pageTitle(device,page);
  if(moved){scrollTo(0,0);root.querySelector('#main')?.focus({preventScroll:true});}
 }
 // Footer: what is running: the release version ("+dev" on a checkout that is not on its release tag), with the
@@ -229,7 +229,7 @@ function footer(){
     :b?.commit?el('span',{},tip):null,
    el('span',{title:(manifest.modules||[]).filter(m=>!m.core).map(m=>`${m.title||m.id}${m.version?' '+m.version:''}`).join(', ')||null},tp(plugins,'{n} plugin|{n} pluginy|{n} pluginů'))));
 }
-// Freshness pill + pull interval switch: one place for all devices. Shown on the overview and the machine
+// Freshness pill + pull interval switch: one place for all devices. Shown on the overview and the device
 // pages of a hub that has live telemetry; other pages and hubs without it keep a quiet top bar.
 let poll=null,liveTelemetry=false;
 const freshEvery=el('span',{class:'hh-fresh-every'}),freshAge=el('span',{});const fresh=el('span',{class:'hh-fresh',title:''},el('span',{class:'dot'}),freshEvery,freshAge);
@@ -246,8 +246,8 @@ function paintFresh(){
 }
 addEventListener('homedata',e=>{
  poll=e.detail?.poll||poll;
- if(Array.isArray(e.detail?.machines)){
-  knownMachines=e.detail.machines.map(m=>({id:m.id,name:m.name}));liveTelemetry=e.detail.machines.some(m=>m.kind==='thermo'||m.thermo);
+ if(Array.isArray(e.detail?.devices)){
+  knownDevices=e.detail.devices.map(m=>({id:m.id,name:m.name}));liveTelemetry=e.detail.devices.some(m=>m.kind==='thermo'||m.thermo);
   if(me&&route())document.title=pageTitle(route(),null);
  }
  paintFresh();
@@ -278,7 +278,7 @@ addEventListener('hubstate',e=>{
  wasDown=down;
 });
 watchNetwork();
-// Command palette: every page this account may open, a few shell actions, machine pages seen so far,
+// Command palette: every page this account may open, a few shell actions, device pages seen so far,
 // and full-text search when the hub has it.
 const palette=createPalette({
  pages:()=>{
@@ -286,7 +286,7 @@ const palette=createPalette({
   const extra=[['settings',t('Nastavení')],[WELCOME,t('První kroky')]].filter(([hash])=>manifest.pages.some(p=>p.hash===hash)&&!listed.some(i=>i.hash===hash)).map(([hash,label])=>({hash,label,group:'Home Hub'}));
   return [...listed,...extra];
  },
- machines:()=>knownMachines,
+ devices:()=>knownDevices,
  canSearch:()=>manifest.pages.some(p=>p.hash==='search'),
  actions:()=>[
   {id:'theme',label:resolvedTheme()==='dark'?t('Přepnout na světlý vzhled'):t('Přepnout na tmavý vzhled'),icon:resolvedTheme()==='dark'?'sun':'moon',run:()=>setTheme(resolvedTheme()==='dark'?'light':'dark')},
@@ -307,7 +307,7 @@ async function loadManifest(){
  document.title=manifest.site?.name?`Home Hub · ${manifest.site.name}`:'Home Hub';tick();
  return manifest;
 }
-// Is this a hub that still needs setting up? One read of /api/home answers for a hub that has machines;
+// Is this a hub that still needs setting up? One read of /api/home answers for a hub that has devices;
 // the sidebar then offers the checklist (or not). A new public hub opened without a page in the address
 // lands on the checklist instead of an empty overview.
 async function offerOnboarding(){

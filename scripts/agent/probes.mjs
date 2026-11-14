@@ -1,10 +1,10 @@
-// The push agent's probes (docs/agent.md §5): the scripts that already exist, run on this machine as files with a
+// The push agent's probes (docs/agent.md §5): the scripts that already exist, run on this computer as files with a
 // fixed environment and a timeout. Nothing here builds script text: a probe is always `/bin/sh <file>`, and the watch
 // list reaches it only as the environment variable SPECS, from the local specs.txt the agent checked at start.
 //
 // What comes back is split into the report's parts and checked line by line against the field table
 // (server/agent-report.mjs) before anything is sent: a line that fails is left out and counted in `withheld`, so a
-// machine loses the line, not the part.
+// device loses the line, not the part.
 import {spawn} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import path from 'node:path';

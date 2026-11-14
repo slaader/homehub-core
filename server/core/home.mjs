@@ -1,11 +1,11 @@
-// Core module "home": the overview (machine tiles, per-machine pages and charts), the Thermo
-// telemetry client, Windows telemetry over SSH (server/windows-telemetry.mjs), the machine store (devices added on the page, machines written by agents, published
+// Core module "home": the overview (device tiles, per-device pages and charts), the Thermo
+// telemetry client, Windows telemetry over SSH (server/windows-telemetry.mjs), the device store (devices added on the page, devices written by agents, published
 // runtime stacks) and the router adapter's census.
-// Machines come from the site configuration (read-only) and from the store. Extension points let plugins
-// enrich a machine (docs/plugins.md):
-//   home.snapshots  (state, hub) => {machineId: {snapshot, bridge}}        host agents (services, memory, uptime)
-//   home.services   (state, hub) => Promise<{machineId: services[]}>       service probes for agent-less machines
-//   home.runtimes   (state, hub) => {machineId: {source, observedAt, runtimes[]}}   local LLM runtimes on a machine
+// Devices come from the site configuration (read-only) and from the store. Extension points let plugins
+// enrich a device (docs/plugins.md):
+//   home.snapshots  (state, hub) => {deviceId: {snapshot, bridge}}        host agents (services, memory, uptime)
+//   home.services   (state, hub) => Promise<{deviceId: services[]}>       service probes for agent-less devices
+//   home.runtimes   (state, hub) => {deviceId: {source, observedAt, runtimes[]}}   local LLM runtimes on a device
 //                   (core's own direct adapters, server/core/runtimes.mjs, are one provider; mergeRuntimeReports joins them)
 import path from 'node:path';
 import {readFile} from 'node:fs/promises';
@@ -23,19 +23,19 @@ import {endpointRequest,probeCertificate} from '../endpoint-http.mjs';
 import {FEEDS,isFeed,feedOfDevice} from '../telemetry-providers.mjs';
 import {worstState} from '../integrations.mjs';
 import {tx} from '../text.mjs';
-import {telemetryFacet} from '../machine-facet-sources.mjs';
-import {FACETS_POINT} from '../machine-facets.mjs';
-import {createHomeDevices,validHost,PICTURES,PLATFORMS,RUNTIME_LAYERS,RUNTIME_LIMITS,machineFields,siteProviderFits} from '../home-devices.mjs';
-import {buildHome,mergeRuntimeReports,homeHistory,homeHistoryQuery,loadMachineDescriptors,machineList} from '../home-data.mjs';
+import {telemetryFacet} from '../device-facet-sources.mjs';
+import {FACETS_POINT} from '../device-facets.mjs';
+import {createHomeDevices,validHost,PICTURES,PLATFORMS,RUNTIME_LAYERS,RUNTIME_LIMITS,deviceFields,siteProviderFits} from '../home-devices.mjs';
+import {buildHome,mergeRuntimeReports,homeHistory,homeHistoryQuery,loadDeviceDescriptors,deviceList} from '../home-data.mjs';
 import {readRouterFor} from '../router-data.mjs';
-import {siteConfigPath,hubAddress,MACHINE_ID,MACHINE_ROLES,siteMachineIds} from '../site-config.mjs';
+import {siteConfigPath,hubAddress,DEVICE_ID,DEVICE_ROLES,siteDeviceIds} from '../site-config.mjs';
 import {privateFile} from '../paths.mjs';
 import {toolError} from '../mcp.mjs';
 import {createReachabilityPoller,reachTargets,reachabilityOf} from '../reachability.mjs';
 
 const homeError=e=>[e.message==='invalid'?400:503,'HOME_UNAVAILABLE',e.message==='invalid'?'Neplatný požadavek na data domovské stránky.':'Data domovské stránky jsou dočasně nedostupná.'];
 // The overview's forms (add, connect, picture): one code, DEVICE_FAILED. A refusal that names its field (e.detail, English)
-// carries it as details, like the machine API.
+// carries it as details, like the device API.
 const DEVICE_FORM_INVALID='Zkontroluj pole: název, typ, hostname nebo IP, port 1024–65535, uživatele a heslo Thermo (aspoň 12 znaků) a potvrzený otisk.';
 const deviceFormError=(c,e,extra={})=>e?.message==='invalid'&&typeof e.detail==='string'?c.json(400,{error:{code:'DEVICE_FAILED',message:extra.invalid||DEVICE_FORM_INVALID,details:[e.detail]}}):c.error(({invalid:400,'not-found':404,conflict:409,duplicate:409,limit:409,denied:422,pin:422,unreachable:422,secret:422})[e.message]||503,'DEVICE_FAILED',({
  invalid:DEVICE_FORM_INVALID,
@@ -50,10 +50,10 @@ const windowsFailure=(c,e)=>e.windows&&Object.hasOwn(WINDOWS_ERRORS,e.message)
 const setupFailure=(c,e)=>{const table=e?.setup==='endpoint'?ENDPOINT_SETUP_ERRORS:e?.setup==='linux'?LINUX_SETUP_ERRORS:WINDOWS_SETUP_ERRORS;
  const known=Object.hasOwn(table,e?.message)?table[e.message]:null;
  return known?c.json(known[0],{error:{code:e?.setup==='endpoint'||e?.setup==='linux'?'TELEMETRY_SETUP_FAILED':'WINDOWS_SETUP_FAILED',reason:e.message,message:known[1]}}):null;};
-// A step of another provider (WinRM, Node Exporter, Prometheus, Linux SSH) that failed at the machine: its code and sentence.
+// A step of another provider (WinRM, Node Exporter, Prometheus, Linux SSH) that failed at the device: its code and sentence.
 const feedFailure=(c,e)=>e?.feed&&isFeed(e.feed)&&Object.hasOwn(FEEDS[e.feed].errors,e.message)
  ?c.json(422,{error:{code:'TELEMETRY_FAILED',provider:e.feed,reason:e.message,message:FEEDS[e.feed].errors[e.message]}}):null;
-// Runs a set-up step of a draft: refusals of the draft stay set-up errors (of `setup`), failures at the machine become the provider's code.
+// Runs a set-up step of a draft: refusals of the draft stay set-up errors (of `setup`), failures at the device become the provider's code.
 const feedStep=(provider,setup,table,promise)=>promise.catch(e=>{
  if(e?.message==='invalid')throw e;
  if(Object.hasOwn(table,e?.message))throw Object.assign(e,{setup});
@@ -77,48 +77,48 @@ const sessionWrite=handler=>deviceForm(async c=>c.principal?.authKind==='session
 // The same rule for the other providers' set-up and connection (its message does not name one system).
 const sessionFeed=handler=>deviceForm(async c=>c.principal?.authKind==='session'&&c.canWrite?handler(c)
  :c.error(403,'SESSION_REQUIRED','Telemetrické spojení a jeho tajemství nastavuje jen účet se zápisem, přihlášený heslem.'));
-// The owner's edit of a machine of the site configuration (its display metadata, over the site's defaults): a person
-// signed in with a password and write access. Not an API key, not a native app token; agents keep machine_upsert,
-// which refuses site machines. Refusals carry the machine API's codes (MACHINE_INVALID, MACHINE_CONFLICT, …).
-const siteEdit=handler=>machineApi(async c=>c.principal?.authKind==='session'&&c.canWrite?handler(c)
+// The owner's edit of a device of the site configuration (its display metadata, over the site's defaults): a person
+// signed in with a password and write access. Not an API key, not a native app token; agents keep device_upsert,
+// which refuses site devices. Refusals carry the device API's codes (DEVICE_INVALID, DEVICE_CONFLICT, …).
+const siteEdit=handler=>deviceApi(async c=>c.principal?.authKind==='session'&&c.canWrite?handler(c)
  :c.error(403,'SESSION_REQUIRED','Stroj z konfigurace webu upravuje jen účet se zápisem, přihlášený heslem.'));
 // {draft, host, port, user} of a managed connection the form saves.
 const managedInput=w=>{only(w,['draft','host','port','user']);return w;};
 const stamped=(record,principal)=>({...record,configuredAt:new Date().toISOString(),configuredBy:principal.username});
-// What a telemetry set-up or connection is for: an added device, or a machine of the site configuration that can take
+// What a telemetry set-up or connection is for: an added device, or a device of the site configuration that can take
 // an agent-less binding (no thermoId, not the router; the site's platform, when it names one, must be the provider's).
-// Unknown id: 404. A site machine is only ever reached by a person signed in with a password (never an app token).
+// Unknown id: 404. A site device is only ever reached by a person signed in with a password (never an app token).
 async function telemetryTarget(state,id,{provider=null,principal=null}={}){
- if(typeof id!=='string'||!MACHINE_ID.test(id))throw new Error('invalid');
+ if(typeof id!=='string'||!DEVICE_ID.test(id))throw new Error('invalid');
  const target=await state.homeDevices.telemetryTarget(id);if(!target)throw new Error('not-found');
  if(target.site){
-  if(principal&&principal.authKind!=='session')throw Object.assign(new Error('invalid'),{detail:'a machine from the site configuration is connected only by a person signed in with a password'});
-  if(!target.bindable)throw Object.assign(new Error('invalid'),{detail:target.thermoId?'the site configuration reads this machine through Thermo (thermoId); its telemetry is set in the site files':'a router is reported by the router adapter'});
-  if(provider&&!siteProviderFits({role:target.role,thermoId:target.thermoId,platform:target.sitePlatform},provider))throw Object.assign(new Error('invalid'),{detail:`the site configuration says this machine runs ${target.sitePlatform}; pick a provider for that system`});
+  if(principal&&principal.authKind!=='session')throw Object.assign(new Error('invalid'),{detail:'a device from the site configuration is connected only by a person signed in with a password'});
+  if(!target.bindable)throw Object.assign(new Error('invalid'),{detail:target.thermoId?'the site configuration reads this device through Thermo (thermoId); its telemetry is set in the site files':'a router is reported by the router adapter'});
+  if(provider&&!siteProviderFits({role:target.role,thermoId:target.thermoId,platform:target.sitePlatform},provider))throw Object.assign(new Error('invalid'),{detail:`the site configuration says this device runs ${target.sitePlatform}; pick a provider for that system`});
  }
  return target;
 }
 
-// The machine API (GET/POST /api/home/devices, POST /api/home/devices/remove, POST /api/home/runtime) and its MCP tools. One code per
+// The device API (GET/POST /api/home/devices, POST /api/home/devices/remove, POST /api/home/runtime) and its MCP tools. One code per
 // refusal, so a client can tell them apart whatever language the message is in; details name the field.
-const MACHINE_ERRORS={
- invalid:[400,'MACHINE_INVALID','Neplatný požadavek: zkontroluj pole stroje.'],
- secret:[422,'MACHINE_SECRET','Některé pole vypadá jako tajemství (heslo, token, klíč). Zapiš, kde je uložené, ne jeho hodnotu.'],
- 'not-found':[404,'MACHINE_NOT_FOUND','Takový stroj v přehledu není.'],
- conflict:[409,'MACHINE_CONFLICT','Stroj se mezitím změnil, nebo už existuje. Načti ho znovu a změnu zopakuj s aktuálním otiskem.'],
- duplicate:[409,'MACHINE_DUPLICATE','Zařízení s tímhle hostname už v přehledu je.'],
- limit:[409,'MACHINE_LIMIT','Přidat jde nejvýš 20 zařízení.'],
- 'read-only':[403,'MACHINE_READ_ONLY','Tenhle stroj je z konfigurace webu (site.json) a přes API se nemění.']};
-const machineApi=handler=>async c=>{try{return await handler(c);}catch(e){
- const known=MACHINE_ERRORS[e.message];
+const DEVICE_ERRORS={
+ invalid:[400,'DEVICE_INVALID','Neplatný požadavek: zkontroluj pole stroje.'],
+ secret:[422,'DEVICE_SECRET','Některé pole vypadá jako tajemství (heslo, token, klíč). Zapiš, kde je uložené, ne jeho hodnotu.'],
+ 'not-found':[404,'DEVICE_NOT_FOUND','Takový stroj v přehledu není.'],
+ conflict:[409,'DEVICE_CONFLICT','Stroj se mezitím změnil, nebo už existuje. Načti ho znovu a změnu zopakuj s aktuálním otiskem.'],
+ duplicate:[409,'DEVICE_DUPLICATE','Zařízení s tímhle hostname už v přehledu je.'],
+ limit:[409,'DEVICE_LIMIT','Přidat jde nejvýš 20 zařízení.'],
+ 'read-only':[403,'DEVICE_READ_ONLY','Tenhle stroj je z konfigurace webu (site.json) a přes API se nemění.']};
+const deviceApi=handler=>async c=>{try{return await handler(c);}catch(e){
+ const known=DEVICE_ERRORS[e.message];
  if(!known){if(e?.reason==='secrets-locked')return lockedFailure(c,e);throw e;}
  return c.json(known[0],{error:{code:known[1],message:known[2],...(e.detail?{details:[e.detail]}:{})}});}};
 const TOOL_ERRORS={
  invalid:'Invalid request',secret:'Rejected: a value looks like a secret. Record where a password, token or key is kept, never its value',
- 'not-found':'No such machine. Use machine_list to see the ids',
- conflict:'It changed since you read it, or it already exists (or does not exist yet: omit base to create). Call machine_list again and repeat the change with the current hash as base',
- duplicate:'Another machine already uses this hostname',limit:'The overview holds at most 20 added machines; remove one first',
- 'read-only':'This machine comes from the site configuration (site.json) and cannot be changed through the API. Its runtime stack can still be published with runtime_publish'};
+ 'not-found':'No such device. Use device_list to see the ids',
+ conflict:'It changed since you read it, or it already exists (or does not exist yet: omit base to create). Call device_list again and repeat the change with the current hash as base',
+ duplicate:'Another device already uses this hostname',limit:'The overview holds at most 20 added devices; remove one first',
+ 'read-only':'This device comes from the site configuration (site.json) and cannot be changed through the API. Its runtime stack can still be published with runtime_publish'};
 const tool=async fn=>{try{return await fn();}catch(e){if(!TOOL_ERRORS[e.message])throw e;throw toolError(`${TOOL_ERRORS[e.message]}${e.detail?`: ${e.detail}`:''}. Nothing was changed.`);}};
 const only=(input,keys)=>{if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>!keys.includes(k)))throw Object.assign(new Error('invalid'),{detail:`expected only: ${keys.join(', ')}`});return input;};
 // Who made a write and through what: an API key is an agent, anything else a person in the UI.
@@ -132,28 +132,28 @@ const detach=async(state,id,entry)=>{if(!entry||!isFeed(entry.provider))return;s
 const forget=(state,gone)=>{if(gone.hadWindows){state.windowsPoller.removeHost(gone.device.id);void state.windowsSetup?.forget(gone.windows).catch(()=>{});}
  if(gone.feed)void detach(state,gone.device.id,gone.feed);
  if(!gone.hadWindows&&!gone.feed&&gone.hadLogin)state.thermoPoller.removeHost(gone.device.id);};
-async function listMachines(state,hub,withStack=false){
- return machineList({site:hub.site,added:await state.homeDevices.list(),published:await state.homeDevices.stacks(),home:await state.payload(),withStack,siteTelemetry:await state.homeDevices.siteBindings(),siteOverrides:await state.homeDevices.siteOverrides()});
+async function listDevices(state,hub,withStack=false){
+ return deviceList({site:hub.site,added:await state.homeDevices.list(),published:await state.homeDevices.stacks(),home:await state.payload(),withStack,siteTelemetry:await state.homeDevices.siteBindings(),siteOverrides:await state.homeDevices.siteOverrides()});
 }
-async function upsertMachine(state,input,principal){
- only(input,['machine','base']);
- const r=await state.homeDevices.upsert(input.machine,{...actor(principal),...(input.base!==undefined?{base:input.base}:{})});
- return {ok:true,id:r.device.id,hash:r.hash,created:r.created,changed:r.changed,by:principal.username,machine:machineFields(r.device)};
+async function upsertDevice(state,input,principal){
+ only(input,['device','base']);
+ const r=await state.homeDevices.upsert(input.device,{...actor(principal),...(input.base!==undefined?{base:input.base}:{})});
+ return {ok:true,id:r.device.id,hash:r.hash,created:r.created,changed:r.changed,by:principal.username,device:deviceFields(r.device)};
 }
-// base: the hash the caller read (machine_list). Required, except where baseOptional says the caller may leave it out
+// base: the hash the caller read (device_list). Required, except where baseOptional says the caller may leave it out
 // (a person signed in with a password, who confirmed the removal on the page); when it is sent it is always checked.
-async function removeMachine(state,input,{baseOptional=false}={}){
+async function removeDevice(state,input,{baseOptional=false}={}){
  only(input,['id','base']);
- if(typeof input.id!=='string'||!MACHINE_ID.test(input.id))throw Object.assign(new Error('invalid'),{detail:'id must be a machine id'});
- if(!(baseOptional&&input.base===undefined)&&(typeof input.base!=='string'||!/^[a-f0-9]{64}$/.test(input.base)))throw Object.assign(new Error('invalid'),{detail:'base must be the 64-character hash from machine_list'});
+ if(typeof input.id!=='string'||!DEVICE_ID.test(input.id))throw Object.assign(new Error('invalid'),{detail:'id must be a device id'});
+ if(!(baseOptional&&input.base===undefined)&&(typeof input.base!=='string'||!/^[a-f0-9]{64}$/.test(input.base)))throw Object.assign(new Error('invalid'),{detail:'base must be the 64-character hash from device_list'});
  const gone=await state.homeDevices.remove(input.id,{base:input.base});forget(state,gone);
  return {ok:true,id:gone.device.id,removed:true};
 }
 async function publishRuntime(state,hub,input,principal){
- only(input,['machine','stack','base']);
+ only(input,['device','stack','base']);
  if(input.stack===undefined)throw Object.assign(new Error('invalid'),{detail:'stack is required (null takes the published stack back)'});
- const r=await state.homeDevices.publishRuntime(input.machine,input.stack,{by:principal.username,known:siteMachineIds(hub.site),...(input.base!==undefined?{base:input.base}:{})});
- return {ok:true,id:r.machine,hash:r.hash,changed:r.changed,published:r.hash!==null,publishedAt:r.publishedAt,by:principal.username};
+ const r=await state.homeDevices.publishRuntime(input.device,input.stack,{by:principal.username,known:siteDeviceIds(hub.site),...(input.base!==undefined?{base:input.base}:{})});
+ return {ok:true,id:r.device,hash:r.hash,changed:r.changed,published:r.hash!==null,publishedAt:r.publishedAt,by:principal.username};
 }
 
 // --- integration "home.thermo": the Thermo pull client -----------------------------------------------
@@ -169,7 +169,7 @@ async function thermoStatus(state,hub,{enabled=true}={}){
  const fromUi=(await homeDevices.thermoHosts().catch(()=>[])).map(h=>h.id);
  const added=await homeDevices.list().catch(()=>[]);
  const ids=[...new Set([...fromFile,...fromUi,...(enabled?thermoPoller.hosts?.()||[]:[])])];
- const nameOf=id=>hub.site.machines.find(m=>m.thermoId===id)?.name||added.find(d=>d.id===id||d.thermoId===id)?.name||id;
+ const nameOf=id=>hub.site.devices.find(m=>m.thermoId===id)?.name||added.find(d=>d.id===id||d.thermoId===id)?.name||id;
  const status=enabled?thermoPoller.status?.()||{}:{},live=enabled?thermoPoller.live?.()||{}:{};
  const now=Date.now();
  const items=ids.map(id=>{
@@ -185,7 +185,7 @@ async function thermoStatus(state,hub,{enabled=true}={}){
  const configuredBy=[
   ...(fromFile.length?[...(process.env.THERMO_HOSTS_FILE&&!hub.options.thermoHostsFile?[{source:'env',name:'THERMO_HOSTS_FILE'}]:[]),{source:'file',name:relLabel(hub.root,thermoHostsFile)}]:[]),
   ...(fromUi.length?[{source:'ui',name:'Přehled → Přidat zařízení'}]:[]),
-  ...(hub.site.machines.some(m=>m.thermoId)?[{source:'site.json',name:'machines[].thermoId'}]:[])];
+  ...(hub.site.devices.some(m=>m.thermoId)?[{source:'site.json',name:'devices[].thermoId'}]:[])];
  const ok=items.filter(i=>i.state==='ok').length,newest=items.map(i=>i.lastSuccessAt).filter(Boolean).sort().at(-1)||null;
  if(!items.length)return {state:'not-configured',summary:'Žádný stroj nemá přihlášení k Thermo.',configuredBy,items};
  return {state:worstState(items.map(i=>i.state)),summary:tx('Thermo čte {ok} z {total} strojů.',{ok,total:items.length}),lastSuccessAt:newest,
@@ -204,7 +204,7 @@ const thermoIntegration={id:THERMO_INTEGRATION,title:'Telemetrie Thermo',kind:'t
 // --- integration "home.windows": Windows telemetry over SSH ------------------------------------------
 export const WINDOWS_INTEGRATION='home.windows';
 const quietWindows=poller=>({interval:()=>poller.interval?.(),status:()=>({}),live:()=>({}),seconds:()=>[],minutes:()=>[],disks:()=>({}),native:()=>({}),hosts:()=>poller.hosts?.()||[],targets:()=>poller.targets?.()||{},connections:()=>poller.connections?.()||{}});
-// One read side for the overview and the charts: each machine id goes to the poller that owns it (the
+// One read side for the overview and the charts: each device id goes to the poller that owns it (the
 // Windows devices to the Windows poller, everything else to Thermo). Both have the same shape.
 // feeds: [{poller, ids}] for the other agent-less providers (windows/windowsIds is the first of them, kept by name).
 export function telemetrySources({thermo,windows,windowsIds=[],feeds=[]}){
@@ -230,13 +230,13 @@ async function feedStatus(state,hub,provider,{enabled=true}={}){
  const status=enabled?poller.status?.()||{}:{},live=enabled?poller.live?.()||{}:{},now=Date.now();
  const items=configured.map(({id})=>{
   const st=status[id],lv=live[id],at=Number.isFinite(lv?.at)?new Date(lv.at).toISOString():null,fresh=Number.isFinite(lv?.at)&&now-lv.at<=TELEMETRY_STALE_SECONDS*1000;
-  const base={id,label:added.find(d=>d.id===id)?.name||hub.site.machines.find(m=>m.id===id)?.name||id,lastSuccessAt:at};
+  const base={id,label:added.find(d=>d.id===id)?.name||hub.site.devices.find(m=>m.id===id)?.name||id,lastSuccessAt:at};
   if(!enabled)return {...base,state:'disabled',summary:'Nečte se.'};
   if(st&&st.state!=='up')return {...base,state:'error',summary:errors[st.error]||'Neodpovídá.',lastError:st.error||'unavailable'};
   if(fresh)return {...base,state:'ok',summary:'Čte se živě.'};
   return {...base,state:'stale',summary:at?'Poslední čtení je staré.':'Zatím nic nepřečteno.'};
  });
- // A site machine connected on its tile counts as set up there (its identity stays in site.json; the binding is the hub's).
+ // A site device connected on its tile counts as set up there (its identity stays in site.json; the binding is the hub's).
  const configuredBy=[...(configured.some(c=>!fromSite.has(c.id))?[{source:'ui',name:provider===WINDOWS_PROVIDER?'Přehled → Přidat zařízení → Windows':tx('Přehled → Přidat zařízení → {name}',{name:FEEDS[provider].name})}]:[]),
   ...(configured.some(c=>fromSite.has(c.id))?[{source:'ui',name:'Přehled → stroj z konfigurace webu → Telemetrie'}]:[])];
  if(!items.length)return {state:'not-configured',summary:provider===WINDOWS_PROVIDER?'Žádný stroj s Windows není připojený.':tx('Přes {name} není připojený žádný stroj.',{name:FEEDS[provider].name}),configuredBy,items};
@@ -249,21 +249,21 @@ const windowsIntegration={id:WINDOWS_INTEGRATION,title:'Telemetrie Windows (SSH)
  howTo:'Na přehledu přidej zařízení (nebo uprav existující), zvol systém Windows a telemetrii Windows (SSH) a postupuj podle návodu v dialogu.',page:'overview',docs:'docs/API.md → Windows telemetry',
  status:windowsStatus,
  async test(state,hub){await state.windowsPoller.refresh?.().catch(()=>false);return windowsStatus(state,hub);}};
-// --- integration "home.reachability": does each machine's address answer (server/reachability.mjs) ---------------
+// --- integration "home.reachability": does each device's address answer (server/reachability.mjs) ---------------
 export const REACH_INTEGRATION='home.reachability';
-// What the poller kept. A machine that does not answer is a result of the check, not an error of the integration.
+// What the poller kept. A device that does not answer is a result of the check, not an error of the integration.
 async function reachStatus(state,hub,{enabled=true}={}){
  const targets=reachTargets(hub.site);
  if(!enabled)return {state:'disabled',summary:'Nekontroluje se.'};
- if(!targets.length)return {state:'not-configured',summary:'Žádný stroj v konfiguraci nemá adresu ke kontrole.',configuredBy:[{source:'site.json',name:'machines[].reach'}],items:[]};
+ if(!targets.length)return {state:'not-configured',summary:'Žádný stroj v konfiguraci nemá adresu ke kontrole.',configuredBy:[{source:'site.json',name:'devices[].reach'}],items:[]};
  const results=state.reachability.status(),now=Date.now();
  const reading=t=>reachabilityOf(results[t.id]??null,now);
- const items=targets.map(t=>{const r=reading(t),label=hub.site.machines.find(m=>m.id===t.id)?.name||t.id;
+ const items=targets.map(t=>{const r=reading(t),label=hub.site.devices.find(m=>m.id===t.id)?.name||t.id;
   if(r.state==='unknown')return {id:t.id,label,state:'stale',summary:'Zatím nic nezkontrolováno.'};
   return {id:t.id,label,state:'ok',summary:r.state==='answering'?tx('Odpovídá na portu {port}.',{port:r.port}):'Neodpovídá na kontrolované porty.'};});
  const answering=targets.filter(t=>reading(t).state==='answering').length;
  return {state:worstState(items.map(i=>i.state)),summary:tx('Na síti odpovídá {ok} z {total} strojů.',{ok:answering,total:targets.length}),
-  configuredBy:[{source:'site.json',name:'machines[].reach'}],items};
+  configuredBy:[{source:'site.json',name:'devices[].reach'}],items};
 }
 const reachIntegration={id:REACH_INTEGRATION,title:'Dosah strojů (TCP)',kind:'other',
  description:'Zda stroje ze site.json odpovídají na síti: hub se na jejich porty (ve výchozím stavu 22) připojí TCP a zapíše, jestli některý odpověděl. Je to jiný údaj než „online“, ten se tím nemění. Vypnutá: hub se na stroje nepřipojuje a jejich dosah je neznámý.',
@@ -315,7 +315,7 @@ const LINUX_SSH_ROUTES=[
    only(input,['draft','host','port','user']);return json(200,await linuxStep(null,()=>state.sshGate(()=>state.windowsSetup.test(principal.username,input.draft,input,{os:'linux'}))));})},
  {method:'POST',path:'/api/home/devices/ssh/draft/discard',scope:null,error:homeError,handler:sessionFeed(async({input,json,state,principal})=>{
    only(input,['draft']);await linuxStep(null,()=>state.windowsSetup.discard(principal.username,input.draft,{os:'linux'}));return json(200,{discarded:true});})}];
-// WinRM, Node Exporter and Prometheus: the endpoint drafts (server/endpoint-setup.mjs). Every request to the machine
+// WinRM, Node Exporter and Prometheus: the endpoint drafts (server/endpoint-setup.mjs). Every request to the device
 // (certificate, discovery, test) goes through the same gate as the SSH steps: at most two at once, never queued.
 const endpointStep=(state,principal,id,fn)=>{const provider=state.endpointSetup.providerOf(principal.username,id)||NODE_EXPORTER_PROVIDER;
  return feedStep(provider,'endpoint',ENDPOINT_SETUP_ERRORS,Promise.resolve().then(fn));};
@@ -341,18 +341,18 @@ const ENDPOINT_ROUTES=[
  {method:'POST',path:'/api/home/devices/endpoint/draft/discard',scope:null,error:homeError,handler:sessionFeed(async({input,json,state,principal})=>{
    only(input,['draft']);await endpointStep(state,principal,input.draft,()=>state.endpointSetup.discard(principal.username,input.draft));return json(200,{discarded:true});})}];
 
-const MACHINE_SCHEMA={type:'object',required:['id','name'],additionalProperties:false,properties:{
- id:{type:'string',pattern:MACHINE_ID.source,description:'Stable id, used in URLs (#host-<id>) and as the key for updates, e.g. mac-mini or nas.'},
+const DEVICE_SCHEMA={type:'object',required:['id','name'],additionalProperties:false,properties:{
+ id:{type:'string',pattern:DEVICE_ID.source,description:'Stable id, used in URLs (#host-<id>) and as the key for updates, e.g. mac-mini or nas.'},
  name:{type:'string',minLength:1,maxLength:60,description:'What the tile shows, e.g. "Mac mini (office)".'},
  hostname:{type:'string',maxLength:253,description:'Host name or IPv4 address, e.g. mini.example.lan.'},
- ip:{type:['string','null'],description:'IPv4 address. When the site lists its networks (lanCidrs in machine_list), it must be a host address inside one of them.'},
- role:{type:'string',enum:[...MACHINE_ROLES],description:'computer (default), nas, router or other.'},
+ ip:{type:['string','null'],description:'IPv4 address. When the site lists its networks (lanCidrs in device_list), it must be a host address inside one of them.'},
+ role:{type:'string',enum:[...DEVICE_ROLES],description:'computer (default), nas, router or other.'},
  hardware:{type:'object',additionalProperties:false,description:'Static facts shown on the tile.',properties:{
   cpu:{type:'string',maxLength:60,description:'e.g. "10c M4".'},gpu:{type:'string',maxLength:40,description:'e.g. "10c" or "RTX 4090".'},
   ramGb:{type:['number','null'],exclusiveMinimum:0,maximum:65536},diskTotalBytes:{type:['number','null'],exclusiveMinimum:0}}},
- thermoId:{type:['string','null'],pattern:MACHINE_ID.source,description:'Host id of the telemetry agent (Thermo) this machine reports through, or null when the agent is not installed. Setting it does not create a login: the owner connects the agent in the web UI.'},
+ thermoId:{type:['string','null'],pattern:DEVICE_ID.source,description:'Host id of the telemetry agent (Thermo) this device reports through, or null when the agent is not installed. Setting it does not create a login: the owner connects the agent in the web UI.'},
  picture:{type:['string','null'],enum:[...PICTURES,null],description:'One of the built-in pictures; null picks one by role. A picture the owner uploaded in the web UI takes precedence.'},
- platform:{type:['string','null'],enum:[...PLATFORMS,null],description:'Operating system, separate from role: macos, windows, linux or other; null = not said. Omit it to keep what the machine has. Windows telemetry (connected by the owner in the web UI) keeps it windows.'}}};
+ platform:{type:['string','null'],enum:[...PLATFORMS,null],description:'Operating system, separate from role: macos, windows, linux or other; null = not said. Omit it to keep what the device has. Windows telemetry (connected by the owner in the web UI) keeps it windows.'}}};
 const STACK_SCHEMA={type:['object','null'],required:['cols','blocks'],additionalProperties:false,description:'The stack, or null to take the published one back.',properties:{
  cols:{type:'array',minItems:1,maxItems:RUNTIME_LIMITS.cols,items:{type:'string',pattern:'^[a-z][a-z0-9-]{0,15}$'},description:'One key per grid column, left to right: the engine family of that column, e.g. ["gguf","mlx","mlx"]. Keys with a colour: gguf, mlx, torch, mix, edge, media, cloud, dev, share, net.'},
  engines:{type:'object',maxProperties:RUNTIME_LIMITS.engines,additionalProperties:{type:'string',maxLength:40},description:'Legend: column key → label, e.g. {"gguf":"llama.cpp","mlx":"Apple MLX"}.'},
@@ -371,14 +371,14 @@ export default {
  assets:['home-view.js','home-charts.js','home-add-device.js','home-order.js','home-drag.js','home-telemetry.js','home-agent.js','windows-setup.js','telemetry-setup.js','home.css','vendor/echarts.esm.min.mjs',...PICTURES.map(id=>`images/generic/${id}.svg`)],
  nav:[{groupKey:'Domov',hash:'overview',labelKey:'Přehled',view:'home-view.js#homePage',order:10}],
  apiDocs:[{title:'Domov',routes:[
-  ['GET','/api/home/devices','read','Stroje: z konfigurace webu (jen ke čtení) a přidané, s otiskem. MCP machine_list.'],
-  ['POST','/api/home/devices','home:write','Založit nebo nahradit stroj {machine, base?}. MCP machine_upsert.'],
-  ['POST','/api/home/devices/remove','home:write','Odebrat přidaný stroj {id, base}; base je nepovinné jen po přihlášení heslem. MCP machine_remove.'],
-  ['POST','/api/home/runtime','home:write','Zveřejnit runtime stack stroje {machine, stack|null, base?}. MCP runtime_publish.']]}],
+  ['GET','/api/home/devices','read','Stroje: z konfigurace webu (jen ke čtení) a přidané, s otiskem. MCP device_list.'],
+  ['POST','/api/home/devices','home:write','Založit nebo nahradit stroj {device, base?}. MCP device_upsert.'],
+  ['POST','/api/home/devices/remove','home:write','Odebrat přidaný stroj {id, base}; base je nepovinné jen po přihlášení heslem. MCP device_remove.'],
+  ['POST','/api/home/runtime','home:write','Zveřejnit runtime stack stroje {device, stack|null, base?}. MCP runtime_publish.']]}],
  setup(hub){
   const {site,directory,stateDirectory,options}=hub;
-  const ids=siteMachineIds(site);
-  const homeDevices=options.homeDevices||createHomeDevices(path.join(stateDirectory,'home'),{reserved:ids,lanCidrs:site.lanCidrs,siteMachines:site.machines});
+  const ids=siteDeviceIds(site);
+  const homeDevices=options.homeDevices||createHomeDevices(path.join(stateDirectory,'home'),{reserved:ids,lanCidrs:site.lanCidrs,siteDevices:site.devices});
   const thermoHostsFile=options.thermoHostsFile||process.env.THERMO_HOSTS_FILE||privateFile('thermo-hosts.json');
   const thermoPoller=options.thermoPoller||createThermoPoller({hostsFile:thermoHostsFile,extraHosts:()=>homeDevices.thermoHosts(),stateDirectory});
   // App-managed SSH: the hub's own keys and known_hosts (state/home/ssh), and the set-up drafts of the device dialog.
@@ -413,20 +413,20 @@ export default {
   // Integrations an administrator turned off: the overview says so instead of showing nothing silently.
   const disabledIntegrations=()=>hub.registry.integrations.filter(i=>!hub.integrationEnabled(i.id)).map(i=>({id:i.id,title:i.title,...(i.titleKey?{titleKey:i.titleKey}:{}),kind:i.kind}));
   // The telemetry the overview reads: Thermo and Windows, each quiet while its integration is off.
-  // bindings: the effective site bindings (homeDevices.siteBindings()); a site machine bound to a provider reads from its poller.
+  // bindings: the effective site bindings (homeDevices.siteBindings()); a site device bound to a provider reads from its poller.
   const telemetry=(added,bindings=[])=>{const of=p=>[...added.filter(d=>feedOfDevice(d)===p).map(d=>d.id),...bindings.filter(b=>b.provider===p).map(b=>b.id)];
    return telemetrySources({thermo:hub.integrationEnabled(THERMO_INTEGRATION)?thermoPoller:quietThermo(thermoPoller),
    windows:hub.integrationEnabled(WINDOWS_INTEGRATION)?windowsPoller:quietWindows(windowsPoller),windowsIds:of(WINDOWS_PROVIDER),
    feeds:Object.keys(drivers).map(p=>({poller:hub.integrationEnabled(FEEDS[p].integration)?feedPollers[p]:quietWindows(feedPollers[p]),ids:of(p)}))});};
-  // The TCP reachability of the site machines (server/reachability.mjs): options.reachability stands in for it (tests).
+  // The TCP reachability of the site devices (server/reachability.mjs): options.reachability stands in for it (tests).
   const reachability=options.reachability||createReachabilityPoller({targets:()=>reachTargets(site)});
-  // The machines that hold a push agent key, as the agent module sees them (docs/agent.md §7, step 4); {} without it.
+  // The devices that hold a push agent key, as the agent module sees them (docs/agent.md §7, step 4); {} without it.
   const agentState=()=>hub.state('agent');
   const agents=async()=>{try{return (await agentState()?.overview?.())||{};}catch{return {};}};
   const agentNow=()=>{const clock=agentState()?.clock;return typeof clock==='function'?clock():null;};
   const payload=async()=>{const added=await homeDevices.list(),bindings=await homeDevices.siteBindings();return {...buildHome({site,added,siteTelemetry:bindings,siteOverrides:await homeDevices.siteOverrides(),
    agents:await agents(),agentNow:agentNow(),hubVersion:hub.version?.version??null,
-   reachability:hub.integrationEnabled(REACH_INTEGRATION)?reachability.status():{},published:await homeDevices.stacks(),sitePictures,descriptors:await loadMachineDescriptors(process.env.MACHINES_DIR||path.join(directory,'machines'),ids),
+   reachability:hub.integrationEnabled(REACH_INTEGRATION)?reachability.status():{},published:await homeDevices.stacks(),sitePictures,descriptors:await loadDeviceDescriptors(process.env.DEVICES_DIR||path.join(directory,'devices'),ids),
    snapshots:await merged('home.snapshots'),runtimes:mergeRuntimeReports(await settled('home.runtimes')),thermo:telemetry(added,bindings),router:await readRouterFor(hub),probed:await merged('home.services')}),
    integrations:{disabled:disabledIntegrations()}};};
   // Thermo off: close the sessions and stop pulling; on again: pull right away. Neither waits for the network.
@@ -442,7 +442,7 @@ export default {
   const sshGate=gate(2);
   return {homeDevices,reachability,thermoPoller,windowsPoller,feedPollers,endpointSetup,windowsSetup,sshVault,sshGate,sshTools:toolsNow,thermoHostsFile,payload,telemetry,checkThermo:options.checkThermo||checkThermoLogin,probeCert:options.probeCert||probeThermo,
    checkWindows:limited(options.checkWindows||(target=>checkWindows(target,{run:sshRun})),sshGate),
-   machineIds:async()=>[...ids,...(await homeDevices.list()).map(d=>d.id)]};
+   deviceIds:async()=>[...ids,...(await homeDevices.list()).map(d=>d.id)]};
  },
  pollers:[{id:'thermo',start:state=>state.thermoPoller.start(),stop:state=>state.thermoPoller.stop?.()},
   // The other agent-less providers: the same interval rule as Windows.
@@ -453,33 +453,33 @@ export default {
   // First the key store is swept (files of drafts that never finished, of connections removed while the hub was down).
   {id:'windows',start:async state=>{await state.windowsSetup.start?.();const s=state.thermoPoller.interval?.()?.intervalSeconds;if(Number.isFinite(s))state.windowsPoller.setIntervalMs?.(s*1000);return state.windowsPoller.start();},
    stop:state=>{state.windowsSetup.stop?.();return state.windowsPoller.stop?.();}},
-  // Does each machine's address answer: its own integration, a TCP connect every minute (server/reachability.mjs).
+  // Does each device's address answer: its own integration, a TCP connect every minute (server/reachability.mjs).
   {id:'reachability',start:state=>state.reachability.start(),stop:state=>state.reachability.stop()}],
  integrations:[thermoIntegration,windowsIntegration,reachIntegration,...FEED_INTEGRATIONS],
- // Integrations → Machines: how each machine's telemetry is read (server/machine-facets.mjs).
- provides:{[FACETS_POINT]:(state,hub)=>machines=>telemetryFacet(machines,{enabled:id=>hub.integrationEnabled(id),thermoIntegration:THERMO_INTEGRATION})},
+ // Integrations → Devices: how each device's telemetry is read (server/device-facets.mjs).
+ provides:{[FACETS_POINT]:(state,hub)=>devices=>telemetryFacet(devices,{enabled:id=>hub.integrationEnabled(id),thermoIntegration:THERMO_INTEGRATION})},
  mcpInstructions:[
-  'Machines: home_status is the live state (online, load, temperature, memory, services). machine_list is what the overview holds: each machine with its hash, where it comes from and where its runtime stack comes from.',
-  {scope:'home:write',text:'With home:write: machine_upsert adds or replaces a machine and machine_remove removes one (pass the hash from machine_list as base; machines from the site configuration are read-only). runtime_publish replaces the runtime stack drawn on a machine\'s page: what clients call, launchers, model servers, engines and the chip.'},
+  'Devices: home_status is the live state (online, load, temperature, memory, services). device_list is what the overview holds: each device with its hash, where it comes from and where its runtime stack comes from.',
+  {scope:'home:write',text:'With home:write: device_upsert adds or replaces a device and device_remove removes one (pass the hash from device_list as base; devices from the site configuration are read-only). runtime_publish replaces the runtime stack drawn on a device\'s page: what clients call, launchers, model servers, engines and the chip.'},
  ],
  mcpTools:[
-  {name:'machine_list',scope:'read',title:'Overview: list machines',
-   description:'The machines on the Home Hub overview: those from the site configuration (source "site", read-only here; the owner may override their display name, address, hardware and picture in the web UI, listed in siteOverride) and those added in the web UI or by an agent (source "ui" / "agent"), each with its hash, telemetry state, reachability, push agent (agent: when it last reported and whether that is fresh or no news, its version; null without an agent key) and where its runtime stack comes from. Also returns the built-in picture ids, the roles, the site networks an ip must lie in and the telemetry agent to install. Pass runtime:true to get each published runtime stack as well.',
-   inputSchema:{type:'object',properties:{runtime:{type:'boolean',description:'Include the published runtime stack of each machine.'}},additionalProperties:false},annotations:{readOnlyHint:true,openWorldHint:false},
-   run:(args,{state,hub})=>tool(async()=>{only(args,['runtime']);return listMachines(state,hub,args.runtime===true);})},
-  {name:'machine_upsert',scope:'home:write',title:'Overview: create or replace a machine',
-   description:'Create a machine on the overview, or replace one you read. The whole record is replaced, so send every field you want kept. To change an existing machine pass its hash from machine_list as base; if it changed in between, the call is refused and you must read it again. Omit base to create; repeating a create with identical fields changes nothing and succeeds. Machines from the site configuration cannot be changed. Never put a password, token or key in any field: secret-looking values are rejected.',
-   inputSchema:{type:'object',properties:{machine:MACHINE_SCHEMA,base:{type:'string',pattern:'^[a-f0-9]{64}$',description:'Hash from machine_list. Required when the machine already exists.'}},required:['machine'],additionalProperties:false},
+  {name:'device_list',scope:'read',title:'Overview: list devices',
+   description:'The devices on the Home Hub overview: those from the site configuration (source "site", read-only here; the owner may override their display name, address, hardware and picture in the web UI, listed in siteOverride) and those added in the web UI or by an agent (source "ui" / "agent"), each with its hash, telemetry state, reachability, push agent (agent: when it last reported and whether that is fresh or no news, its version; null without an agent key) and where its runtime stack comes from. Also returns the built-in picture ids, the roles, the site networks an ip must lie in and the telemetry agent to install. Pass runtime:true to get each published runtime stack as well.',
+   inputSchema:{type:'object',properties:{runtime:{type:'boolean',description:'Include the published runtime stack of each device.'}},additionalProperties:false},annotations:{readOnlyHint:true,openWorldHint:false},
+   run:(args,{state,hub})=>tool(async()=>{only(args,['runtime']);return listDevices(state,hub,args.runtime===true);})},
+  {name:'device_upsert',scope:'home:write',title:'Overview: create or replace a device',
+   description:'Create a device on the overview, or replace one you read. The whole record is replaced, so send every field you want kept. To change an existing device pass its hash from device_list as base; if it changed in between, the call is refused and you must read it again. Omit base to create; repeating a create with identical fields changes nothing and succeeds. Devices from the site configuration cannot be changed. Never put a password, token or key in any field: secret-looking values are rejected.',
+   inputSchema:{type:'object',properties:{device:DEVICE_SCHEMA,base:{type:'string',pattern:'^[a-f0-9]{64}$',description:'Hash from device_list. Required when the device already exists.'}},required:['device'],additionalProperties:false},
    annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:true,openWorldHint:false},
-   run:(args,{state,principal})=>tool(()=>upsertMachine(state,args,principal))},
-  {name:'machine_remove',scope:'home:write',title:'Overview: remove a machine',
-   description:'Remove a machine that was added in the web UI or by an agent, with its uploaded picture, stored telemetry login and published runtime stack; the metric history stays on disk. Pass the hash from machine_list as base. Machines from the site configuration cannot be removed.',
-   inputSchema:{type:'object',properties:{id:{type:'string',pattern:MACHINE_ID.source},base:{type:'string',pattern:'^[a-f0-9]{64}$',description:'Hash from machine_list.'}},required:['id','base'],additionalProperties:false},
+   run:(args,{state,principal})=>tool(()=>upsertDevice(state,args,principal))},
+  {name:'device_remove',scope:'home:write',title:'Overview: remove a device',
+   description:'Remove a device that was added in the web UI or by an agent, with its uploaded picture, stored telemetry login and published runtime stack; the metric history stays on disk. Pass the hash from device_list as base. Devices from the site configuration cannot be removed.',
+   inputSchema:{type:'object',properties:{id:{type:'string',pattern:DEVICE_ID.source},base:{type:'string',pattern:'^[a-f0-9]{64}$',description:'Hash from device_list.'}},required:['id','base'],additionalProperties:false},
    annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:false},
-   run:(args,{state})=>tool(()=>removeMachine(state,args))},
-  {name:'runtime_publish',scope:'home:write',title:'Overview: publish a machine\'s runtime stack',
-   description:'Publish the layered runtime stack drawn on a machine\'s page: what clients call (input), routers and launchers (tool), model servers (runtime), inference engines (engine) and the chip (hardware), placed on a grid of engine columns. It replaces the stack from the site configuration when there is one, otherwise it adds one; site machines are allowed. The whole stack is replaced on every call; publishing the same stack again changes nothing. Pass stack:null to take the publication back. Optional base = the runtime hash from machine_list, to refuse the call if someone else published in between. Never include secrets.',
-   inputSchema:{type:'object',properties:{machine:{type:'string',pattern:MACHINE_ID.source,description:'Machine id from machine_list.'},stack:STACK_SCHEMA,base:{type:'string',pattern:'^[a-f0-9]{64}$'}},required:['machine','stack'],additionalProperties:false},
+   run:(args,{state})=>tool(()=>removeDevice(state,args))},
+  {name:'runtime_publish',scope:'home:write',title:'Overview: publish a device\'s runtime stack',
+   description:'Publish the layered runtime stack drawn on a device\'s page: what clients call (input), routers and launchers (tool), model servers (runtime), inference engines (engine) and the chip (hardware), placed on a grid of engine columns. It replaces the stack from the site configuration when there is one, otherwise it adds one; site devices are allowed. The whole stack is replaced on every call; publishing the same stack again changes nothing. Pass stack:null to take the publication back. Optional base = the runtime hash from device_list, to refuse the call if someone else published in between. Never include secrets.',
+   inputSchema:{type:'object',properties:{device:{type:'string',pattern:DEVICE_ID.source,description:'Device id from device_list.'},stack:STACK_SCHEMA,base:{type:'string',pattern:'^[a-f0-9]{64}$'}},required:['device','stack'],additionalProperties:false},
    annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:true,openWorldHint:false},
    run:(args,{state,hub,principal})=>tool(()=>publishRuntime(state,hub,args,principal))},
  ],
@@ -488,35 +488,35 @@ export default {
   {method:'GET',path:'/api/home/history',error:homeError,async handler({query,json,state,hub}){
     const added=await state.homeDevices.list(),bindings=await state.homeDevices.siteBindings(),q=homeHistoryQuery(query,added,hub.site,bindings);
     if(q.reason)return json(200,q);
-    // The provider that reads it: an added device's own, or the binding of a site machine.
-    const addedDevice=added.find(d=>d.id===q.machine),feed=feedOfDevice(addedDevice)||bindings.find(b=>b.id===q.machine)?.provider||null,viaWindows=feed===WINDOWS_PROVIDER;
+    // The provider that reads it: an added device's own, or the binding of a site device.
+    const addedDevice=added.find(d=>d.id===q.device),feed=feedOfDevice(addedDevice)||bindings.find(b=>b.id===q.device)?.provider||null,viaWindows=feed===WINDOWS_PROVIDER;
     if(feed&&!hub.integrationEnabled(FEEDS[feed].integration))return json(200,{...q,points:[],complete:false,source:'vypnuto',reason:viaWindows?'Telemetrie Windows je vypnutá administrátorem.':tx('Telemetrie {name} je vypnutá administrátorem.',{name:FEEDS[feed].name}),disabled:hub.integrationDisabled(FEEDS[feed].integration)});
     if(!feed&&!hub.integrationEnabled(THERMO_INTEGRATION))return json(200,{...q,points:[],complete:false,source:'vypnuto',reason:'Telemetrie Thermo je vypnutá administrátorem.',disabled:hub.integrationDisabled(THERMO_INTEGRATION)});
-    // A machine reads the Thermo host named by its thermoId (a device connected on the overview is its own host);
+    // A device reads the Thermo host named by its thermoId (a device connected on the overview is its own host);
     // a Windows device is its own host on the Windows poller.
-    const thermoId=hub.site.machines.find(m=>m.id===q.machine)?.thermoId||addedDevice?.thermoId||q.machine;
+    const thermoId=hub.site.devices.find(m=>m.id===q.device)?.thermoId||addedDevice?.thermoId||q.device;
     const h=homeHistory(state.telemetry(added,bindings),thermoId,q.range,undefined,[thermoId]);
     const label=viaWindows?'Windows':feed?FEEDS[feed].name:null;
-    return json(200,{...h,...(label?{source:h.source.replace('Thermo',label),...(h.status?{status:h.status.replace('Thermo',label)}:{})}:{}),machine:q.machine});}},
+    return json(200,{...h,...(label?{source:h.source.replace('Thermo',label),...(h.status?{status:h.status.replace('Thermo',label)}:{})}:{}),device:q.device});}},
   {method:'POST',path:'/api/home/settings',scope:'home:settings',error:homeError,async handler({input,json,state}){const ms=Number(input?.intervalSeconds)*1000;await state.thermoPoller.setIntervalMs(ms);for(const p of Object.values(state.feedPollers))p.setIntervalMs?.(ms);return json(200,await state.payload());}},
   // Refresh button: pull Thermo now (rate-limited in the poller), then return fresh tiles. Reads only.
   {method:'POST',path:'/api/home/refresh',scope:'read',error:homeError,async handler({json,state}){const [pulled]=await Promise.all([state.thermoPoller.refresh().catch(()=>false),...Object.values(state.feedPollers).map(p=>p.refresh?.().catch(()=>false))]);return json(200,{...await state.payload(),refresh:{pulled:pulled===true,at:new Date().toISOString()}});}},
-  // The machine API: what the MCP tools do, over HTTP. A write session or an API key with home:write.
-  {method:'GET',path:'/api/home/devices',error:homeError,handler:async({query,json,state,hub})=>json(200,await listMachines(state,hub,query.stack==='1'))},
-  {method:'POST',path:'/api/home/devices',scope:'home:write',error:homeError,handler:machineApi(async c=>{
-    c.subject=typeof c.input?.machine?.id==='string'&&MACHINE_ID.test(c.input.machine.id)?c.input.machine.id:null;
-    const r=await upsertMachine(c.state,c.input,c.principal);return c.json(r.created?201:200,r);})},
+  // The device API: what the MCP tools do, over HTTP. A write session or an API key with home:write.
+  {method:'GET',path:'/api/home/devices',error:homeError,handler:async({query,json,state,hub})=>json(200,await listDevices(state,hub,query.stack==='1'))},
+  {method:'POST',path:'/api/home/devices',scope:'home:write',error:homeError,handler:deviceApi(async c=>{
+    c.subject=typeof c.input?.device?.id==='string'&&DEVICE_ID.test(c.input.device.id)?c.input.device.id:null;
+    const r=await upsertDevice(c.state,c.input,c.principal);return c.json(r.created?201:200,r);})},
   // One removal for keys, MCP and the overview: an API key sends base, a person signed in with a password may leave it out.
-  {method:'POST',path:'/api/home/devices/remove',scope:'home:write',error:homeError,handler:machineApi(async c=>c.json(200,await removeMachine(c.state,c.input,{baseOptional:c.principal.authKind==='session'})))},
-  {method:'POST',path:'/api/home/runtime',scope:'home:write',bodyLimit:65536,error:homeError,handler:machineApi(async c=>{
-    c.subject=typeof c.input?.machine==='string'&&MACHINE_ID.test(c.input.machine)?c.input.machine:null;
+  {method:'POST',path:'/api/home/devices/remove',scope:'home:write',error:homeError,handler:deviceApi(async c=>c.json(200,await removeDevice(c.state,c.input,{baseOptional:c.principal.authKind==='session'})))},
+  {method:'POST',path:'/api/home/runtime',scope:'home:write',bodyLimit:65536,error:homeError,handler:deviceApi(async c=>{
+    c.subject=typeof c.input?.device==='string'&&DEVICE_ID.test(c.input.device)?c.input.device:null;
     return c.json(200,await publishRuntime(c.state,c.hub,c.input,c.principal));})},
   {method:'POST',path:'/api/home/devices/probe',scope:null,error:homeError,handler:deviceForm(async({input,json,state})=>{
     if(!input||typeof input!=='object'||Object.keys(input).some(k=>!['host','port'].includes(k))||!validHost(input.host))throw new Error('invalid');
     const port=input.port??49286;if(!Number.isSafeInteger(port)||port<1024||port>65535)throw new Error('invalid');
     return json(200,await state.probeCert({host:input.host,port}));})},
   // Windows telemetry through an older SSH alias: try a target without storing anything. {target} → what the
-  // machine reports (Windows version, CPU, memory, volumes, GPUs), or 422 WINDOWS_SSH_FAILED with a reason and what to do.
+  // device reports (Windows version, CPU, memory, volumes, GPUs), or 422 WINDOWS_SSH_FAILED with a reason and what to do.
   {method:'POST',path:'/api/home/devices/windows/check',scope:null,error:homeError,handler:deviceForm(async({input,json,state})=>{
     if(!input||typeof input!=='object'||Object.keys(input).some(k=>k!=='target')||!validSshTarget(input.target))throw new Error('invalid');
     return json(200,await tryWindows(state,input.target));})},
@@ -556,10 +556,10 @@ export default {
   //   {id, windows:null}                       disconnect
   // The device keeps its id, picture and history; the connection it replaces is forgotten, with its key files.
   {method:'POST',path:'/api/home/devices/windows',scope:null,error:homeError,handler:deviceForm(async({input,json,state,principal})=>{
-    if(!input||typeof input!=='object'||Object.keys(input).some(k=>!['id','windows'].includes(k))||typeof input.id!=='string'||!MACHINE_ID.test(input.id)||input.windows===undefined)throw new Error('invalid');
-    // A machine of the site configuration: password sign-in only, and only a managed connection (the store refuses an alias).
+    if(!input||typeof input!=='object'||Object.keys(input).some(k=>!['id','windows'].includes(k))||typeof input.id!=='string'||!DEVICE_ID.test(input.id)||input.windows===undefined)throw new Error('invalid');
+    // A device of the site configuration: password sign-in only, and only a managed connection (the store refuses an alias).
     const target=await state.homeDevices.telemetryTarget(input.id);
-    if(target?.site&&principal.authKind!=='session')throw Object.assign(new Error('invalid'),{detail:'a machine from the site configuration is connected only by a person signed in with a password'});
+    if(target?.site&&principal.authKind!=='session')throw Object.assign(new Error('invalid'),{detail:'a device from the site configuration is connected only by a person signed in with a password'});
     if(input.windows===null){const r=await state.homeDevices.setWindows(input.id,null);if(r.hadLogin)state.windowsPoller.removeHost(input.id);await state.windowsSetup.forget(r.previous);return json(200,r.device);}
     if(!target)throw new Error('not-found');
     if(target.site)await telemetryTarget(state,target.id,{provider:WINDOWS_PROVIDER,principal});
@@ -572,7 +572,7 @@ export default {
      state.windowsSetup.commit(w.draft);await state.windowsSetup.forget(r.previous,{keep:managed});await detach(state,target.id,r.replaced);
      state.windowsPoller.addHost(r.windows);return json(200,r.device);}
     const alias=input.windows.target;
-    if(!validSshTarget(alias)||target.site)throw Object.assign(new Error('invalid'),target.site?{detail:'a machine from the site configuration connects Windows over SSH only with a connection Home Hub manages'}:{});
+    if(!validSshTarget(alias)||target.site)throw Object.assign(new Error('invalid'),target.site?{detail:'a device from the site configuration connects Windows over SSH only with a connection Home Hub manages'}:{});
     await tryWindows(state,alias);
     const r=await state.homeDevices.setWindows(input.id,input.windows);await state.windowsSetup.forget(r.previous);await detach(state,input.id,r.replaced);state.windowsPoller.addHost(r.windows);return json(200,r.device);})},
   // Connect a device that is already on the overview to WinRM, Node Exporter, Prometheus or Linux SSH, switch it from
@@ -582,8 +582,8 @@ export default {
   // The device keeps its id, picture and history. Password sign-in only: drafts belong to a browser session.
   {method:'POST',path:'/api/home/devices/telemetry',scope:null,error:homeError,handler:sessionFeed(async({input,json,state,principal})=>{
     only(input,['id','telemetry']);
-    if(typeof input.id!=='string'||!MACHINE_ID.test(input.id)||input.telemetry===undefined)throw new Error('invalid');
-    // Disconnect: the device or site machine (a binding whose machine left site.json is cleared here as well).
+    if(typeof input.id!=='string'||!DEVICE_ID.test(input.id)||input.telemetry===undefined)throw new Error('invalid');
+    // Disconnect: the added device or site device (a binding whose device left site.json is cleared here as well).
     if(input.telemetry===null){const r=await state.homeDevices.setFeed(input.id,null);await detach(state,input.id,r.previous);
      if(r.previousWindows){state.windowsPoller.removeHost(input.id);await state.windowsSetup.forget(r.previousWindows);}return json(200,r.device);}
     const target=await telemetryTarget(state,input.id,{provider:isFeed(input.telemetry?.provider)?input.telemetry.provider:null,principal});
@@ -598,7 +598,7 @@ export default {
   // Connect a device that is already on the overview to Thermo, or forget its login ({id, thermo: null}).
   // As with a new device, the login is tried once with the pinned certificate before anything is stored.
   {method:'POST',path:'/api/home/devices/thermo',scope:null,error:homeError,handler:deviceForm(async({input,json,state})=>{
-    if(!input||typeof input!=='object'||Object.keys(input).some(k=>!['id','thermo'].includes(k))||typeof input.id!=='string'||!MACHINE_ID.test(input.id)||input.thermo===undefined)throw new Error('invalid');
+    if(!input||typeof input!=='object'||Object.keys(input).some(k=>!['id','thermo'].includes(k))||typeof input.id!=='string'||!DEVICE_ID.test(input.id)||input.thermo===undefined)throw new Error('invalid');
     if(input.thermo===null){const r=await state.homeDevices.setThermo(input.id,null);if(r.hadLogin)state.thermoPoller.removeHost(input.id);return json(200,r.device);}
     const addedDevice=(await state.homeDevices.list()).find(d=>d.id===input.id);if(!addedDevice)throw new Error('not-found');
     const t=input.thermo,host=addedDevice.hostname||addedDevice.ip,pin=String(t?.pin||'').replace(/:/g,'').toLowerCase(),port=t?.port??49286;
@@ -630,38 +630,38 @@ export default {
     if(input?.kind==='windows'&&validSshTarget(input?.windows?.target))await tryWindows(state,input.windows.target);
     const saved=await state.homeDevices.add(input,principal.username);if(saved.thermo)state.thermoPoller.addHost(saved.thermo);if(saved.windows)state.windowsPoller.addHost(saved.windows);
     return json(201,saved.device);})},
-  // A machine of the site configuration, edited on its tile: {id, base, machine:{name?, hostname?, ip?, hardware?, picture?}}
+  // A device of the site configuration, edited on its tile: {id, base, device:{name?, hostname?, ip?, hardware?, picture?}}
   // replaces the owner's override (absent fields go back to the site's values); base = siteOverride.hash from GET /api/home.
   // Only display metadata: id, role, platform, thermoId and the collectors' wiring stay in site.json, which is never written.
   {method:'POST',path:'/api/home/devices/site',scope:null,error:homeError,handler:siteEdit(async({input,json,state,principal})=>{
-    only(input,['id','base','machine']);
-    if(typeof input.id!=='string'||!MACHINE_ID.test(input.id))throw Object.assign(new Error('invalid'),{detail:'id must be a machine id'});
-    if(!state.homeDevices.isSiteMachine(input.id))throw new Error('not-found');
-    return json(200,await state.homeDevices.setSiteOverride(input.id,input.machine,{by:principal.username,base:input.base}));})},
+    only(input,['id','base','device']);
+    if(typeof input.id!=='string'||!DEVICE_ID.test(input.id))throw Object.assign(new Error('invalid'),{detail:'id must be a device id'});
+    if(!state.homeDevices.isSiteDevice(input.id))throw new Error('not-found');
+    return json(200,await state.homeDevices.setSiteOverride(input.id,input.device,{by:principal.username,base:input.base}));})},
   // Back to the site's defaults: the override and the uploaded picture go. {id, base}.
   {method:'POST',path:'/api/home/devices/site/reset',scope:null,error:homeError,handler:siteEdit(async({input,json,state})=>{
     only(input,['id','base']);
-    if(typeof input.id!=='string'||!MACHINE_ID.test(input.id))throw Object.assign(new Error('invalid'),{detail:'id must be a machine id'});
+    if(typeof input.id!=='string'||!DEVICE_ID.test(input.id))throw Object.assign(new Error('invalid'),{detail:'id must be a device id'});
     return json(200,await state.homeDevices.resetSiteOverride(input.id,{base:input.base}));})},
-  // Back to a built-in picture: the uploaded one is deleted. A site machine (password sign-in only) goes back to its override's or the site's.
+  // Back to a built-in picture: the uploaded one is deleted. A site device (password sign-in only) goes back to its override's or the site's.
   {method:'POST',path:'/api/home/devices/image/remove',scope:null,error:homeError,handler:deviceForm(async({input,json,error,state,principal})=>{
-    if(!input||typeof input!=='object'||Object.keys(input).some(k=>k!=='id')||typeof input.id!=='string'||!MACHINE_ID.test(input.id))throw new Error('invalid');
-    if(state.homeDevices.isSiteMachine(input.id)&&principal.authKind!=='session')return error(403,'SESSION_REQUIRED','Stroj z konfigurace webu upravuje jen účet se zápisem, přihlášený heslem.');
+    if(!input||typeof input!=='object'||Object.keys(input).some(k=>k!=='id')||typeof input.id!=='string'||!DEVICE_ID.test(input.id))throw new Error('invalid');
+    if(state.homeDevices.isSiteDevice(input.id)&&principal.authKind!=='session')return error(403,'SESSION_REQUIRED','Stroj z konfigurace webu upravuje jen účet se zápisem, přihlášený heslem.');
     return json(200,await state.homeDevices.removeImage(input.id,{by:principal.username}));})},
   // An added device's tile picture: one JPEG cropped in the browser (at most 3 MiB). Password sign-in only.
   {method:'PUT',match:/^\/api\/home\/devices\/([a-z][a-z0-9_-]{1,31})\/image$/,scope:null,raw:true,contentType:'image/jpeg',denied:'Zařízení přidává jen účet se zápisem, přihlášený heslem.',error:homeError,
    async handler({req,params,json,error,state,principal}){
-    // A site machine's own picture: password sign-in only, like the rest of its edit.
-    if(state.homeDevices.isSiteMachine(params[1])&&principal.authKind!=='session'){req.resume();return error(403,'SESSION_REQUIRED','Stroj z konfigurace webu upravuje jen účet se zápisem, přihlášený heslem.');}
+    // A site device's own picture: password sign-in only, like the rest of its edit.
+    if(state.homeDevices.isSiteDevice(params[1])&&principal.authKind!=='session'){req.resume();return error(403,'SESSION_REQUIRED','Stroj z konfigurace webu upravuje jen účet se zápisem, přihlášený heslem.');}
     try{return json(200,await state.homeDevices.putImage(params[1],req,Number(req.headers['content-length']),{by:principal.username}));}
     catch(e){req.resume();return error(({invalid:400,'not-found':404,'too-large':413})[e.message]||503,'DEVICE_FAILED',({invalid:'Obrázek musí být JPEG.','not-found':'Zařízení neexistuje.','too-large':'Obrázek je větší než 3 MB.'})[e.message]||'Obrázek nejde uložit.');}}},
-  // The picture the owner uploaded for a machine of the site configuration (its override). Not under /images/home/, where
+  // The picture the owner uploaded for a device of the site configuration (its override). Not under /images/home/, where
   // the site's own picture of the same id is a static file and would win.
   {method:'GET',match:/^\/api\/home\/devices\/([a-z][a-z0-9_-]{1,31})\/image$/,async handler({params,res,error,state}){
-    if(!state.homeDevices.isSiteMachine(params[1])||!(await state.homeDevices.siteOverrides())[params[1]]?.image)return error(404,'NOT_FOUND','Not found.');
+    if(!state.homeDevices.isSiteDevice(params[1])||!(await state.homeDevices.siteOverrides())[params[1]]?.image)return error(404,'NOT_FOUND','Not found.');
     let file;try{file=await state.homeDevices.image(params[1]);}catch{return error(404,'NOT_FOUND','Not found.');}
     res.setHeader('Cache-Control','private, max-age=86400');res.writeHead(200,{'Content-Type':'image/jpeg'});return res.end(await readFile(file));}},
-  // The picture of an added device, from state (a site's own machine pictures are static files and win).
+  // The picture of an added device, from state (a site's own device pictures are static files and win).
   {method:'GET',match:/^\/images\/home\/([a-z][a-z0-9_-]{1,31})\.jpg$/,async handler({params,res,error,state}){
     let file;try{file=await state.homeDevices.image(params[1]);}catch{return error(404,'NOT_FOUND','Not found.');}
     res.setHeader('Cache-Control','private, max-age=86400');res.writeHead(200,{'Content-Type':'image/jpeg'});return res.end(await readFile(file));}},

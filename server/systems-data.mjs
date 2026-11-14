@@ -1,6 +1,6 @@
 // Systémy section: OS versions, watched software with update candidates, and host protection
 // (firewall, FileVault, SIP, Gatekeeper, update policy, SSH password login, exposed ports).
-// scripts/collect-systems.mjs runs scripts/systems/{mac,nas}-probe.sh on every machine and saves
+// scripts/collect-systems.mjs runs scripts/systems/{mac,nas}-probe.sh on every device and saves
 // data/systems/snapshot.json; scripts/check-upstream.mjs saves the newest upstream versions to
 // data/systems/upstream.json. buildSystems() joins both with the site's software watch list
 // (server/software-watch.mjs: local/software-watch.json, empty without one).
@@ -20,8 +20,8 @@ import {readRun} from './collector-run.mjs';
 export {parseVersion,compareVersions,extractVersion};
 
 export const SYSTEMS_SCHEMA=1;
-// The machines the collector probes: every site machine with ssh.probe (mac or nas), in site order.
-export const systemMachines=s=>s.machines.filter(m=>m.ssh?.probe).map(m=>({id:m.id,name:m.name,kind:m.ssh.probe}));
+// The devices the collector probes: every site device with ssh.probe (mac or nas), in site order.
+export const systemDevices=s=>s.devices.filter(m=>m.ssh?.probe).map(m=>({id:m.id,name:m.name,kind:m.ssh.probe}));
 const clean=(v,n=300)=>typeof v==='string'?v.replace(/[\u0000-\u001f\u007f]/g,' ').trim().slice(0,n):'';
 const num=v=>{const n=Number(v);return Number.isFinite(n)?n:null;};
 const onOff=v=>v==='on'||v==='off'?v:'unknown';
@@ -44,7 +44,7 @@ export function listenEntry(proc,user,addr){
  const scope=['*','0.0.0.0','::',''].includes(host)?'all':/^(127\.|::1$|localhost$)/.test(host)?'loopback':'address';
  return {proc:clean(decode(proc||'?'),40)||'?',user:clean(user,32),host,port,scope};
 }
-// One machine's probe output → a plain record (no versions resolved yet).
+// One device's probe output → a plain record (no versions resolved yet).
 export function parseSystemsProbe(text){
  const h={host:null,platform:null,user:null,root:false,collectedAt:null,os:{},hw:{},uptimeSeconds:null,
   osUpdates:{checked:false,items:[],error:null},autoUpdate:dict(),firewall:dict(),pf:null,fileVault:null,sip:null,gatekeeper:null,
@@ -114,26 +114,26 @@ export function parseSystemsProbe(text){
  return h;
 }
 
-// SPECS lines the macOS probe reads for one machine: "id|kind|arg1|arg2|launchd" (split on |). The Linux probe and the
+// SPECS lines the macOS probe reads for one device: "id|kind|arg1|arg2|launchd" (split on |). The Linux probe and the
 // Windows agent read the same lines; launchd names a systemd unit there and a Windows service here (winreg: displayName|'').
 // A rule is data: every field is stripped of the characters that separate or quote a line, and a cmd
 // rule may pass only one of the fixed version flags (CMD_ARGS). Any other argument would let the list
 // run a program for something else than printing its version, so such a rule reaches the probe as an
 // unsupported kind and its row reads "not found".
 const specField=v=>String(v??'').replace(/[|\r\n']/g,' ').trim();
-export function systemsSpecs(registry,machine){
+export function systemsSpecs(registry,device){
  const lines=[];
- for(const item of registry?.items||[]){const d=item.detect?.[machine];if(!d)continue;
+ for(const item of registry?.items||[]){const d=item.detect?.[device];if(!d)continue;
   const kind=d.kind==='cmd'&&!CMD_ARGS.includes(d.args)?'unsupported-args':d.kind;
   const [a,b]=kind==='brew'?[d.formula,'']:kind==='cask'?[d.cask,'']:kind==='app'?[d.path,'']:kind==='cmd'?[d.path,d.args]:kind==='pydist'?[d.glob,d.package]:kind==='json'?[d.path,d.key]:kind==='winreg'?[d.displayName,'']:['',''];
   lines.push([item.id,kind,a,b,d.launchd].map(specField).join('|'));}
  return lines.join('\n');
 }
-// The push agent's specs.txt for a machine (docs/agent.md → The watch list): systemsSpecs's lines, each followed by
+// The push agent's specs.txt for a device (docs/agent.md → The watch list): systemsSpecs's lines, each followed by
 // "\n", an empty list an empty file. The agent hashes these bytes for its `SPECS <sha256>` record, so the hub must hash
 // exactly these bytes too: this is the one place they are made (scripts/agent-specs.mjs prints them).
-export function specsFileText(registry,machine){
- const text=systemsSpecs(registry,machine);
+export function specsFileText(registry,device){
+ const text=systemsSpecs(registry,device);
  return text===''?'':text+'\n';
 }
 
@@ -147,7 +147,7 @@ function sourceOf(det,rec){
  if(det.kind==='cask')return {label:'Homebrew cask',url:`${BREW}/cask/${det.cask}`};
  return {label:det.kind,url:null};
 }
-// Installed version from the probe records of one item on one machine.
+// Installed version from the probe records of one item on one device.
 function installedOf(item,det,recs){
  const ok=(recs||[]).filter(r=>r.kind!=='missing'&&r.kind!=='unsupported');
  if(!ok.length)return {version:null,raw:null,path:(recs||[])[0]?.detail||null};
@@ -198,10 +198,10 @@ function freshStatus({installed,build,scheme,upstream,up}){
  return {status:c<0?'update':c>0?'ahead':'current',latest};
 }
 
-function softwareRows(registry,machines,upstream){
+function softwareRows(registry,devices,upstream){
  const rows=[];
- for(const item of registry.items||[])for(const [machine,det] of Object.entries(item.detect||{})){
-  const host=machines[machine];if(!host)continue;
+ for(const item of registry.items||[])for(const [device,det] of Object.entries(item.detect||{})){
+  const host=devices[device];if(!host)continue;
   const recs=own(host.software,item.id),inst=installedOf(item,det,recs),up=det.upstream||item.upstream;
   const res=upstream?.results?.[upstreamKey(up)]||null;
   // A rule the probe refused (unknown kind, or a cmd rule with arguments beyond a version flag).
@@ -209,22 +209,22 @@ function softwareRows(registry,machines,upstream){
   const st=refused?{status:'unknown',latest:null,note:refused.detail==='unsupported-args'?'Pravidlo cmd smí programu předat jen přepínač verze (--version, -version, -v, -V, version).':'Tenhle druh pravidla sonda nezná.'}
    :host.complete||recs?versionStatus({installed:inst.version,build:inst.build,scheme:item.scheme,upstream:res,up}):{status:'unknown',latest:null,note:'Stroj nebyl prozkoumán.'};
   const run=own(host.running,item.id);
-  rows.push({id:item.id,name:item.name,category:item.category,machine,installed:inst.version,raw:inst.raw,build:inst.build||null,path:inst.path,others:inst.others||[],
+  rows.push({id:item.id,name:item.name,category:item.category,device,installed:inst.version,raw:inst.raw,build:inst.build||null,path:inst.path,others:inst.others||[],
    source:sourceOf(det,(recs||[]).find(r=>r.kind===det.kind)),latest:st.latest,latestUrl:res?.url||null,publishedAt:res?.publishedAt||null,upstreamType:up?.type||null,
    status:st.status,note:st.note||null,...(st.noteT?{noteT:st.noteT}:{}),running:run?run.state:null,runLabel:run?.label||det.launchd||null,stale:Boolean(host.stale),
    // Inventory entries (data/knowledge.json ids) this row describes, when the id/name heuristic would miss them.
    inventory:Array.isArray(det.inventory)?det.inventory.filter(x=>typeof x==='string').map(x=>clean(x,80)).filter(Boolean).slice(0,10):[],
-   // Upstream freshness, separate from the machine snapshot's `stale`.
+   // Upstream freshness, separate from the device snapshot's `stale`.
    upstreamStale:Boolean(res?.stale||res&&!res.ok),upstreamError:res?.stale||res&&!res.ok?res.error||null:null,upstreamCheckedAt:res?.ok?res.checkedAt||null:null,upstreamFailedAt:res?.failedAt||null});
  }
- for(const [machine,host] of Object.entries(machines)){
-  for(const a of host.apps||[])rows.push({id:`app:${a.name}`,name:a.name,category:'nas-apps',machine,installed:a.human||a.version,raw:a.version,path:null,others:[],
+ for(const [device,host] of Object.entries(devices)){
+  for(const a of host.apps||[])rows.push({id:`app:${a.name}`,name:a.name,category:'nas-apps',device,installed:a.human||a.version,raw:a.version,path:null,others:[],
    source:a.custom?{label:'Vlastní aplikace (custom app)',url:null}:{...field('label',tx('TrueNAS katalog · {train}',{train:a.train||'?'})),url:`https://apps.truenas.com/catalog/${a.catalogApp||a.name}/`},
    latest:a.upgrade?(a.latestHuman||a.latest):a.human,latestUrl:null,publishedAt:null,upstreamType:'truenas-app',
    status:a.upgrade?'update':'current',note:a.upgrade&&a.latestHuman===a.human?'Stejná verze aplikace, nový obraz kontejneru.':a.custom?'Vlastní aplikace: aktualizace = nový obraz.':null,
    running:a.state==='RUNNING'?'running':a.state==='STOPPED'?'absent':String(a.state||'').toLowerCase(),runLabel:a.state,stale:Boolean(host.stale)});
   for(const d of host.docker||[]){const [image,tag='latest']=d.image.split(/:(?=[^/]+$)/);
-   rows.push({id:`docker:${d.name}`,name:d.name,category:'containers',machine,installed:tag,raw:d.image,path:null,others:[],
+   rows.push({id:`docker:${d.name}`,name:d.name,category:'containers',device,installed:tag,raw:d.image,path:null,others:[],
     source:{...field('label',tx('Docker obraz {image}',{image})),url:image.includes('/')?`https://hub.docker.com/r/${image}`:`https://hub.docker.com/_/${image}`},
     latest:null,latestUrl:null,publishedAt:d.created,upstreamType:'docker',status:tag==='latest'?'floating':'n/a',
     ...(tag==='latest'?field('note',tx('Plovoucí tag :latest, obraz z {date}; novější verze se pozná až podle digestu.',{date:String(d.created||'?').slice(0,10)})):{note:null}),running:/^Up/.test(d.status)?'running':'absent',runLabel:d.status,stale:Boolean(host.stale)});}
@@ -233,7 +233,7 @@ function softwareRows(registry,machines,upstream){
 }
 
 // --- operating system --------------------------------------------------------------------------
-// The reader kind of a machine decides how its record is read: mac or nas from site.json → ssh.probe, mac, linux or
+// The reader kind of a device decides how its record is read: mac or nas from site.json → ssh.probe, mac, linux or
 // windows from the platform an agent reports. Never the HOST platform (Linux for the NAS and a Linux agent alike).
 // A caller that passes no kind gets what the HOST platform said before kinds existed.
 const kindOf=(host,kind)=>kind||(host.platform==='linux'?'nas':'mac');
@@ -298,7 +298,7 @@ function windowsSummary(host){
  return {name:host.os.name||'Windows',version:host.os.version||null,build:host.os.build||null,kernel:host.os.kernel||null,updates,
   status:!w?.checked?'unknown':updates.length?'update':'current',error:w?.error||null};
 }
-// The nftables verdict for a Linux machine: an input chain that drops or rejects is a firewall; accept-only or no
+// The nftables verdict for a Linux device: an input chain that drops or rejects is a firewall; accept-only or no
 // input hook at all is unfiltered ingress. unknown says why it was not read.
 function nftCheck(host,{unknown,acceptOnly}){
  const pol=(host.nft?.inputPolicies||[]).filter(p=>p.policy!=='none');
@@ -376,7 +376,7 @@ function nasChecks(host,os){
 }
 
 // --- push agents ---------------------------------------------------------------------------------
-// docs/agent.md §3 → Who wins over the collectors. Per machine, between the collector's record C and the agent's A:
+// docs/agent.md §3 → Who wins over the collectors. Per device, between the collector's record C and the agent's A:
 // 1. current: C when complete, not stale and younger than the collector's stale-after (7.5 h); A while it is fresh
 //    (receivedAt + 3 × interval). If only one is current, it wins; if neither, the newer, shown stale.
 // 2. coverage: when both are current, A wins only if it covers at least what C covers (systems: C with HOST root 1
@@ -384,7 +384,7 @@ function nasChecks(host,os){
 //    carries; SSH keys: HOST root).
 // 3. time: otherwise the newer wins, a tie to the agent. A's time is receivedAt (the hub's clock); C's the earlier of
 //    its probedAt and its file's modification time (the hub's clock), so a collector clock ahead cannot win. A
-//    collector record that never carried a probe (the placeholder of a machine never reached) has no time: it loses.
+//    collector record that never carried a probe (the placeholder of a device never reached) has no time: it loses.
 // c and a: {current, time (ms)} or null; a.covers as in 2.
 export function pickSource(c,a){
  if(!a)return c?'collector':null;
@@ -394,10 +394,10 @@ export function pickSource(c,a){
  const ct=Number.isFinite(c.time)?c.time:-Infinity,at=Number.isFinite(a.time)?a.time:-Infinity;
  return at>=ct?'agent':'collector';
 }
-// A collector record's time in ms: the earlier of its probedAt (the collecting machine's clock when the probe came
+// A collector record's time in ms: the earlier of its probedAt (the collecting host's clock when the probe came
 // back) and the file's modification time. A record written before probedAt existed has the earlier of the file's
 // collectedAt and its own HOST time (a record kept from an earlier run is no newer than that run). A record with
-// neither never carried a probe (collect-systems' placeholder for a machine it could not reach): NaN, no time at all.
+// neither never carried a probe (collect-systems' placeholder for a device it could not reach): NaN, no time at all.
 export function collectorTime(record,{collectedAt=null,fileTime=null}={}){
  const probed=Date.parse(record?.probedAt),host=Date.parse(record?.collectedAt);
  const own=Number.isFinite(probed)?[probed]:Number.isFinite(host)?[host,Date.parse(collectedAt)]:[];
@@ -420,8 +420,8 @@ const READ_RECORDS={
 export const covered=(h,id)=>h.privileged?.[id]===true&&(READ_RECORDS[id]?.(h)??true);
 /**
  * One agent's systems record: parseSystemsProbe(os + updates + packages) with the hub's receive time in place of the
- * HOST time (the machine's own value kept as machineCollectedAt; the macOS uptime is worked out first, from two values
- * of the machine's own clock), stale while it is no news. → the record, or null without an os part.
+ * HOST time (the device's own value kept as deviceCollectedAt; the macOS uptime is worked out first, from two values
+ * of the device's own clock), stale while it is no news. → the record, or null without an os part.
  */
 export function agentSystemsHost(record,{now=Date.now()}={}){
  const parts=record?.parts||{},os=parts.os;
@@ -429,31 +429,31 @@ export function agentSystemsHost(record,{now=Date.now()}={}){
  const h=parseSystemsProbe(SYSTEMS_PARTS.flatMap(n=>Array.isArray(parts[n]?.records)?parts[n].records:[]).join('\n'));
  const fresh=freshUntil(os)>now;
  const withheld=SYSTEMS_PARTS.flatMap(n=>(Array.isArray(parts[n]?.withheld)?parts[n].withheld:[]).map(w=>({part:n,tag:w.tag,field:w.field,reason:w.reason,count:w.count})));
- return {...h,machineCollectedAt:h.collectedAt,collectedAt:os.receivedAt,source:'agent',stale:!fresh,lastError:null,kind:READER_KINDS[record.platform],fresh,withheld};
+ return {...h,deviceCollectedAt:h.collectedAt,collectedAt:os.receivedAt,source:'agent',stale:!fresh,lastError:null,kind:READER_KINDS[record.platform],fresh,withheld};
 }
-// One machine's agent record that cannot be read is left out (its collector record stands), never the whole answer.
+// One device's agent record that cannot be read is left out (its collector record stands), never the whole answer.
 const readable=(record,now)=>{try{return agentSystemsHost(record,{now});}catch{return null;}};
 function joinAgents({snapshot,probed,agents,now,snapshotTime}){
  const usable=(Array.isArray(agents)?agents:[]).map(e=>({id:e?.id,name:e?.name,host:readable(e?.record,now)})).filter(x=>typeof x.id==='string'&&x.host);
  if(!usable.length)return null;
- const hosts={...(snapshot?.machines||{})},sources={},list=probed.map(m=>({...m})),limit=staleAfter(COLLECTORS.systems)*1000;
+ const hosts={...(snapshot?.devices||{})},sources={},list=probed.map(m=>({...m})),limit=staleAfter(COLLECTORS.systems)*1000;
  for(const {id,name,host:a} of usable){
   let m=list.find(x=>x.id===id);
   if(m?.kind==='nas')continue;// the NAS stays agent-less: it never has two reader kinds
-  const C=m?snapshot?.machines?.[id]:null,cTime=C?collectorTime(C,{collectedAt:snapshot?.collectedAt,fileTime:snapshotTime}):NaN;
+  const C=m?snapshot?.devices?.[id]:null,cTime=C?collectorTime(C,{collectedAt:snapshot?.collectedAt,fileTime:snapshotTime}):NaN;
   const c=C?{current:Boolean(C.complete)&&!C.stale&&Number.isFinite(cTime)&&now-cTime<=limit,time:cTime}:null;
   const need=C?.root?systemsPrivileged(m.kind||'mac'):[];
   const winner=pickSource(c,{current:a.fresh,time:Date.parse(a.collectedAt),covers:need.every(p=>covered(a,p))});
   if(!m){m={id,name:name||id,kind:a.kind};list.push(m);}
   const {fresh,kind,withheld,source,...record}=a;
-  if(winner==='agent'){hosts[id]=record;m.kind=kind;sources[id]={source:'agent',sourceAt:a.collectedAt,machineCollectedAt:a.machineCollectedAt,withheld};}
+  if(winner==='agent'){hosts[id]=record;m.kind=kind;sources[id]={source:'agent',sourceAt:a.collectedAt,deviceCollectedAt:a.deviceCollectedAt,withheld};}
   else{if(!c.current)hosts[id]={...C,stale:true};sources[id]={source:'collector',sourceAt:Number.isFinite(cTime)?new Date(cTime).toISOString():null};}
  }
  const fresh=usable.filter(x=>x.host.fresh).length;
- return {hosts,list,sources,agentTimes:usable.map(x=>x.host.collectedAt),agents:{machines:usable.length,fresh,noNews:usable.length-fresh}};
+ return {hosts,list,sources,agentTimes:usable.map(x=>x.host.collectedAt),agents:{devices:usable.length,fresh,noNews:usable.length-fresh}};
 }
 
-// One machine's line of the trend (history.jsonl of the collector, <state>/agent/history.jsonl of the agents).
+// One device's line of the trend (history.jsonl of the collector, <state>/agent/history.jsonl of the agents).
 export const historyEntry=m=>({os:m.summary.osUpdate,software:m.summary.softwareUpdates,apps:m.summary.appUpdates,warn:m.summary.checks.warn,crit:m.summary.checks.crit,stale:m.stale});
 
 // --- payload ------------------------------------------------------------------------------------
@@ -461,24 +461,24 @@ export const historyEntry=m=>({os:m.summary.osUpdate,software:m.summary.software
 // (the boot time's microseconds were taken for its seconds). Such a value is not shown.
 const plausibleUptime=s=>Number.isFinite(s)&&s>=0&&s<20*365*86400?s:null;
 // collector (additive): where the two snapshots stand (collector-state.mjs) and where the watch list comes from.
-// provenance (additive): the same as sources (server/provenance.mjs): the machine snapshot (id systems), the
+// provenance (additive): the same as sources (server/provenance.mjs): the device snapshot (id systems), the
 // release check (id upstream) and the watch list file (id watch), so a page can show the part it draws.
 //
 // agents (docs/agent.md §3 → Who wins over the collectors): [{id, name, record}], the push agents' stored reports
-// (server/agent-store.mjs) of machines that exist now. Without any, the answer is what the collector alone gives,
+// (server/agent-store.mjs) of devices that exist now. Without any, the answer is what the collector alone gives,
 // byte for byte. snapshotTime: the snapshot file's modification time (ms, the hub's clock).
-export function buildSystems({snapshot,upstream,registry,machines:probed=systemMachines(loadedSite()),now=Date.now(),watchSource=null,watchFile=null,agents=[],snapshotTime=null}){
+export function buildSystems({snapshot,upstream,registry,devices:probed=systemDevices(loadedSite()),now=Date.now(),watchSource=null,watchFile=null,agents=[],snapshotTime=null}){
  const joined=joinAgents({snapshot,probed,agents,now,snapshotTime});
- const machines=joined?joined.hosts:snapshot?.machines||{},list=joined?joined.list:probed;
- const software=softwareRows(registry||{items:[]},machines,upstream);
+ const devices=joined?joined.hosts:snapshot?.devices||{},list=joined?joined.list:probed;
+ const software=softwareRows(registry||{items:[]},devices,upstream);
  const out=list.map(m=>{
-  const host=machines[m.id],from=joined?.sources[m.id]||null;
+  const host=devices[m.id],from=joined?.sources[m.id]||null;
   if(!host)return {...m,reachable:false,stale:false,error:'Zatím neprozkoumáno.',os:null,checks:[],listening:[],brewOutdated:[],summary:null};
   const kind=kindOf(host,m.kind),os=osSummary(host,kind),checks=kind==='nas'?nasChecks(host,os):kind==='linux'?linuxChecks(host,os):kind==='windows'?windowsChecks(host,os):macChecks(host,os);
   const exposed=host.listening.filter(l=>l.scope!=='loopback');
   const ports=new Set(exposed.map(l=>l.port)).size;
   checks.push(check('exposed','Porty otevřené do sítě',exposed.length?'info':'ok',tx('Portů: {n}',{n:ports},`${ports} portů`),[...new Set(exposed.map(l=>`${l.port} ${l.proc}`))].sort((x,y)=>parseInt(x)-parseInt(y)).slice(0,40).join(' · ')));
-  const rows=software.filter(r=>r.machine===m.id);
+  const rows=software.filter(r=>r.device===m.id);
   const count=(list,st)=>list.filter(x=>x.state===st).length;
   return {...m,reachable:Boolean(host.complete),stale:Boolean(host.stale),error:host.lastError||(host.errors||[])[0]||null,collectedAt:host.collectedAt,
    hw:{model:host.hw.model||null,cpu:host.hw.cpu||null,ramGb:host.hw.memBytes?Math.round(host.hw.memBytes/1e9):null,cpus:host.hw.cpus},uptimeSeconds:plausibleUptime(host.uptimeSeconds),
@@ -486,11 +486,11 @@ export function buildSystems({snapshot,upstream,registry,machines:probed=systemM
    summary:{osUpdate:os.status==='update'?1:0,softwareUpdates:rows.filter(r=>r.status==='update'&&!['nas-apps','containers'].includes(r.category)).length,
     appUpdates:rows.filter(r=>r.status==='update'&&r.category==='nas-apps').length,unknown:rows.filter(r=>['unknown'].includes(r.status)).length,
     checks:{ok:count(checks,'ok'),warn:count(checks,'warn'),crit:count(checks,'crit'),info:count(checks,'info'),unknown:count(checks,'unknown')}},
-   // Only for a machine an agent reports on: which record won and its time (docs/agent.md §3).
+   // Only for a device an agent reports on: which record won and its time (docs/agent.md §3).
    ...(from||{})};
  });
  const times=out.map(m=>m.collectedAt).filter(Boolean).sort();
- // The collector's own time: without agents, as it always was; with them, from the machines the collector's records won.
+ // The collector's own time: without agents, as it always was; with them, from the devices the collector's records won.
  const collectorTimes=joined?out.filter(m=>joined.sources[m.id]?.source!=='agent').map(m=>m.collectedAt).filter(Boolean).sort():times;
  const collectorAt=snapshot?.collectedAt||collectorTimes.at(-1)||null;
  const collectedAt=joined?newestOf([collectorAt,...joined.agentTimes]):collectorAt;
@@ -502,18 +502,18 @@ export function buildSystems({snapshot,upstream,registry,machines:probed=systemM
  return {schemaVersion:SYSTEMS_SCHEMA,generatedAt:new Date(now).toISOString(),collectedAt,oldestCollectedAt:times[0]||null,
   collectedFrom:snapshot?.collectedFrom||null,upstreamCheckedAt:upstream?.checkedAt||null,
   upstreamFailed:Object.values(upstream?.results||{}).filter(r=>r&&(r.stale||!r.ok)).length,categories:{...(registry?.categories||{}),'nas-apps':'Aplikace na NAS','containers':'Kontejnery (Docker)'},
-  machines:out,software,
+  devices:out,software,
   collector,
   provenance:provenance([
-   collectorSource(collector,{id:'systems',run:readRun(snapshot?.run),host:snapshot?.collectedFrom||'',count:collected,unit:'machines'}),
-   joined?{kind:'telemetry',id:'agents',source:'push agent',count:joined.agents.machines,unit:'machines',lastAt:newestOf(joined.agentTimes)}:null,
+   collectorSource(collector,{id:'systems',run:readRun(snapshot?.run),host:snapshot?.collectedFrom||'',count:collected,unit:'devices'}),
+   joined?{kind:'telemetry',id:'agents',source:'push agent',count:joined.agents.devices,unit:'devices',lastAt:newestOf(joined.agentTimes)}:null,
    items||upstream?collectorSource(collector.upstream,{id:'upstream',run:readRun(upstream?.run),count:Object.keys(upstream?.results||{}).length,unit:'sources'}):null,
    watchSource==='local'?{kind:'config',id:'watch',source:watchFile||'software-watch.json',count:items,unit:'items'}:null])};
 }
 // What the versions and protection pages need before there is a snapshot: is anything configured, and what.
 export function systemsSetup(site,{now=Date.now()}={}){
- const probed=systemMachines(site);
- return {...collectorState('systems',{configured:probed.length>0,now}),machines:probed,siteMachines:site.machines.length};
+ const probed=systemDevices(site);
+ return {...collectorState('systems',{configured:probed.length>0,now}),devices:probed,siteDevices:site.devices.length};
 }
 
 // upstream:false leaves upstream.json unread (the release check is turned off: server/core/security.mjs).
@@ -522,12 +522,12 @@ export const systemsDirectory=directory=>process.env.SYSTEMS_DIR||path.join(dire
 export async function loadSystems(directory,{registryFile=watchPath(),site=loadedSite(),now=Date.now(),upstream:withUpstream=true,agents=[]}={}){
  const dir=systemsDirectory(directory),file=path.join(dir,'snapshot.json');
  const reporting=(Array.isArray(agents)?agents:[]).filter(e=>e?.record?.parts?.os);
- // Only a snapshot that is not there yet leaves the agents' machines alone; one that cannot be read is null, as before.
+ // Only a snapshot that is not there yet leaves the agents' devices alone; one that cannot be read is null, as before.
  let snapshot=null;try{snapshot=JSON.parse(await readFile(file,'utf8'));}catch(e){if(e.code!=='ENOENT'||!reporting.length)return null;}
  const snapshotTime=reporting.length&&snapshot?(await stat(file).catch(()=>null))?.mtimeMs??null:null;
  const upstream=withUpstream?await readFile(path.join(dir,'upstream.json'),'utf8').then(JSON.parse).catch(()=>null):null;
  const watch=await readWatch({file:registryFile});
  // The watch list by the name people know it under: its path inside the checkout, else just the file name.
  const rel=registryFile?path.relative(path.resolve(import.meta.dirname,'..'),registryFile):'',watchFile=!registryFile?null:rel&&!rel.startsWith('..')&&!path.isAbsolute(rel)?rel:path.basename(registryFile);
- return buildSystems({snapshot,upstream,registry:watch.registry,machines:systemMachines(site),now,watchSource:watch.source,watchFile,agents:reporting,snapshotTime});
+ return buildSystems({snapshot,upstream,registry:watch.registry,devices:systemDevices(site),now,watchSource:watch.source,watchFile,agents:reporting,snapshotTime});
 }

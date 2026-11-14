@@ -129,12 +129,12 @@ export function gitLfsPage({me}={}){
   put(repo,el('option',{value:''},t('Všechny repozitáře')),...[...new Set(repos)].sort().map(r=>el('option',{value:r},r)));
   conn.value=o.connections.some(c=>c.id===keep[0])?keep[0]:'';repo.value=repos.includes(keep[1])?keep[1]:'';
  }
- // Where the files live, as the inventory has it: the host's machine and, when it keeps LFS elsewhere, the store's.
+ // Where the files live, as the inventory has it: the host's device and, when it keeps LFS elsewhere, the store's.
  function placementLine(pl){
   if(!pl?.service)return null;
-  // An administrator follows the machine to its page under Integrations → Machines.
-  const m=x=>{const name=el('strong',{},x.machineName||x.machine||t('neznámý stroj'));
-   return x.machine&&me?.role==='admin'?el('a',{href:`#integrations/machine/${encodeURIComponent(x.machine)}`,title:t('Integrace stroje')},name):name;};
+  // An administrator follows the device to its page under Integrations → Devices.
+  const m=x=>{const name=el('strong',{},x.deviceName||x.device||t('neznámý stroj'));
+   return x.device&&me?.role==='admin'?el('a',{href:`#integrations/device/${encodeURIComponent(x.device)}`,title:t('Integrace stroje')},name):name;};
   return el('p',{class:'gl-conn-place'},t('Běží na'),' ',m(pl.service),
    pl.storage?[' · ',t('LFS soubory leží na'),' ',m(pl.storage),el('span',{class:'gl-hint'},' (',pl.storage.name,')')]:[' · ',t('LFS soubory u hostu')],
    el('span',{class:'gl-hint'},' · ',t('podle inventáře')));
@@ -235,7 +235,7 @@ export function gitLfsPage({me}={}){
   const commitLink=c=>c?el('span',{},i.repoUrl?el('a',{href:`${i.repoUrl}/commit/${c.sha}`,target:'_blank',rel:'noopener noreferrer',class:'gl-mono'},short(c.sha)):el('span',{class:'gl-mono'},short(c.sha)),' · ',when(c.at)):'—';
   const dl=(k,v)=>[el('dt',{},k),el('dd',{},v)];
   // The LFS store is per host (Forgejo and Gitea have one [lfs] storage per instance), so it comes from the connection.
-  const pl=state.overview?.connections?.find(c=>c.id===i.connection)?.placement,mn=x=>x.machineName||x.machine||t('neznámý stroj');
+  const pl=state.overview?.connections?.find(c=>c.id===i.connection)?.placement,mn=x=>x.deviceName||x.device||t('neznámý stroj');
   const place=pl?.storage?`${mn(pl.storage)} · ${pl.storage.name}`:pl?.service?`${mn(pl.service)} · ${t('u hostu')}`:null;
   const d=el('dialog',{class:'gl-dialog','aria-labelledby':'gl-detail-title'},
    el('div',{class:'gl-dialog-head'},el('div',{},el('h2',{id:'gl-detail-title'},(i.currentPaths[0]||i.paths[0]||t('LFS objekt')).split('/').pop()),el('p',{class:'gl-hint gl-mono'},i.repo)),

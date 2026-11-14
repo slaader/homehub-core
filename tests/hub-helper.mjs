@@ -12,8 +12,8 @@ import {fileURLToPath} from 'node:url';
 export const SITE=loadSite({file:fileURLToPath(new URL('./fixtures/site.json',import.meta.url))});
 export const credentials={username:'admin',...hashPassword('administrator-test-password')};
 export const knowledge=()=>({schema:1,updated_at:'2026-11-08',entries:[
- {id:'studio',kind:'machine',name:'Mac Studio',verified_at:'2026-11-08'},
- {id:'studio-llama-swap',kind:'runtime',machine:'studio',name:'llama-swap',address:'127.0.0.1:8081',verified_at:'2026-11-08'}]});
+ {id:'studio',kind:'device',name:'Mac Studio',verified_at:'2026-11-08'},
+ {id:'studio-llama-swap',kind:'runtime',device:'studio',name:'llama-swap',address:'127.0.0.1:8081',verified_at:'2026-11-08'}]});
 
 // Starts a hub on a temp dir with a local inventory; returns helpers. The env flag is read at creation.
 // extra: more createHandler options (fakes for Thermo checks and the like).

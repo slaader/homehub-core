@@ -20,12 +20,12 @@ const views=await import('../public/views.js');
 const {t}=await import('../public/i18n.js');
 
 const DOC=()=>({schema:1,updated_at:'2026-11-08',entries:[
- {id:'mini',kind:'machine',name:'Mac mini',address:'10.0.0.25',verified_at:'2026-11-01'},
- {id:'mini-gateway',kind:'runtime',name:'Gateway',machine:'mini',address:'http://mini.example.lan:8790',version:'2.1',verified_at:'2026-11-08',depends_on:[{id:'mini-certs',kind:'cert'}],secrets:[{what:'Voice token',store:'unknown'}]},
- {id:'mini-certs',kind:'tool',name:'Cert sync',machine:'mini',verified_at:'2026-11-03',confidence:'inferred',notes:'renews the gateway certificate'},
- {id:'mini-old',kind:'runtime',name:'Old proxy',machine:'mini',verified_at:'2026-10-01'},
- {id:'nas',kind:'machine',name:'NAS',verified_at:'2026-11-02'},
- {id:'nas-photos',kind:'runtime',name:'Photos',machine:'nas',address:'https://photos.example.lan',verified_at:'2026-11-05'},
+ {id:'mini',kind:'device',name:'Mac mini',address:'10.0.0.25',verified_at:'2026-11-01'},
+ {id:'mini-gateway',kind:'runtime',name:'Gateway',device:'mini',address:'http://mini.example.lan:8790',version:'2.1',verified_at:'2026-11-08',depends_on:[{id:'mini-certs',kind:'cert'}],secrets:[{what:'Voice token',store:'unknown'}]},
+ {id:'mini-certs',kind:'tool',name:'Cert sync',device:'mini',verified_at:'2026-11-03',confidence:'inferred',notes:'renews the gateway certificate'},
+ {id:'mini-old',kind:'runtime',name:'Old proxy',device:'mini',verified_at:'2026-10-01'},
+ {id:'nas',kind:'device',name:'NAS',verified_at:'2026-11-02'},
+ {id:'nas-photos',kind:'runtime',name:'Photos',device:'nas',address:'https://photos.example.lan',verified_at:'2026-11-05'},
  {id:'dns',kind:'external',name:'DNS provider',verified_at:'2026-11-04'}]});
 let reply=()=>({status:200,body:{doc:DOC(),gaps:['entry "mini-gateway": where "Voice token" is kept is not recorded','entry "mini-old": no address'],hashes:{}}});
 const posts=[];
@@ -57,7 +57,7 @@ test('an empty hub shows what the map is for, the agent prompt, the MCP snippet 
   assert.equal(one('.ui-empty').children.find(c=>c.tagName==='h2').textContent,'The inventory map is empty');
   assert.equal(all('.inv-node').length,0);assert.equal(one('.inv-map-wrap'),null,'no empty map frame');
   const [prompt,snippet]=text('.ui-copy');
-  for(const word of ['inventory_describe','inventory_search','inventory_update','inventory_bulk_upsert','inventory:write','kind, machine, address, version and depends_on','never their value'])assert.ok(prompt.includes(word),word);
+  for(const word of ['inventory_describe','inventory_search','inventory_update','inventory_bulk_upsert','inventory:write','kind, device, address, version and depends_on','never their value'])assert.ok(prompt.includes(word),word);
   assert.equal(INVENTORY_PROMPT().includes('inventory_get'),true);
   assert.match(snippet,/claude mcp add --transport http home-hub .*\/mcp/);assert.match(snippet,/Authorization: Bearer hhk_…/);
   assert.equal(one('.ui-empty').children.find(c=>c.tagName==='ol').children.length,4);assert.ok(one('.ui-empty').textContent.includes('never its value')===false&&one('.ui-empty').textContent.includes('Never its value'));
@@ -92,7 +92,7 @@ test('a failed load says so and offers to try again',async()=>{
 test('the map: lanes with counts, a legend, zoom, and a search box that lights the matches',async()=>{
  localStorage.clear();await mount();
  assert.deepEqual(text('.inv-lane-label'),['MINI · M4','NAS · LINUX NAS','OUTSIDE THE HOUSE']);assert.deepEqual(text('.inv-lane-count'),['4','2','1']);
- assert.deepEqual(text('.inv-stat').slice(0,2),['2Machines','3Services']);
+ assert.deepEqual(text('.inv-stat').slice(0,2),['2Devices','3Services']);
  assert.match(one('.inv-legend').textContent,/Hardware.*Services.*Calls.*an arrow points at what is needed/);
  assert.equal(all('.inv-dim').length,0);assert.equal(one('.inv-count').textContent,'');
  await type('gateway');
@@ -121,8 +121,8 @@ test('the map: lanes with counts, a legend, zoom, and a search box that lights t
 
 test('what the browser saved before still loads: v3 orders are kept, new keys are optional, v1 is not thrown away',async()=>{
  // A layout written by the version before this one: no view, zoom, fit or controls.
- const old={spacing:'compact',lines:'all',depth:'direct',columns:'machine',together:false,focus:false,secretItems:false,hiddenCats:['saas'],soloPrev:null,
-  modes:{machine:{cols:['nas · Linux NAS','mini · M4'],order:{'mini · M4':['mini','mini-old','mini-gateway','mini-certs']}},category:{cols:null,order:{}}}};
+ const old={spacing:'compact',lines:'all',depth:'direct',columns:'device',together:false,focus:false,secretItems:false,hiddenCats:['saas'],soloPrev:null,
+  modes:{device:{cols:['nas · Linux NAS','mini · M4'],order:{'mini · M4':['mini','mini-old','mini-gateway','mini-certs']}},category:{cols:null,order:{}}}};
  localStorage.clear();localStorage.setItem('home-hub.inventory.map.v3',JSON.stringify(old));
  const loaded=layoutLoad();
  assert.deepEqual({...loaded,view:undefined,zoom:undefined,fit:undefined,controls:undefined},{...old,view:undefined,zoom:undefined,fit:undefined,controls:undefined},'every old key reads back as it was');
@@ -137,7 +137,7 @@ test('what the browser saved before still loads: v3 orders are kept, new keys ar
  // Only the first map's key (v1: positions per card): its display choices carry over, the key itself stays.
  const v1=JSON.stringify({pos:{mini:{x:10,y:20}},lanes:{},linked:[],spacing:'roomy',lines:'all',depth:'all'});
  localStorage.clear();localStorage.setItem('home-hub.inventory.map.v1',v1);
- assert.deepEqual([layoutLoad().spacing,layoutLoad().lines,layoutLoad().depth,layoutLoad().columns],['roomy','all','all','machine']);
+ assert.deepEqual([layoutLoad().spacing,layoutLoad().lines,layoutLoad().depth,layoutLoad().columns],['roomy','all','all','device']);
  await mount();
  const cards=all('.inv-node').filter(n=>spot(n)[0]===12).map(n=>spot(n)[1]).sort((a,b)=>a-b);
  assert.equal(cards[1]-cards[0],66,'roomy spacing from the v1 layout');
@@ -180,7 +180,7 @@ test('the table view sorts, filters and remembers that it was chosen',async()=>{
 
 test('table rows and their order are plain data',()=>{
  const rows=rowsOf(DOC()),by=id=>rows.find(r=>r.id===id);
- assert.deepEqual([by('mini').usedBy,by('mini').needs],[3,0],'what runs on a machine counts as using it');
+ assert.deepEqual([by('mini').usedBy,by('mini').needs],[3,0],'what runs on a device counts as using it');
  assert.deepEqual([by('mini-certs').usedBy,by('mini-gateway').needs,by('mini-gateway').unknown,by('mini-gateway').gap,by('mini-old').gap,by('nas-photos').gap],[1,1,1,true,true,false]);
  assert.equal(by('dns').place,'Outside the house');assert.equal(by('nas-photos').place,'nas · Linux NAS');
  assert.deepEqual(sortRows(rows,'links','desc').slice(0,2).map(r=>r.id),['mini','mini-certs']);
@@ -188,7 +188,7 @@ test('table rows and their order are plain data',()=>{
  assert.deepEqual(sortRows(rows,'nonsense').map(r=>r.name),sortRows(rows).map(r=>r.name));assert.equal(rows[0].id,'mini','sorting copies');
 });
 
-test('services are a view of the inventory page: one dense list with addresses, machines, dependents and verification',async()=>{
+test('services are a view of the inventory page: one dense list with addresses, devices, dependents and verification',async()=>{
  localStorage.clear();await mount(()=>inventoryView({role:'viewer'},'services'),{write:true});
  assert.deepEqual(all('.inv-tabs')[0].children.map(b=>[b.textContent,b.getAttribute('aria-pressed')]),[['Map','false'],['Table','false'],['Services','true']]);
  assert.equal(one('.ui-head').textContent.startsWith('InventoryServices'),true,'the header names the view');
@@ -196,9 +196,9 @@ test('services are a view of the inventory page: one dense list with addresses, 
  assert.equal(one('.inv-map-wrap'),null);
  const rows=()=>all('.inv-services')[0].children.find(c=>c.tagName==='tbody').children,names=()=>rows().map(r=>r.querySelector('.inv-rowbtn').textContent);
  const cells=r=>Object.fromEntries(r.children.map(c=>[c.getAttribute('data-label'),c.textContent]));
- // Sorted by machine, then name; every row says where, on what, who depends on it, what it needs and when it was checked.
+ // Sorted by device, then name; every row says where, on what, who depends on it, what it needs and when it was checked.
  assert.deepEqual(names(),['Gateway','Old proxy','Photos']);
- assert.deepEqual(cells(rows()[0]),{Service:'GatewayService · 2.1',Address:'http://mini.example.lan:8790',Machine:'mini · Mac mini M4','Depends on it':'nothing recorded',Needs:'Cert sync',Verified:'2026-11-08'});
+ assert.deepEqual(cells(rows()[0]),{Service:'GatewayService · 2.1',Address:'http://mini.example.lan:8790',Device:'mini · Mac mini M4','Depends on it':'nothing recorded',Needs:'Cert sync',Verified:'2026-11-08'});
  assert.equal(rows()[0].querySelector('.inv-addr').children[0].getAttribute('href'),'http://mini.example.lan:8790','a URL in the address is a link');
  assert.match(cells(rows()[1]).Address,/No address recorded/);assert.ok(rows()[1].classList.contains('gap'));
  assert.equal(one('.inv-count').textContent,'');assert.equal(all('.inv-count')[1].textContent,'3 services');
@@ -214,8 +214,8 @@ test('services are a view of the inventory page: one dense list with addresses, 
  fire(all('.inv-sort').find(b=>b.textContent.startsWith('Verified')),'click');assert.deepEqual(names(),['Old proxy','Photos','Gateway']);
  fire(rows()[2].querySelector('.inv-rel-item'),'click');assert.equal(one('.inv-detail').querySelector('.inv-title').textContent,'Cert sync');one('.inv-dialog').remove();
  fire(rows()[1],'click');assert.equal(one('.inv-detail').querySelector('.inv-title').textContent,'Photos','a row opens the entry');one('.inv-dialog').remove();
- assert.deepEqual(serviceGroups(DOC()).map(g=>[g.machine,g.services.length]),[['mini',2],['nas',1]]);
- const listed=serviceRows({entries:[...DOC().entries,{id:'app',kind:'tool',name:'App',machine:'mini',depends_on:[{id:'mini-gateway',kind:'call'}]}]});
+ assert.deepEqual(serviceGroups(DOC()).map(g=>[g.device,g.services.length]),[['mini',2],['nas',1]]);
+ const listed=serviceRows({entries:[...DOC().entries,{id:'app',kind:'tool',name:'App',device:'mini',depends_on:[{id:'mini-gateway',kind:'call'}]}]});
  assert.deepEqual(listed.find(r=>r.id==='mini-gateway').usedBy,[{id:'app',name:'App',kind:'call'}],'dependents are named, not just counted');
  assert.deepEqual(sortServices(listed,'usedBy','desc').map(r=>r.id),['mini-gateway','mini-old','nas-photos'],'rows without dependents sink');
  // No runtime entries: say what a service is and point at kind "runtime".
@@ -259,24 +259,24 @@ test('#services still works: it leads to the Services view; the header pill foll
 test('search, place names and store labels come from the site and from the entries',()=>{
  const doc=DOC();setCurrent(doc);
  const find=q=>doc.entries.filter(matcher(q)).map(e=>e.id);
- assert.deepEqual(find('NAS'),['nas','nas-photos'],'by machine id, name or place');assert.deepEqual(find('8790'),['mini-gateway']);assert.deepEqual(find('tool'),['mini-certs'],'by kind');
+ assert.deepEqual(find('NAS'),['nas','nas-photos'],'by device id, name or place');assert.deepEqual(find('8790'),['mini-gateway']);assert.deepEqual(find('tool'),['mini-certs'],'by kind');
  assert.equal(matcher('  '),null);assert.deepEqual(doc.entries.filter(matcher('gateway',e=>[e.name])).map(e=>e.id),['mini-gateway']);
  assert.equal(placeName('mini'),'mini · Mac mini M4','a place the site named');
- setCurrent({entries:[{id:'pi',kind:'machine',name:'Garage Pi'}]});
- assert.equal(placeName('pi'),'Garage Pi','a machine entry the site did not list');assert.equal(placeName('ghost'),'ghost');
+ setCurrent({entries:[{id:'pi',kind:'device',name:'Garage Pi'}]});
+ assert.equal(placeName('pi'),'Garage Pi','a device entry the site did not list');assert.equal(placeName('ghost'),'ghost');
  assert.deepEqual(store('keychain:pi'),['Keychain · Garage Pi','good']);assert.deepEqual(store('example-vault'),['example-vault','good'],'the site\'s own store');
  assert.deepEqual(store('drawer'),['drawer','']);assert.deepEqual(store('unknown'),['Not recorded','amber']);assert.deepEqual(store('app-env:proxy'),['App environment · proxy','info']);
- const suggestions=storeSuggestions([{id:'pi',kind:'machine',name:'Garage Pi'}]);
+ const suggestions=storeSuggestions([{id:'pi',kind:'device',name:'Garage Pi'}]);
  for(const s of ['passwords-app','example-vault','keychain:studio','keychain:pi','file:pi','unknown'])assert.ok(suggestions.includes(s),s);
  assert.ok(!suggestions.includes('keychain:router'),'a place in the Network lane holds no keychain');
  setCurrent(null);
 });
 
 test('the entry form sends only what changed, makes ids from names and reads export files',()=>{
- const entry={id:'gw',kind:'runtime',machine:'mini',name:'Gateway',address:':8790',data:null,notes:' kept ',secrets:[{what:'Token',store:'keychain:mini',ref:'gw.token',extra:'x'}],depends_on:[{id:'sync',kind:'cert'}]};
- const form=over=>({name:'Gateway',type:'',category:'',address:':8790',version:'',managed_by:'',login:'',config:'',data:'',notes:'kept',machine:'mini',secrets:[{what:'Token',store:'keychain:mini',ref:'gw.token'}],depends_on:[{id:'sync',kind:'cert'}],...over});
+ const entry={id:'gw',kind:'runtime',device:'mini',name:'Gateway',address:':8790',data:null,notes:' kept ',secrets:[{what:'Token',store:'keychain:mini',ref:'gw.token',extra:'x'}],depends_on:[{id:'sync',kind:'cert'}]};
+ const form=over=>({name:'Gateway',type:'',category:'',address:':8790',version:'',managed_by:'',login:'',config:'',data:'',notes:'kept',device:'mini',secrets:[{what:'Token',store:'keychain:mini',ref:'gw.token'}],depends_on:[{id:'sync',kind:'cert'}],...over});
  assert.deepEqual(changedFields(entry,form()),{},'an untouched form changes nothing: no null, whitespace or key-order noise');
- assert.deepEqual(changedFields(entry,form({address:'',version:'2',machine:'studio'})),{address:'',version:'2',machine:'studio'});
+ assert.deepEqual(changedFields(entry,form({address:'',version:'2',device:'studio'})),{address:'',version:'2',device:'studio'});
  assert.deepEqual(changedFields(entry,form({secrets:[]})),{secrets:[]});
  assert.deepEqual(changedFields(entry,form({depends_on:[{id:'sync',kind:'cert',label:'renews'}]})),{depends_on:[{id:'sync',kind:'cert',label:'renews'}]});
  assert.equal(slug('mini Žluťoučký Kůň 2'),'mini-zlutoucky-kun-2');assert.equal(slug('  --  '),'');assert.equal(slug('3D printer'),'x-3d-printer');
@@ -287,11 +287,11 @@ test('the entry form sends only what changed, makes ids from names and reads exp
    [JSON.stringify(Array.from({length:LIMITS.bulkEntries+1},(_,i)=>({id:`e${i}`}))),/more entries than one import can take \(500\)/]]){
   const r=parseImport(bad);assert.equal(r.entries,undefined);assert.match(t(r.error,r.vars),why);}
  // The checker's issues, said in the reader's language, with the reason translated too.
- const issues=check({schema:1,updated_at:'2026-11-08',entries:[{id:'gw',kind:'runtime',machine:'nowhere',name:'',login:'token=abcdef123456',verified_at:'2026-11-08',secrets:[{what:'T',store:'drawer',check:'printenv T'}],depends_on:[{id:'ghost',kind:'call'}]}]}).issues;
+ const issues=check({schema:1,updated_at:'2026-11-08',entries:[{id:'gw',kind:'runtime',device:'nowhere',name:'',login:'token=abcdef123456',verified_at:'2026-11-08',secrets:[{what:'T',store:'drawer',check:'printenv T'}],depends_on:[{id:'ghost',kind:'call'}]}]}).issues;
  const said=Object.fromEntries(issues.map(i=>[i.code,issueText(i)]));
- assert.equal(said['name-required'],'A name is required.');assert.equal(said['machine-required'],'Choose the machine it runs on.');
+ assert.equal(said['name-required'],'A name is required.');assert.equal(said['device-required'],'Choose the device it runs on.');
  assert.equal(said['secret-value'],'This looks like a secret value (an assignment of a secret). Record where it is stored, not the value.');
- assert.equal(said['secret-store'],'Unknown store “drawer”. Pick one from the list, or use a form such as keychain:<machine>.');
+ assert.equal(said['secret-store'],'Unknown store “drawer”. Pick one from the list, or use a form such as keychain:<device>.');
  assert.equal(said['secret-check'],'This command would print the secret (it prints an environment variable). Use one that only proves it exists.');
  assert.equal(said['dep-missing'],'There is no entry “ghost”.');assert.equal(said['gap-address'],'A service without an address counts as a gap.');
  assert.equal(issueText({code:'brand-new',text:'the checker\'s own words'}),'the checker\'s own words','an unknown code shows the checker\'s text');

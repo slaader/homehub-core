@@ -5,7 +5,7 @@
  "timeZone": "Europe/Berlin",
  "defaultLanguage": "en",
  "publicOrigin": "https://hub.example.lan",
- "machines": [
+ "devices": [
   {"id": "studio", "name": "Mac Studio", "hostname": "studio.example.lan", "ip": "10.0.0.10", "role": "computer", "picture": "/images/desktop.png", "thermoId": "studio",
    "hardware": {"cpu": "16c M4 Max", "gpu": "40c", "ramGb": 64, "diskTotalBytes": 1000000000000},
    "ssh": {"alias": "local", "probe": "mac"}},

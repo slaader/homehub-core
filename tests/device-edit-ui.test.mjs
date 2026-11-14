@@ -1,6 +1,6 @@
-// Every machine tile on the overview has an Edit action for a writer: the tile is a card holding its link and, beside
+// Every device tile on the overview has an Edit action for a writer: the tile is a card holding its link and, beside
 // it (never inside it), an Edit button. Dragging and keyboard moves still work on that card, the button never lifts it.
-// A site machine's editor (the NAS, a Thermo Mac, the router) edits its display metadata as an override and sends only
+// A site device's editor (the NAS, a Thermo Mac, the router) edits its display metadata as an override and sends only
 // what the person changed (or what was overridden already); a Thermo Mac and the router say who reads their telemetry.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -23,7 +23,7 @@ const {setLang}=await import('../public/i18n.js');
 setLang('cs');
 const meta={agent:'Thermo',adapters:[{id:'thermo',name:'Thermo',platform:'macos'},{id:'node-exporter',name:'Linux (Node Exporter)',platform:'linux'},{id:'prometheus',name:'Linux (Prometheus)',platform:'linux'}]};
 const HASH='a'.repeat(64);
-const siteMachine=over=>({id:'nas',name:'NAS',hostname:'nas.example.lan',ip:'10.0.0.74',role:'nas',kind:'nas',source:'site',readOnly:true,platform:null,telemetryEditable:true,telemetryBinding:null,
+const siteDevice=over=>({id:'nas',name:'NAS',hostname:'nas.example.lan',ip:'10.0.0.74',role:'nas',kind:'nas',source:'site',readOnly:true,platform:null,telemetryEditable:true,telemetryBinding:null,
  props:{cpu:'Ryzen 9 7900',gpu:'—',ramGb:64,diskTotalBytes:66e12,pools:3},telemetry:{state:'not-installed',thermoId:null},picture:'/images/nas.png',image:null,
  siteOverride:{fields:[],hash:HASH,image:false,updatedAt:null,updatedBy:null},
  siteDefaults:{name:'NAS',hostname:'nas.example.lan',ip:'10.0.0.74',hardware:{cpu:'Ryzen 9 7900',gpu:'—',ramGb:64,diskTotalBytes:66e12},picture:'/images/nas.png',image:null},...over});
@@ -52,12 +52,12 @@ test('a tile card holds its link and an Edit button beside it; the button never 
  drag.destroy();grid.remove();
 });
 
-test('the overview wires an Edit button on every tile a writer may edit, outside the link; the machine page too',async()=>{
+test('the overview wires an Edit button on every tile a writer may edit, outside the link; the device page too',async()=>{
  const view=await readFile(new URL('../public/home-view.js',import.meta.url),'utf8'),css=await readFile(new URL('../public/home.css',import.meta.url),'utf8');
  assert.match(view,/const link=el\('a',\{class:'hv-tile-link',href:`#host-\$\{m\.id\}`/);
  assert.match(view,/const node=el\('div',\{class:'hv-tile','data-id':m\.id\},link,edit\);/,'the button is the link\'s sibling, not its child');
  assert.match(view,/if\(m\.added&&canEdit\)return \(\)=>openEditDevice/);assert.match(view,/if\(m\.source==='site'&&canEditSite\)return \(\)=>openSiteEdit/);
- assert.match(view,/'aria-label':t\('Upravit \{name\}',\{name:m\.name\}\)/,'the button names its machine');
+ assert.match(view,/'aria-label':t\('Upravit \{name\}',\{name:m\.name\}\)/,'the button names its device');
  assert.match(view,/e\.preventDefault\(\);e\.stopPropagation\(\);open\(\);/,'a click on Edit never opens the page under it');
  assert.match(view,/Boolean\(editorOf\(m\)\)\]\.join/,'the tile is redrawn when the Edit action appears or goes');
  assert.match(view,/t\('Upravit stroj'\)/);
@@ -66,7 +66,7 @@ test('the overview wires an Edit button on every tile a writer may edit, outside
 });
 
 test('siteForm: an untouched value is not sent, a changed or already overridden one is; a built-in picture is sent',()=>{
- const m=siteMachine({name:'Storage',props:{cpu:'Ryzen 9 7900',gpu:'—',ramGb:128,diskTotalBytes:66e12,pools:3},pictureId:'server',siteOverride:{fields:['name','hardware.ramGb','picture'],hash:HASH,image:false}});
+ const m=siteDevice({name:'Storage',props:{cpu:'Ryzen 9 7900',gpu:'—',ramGb:128,diskTotalBytes:66e12,pools:3},pictureId:'server',siteOverride:{fields:['name','hardware.ramGb','picture'],hash:HASH,image:false}});
  const f=siteForm(m);
  assert.deepEqual(f.current(),{name:'Storage',hardware:{ramGb:128},picture:'server'});
  assert.equal(f.overridden('name'),true);assert.equal(f.overridden('cpu'),false);assert.equal(f.defaultText('name'),'NAS');assert.equal(f.defaultText('ramGb'),'64 GB');
@@ -79,26 +79,26 @@ test('siteForm: an untouched value is not sent, a changed or already overridden 
 
 test('the site editor of the NAS saves only what changed, over the site\'s values, and offers the reset when there is an override',async()=>{
  posts.length=0;
- const d=openSiteEdit({machine:siteMachine(),meta,onSaved:()=>{}});
+ const d=openSiteEdit({device:siteDevice(),meta,onSaved:()=>{}});
  const body=text(d);
  assert.match(body,/Upravit stroj/);assert.match(body,/2 · Co to je/);assert.match(body,/jen k zobrazení/);assert.match(body,/Z konfigurace webu/);
  assert.ok(!body.includes('Odebrat'),'no remove');assert.ok(!body.includes('Obnovit výchozí'),'no reset without an override');
  const [name]=inputs(d);assert.equal(name.value,'NAS');name.value='Storage';
  fire(all(d,n=>n.tagName==='form')[0],'submit');await tick();
  assert.deepEqual(posts.map(p=>p.url),['/api/home/devices/site']);
- assert.deepEqual(posts[0].body,{id:'nas',base:HASH,machine:{name:'Storage'}},'one changed field, the base it was read with');
+ assert.deepEqual(posts[0].body,{id:'nas',base:HASH,device:{name:'Storage'}},'one changed field, the base it was read with');
  // Nothing changed: nothing sent.
- posts.length=0;const again=openSiteEdit({machine:siteMachine(),meta,onSaved:()=>{}});fire(all(again,n=>n.tagName==='form')[0],'submit');await tick();
+ posts.length=0;const again=openSiteEdit({device:siteDevice(),meta,onSaved:()=>{}});fire(all(again,n=>n.tagName==='form')[0],'submit');await tick();
  assert.deepEqual(posts,[]);
- const edited=openSiteEdit({machine:siteMachine({name:'Storage',siteOverride:{fields:['name'],hash:HASH,image:false,updatedBy:'admin',updatedAt:'2026-11-11T10:00:00Z'}}),meta,onSaved:()=>{}});
+ const edited=openSiteEdit({device:siteDevice({name:'Storage',siteOverride:{fields:['name'],hash:HASH,image:false,updatedBy:'admin',updatedAt:'2026-11-11T10:00:00Z'}}),meta,onSaved:()=>{}});
  assert.match(text(edited),/Obnovit výchozí z konfigurace webu/);assert.match(text(edited),/Upraveno; konfigurace webu: NAS/);
 });
 
 test('a Thermo Mac and the router: a real editor, and a note on who reads their telemetry instead of providers',()=>{
- const mac=openSiteEdit({machine:siteMachine({id:'mini',name:'Mac mini',role:'computer',kind:'thermo',telemetryEditable:false,telemetry:{state:'ok',thermoId:'mini'}}),meta,onSaved:()=>{}});
+ const mac=openSiteEdit({device:siteDevice({id:'mini',name:'Mac mini',role:'computer',kind:'thermo',telemetryEditable:false,telemetry:{state:'ok',thermoId:'mini'}}),meta,onSaved:()=>{}});
  assert.match(text(mac),/agent Thermo podle konfigurace webu \(thermoId\)/);assert.ok(inputs(mac).length>=7,'name, address and hardware are editable');
  assert.deepEqual(all(mac,n=>n.getAttribute?.('name')==='had-telemetry'),[],'no provider choice, no Thermo disconnect');
  assert.ok(!text(mac).includes('Odpojit telemetrii'));
- const router=openSiteEdit({machine:siteMachine({id:'router',name:'Router',role:'router',kind:'router',telemetryEditable:false,telemetry:null}),meta,onSaved:()=>{}});
+ const router=openSiteEdit({device:siteDevice({id:'router',name:'Router',role:'router',kind:'router',telemetryEditable:false,telemetry:null}),meta,onSaved:()=>{}});
  assert.match(text(router),/adaptér routeru/);assert.ok(inputs(router).length>=7);
 });

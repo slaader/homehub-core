@@ -35,7 +35,7 @@ export async function load(file) {
 
 function line(e) {
   const where = e.address ? `  ${e.address}` : '';
-  return `${e.id.padEnd(22)} ${e.kind.padEnd(12)} ${(e.machine || '').padEnd(9)} ${e.name}${where}`;
+  return `${e.id.padEnd(22)} ${e.kind.padEnd(12)} ${(e.device || '').padEnd(9)} ${e.name}${where}`;
 }
 
 async function main(argv) {

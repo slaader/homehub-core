@@ -223,5 +223,5 @@ entered. That is server-side request forgery by design: the holder can point the
   token cannot be sent to an address of the editor's choosing.
 - `git-lfs:write` is not given to old write keys (`legacy: false`). The Editor role and the Admin role have it.
 
-Give `git-lfs:write` only to people and keys you would trust to make requests from the hub's machine. There is no
+Give `git-lfs:write` only to people and keys you would trust to make requests from the hub's host. There is no
 allowlist of hosts.

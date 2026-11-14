@@ -161,7 +161,7 @@ test('a loaded plugin: routes, scope checks, write log, MCP tool, manifest, asse
  // pollers and providers
  const handler=h.handler;await handler.start();assert.equal(handler.state('demo').ticks,1);await handler.stop();assert.equal(handler.state('demo').stopped,true);
  assert.deepEqual(handler.hub.collect('home.snapshots'),[{mini:{bridge:'demo',snapshot:null,notes:3}}]);
- const home=await (await get('/api/home')).json();assert.equal(home.machines.find(x=>x.id==='mini').bridge,'demo','core merges what providers return into the tiles');
+ const home=await (await get('/api/home')).json();assert.equal(home.devices.find(x=>x.id==='mini').bridge,'demo','core merges what providers return into the tiles');
 });
 
 test('the browser shell takes its pages from the manifest, not from a table of its own',async()=>{

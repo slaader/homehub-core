@@ -6,7 +6,7 @@
 import path from 'node:path';
 import {runStatus,settingsInput,settingsView,INTEGRATION_KINDS} from '../integrations.mjs';
 import {pluginsDirectories} from '../plugins.mjs';
-import {machinesOverview} from '../machine-facets.mjs';
+import {devicesOverview} from '../device-facets.mjs';
 
 const MESSAGES={
  invalid:[400,'INVALID_INPUT','Neplatný požadavek.'],
@@ -53,12 +53,12 @@ export async function integrationsList(hub){
 
 export default {
  id:'integrations',title:'Integrations',
- assets:['integrations-view.js','machines-view.js','integrations.css','i18n-en-integrations.js','i18n-en-machines.js'],
+ assets:['integrations-view.js','devices-view.js','integrations.css','i18n-en-integrations.js','i18n-en-devices.js'],
  nav:[{groupKey:'Správa',hash:'integrations',labelKey:'Integrace',view:'integrations-view.js#integrationsPage',admin:true,order:52,icon:'plug'}],
  routes:routes([
   {method:'GET',path:'/api/admin/integrations',handler:async({json,hub})=>json(200,await integrationsList(hub))},
-  // Integrations → Machines: every machine of the overview with what each module knows about it (server/machine-facets.mjs).
-  {method:'GET',path:'/api/admin/machines',handler:async({json,hub})=>json(200,await machinesOverview(hub))},
+  // Integrations → Devices: every device of the overview with what each module knows about it (server/device-facets.mjs).
+  {method:'GET',path:'/api/admin/devices',handler:async({json,hub})=>json(200,await devicesOverview(hub))},
   // {id, enabled}: turn one on or off. An integration with toggle:false refuses (its switch is elsewhere).
   {method:'POST',path:'/api/admin/integrations/toggle',async handler(c){
     const input=only(c.input,['id','enabled'],['id','enabled']);if(typeof input.enabled!=='boolean')fail('invalid','enabled must be true or false');
@@ -90,13 +90,13 @@ export default {
  ]),
  mcpInstructions:'Integrations: integrations_status lists what this hub reads from outside (telemetry, router, collectors, bridges) with the state of each. Turning one on or off is for an administrator in the web UI.',
  mcpTools:[{name:'integrations_status',scope:'read',title:'Home Hub: integrations',
-  description:'Every integration of this Home Hub (Thermo telemetry, the router adapter, the collectors, bridges to other machines, plugin sources) with its kind and its state: ok, stale, error, off, not-configured or disabled (turned off by an administrator; its data is then not shown). Read-only: an administrator turns integrations on and off in the web UI.',
+  description:'Every integration of this Home Hub (Thermo telemetry, the router adapter, the collectors, bridges to other computers, plugin sources) with its kind and its state: ok, stale, error, off, not-configured or disabled (turned off by an administrator; its data is then not shown). Read-only: an administrator turns integrations on and off in the web UI.',
   inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,openWorldHint:false},
   async run(args,{hub}){
    const rows=await Promise.all(hub.registry.integrations.map(async i=>{const s=await runStatus(i,hub.state(i.module),hub,{enabled:hub.integrationEnabled(i.id)});return {id:i.id,kind:i.kind,state:s.state,summary:s.summary};}));
    return {integrations:rows};}}],
  apiDocs:[{title:'Integrace',routes:[
-  ['GET','/api/admin/machines','admin','Stroje: každý stroj z Přehledu a co o něm ví který modul (telemetrie, zálohy, verze, SSH klíče, inventář, LLM runtimy, Git LFS): nastaveno, nenastaveno, varování, vypnuto.'],
+  ['GET','/api/admin/devices','admin','Stroje: každý stroj z Přehledu a co o něm ví který modul (telemetrie, zálohy, verze, SSH klíče, inventář, LLM runtimy, Git LFS): nastaveno, nenastaveno, varování, vypnuto.'],
   ['GET','/api/admin/integrations','admin','Všechny integrace: stav, kde jsou nastavené, vypínač, test a nastavení. MCP integrations_status (jen čtení).'],
   ['POST','/api/admin/integrations/toggle','admin','{id, enabled}: zapnout nebo vypnout integraci. Zapíše se do auditu.'],
   ['POST','/api/admin/integrations/test','admin','{id}: spustit test integrace teď.'],

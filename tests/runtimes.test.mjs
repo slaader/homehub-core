@@ -211,23 +211,23 @@ test('reads are bounded, time out, never follow redirects and send the token onl
 // --- endpoints ---------------------------------------------------------------------------------------
 test('an endpoint is an origin on loopback or inside the site networks, with no path and no credentials',()=>{
  const lan=['10.0.0.0/24'];
- assert.deepEqual(runtimeEndpoint({machine:'studio',kind:'llama-swap',url:'http://127.0.0.1:8081'},{lanCidrs:lan}),{id:'studio-8081',machine:'studio',kind:'llama-swap',url:'http://127.0.0.1:8081',name:''});
- assert.equal(runtimeEndpoint({machine:'mini',url:'http://10.0.0.25:11434/',name:' Ollama '},{lanCidrs:lan}).url,'http://10.0.0.25:11434');
- assert.equal(runtimeEndpoint({machine:'mini',url:'http://localhost:1234'},{lanCidrs:lan}).kind,'auto');
- assert.equal(runtimeEndpoint({machine:'mini',url:'http://[::1]:1234'},{lanCidrs:lan}).url,'http://[::1]:1234');
- assert.equal(runtimeEndpoint({machine:'mini',url:'http://192.168.1.20:8000'}).url,'http://192.168.1.20:8000','no lanCidrs: a private address is fine');
- const bad=[[{machine:'mini',url:'http://10.0.1.5:8000'},/site networks/],[{machine:'mini',url:'http://8.8.8.8:80'},/private/],
-  [{machine:'mini',url:'http://user:pw@127.0.0.1:8000'},/credentials/],[{machine:'mini',url:'http://127.0.0.1:8081/upstream/x'},/origin only/],
-  [{machine:'mini',url:'http://127.0.0.1:8081/?a=1'},/origin only/],[{machine:'mini',url:'http://studio.example.lan:8081'},/IP address/],
-  [{machine:'mini',url:'ftp://127.0.0.1'},/http/],[{machine:'mini',url:'http://127.0.0.1:1',kind:'magic'},/kind/],[{machine:'Bad!',url:'http://127.0.0.1:1'},/machine/],
-  [{machine:'mini',url:'http://127.0.0.1:1',token:'x'},/unknown field/],[{machine:'mini',url:'http://127.0.0.1:1',id:'X'},/id/]];
+ assert.deepEqual(runtimeEndpoint({device:'studio',kind:'llama-swap',url:'http://127.0.0.1:8081'},{lanCidrs:lan}),{id:'studio-8081',device:'studio',kind:'llama-swap',url:'http://127.0.0.1:8081',name:''});
+ assert.equal(runtimeEndpoint({device:'mini',url:'http://10.0.0.25:11434/',name:' Ollama '},{lanCidrs:lan}).url,'http://10.0.0.25:11434');
+ assert.equal(runtimeEndpoint({device:'mini',url:'http://localhost:1234'},{lanCidrs:lan}).kind,'auto');
+ assert.equal(runtimeEndpoint({device:'mini',url:'http://[::1]:1234'},{lanCidrs:lan}).url,'http://[::1]:1234');
+ assert.equal(runtimeEndpoint({device:'mini',url:'http://192.168.1.20:8000'}).url,'http://192.168.1.20:8000','no lanCidrs: a private address is fine');
+ const bad=[[{device:'mini',url:'http://10.0.1.5:8000'},/site networks/],[{device:'mini',url:'http://8.8.8.8:80'},/private/],
+  [{device:'mini',url:'http://user:pw@127.0.0.1:8000'},/credentials/],[{device:'mini',url:'http://127.0.0.1:8081/upstream/x'},/origin only/],
+  [{device:'mini',url:'http://127.0.0.1:8081/?a=1'},/origin only/],[{device:'mini',url:'http://studio.example.lan:8081'},/IP address/],
+  [{device:'mini',url:'ftp://127.0.0.1'},/http/],[{device:'mini',url:'http://127.0.0.1:1',kind:'magic'},/kind/],[{device:'Bad!',url:'http://127.0.0.1:1'},/device/],
+  [{device:'mini',url:'http://127.0.0.1:1',token:'x'},/unknown field/],[{device:'mini',url:'http://127.0.0.1:1',id:'X'},/id/]];
  for(const [input,why] of bad)assert.throws(()=>runtimeEndpoint(input,{lanCidrs:input.url.includes('8.8.8.8')||input.url.includes('192.168')?[]:lan}),why,JSON.stringify(input));
- // In site.json: the machine must be one of the file's, ids and URLs once.
- const site=validateSite({lanCidrs:lan,machines:[{id:'studio'}],runtimes:[{machine:'studio',kind:'omlx',url:'http://127.0.0.1:8000'}]});
+ // In site.json: the device must be one of the file's, ids and URLs once.
+ const site=validateSite({lanCidrs:lan,devices:[{id:'studio'}],runtimes:[{device:'studio',kind:'omlx',url:'http://127.0.0.1:8000'}]});
  assert.equal(site.runtimes[0].id,'studio-8000');assert.ok(Object.isFrozen(site.runtimes));
- assert.throws(()=>validateSite({machines:[{id:'studio'}],runtimes:[{machine:'mini',url:'http://127.0.0.1:8000'}]}),/runtimes\[0\]\.machine/);
- assert.throws(()=>validateSite({machines:[{id:'studio'}],runtimes:[{machine:'studio',url:'http://127.0.0.1:8000'},{machine:'studio',id:'other',url:'http://127.0.0.1:8000'}]}),/URL twice/);
- assert.throws(()=>validateSite({machines:[{id:'studio'}],runtimes:[{machine:'studio',url:'http://127.0.0.1:8000/x'}]}),/site config: runtimes\[0\]\.url/);
+ assert.throws(()=>validateSite({devices:[{id:'studio'}],runtimes:[{device:'mini',url:'http://127.0.0.1:8000'}]}),/runtimes\[0\]\.device/);
+ assert.throws(()=>validateSite({devices:[{id:'studio'}],runtimes:[{device:'studio',url:'http://127.0.0.1:8000'},{device:'studio',id:'other',url:'http://127.0.0.1:8000'}]}),/URL twice/);
+ assert.throws(()=>validateSite({devices:[{id:'studio'}],runtimes:[{device:'studio',url:'http://127.0.0.1:8000/x'}]}),/site config: runtimes\[0\]\.url/);
  assert.deepEqual(validateSite({}).runtimes,[]);
 });
 
@@ -245,7 +245,7 @@ test('the same runtime from two providers appears once, with the richer data, ga
   {id:'omlx',name:'oMLX',kind:'omlx',source:'přímo z runtimu',status:'running',url:'http://127.0.0.1:8000',version:'mlx-lm 0.32',models:[{id:'Qwen3.8-27B-8bit',state:'loaded',sizeGb:28.8,contextTokens:262144,ttlRemainingSeconds:null}],stats:[]}]},
   mini:{source:'přímo z runtimu',observedAt:'2026-11-10T10:00:00Z',runtimes:[{id:'ollama',name:'Ollama',status:'running',url:'http://10.0.0.25:11434',models:[],stats:[]}]}};
  const merged=mergeRuntimeReports([direct,plugin]);
- assert.deepEqual(merged.mini,direct.mini,'a machine one provider reports is passed through');
+ assert.deepEqual(merged.mini,direct.mini,'a device one provider reports is passed through');
  const s=merged.studio;
  assert.deepEqual(s.runtimes.map(r=>r.id),['llama-swap','omlx','comfy'],'each runtime once');
  const ls=s.runtimes[0];
@@ -255,7 +255,7 @@ test('the same runtime from two providers appears once, with the richer data, ga
  // A stale plugin (state unknown) loses to a fresh direct read even when it lists more.
  const stale=structuredClone(plugin);stale.studio.runtimes[0].status='unknown';stale.studio.runtimes[0].models.push({id:'old',state:'unknown'});
  const staleMerge=mergeRuntimeReports([direct,{studio:{...stale.studio,observedAt:'2026-11-10T09:00:00Z',runtimes:stale.studio.runtimes.slice(0,1)}}]).studio,again=staleMerge.runtimes[0];
- assert.equal(staleMerge.observedAt,'2026-11-10T10:00:00Z','a stale plugin that only filled gaps does not date the machine');
+ assert.equal(staleMerge.observedAt,'2026-11-10T10:00:00Z','a stale plugin that only filled gaps does not date the device');
  assert.equal(again.status,'running');assert.ok(!again.models.some(m=>m.id==='old'),'nothing stale is added');
  // The same order either way round: who reports first does not decide.
  assert.deepEqual(mergeRuntimeReports([plugin,direct]).studio.runtimes.find(r=>r.id==='llama-swap').models[0].contextTokens,262144);
@@ -266,7 +266,7 @@ test('the same runtime from two providers appears once, with the richer data, ga
 test('the poller keeps the last answer per endpoint: ok, then refused (stopped), stale after errors, waiting before the first read',async()=>{
  let now=Date.parse('2026-11-10T10:00:00Z');const f=fixture('ollama');let mode='ok';
  const fetcher=async(url,init)=>mode==='refused'?refused():mode==='broken'?new Response('{}',{status:500}):fakeRuntime(f).fetcher(url,init);
- const endpoints=[{id:'mini-11434',machine:'mini',kind:'auto',url:'http://10.0.0.25:11434',name:''}];
+ const endpoints=[{id:'mini-11434',device:'mini',kind:'auto',url:'http://10.0.0.25:11434',name:''}];
  const tokens={get:async()=>null,ids:async()=>[]};
  const p=createRuntimePoller({endpoints:async()=>endpoints,tokens,fetcher,now:()=>now});
  assert.equal(p.status('mini-11434').state,'waiting');assert.deepEqual(await p.report(),{});
@@ -285,13 +285,13 @@ test('the poller keeps the last answer per endpoint: ok, then refused (stopped),
  const off=createRuntimePoller({endpoints:async()=>endpoints,tokens,fetcher:async()=>{throw new Error('must not read');},enabled:async()=>false});
  await off.poll({force:true});assert.deepEqual(await off.report(),{});
 });
-test('two runtimes of one kind on a machine get distinct ids; a store and the site combine, the site winning a clash',async t=>{
+test('two runtimes of one kind on a device get distinct ids; a store and the site combine, the site winning a clash',async t=>{
  const dir=await mkdtemp(path.join(os.tmpdir(),'hub-rt-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  const store=createEndpointStore(path.join(dir,'runtimes-config.json'));
- await store.upsert({id:'studio-8000',machine:'studio',kind:'auto',url:'http://127.0.0.1:9000',name:'',by:'alice',source:'agent'});
- await store.upsert({id:'studio-11435',machine:'studio',kind:'ollama',url:'http://127.0.0.1:11435',name:'',by:'alice',source:'agent'});
- await store.upsert({id:'studio-11434',machine:'studio',kind:'ollama',url:'http://127.0.0.1:11434',name:'',by:'alice',source:'ui'});
- const site={runtimes:[{id:'studio-8000',machine:'studio',kind:'omlx',url:'http://127.0.0.1:8000',name:''}]};
+ await store.upsert({id:'studio-8000',device:'studio',kind:'auto',url:'http://127.0.0.1:9000',name:'',by:'alice',source:'agent'});
+ await store.upsert({id:'studio-11435',device:'studio',kind:'ollama',url:'http://127.0.0.1:11435',name:'',by:'alice',source:'agent'});
+ await store.upsert({id:'studio-11434',device:'studio',kind:'ollama',url:'http://127.0.0.1:11434',name:'',by:'alice',source:'ui'});
+ const site={runtimes:[{id:'studio-8000',device:'studio',kind:'omlx',url:'http://127.0.0.1:8000',name:''}]};
  const all=await allEndpoints(site,store);
  assert.deepEqual(all.map(e=>[e.id,e.source,e.readOnly]),[['studio-8000','site',true],['studio-11435','agent',false],['studio-11434','ui',false]]);
  const p=createRuntimePoller({endpoints:async()=>all.slice(1),tokens:{get:async()=>null,ids:async()=>[]},fetcher:fakeRuntime(fixture('ollama')).fetcher});
@@ -301,7 +301,7 @@ test('two runtimes of one kind on a machine get distinct ids; a store and the si
 });
 
 // --- HTTP, MCP, tokens and the integration --------------------------------------------------------------
-test('endpoints over HTTP and MCP: add, list with the last read, machine page, token write-only, remove; site entries read-only',async t=>{
+test('endpoints over HTTP and MCP: add, list with the last read, device page, token write-only, remove; site entries read-only',async t=>{
  const log=[];const routes={...fixture('llama-swap'),...fixture('omlx')};
  // One fake host: :8081 answers as llama-swap, :8000 as oMLX, :11434 refuses.
  const fetcher=async(url,init)=>{const u=new URL(url);log.push({port:u.port,path:u.pathname,method:init.method,auth:init.headers?.Authorization||null});
@@ -322,28 +322,28 @@ test('endpoints over HTTP and MCP: add, list with the last read, machine page, t
  assert.equal(parse(await call(reader.headers,'runtime_endpoints_list',{})).endpoints.length,0);
 
  // Add through MCP: the answer carries the first read.
- const added=parse(await call(agent.headers,'runtime_endpoint_upsert',{endpoint:{machine:'studio',url:'http://127.0.0.1:8081'}}));
+ const added=parse(await call(agent.headers,'runtime_endpoint_upsert',{endpoint:{device:'studio',url:'http://127.0.0.1:8081'}}));
  assert.equal(added.created,true);assert.equal(added.id,'studio-8081');assert.equal(added.endpoint.state,'ok');assert.equal(added.endpoint.detectedKind,'llama-swap');assert.equal(added.endpoint.source,'agent');
  // …and over HTTP.
- const omlx=await h.post('/api/runtimes/endpoints',{endpoint:{id:'studio-omlx',machine:'studio',kind:'omlx',url:'http://127.0.0.1:8000',name:'oMLX'}},agent.headers);
+ const omlx=await h.post('/api/runtimes/endpoints',{endpoint:{id:'studio-omlx',device:'studio',kind:'omlx',url:'http://127.0.0.1:8000',name:'oMLX'}},agent.headers);
  assert.equal(omlx.status,201);
- assert.equal((await h.post('/api/runtimes/endpoints',{endpoint:{machine:'studio',url:'http://127.0.0.1:11434'}},agent.headers)).status,201);
- // Refusals: a reader, a bad URL, an unknown machine, a URL twice, unknown fields.
- assert.equal((await h.post('/api/runtimes/endpoints',{endpoint:{machine:'studio',url:'http://127.0.0.1:1'}},reader.headers)).status,403);
- const bad=await h.post('/api/runtimes/endpoints',{endpoint:{machine:'studio',url:'http://127.0.0.1:8081/upstream/x'}},agent.headers);
+ assert.equal((await h.post('/api/runtimes/endpoints',{endpoint:{device:'studio',url:'http://127.0.0.1:11434'}},agent.headers)).status,201);
+ // Refusals: a reader, a bad URL, an unknown device, a URL twice, unknown fields.
+ assert.equal((await h.post('/api/runtimes/endpoints',{endpoint:{device:'studio',url:'http://127.0.0.1:1'}},reader.headers)).status,403);
+ const bad=await h.post('/api/runtimes/endpoints',{endpoint:{device:'studio',url:'http://127.0.0.1:8081/upstream/x'}},agent.headers);
  assert.equal(bad.status,400);assert.equal((await bad.json()).error.code,'RUNTIME_ENDPOINT_INVALID');
- assert.equal((await (await h.post('/api/runtimes/endpoints',{endpoint:{machine:'nope',url:'http://127.0.0.1:1'}},agent.headers)).json()).error.code,'RUNTIME_ENDPOINT_INVALID');
- assert.equal((await (await h.post('/api/runtimes/endpoints',{endpoint:{id:'dup',machine:'studio',url:'http://127.0.0.1:8081'}},agent.headers)).json()).error.code,'RUNTIME_ENDPOINT_CONFLICT');
- assert.match((await call(agent.headers,'runtime_endpoint_upsert',{endpoint:{machine:'studio',url:'http://8.8.8.8:80'}})).content[0].text,/Invalid endpoint.*Nothing was changed/);
+ assert.equal((await (await h.post('/api/runtimes/endpoints',{endpoint:{device:'nope',url:'http://127.0.0.1:1'}},agent.headers)).json()).error.code,'RUNTIME_ENDPOINT_INVALID');
+ assert.equal((await (await h.post('/api/runtimes/endpoints',{endpoint:{id:'dup',device:'studio',url:'http://127.0.0.1:8081'}},agent.headers)).json()).error.code,'RUNTIME_ENDPOINT_CONFLICT');
+ assert.match((await call(agent.headers,'runtime_endpoint_upsert',{endpoint:{device:'studio',url:'http://8.8.8.8:80'}})).content[0].text,/Invalid endpoint.*Nothing was changed/);
 
  // The list: states, sources, never a token.
  const list=await (await fetch(h.origin+'/api/runtimes/endpoints',{headers:reader.headers})).json();
  assert.deepEqual(list.endpoints.map(e=>[e.id,e.state,e.source]),[['studio-8081','ok','agent'],['studio-omlx','ok','agent'],['studio-11434','off','agent']]);
  assert.ok(list.readPaths.includes('/v1/models')&&!list.readPaths.some(p=>p.includes('upstream')));
 
- // The machine page: runtimes from the direct reads; the stack blocks follow them (no bridge here).
+ // The device page: runtimes from the direct reads; the stack blocks follow them (no bridge here).
  const home=await (await fetch(h.origin+'/api/home',{headers:reader.headers})).json();
- const studio=home.machines.find(m=>m.id==='studio');
+ const studio=home.devices.find(m=>m.id==='studio');
  assert.deepEqual(studio.runtimes.runtimes.map(r=>[r.id,r.status]),[['llama-swap','running'],['omlx','running'],['runtime','stopped']]);
  assert.equal(studio.runtimes.source,'přímo z runtimu');
  const block=studio.stack.blocks.find(b=>b.id==='omlx');assert.equal(block.state,'on');assert.deepEqual(block.models.filter(m=>m.state==='loaded').map(m=>m.id),['Qwen3.8-27B-8bit']);
@@ -373,10 +373,10 @@ test('endpoints over HTTP and MCP: add, list with the last read, machine page, t
  assert.deepEqual(st.configuredBy,[{source:'agent',name:'agent-rt'}]);
  assert.ok(st.lastSuccessAt&&st.lastError==='studio-11434: refused');
  assert.equal((await integration.test(h.handler.hub.state('runtimes'),h.handler.hub)).items.length,3);
- // Disabled by the integrations page: no reads, nothing on the machine page.
+ // Disabled by the integrations page: no reads, nothing on the device page.
  h.handler.hub.integrationEnabled=async id=>id!=='runtimes.endpoints';
  assert.equal((await integration.status(h.handler.hub.state('runtimes'),h.handler.hub)).state,'disabled');
- const quiet=await (await fetch(h.origin+'/api/home',{headers:reader.headers})).json();assert.equal(quiet.machines.find(m=>m.id==='studio').runtimes,null);
+ const quiet=await (await fetch(h.origin+'/api/home',{headers:reader.headers})).json();assert.equal(quiet.devices.find(m=>m.id==='studio').runtimes,null);
  delete h.handler.hub.integrationEnabled;
 
  // Remove: the endpoint and its token go.
@@ -387,10 +387,10 @@ test('endpoints over HTTP and MCP: add, list with the last read, machine page, t
  assert.deepEqual(parse(await call(reader.headers,'runtime_endpoints_list',{})).endpoints.map(e=>e.id),['studio-8081']);
 });
 test('endpoints from the site configuration are read-only through the API; none configured is "not-configured"',async t=>{
- const site=validateSite({lanCidrs:['10.0.0.0/24'],machines:[{id:'studio'}],runtimes:[{id:'studio-ollama',machine:'studio',kind:'ollama',url:'http://127.0.0.1:11434'}]});
+ const site=validateSite({lanCidrs:['10.0.0.0/24'],devices:[{id:'studio'}],runtimes:[{id:'studio-ollama',device:'studio',kind:'ollama',url:'http://127.0.0.1:11434'}]});
  const h=await hub(t,{site,runtimeFetch:fakeRuntime(fixture('ollama')).fetcher});
  const agent=await h.account('agent-ro',['home:write']);
- const r=await h.post('/api/runtimes/endpoints',{endpoint:{id:'studio-ollama',machine:'studio',url:'http://127.0.0.1:11500'}},agent.headers);
+ const r=await h.post('/api/runtimes/endpoints',{endpoint:{id:'studio-ollama',device:'studio',url:'http://127.0.0.1:11500'}},agent.headers);
  assert.equal(r.status,403);assert.equal((await r.json()).error.code,'RUNTIME_ENDPOINT_READ_ONLY');
  assert.equal((await h.post('/api/runtimes/endpoints/remove',{id:'studio-ollama'},agent.headers)).status,403);
  const integration=h.handler.registry.integrations.find(g=>g.id==='runtimes.endpoints');
@@ -400,20 +400,20 @@ test('endpoints from the site configuration are read-only through the API; none 
  const empty=await hub(t);
  assert.equal((await integration.status(empty.handler.hub.state('runtimes'),empty.handler.hub)).state,'not-configured');
 });
-test('a machine page without a bridge: a direct runtime fills the stack block that names it; an unknown one leaves it alone',()=>{
+test('a device page without a bridge: a direct runtime fills the stack block that names it; an unknown one leaves it alone',()=>{
  const thermo={status:()=>({}),seconds:()=>[],minutes:()=>[],live:()=>({}),disks:()=>({}),interval:()=>({intervalSeconds:30,lastPollAt:null}),hosts:()=>[]};
  const runtimes={studio:{source:'přímo z runtimu',observedAt:new Date().toISOString(),runtimes:[
   {id:'mlx-serve',name:'mlx-serve',kind:'mlx-serve',status:'running',url:'http://127.0.0.1:11234',version:'26.10.3',models:[{id:'pack',state:'loaded',sizeGb:9.2,contextTokens:null,ttlRemainingSeconds:null}],stats:[]},
   {id:'omlx',name:'oMLX',kind:'omlx',status:'unknown',url:'http://127.0.0.1:8000',version:null,models:[{id:'m',state:'unknown'}],stats:[]}]}};
  const home=buildHome({site:SITE,thermo,runtimes});
- const blocks=home.machines.find(m=>m.id==='studio').stack.blocks;
+ const blocks=home.devices.find(m=>m.id==='studio').stack.blocks;
  const mx=blocks.find(b=>b.id==='mlxserve');assert.equal(mx.state,'on');assert.deepEqual(mx.models,[{id:'pack',state:'loaded',sizeGb:9.2,path:null,ttlSeconds:null,ttlRemainingSeconds:null}]);
  assert.equal(blocks.find(b=>b.id==='omlx').state,'off','the site stack without a live service, as before');
 });
 test('a collected stack marks the blocks of its ENGINE layer as engines (not a server in it, not the hardware)',async()=>{
- const {machineFromDescriptor}=await import('../server/home-data.mjs');
+ const {deviceFromDescriptor}=await import('../server/home-data.mjs');
  const d={schemaVersion:1,id:'studio',stack:{layers:['INPUT','RUNTIME','ENGINE','HARDWARE'],cols:['mlx'],blocks:[
   {id:'omlx',layer:1,col0:0,col1:0,title:'oMLX',service:'omlx'},{id:'em',layer:2,col0:0,col1:0,title:'Apple MLX'},{id:'odd',layer:2,col0:0,col1:0,title:'x',service:'y'},{id:'hw',layer:3,col0:0,col1:0,title:'M5'}]}};
- const blocks=machineFromDescriptor(d,SITE).stack.blocks;
+ const blocks=deviceFromDescriptor(d,SITE).stack.blocks;
  assert.deepEqual(blocks.map(b=>[b.id,Boolean(b.engine),Boolean(b.hw)]),[['omlx',false,false],['em',true,false],['odd',false,false],['hw',false,true]]);
 });

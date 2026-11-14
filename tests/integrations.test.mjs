@@ -168,11 +168,11 @@ test('a generic hub: honest not-configured cards, and pages of a turned-off inte
  const router=await (await fetch(h.origin+'/api/router',{headers:h.admin})).json();
  assert.equal(router.state,'disabled');assert.equal(router.disabled.by,'admin');assert.equal(router.provenance.kinds[0].state,'disabled');
  const systems=await fetch(h.origin+'/api/systems',{headers:h.admin});assert.equal(systems.status,200);
- const sdoc=await systems.json();assert.equal(sdoc.disabled.id,'security.systems');assert.deepEqual(sdoc.machines,[]);assert.equal(sdoc.provenance.kinds[0].state,'disabled');
+ const sdoc=await systems.json();assert.equal(sdoc.disabled.id,'security.systems');assert.deepEqual(sdoc.devices,[]);assert.equal(sdoc.provenance.kinds[0].state,'disabled');
  const keys=await (await fetch(h.origin+'/api/security',{headers:h.admin})).json();assert.equal(keys.disabled.id,'security.keys');
  const collectors=await (await fetch(h.origin+'/api/collectors',{headers:h.admin})).json();
  assert.equal(collectors.collectors.systems.state,'disabled');assert.equal(collectors.collectors.security.state,'disabled');
- const history=await (await fetch(h.origin+'/api/home/history?machine=mini&range=30m',{headers:h.admin})).json();
+ const history=await (await fetch(h.origin+'/api/home/history?device=mini&range=30m',{headers:h.admin})).json();
  assert.equal(history.source,'vypnuto');assert.deepEqual(history.points,[]);
  const home=await (await fetch(h.origin+'/api/home',{headers:h.admin})).json();
  assert.deepEqual(home.integrations.disabled.map(i=>i.id).sort(),['home.thermo','router.adapter','security.keys','security.systems']);

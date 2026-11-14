@@ -1,12 +1,12 @@
 // The push agent's local configuration (docs/agent.md §4 and §5): <config>/agent.json, written by the installer on
-// this machine and never by the hub. Read and checked at every start; a file that does not pass stops the agent.
+// this computer and never by the hub. Read and checked at every start; a file that does not pass stops the agent.
 //
 //   {"schema": 1, "hub": "https://hub.example.lan", "trust": {"pins": [a, b]} | {"ca": "/abs/hub-ca.pem"} | absent,
 //    "intervals": {<part>: seconds}, "keys": "own|all-accounts|off", "runtimes": [{"id", "kind", "url"}]}
 //
 // Transport trust fails closed: no "trust" is Node's store with hostname verification; "ca" a PEM file that replaces
 // it; "pins" one or two SHA-256 fingerprints of the hub's leaf certificate. http:// only to the literal 127.0.0.1.
-// No machine: the hub takes it from the key.
+// No device: the hub takes it from the key.
 import path from 'node:path';
 import {PARTS,AGENT_PLATFORMS,loopbackOrigin} from '../../server/agent-report.mjs';
 import {validEndpointHost,CERT_PIN} from '../../server/endpoint-http.mjs';
@@ -29,7 +29,7 @@ export function parseHub(value){
  if(!secure&&u.protocol!=='http:')return null;
  // validEndpointHost takes no IPv6 literal, so [::1] fails here too.
  if(!validEndpointHost(u.hostname))return null;
- // Plain HTTP only to the hub's own machine, by the literal address: never a name (localhost), never ::1.
+ // Plain HTTP only to the hub's own host, by the literal address: never a name (localhost), never ::1.
  if(!secure&&u.hostname!=='127.0.0.1')return null;
  return {host:u.hostname,port:Number(u.port||(secure?443:80)),secure,origin:u.origin};
 }
@@ -47,7 +47,7 @@ export function parseConfig(text,{platform}){
  if(extra.length)return no(`agent.json has unknown field(s): ${extra.join(', ')}`);
  if(raw.schema!==CONFIG_SCHEMA)return no(`agent.json → schema must be ${CONFIG_SCHEMA}`);
  const hub=parseHub(raw.hub);
- if(!hub)return no('agent.json → hub must be an origin: https://<name or IPv4>[:port], or http://127.0.0.1[:port] on the hub\'s own machine');
+ if(!hub)return no('agent.json → hub must be an origin: https://<name or IPv4>[:port], or http://127.0.0.1[:port] on the hub\'s own host');
  let trust={mode:'system'};
  if(raw.trust!==undefined){
   if(!plain(raw.trust)||Object.keys(raw.trust).length!==1)return no('agent.json → trust is {"pins": [...]} or {"ca": "/abs/file.pem"}');

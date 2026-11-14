@@ -1,15 +1,15 @@
-// "LLM & Diffusion" page boundary (core): local language and generative models across every machine.
+// "LLM & Diffusion" page boundary (core): local language and generative models across every device.
 // Core reads no runtime itself. Everything comes from two extension points (docs/plugins.md):
-//   home.runtimes      {machineId: {source, observedAt, runtimes[]}}   what runs where right now
+//   home.runtimes      {deviceId: {source, observedAt, runtimes[]}}   what runs where right now
 //   runtimes.requests  {id, read({from, to, limit}) → items[]}        request history, when a provider keeps one
-// plus what the site already says about a machine's stack (site.json → machines[].stack, runtime_publish), which
+// plus what the site already says about a device's stack (site.json → devices[].stack, runtime_publish), which
 // names tools no provider watches (mflux, ComfyUI, …): those are listed as "known, no live stats".
 // The functions here are pure: the module (server/core/models.mjs) collects, these shape. Nothing is invented:
-// a client that the data does not name is "Unattributed", a client machine that it does not name is null.
+// a client that the data does not name is "Unattributed", a client device that it does not name is null.
 const text=(v,n=120)=>typeof v==='string'?v.replace(/[\u0000-\u001f\u007f]/g,'').trim().slice(0,n):'';
 const num=(v,max=1e12)=>typeof v==='number'&&Number.isFinite(v)&&v>=0&&v<=max?v:null;
 const plain=v=>v&&typeof v==='object'&&!Array.isArray(v);
-const MACHINE=/^[a-z0-9][a-z0-9_-]{0,31}$/;
+const DEVICE=/^[a-z0-9][a-z0-9_-]{0,31}$/;
 const timeMs=v=>{const t=typeof v==='number'?v:Date.parse(v);return Number.isFinite(t)?t:null;};
 const iso=ms=>ms==null?null:new Date(ms).toISOString();
 export const median=values=>{const s=values.filter(v=>Number.isFinite(v)).sort((a,b)=>a-b);if(!s.length)return null;const m=Math.floor(s.length/2);return s.length%2?s[m]:(s[m-1]+s[m])/2;};
@@ -22,7 +22,7 @@ export const MODEL_RANGES=Object.freeze({'24h':{ms:86400000,stepMs:3600000},'7d'
 // Traffic this recent drives the moving particles of the wiring diagram; older traffic only weighs the line.
 export const RECENT_MS=15*60000;
 export const UNATTRIBUTED='Unattributed';
-export const LIMITS=Object.freeze({machines:24,runtimes:20,models:60,requests:200000,series:8,graphModels:48,clients:40});
+export const LIMITS=Object.freeze({devices:24,runtimes:20,models:60,requests:200000,series:8,graphModels:48,clients:40});
 
 // ── Kind of a model ─────────────────────────────────────────────────────────────────────────────
 // Explicit kind first, then what the runtime says it can do (capabilities), then its engine family and its
@@ -59,7 +59,7 @@ export function requestKind(path){
  if(/\/audio\//.test(s))return 'audio';
  return 'other';
 }
-// The name under which one model is recognised on several machines: no organisation prefix, no file extension.
+// The name under which one model is recognised on several devices: no organisation prefix, no file extension.
 export const modelKey=id=>text(id,160).toLowerCase().split('/').pop().split('--').pop().replace(/\.(gguf|safetensors|bin)$/,'');
 
 // ── Live state ──────────────────────────────────────────────────────────────────────────────────
@@ -90,18 +90,18 @@ function cleanRuntime(r){
   models:(Array.isArray(r.models)?r.models:[]).filter(plain).map(cleanModel).filter(m=>m&&!seen.has(m.id)&&seen.add(m.id)).slice(0,LIMITS.models)
    .map(m=>r.status==='unknown'?{...m,active:null,queued:null,since:null}:m)};
 }
-// merged = Object.assign of every home.runtimes provider; machines = [{id, name, ramGb, ip}] the hub knows.
-// → [{machine, name, ramGb, source, observedAt, runtimes[]}], machines in the hub's order, unknown ones after.
-export function liveState(merged,machines=[]){
- const known=new Map(machines.map(m=>[m.id,m]));
- const ids=Object.keys(plain(merged)?merged:{}).filter(id=>MACHINE.test(id)&&plain(merged[id])&&Array.isArray(merged[id].runtimes));
- ids.sort((a,b)=>(known.has(a)?machines.findIndex(m=>m.id===a):999)-(known.has(b)?machines.findIndex(m=>m.id===b):999)||a.localeCompare(b));
- return ids.slice(0,LIMITS.machines).map(id=>{const e=merged[id],m=known.get(id)||{};const seen=new Set();
-  return {machine:id,name:m.name||id,ramGb:num(m.ramGb,100000),source:text(e.source,40),observedAt:timeMs(e.observedAt)!=null?iso(timeMs(e.observedAt)):null,
+// merged = Object.assign of every home.runtimes provider; devices = [{id, name, ramGb, ip}] the hub knows.
+// → [{device, name, ramGb, source, observedAt, runtimes[]}], devices in the hub's order, unknown ones after.
+export function liveState(merged,devices=[]){
+ const known=new Map(devices.map(m=>[m.id,m]));
+ const ids=Object.keys(plain(merged)?merged:{}).filter(id=>DEVICE.test(id)&&plain(merged[id])&&Array.isArray(merged[id].runtimes));
+ ids.sort((a,b)=>(known.has(a)?devices.findIndex(m=>m.id===a):999)-(known.has(b)?devices.findIndex(m=>m.id===b):999)||a.localeCompare(b));
+ return ids.slice(0,LIMITS.devices).map(id=>{const e=merged[id],m=known.get(id)||{};const seen=new Set();
+  return {device:id,name:m.name||id,ramGb:num(m.ramGb,100000),source:text(e.source,40),observedAt:timeMs(e.observedAt)!=null?iso(timeMs(e.observedAt)):null,
    runtimes:e.runtimes.filter(plain).map(cleanRuntime).filter(r=>r&&!seen.has(r.id)&&seen.add(r.id)).slice(0,LIMITS.runtimes)};});
 }
 
-// Placements: one model on one runtime of one machine. A gateway's entry that points at an engine's model
+// Placements: one model on one runtime of one device. A gateway's entry that points at an engine's model
 // (via = that runtime, target = its model id) is not a placement of its own: it becomes an alias of the
 // engine's placement, so one model in memory is counted once.
 export function placements(live){
@@ -122,7 +122,7 @@ export function placements(live){
    // count of the two, never their sum. Unknown at both stays unknown.
    const fold=key=>{const own=x[key],theirs=al.map(a=>a[key]).filter(v=>v!=null);return own==null&&!theirs.length?null:Math.max(own??0,theirs.reduce((n,v)=>n+v,0));};
    const active=fold('active'),queued=fold('queued'),starts=[x.since,...al.map(a=>a.since)].map(timeMs).filter(v=>v!=null);
-   out.push({machine:m.machine,machineName:m.name,runtime:r.id,runtimeName:r.name,role:r.role,runtimeStatus:r.status,
+   out.push({device:m.device,deviceName:m.name,runtime:r.id,runtimeName:r.name,role:r.role,runtimeStatus:r.status,
     engine:r.role==='gateway'?(x.via||x.engine||null):(x.engine||r.kind||r.name),viaRuntime,
     gateways:[...new Set(al.map(a=>a.runtime))],aliases:al.map(a=>a.alias),
     id:x.id,name:x.name,key:modelKey(x.id),kind:inferKind(x,r),state:x.state,sizeGb:x.sizeGb,contextTokens:x.contextTokens,
@@ -133,82 +133,82 @@ export function placements(live){
  }
  return out;
 }
-// What the models of one or more machines work on right now (the machine page's "what the GPU does" and the
+// What the models of one or more devices work on right now (the device page's "what the GPU does" and the
 // LLM & Diffusion page): placements with a request or job running or waiting, running first, oldest first.
 // watching: the runtimes that say how busy they are; blind: those that do not (their work cannot be seen).
 export function workOf(live,list){
- const items=list.filter(p=>p.active||p.queued).map(p=>({machine:p.machine,runtime:p.runtime,runtimeName:p.runtimeName,gateways:p.gateways,mode:p.mode||'server',
+ const items=list.filter(p=>p.active||p.queued).map(p=>({device:p.device,runtime:p.runtime,runtimeName:p.runtimeName,gateways:p.gateways,mode:p.mode||'server',
   id:p.id,name:p.name,kind:p.kind,active:p.active||0,queued:p.queued||0,since:p.since}))
   .sort((a,b)=>(b.active>0)-(a.active>0)||(timeMs(a.since)??Infinity)-(timeMs(b.since)??Infinity)||a.id.localeCompare(b.id));
- const runtimes=live.flatMap(m=>m.runtimes.map(r=>({machine:m.machine,id:r.id,name:r.name,role:r.role,status:r.status,activity:r.activity})));
+ const runtimes=live.flatMap(m=>m.runtimes.map(r=>({device:m.device,id:r.id,name:r.name,role:r.role,status:r.status,activity:r.activity})));
  return {items:items.slice(0,24),active:items.reduce((n,x)=>n+x.active,0),queued:items.reduce((n,x)=>n+x.queued,0),
-  watching:runtimes.filter(r=>r.activity).map(r=>({machine:r.machine,id:r.id,name:r.name})),
-  blind:runtimes.filter(r=>!r.activity&&r.status==='running').map(r=>({machine:r.machine,id:r.id,name:r.name}))};
+  watching:runtimes.filter(r=>r.activity).map(r=>({device:r.device,id:r.id,name:r.name})),
+  blind:runtimes.filter(r=>!r.activity&&r.status==='running').map(r=>({device:r.device,id:r.id,name:r.name}))};
 }
 
 // ── Requests ────────────────────────────────────────────────────────────────────────────────────
 const IPV4=/^(\d{1,3})(\.\d{1,3}){3}$/;
 const isLoopback=a=>/^127\.|^::1$|^localhost$/i.test(a);
 export function cleanRequest(r){
- if(!plain(r))return null;const at=timeMs(r.at),machine=text(r.machine,32);if(at==null||!MACHINE.test(machine))return null;
+ if(!plain(r))return null;const at=timeMs(r.at),device=text(r.device,32);if(at==null||!DEVICE.test(device))return null;
  const address=text(r.clientAddress,64).replace(/^ip:/,'');
- return {machine,runtime:text(r.runtime,60)||'unknown',model:text(r.model,160)||'unknown',at,kind:requestKind(r.kind||r.path),
+ return {device,runtime:text(r.runtime,60)||'unknown',model:text(r.model,160)||'unknown',at,kind:requestKind(r.kind||r.path),
   inputTokens:num(r.inputTokens)??0,outputTokens:num(r.outputTokens)??0,promptTps:num(r.promptTps,1e7),generationTps:num(r.generationTps,1e7),durationMs:num(r.durationMs,1e9),
-  client:text(r.client,60)||UNATTRIBUTED,clientMachine:MACHINE.test(text(r.clientMachine,32))?text(r.clientMachine,32):null,clientAddress:address||null,
+  client:text(r.client,60)||UNATTRIBUTED,clientDevice:DEVICE.test(text(r.clientDevice,32))?text(r.clientDevice,32):null,clientAddress:address||null,
   metricId:Number.isSafeInteger(r.metricId)&&r.metricId>=0?r.metricId:null};
 }
-// Where a client ran: what the provider says, else the site machine whose address sent it. A loopback
-// address names no machine: it is this machine or anything tunnelled into it (an SSH forward looks the same).
-export function clientMachineOf(r,machines=[]){
- if(r.clientMachine)return {machine:r.clientMachine,via:'provider'};
- if(r.clientAddress&&IPV4.test(r.clientAddress)&&!isLoopback(r.clientAddress)){const m=machines.find(x=>x.ip===r.clientAddress);return m?{machine:m.id,via:'address'}:{machine:null,via:'address'};}
- if(r.clientAddress&&isLoopback(r.clientAddress))return {machine:null,via:'loopback'};
- return {machine:null,via:null};
+// Where a client ran: what the provider says, else the site device whose address sent it. A loopback
+// address names no device: it is this device or anything tunnelled into it (an SSH forward looks the same).
+export function clientDeviceOf(r,devices=[]){
+ if(r.clientDevice)return {device:r.clientDevice,via:'provider'};
+ if(r.clientAddress&&IPV4.test(r.clientAddress)&&!isLoopback(r.clientAddress)){const m=devices.find(x=>x.ip===r.clientAddress);return m?{device:m.id,via:'address'}:{device:null,via:'address'};}
+ if(r.clientAddress&&isLoopback(r.clientAddress))return {device:null,via:'loopback'};
+ return {device:null,via:null};
 }
 // llama-swap's own request log (GET /api/metrics/activity → data[], or the older GET /api/metrics list) as
 // runtimes.requests items. Read-only and repeatable: the log is a ring buffer that reading does not drain, so a
 // reader keeps metricKey() of what it already holds. src ("ip:127.0.0.1") is the address the request came from.
-export function metricsToRequests(items,{machine,runtime='llama-swap'}={}){
+export function metricsToRequests(items,{device,runtime='llama-swap'}={}){
  return (Array.isArray(items)?items:[]).filter(plain).map(m=>{const t=plain(m.tokens)?m.tokens:m;
-  const r=cleanRequest({machine,runtime,model:m.model,at:m.timestamp,path:m.req_path||'other',inputTokens:t.input_tokens,outputTokens:t.output_tokens,
+  const r=cleanRequest({device,runtime,model:m.model,at:m.timestamp,path:m.req_path||'other',inputTokens:t.input_tokens,outputTokens:t.output_tokens,
    promptTps:t.prompt_per_second,generationTps:t.tokens_per_second,durationMs:m.duration_ms,clientAddress:typeof m.src==='string'?m.src:''});
   return r&&{...r,metricId:Number.isSafeInteger(m.id)?m.id:null};}).filter(Boolean);
 }
-export const metricKey=r=>`${r.machine}\u0000${r.runtime}\u0000${r.metricId}\u0000${r.at}`;
+export const metricKey=r=>`${r.device}\u0000${r.runtime}\u0000${r.metricId}\u0000${r.at}`;
 // The identity of one request across providers: metricKey when the provider carries the runtime's record id,
 // else what the request says about itself.
-export const requestKey=r=>r.metricId!=null?metricKey(r):`${r.machine}\u0000${r.runtime}\u0000${r.at}\u0000${r.model}\u0000${r.outputTokens}\u0000${r.client}`;
+export const requestKey=r=>r.metricId!=null?metricKey(r):`${r.device}\u0000${r.runtime}\u0000${r.at}\u0000${r.model}\u0000${r.outputTokens}\u0000${r.client}`;
 
 // Which placement a request reached. A request names a runtime (a gateway or an engine) and the model name it
 // asked for (perhaps a gateway alias); null when no live placement matches (an unloaded or removed model).
 export function placementFor(r,list){
- const here=list.filter(p=>p.machine===r.machine);
+ const here=list.filter(p=>p.device===r.device);
  return here.find(p=>p.runtime===r.runtime&&p.id===r.model)
   ||here.find(p=>p.gateways.includes(r.runtime)&&p.aliases.includes(r.model))
   ||here.find(p=>p.id===r.model||p.aliases.includes(r.model))||null;
 }
 
-// ── Machines, overview ──────────────────────────────────────────────────────────────────────────
-export function machineMemory(live,list){
+// ── Devices, overview ──────────────────────────────────────────────────────────────────────────
+export function deviceMemory(live,list){
  return live.map(m=>{
-  const mine=list.filter(p=>p.machine===m.machine),loaded=mine.filter(p=>p.state==='loaded'||p.state==='loading');
+  const mine=list.filter(p=>p.device===m.device),loaded=mine.filter(p=>p.state==='loaded'||p.state==='loading');
   const pools=m.runtimes.filter(r=>r.memory).map(r=>({runtime:r.id,name:r.name,usedGb:r.memory.usedGb,capacityGb:r.memory.capacityGb,basis:r.memory.basis}));
   // Resident: what engines say they hold, else the size of what is loaded on them. Budgets are not residency.
   const resident=m.runtimes.filter(r=>r.role==='engine'||!r.memory||r.memory.basis!=='budget').reduce((n,r)=>{
    const reported=r.memory?.basis==='resident'&&r.memory.usedGb!=null?r.memory.usedGb:null;
    return n+(reported??loaded.filter(p=>p.runtime===r.id).reduce((s,p)=>s+(p.sizeGb||0),0));},0);
-  return {machine:m.machine,name:m.name,ramGb:m.ramGb,residentGb:round(resident),loaded:loaded.length,models:mine.length,pools};
+  return {device:m.device,name:m.name,ramGb:m.ramGb,residentGb:round(resident),loaded:loaded.length,models:mine.length,pools};
  });
 }
 export function overview(live,list,requests,{range='24h',now=Date.now()}={}){
  const runtimes=live.flatMap(m=>m.runtimes);
  const tps=requests.filter(r=>r.generationTps>0&&r.outputTokens>=8).map(r=>r.generationTps);
- return {machines:live.filter(m=>m.runtimes.length).length,
+ return {devices:live.filter(m=>m.runtimes.length).length,
   runtimes:{total:runtimes.length,up:runtimes.filter(r=>r.status==='running').length,down:runtimes.filter(r=>r.status==='stopped').length,unknown:runtimes.filter(r=>r.status==='unknown').length},
   models:{total:list.length,loaded:list.filter(p=>p.state==='loaded').length,loading:list.filter(p=>p.state==='loading').length,
    generating:list.filter(p=>p.active>0).length,queued:list.filter(p=>p.queued>0).length,
    byKind:Object.fromEntries(MODEL_KINDS.map(k=>[k,list.filter(p=>p.kind===k).length]).filter(([,n])=>n))},
-  memory:machineMemory(live,list),
+  memory:deviceMemory(live,list),
   range,requests:requests.length,inputTokens:requests.reduce((n,r)=>n+r.inputTokens,0),outputTokens:requests.reduce((n,r)=>n+r.outputTokens,0),
   medianTps:round(median(tps)),attributed:requests.filter(r=>r.client!==UNATTRIBUTED).length,
   lastRequestAt:requests.length?iso(Math.max(...requests.map(r=>r.at))):null,observedAt:live.map(m=>m.observedAt).filter(Boolean).sort().at(-1)||null,generatedAt:iso(now)};
@@ -220,16 +220,16 @@ export function modelGroups(list,requests=[]){
  const groups=new Map();
  for(const p of list){const g=groups.get(p.key)||{key:p.key,name:p.name,kinds:new Set(),placements:[]};g.kinds.add(p.kind);g.placements.push(p);groups.set(p.key,g);}
  const usage=new Map();
- for(const r of requests){const p=placementFor(r,list);if(!p)continue;const k=`${p.machine}\u0000${p.runtime}\u0000${p.id}`;const u=usage.get(k)||{requests:0,tokens:0,last:0};u.requests++;u.tokens+=r.inputTokens+r.outputTokens;u.last=Math.max(u.last,r.at);usage.set(k,u);}
+ for(const r of requests){const p=placementFor(r,list);if(!p)continue;const k=`${p.device}\u0000${p.runtime}\u0000${p.id}`;const u=usage.get(k)||{requests:0,tokens:0,last:0};u.requests++;u.tokens+=r.inputTokens+r.outputTokens;u.last=Math.max(u.last,r.at);usage.set(k,u);}
  return [...groups.values()].map(g=>{
   const kind=[...g.kinds].find(k=>k!=='other')||'other';
-  const placementsOut=g.placements.map(p=>{const u=usage.get(`${p.machine}\u0000${p.runtime}\u0000${p.id}`);const last=Math.max(timeMs(p.lastRequestAt)||0,u?.last||0);
-   return {machine:p.machine,machineName:p.machineName,runtime:p.runtime,runtimeName:p.runtimeName,role:p.role,runtimeStatus:p.runtimeStatus,engine:p.engine,gateways:p.gateways,aliases:p.aliases,
+  const placementsOut=g.placements.map(p=>{const u=usage.get(`${p.device}\u0000${p.runtime}\u0000${p.id}`);const last=Math.max(timeMs(p.lastRequestAt)||0,u?.last||0);
+   return {device:p.device,deviceName:p.deviceName,runtime:p.runtime,runtimeName:p.runtimeName,role:p.role,runtimeStatus:p.runtimeStatus,engine:p.engine,gateways:p.gateways,aliases:p.aliases,
     id:p.id,state:p.state,sizeGb:p.sizeGb,contextTokens:p.contextTokens,ttlRemainingSeconds:p.ttlRemainingSeconds,ttlSeconds:p.ttlSeconds,lastRequestAt:last?iso(last):null,
-    requests:u?.requests||0,tokens:u?.tokens||0,capabilities:p.capabilities,active:p.active??null,queued:p.queued??null,since:p.since||null};}).sort((a,b)=>STATE_RANK[b.state]-STATE_RANK[a.state]||a.machine.localeCompare(b.machine));
+    requests:u?.requests||0,tokens:u?.tokens||0,capabilities:p.capabilities,active:p.active??null,queued:p.queued??null,since:p.since||null};}).sort((a,b)=>STATE_RANK[b.state]-STATE_RANK[a.state]||a.device.localeCompare(b.device));
   const last=placementsOut.map(p=>timeMs(p.lastRequestAt)).filter(Boolean),watched=placementsOut.filter(p=>p.active!=null||p.queued!=null);
   const starts=placementsOut.filter(p=>p.active).map(p=>timeMs(p.since)).filter(v=>v!=null);
-  return {key:g.key,name:g.placements[0].id,kind,state:placementsOut[0].state,machines:[...new Set(placementsOut.map(p=>p.machine))],
+  return {key:g.key,name:g.placements[0].id,kind,state:placementsOut[0].state,devices:[...new Set(placementsOut.map(p=>p.device))],
    active:watched.length?watched.reduce((n,p)=>n+(p.active||0),0):null,queued:watched.length?watched.reduce((n,p)=>n+(p.queued||0),0):null,since:starts.length?iso(Math.min(...starts)):null,
    sizeGb:Math.max(0,...placementsOut.map(p=>p.sizeGb||0))||null,contextTokens:Math.max(0,...placementsOut.map(p=>p.contextTokens||0))||null,
    ttlRemainingSeconds:placementsOut.find(p=>p.state==='loaded'&&p.ttlRemainingSeconds!=null)?.ttlRemainingSeconds??null,
@@ -238,32 +238,32 @@ export function modelGroups(list,requests=[]){
 }
 
 // ── Clients ─────────────────────────────────────────────────────────────────────────────────────
-export function clientsOf(requests,list,machines=[],{now=Date.now()}={}){
+export function clientsOf(requests,list,devices=[],{now=Date.now()}={}){
  const out=new Map();
  for(const r of requests){
-  const where=clientMachineOf(r,machines),key=`${r.client}\u0000${where.machine||''}`;
-  const c=out.get(key)||{client:r.client,clientMachine:where.machine,via:new Set(),requests:0,inputTokens:0,outputTokens:0,recent:0,lastAt:0,targets:new Map()};
+  const where=clientDeviceOf(r,devices),key=`${r.client}\u0000${where.device||''}`;
+  const c=out.get(key)||{client:r.client,clientDevice:where.device,via:new Set(),requests:0,inputTokens:0,outputTokens:0,recent:0,lastAt:0,targets:new Map()};
   if(where.via)c.via.add(where.via);c.requests++;c.inputTokens+=r.inputTokens;c.outputTokens+=r.outputTokens;c.lastAt=Math.max(c.lastAt,r.at);if(now-r.at<=RECENT_MS)c.recent++;
-  const p=placementFor(r,list),tk=`${r.machine}\u0000${r.runtime}`;const tg=c.targets.get(tk)||{machine:r.machine,runtime:r.runtime,requests:0,tokens:0,models:new Map()};
+  const p=placementFor(r,list),tk=`${r.device}\u0000${r.runtime}`;const tg=c.targets.get(tk)||{device:r.device,runtime:r.runtime,requests:0,tokens:0,models:new Map()};
   tg.requests++;tg.tokens+=r.inputTokens+r.outputTokens;const mid=p?.id||r.model;tg.models.set(mid,(tg.models.get(mid)||0)+1);c.targets.set(tk,tg);
   out.set(key,c);
  }
- return [...out.values()].sort((a,b)=>b.requests-a.requests).slice(0,LIMITS.clients).map(c=>({client:c.client,attributed:c.client!==UNATTRIBUTED,clientMachine:c.clientMachine,
+ return [...out.values()].sort((a,b)=>b.requests-a.requests).slice(0,LIMITS.clients).map(c=>({client:c.client,attributed:c.client!==UNATTRIBUTED,clientDevice:c.clientDevice,
   via:[...c.via].sort(),requests:c.requests,inputTokens:c.inputTokens,outputTokens:c.outputTokens,recent:c.recent,lastAt:iso(c.lastAt),
-  cross:[...c.targets.values()].some(t=>c.clientMachine&&t.machine!==c.clientMachine),
-  targets:[...c.targets.values()].sort((a,b)=>b.requests-a.requests).map(t=>({machine:t.machine,runtime:t.runtime,requests:t.requests,tokens:t.tokens,
+  cross:[...c.targets.values()].some(t=>c.clientDevice&&t.device!==c.clientDevice),
+  targets:[...c.targets.values()].sort((a,b)=>b.requests-a.requests).map(t=>({device:t.device,runtime:t.runtime,requests:t.requests,tokens:t.tokens,
    models:[...t.models].sort((a,b)=>b[1]-a[1]).slice(0,6).map(([model,requests])=>({model,requests}))}))}));
 }
 
 // ── Known from the stack, no live stats ────────────────────────────────────────────────────────
 const GENERATIVE=/mflux|comfy|diffus|flux|stable.?diffusion|draw ?things|magenta|musicgen|audiocraft|whisper|tts|mlx[_-]audio|voice|mlx-serve|invoke|automatic1111|fooocus|llama-server|ollama|lm ?studio|vllm|omlx|llama-swap/i;
-// stacks = [{machine, name, stack, source}] from the site configuration and runtime_publish. A runtime-layer
-// block that names a tool and no live runtime of that machine matches it → one "known" entry.
+// stacks = [{device, name, stack, source}] from the site configuration and runtime_publish. A runtime-layer
+// block that names a tool and no live runtime of that device matches it → one "known" entry.
 export function knownTools(stacks,live){
  const out=[];
- for(const {machine,name,stack,source} of stacks||[]){
+ for(const {device,name,stack,source} of stacks||[]){
   if(!plain(stack)||!Array.isArray(stack.blocks))continue;
-  const liveHere=live.find(m=>m.machine===machine)?.runtimes||[];
+  const liveHere=live.find(m=>m.device===device)?.runtimes||[];
   const layerOf=b=>typeof b.layer==='number'?String(stack.layers?.[b.layer]??'').toLowerCase():String(b.layer||'').toLowerCase();
   for(const b of stack.blocks){
    if(!plain(b)||b.hw)continue;const layer=layerOf(b),title=text(b.title,60);if(!title)continue;
@@ -272,7 +272,7 @@ export function knownTools(stacks,live){
    const tokens=title.toLowerCase().split(/[^a-z0-9-]+/).filter(t=>t.length>=4);
    if(role==='runtime'&&(liveHere.some(r=>r.id===b.service||r.id.toLowerCase()===title.toLowerCase()||tokens.some(t=>r.id.toLowerCase().includes(t)||r.name.toLowerCase().includes(t)))))continue;
    const models=(Array.isArray(b.models)?b.models:[]).map(m=>text(m?.id,120)).filter(Boolean).slice(0,8);
-   out.push({machine,machineName:name||machine,role,title,description:text(b.desc,160),state:b.state==='off'?'off':'on',source,models,
+   out.push({device,deviceName:name||device,role,title,description:text(b.desc,160),state:b.state==='off'?'off':'on',source,models,
     kind:role==='runtime'?inferKind({id:title,name:`${models.join(' ')} ${b.desc||''}`},{}):null});
   }
  }
@@ -281,50 +281,50 @@ export function knownTools(stacks,live){
 
 // ── Wiring diagram ──────────────────────────────────────────────────────────────────────────────
 // Columns: client → door (a gateway) → engine (an engine runtime, or an engine inside a gateway such as
-// llama.cpp in llama-swap) → model. Lanes: one per machine; clients whose machine is not known share the
-// lane "unknown". An edge whose ends sit in different lanes is a cross-machine edge.
-export function buildGraph(live,list,requests,{machines=[],known=[],now=Date.now()}={}){
+// llama.cpp in llama-swap) → model. Lanes: one per device; clients whose device is not known share the
+// lane "unknown". An edge whose ends sit in different lanes is a cross-device edge.
+export function buildGraph(live,list,requests,{devices=[],known=[],now=Date.now()}={}){
  const nodes=new Map(),edges=new Map();
- const lanes=[...live.map(m=>({id:m.machine,name:m.name}))];
+ const lanes=[...live.map(m=>({id:m.device,name:m.name}))];
  const laneIds=new Set(lanes.map(l=>l.id));
  const node=(id,data)=>{if(!nodes.has(id))nodes.set(id,{id,requests:0,tokens:0,recent:0,lastAt:null,...data});return nodes.get(id);};
  const edge=(from,to)=>{const id=`${from}→${to}`;if(!edges.has(id))edges.set(id,{id,from,to,requests:0,tokens:0,recent:0,tokensRecent:0,lastAt:null});return edges.get(id);};
  const bump=(x,r)=>{x.requests++;x.tokens+=r.inputTokens+r.outputTokens;if(now-r.at<=RECENT_MS){x.recent++;if('tokensRecent' in x)x.tokensRecent+=r.inputTokens+r.outputTokens;}x.lastAt=Math.max(x.lastAt||0,r.at);};
- const runtimeNode=(m,r)=>node(`rt:${m.machine}:${r.id}`,{column:r.role==='gateway'?'door':'engine',lane:m.machine,label:r.name,sub:r.kind||null,state:r.status,machine:m.machine,runtime:r.id,role:r.role,active:r.activity?.active??null,queued:r.activity?.queued??null});
- const engineInside=(machine,name,gateway)=>node(`en:${machine}:${name}`,{column:'engine',lane:machine,label:name,sub:gateway,state:'running',machine,runtime:null,role:'embedded'});
- const modelNode=p=>node(`md:${p.machine}:${p.runtime}:${p.id}`,{column:'model',lane:p.machine,label:p.id,sub:p.aliases.length?p.aliases.join(', '):null,state:p.state,kind:p.kind,machine:p.machine,runtime:p.runtime,model:p.id,key:p.key,sizeGb:p.sizeGb,active:p.active??null,queued:p.queued??null});
+ const runtimeNode=(m,r)=>node(`rt:${m.device}:${r.id}`,{column:r.role==='gateway'?'door':'engine',lane:m.device,label:r.name,sub:r.kind||null,state:r.status,device:m.device,runtime:r.id,role:r.role,active:r.activity?.active??null,queued:r.activity?.queued??null});
+ const engineInside=(device,name,gateway)=>node(`en:${device}:${name}`,{column:'engine',lane:device,label:name,sub:gateway,state:'running',device,runtime:null,role:'embedded'});
+ const modelNode=p=>node(`md:${p.device}:${p.runtime}:${p.id}`,{column:'model',lane:p.device,label:p.id,sub:p.aliases.length?p.aliases.join(', '):null,state:p.state,kind:p.kind,device:p.device,runtime:p.runtime,model:p.id,key:p.key,sizeGb:p.sizeGb,active:p.active??null,queued:p.queued??null});
  // Static structure: every runtime, the path each model is served on.
  const inMemory=p=>p.active>0||p.queued>0||p.state==='loaded'||p.state==='loading';
  const shown=list.filter(inMemory).concat(list.filter(p=>!inMemory(p))).slice(0,LIMITS.graphModels);
  for(const m of live)for(const r of m.runtimes)runtimeNode(m,r);
  const pathOf=p=>{// [door?, engine?, model] node ids
-  const m=live.find(x=>x.machine===p.machine),r=m.runtimes.find(x=>x.id===p.runtime),md=modelNode(p).id,ids=[];
-  if(r.role==='gateway'){ids.push(runtimeNode(m,r).id);if(p.engine)ids.push(p.viaRuntime?runtimeNode(m,m.runtimes.find(x=>x.id===p.viaRuntime)).id:engineInside(m.machine,p.engine,r.name).id);}
+  const m=live.find(x=>x.device===p.device),r=m.runtimes.find(x=>x.id===p.runtime),md=modelNode(p).id,ids=[];
+  if(r.role==='gateway'){ids.push(runtimeNode(m,r).id);if(p.engine)ids.push(p.viaRuntime?runtimeNode(m,m.runtimes.find(x=>x.id===p.viaRuntime)).id:engineInside(m.device,p.engine,r.name).id);}
   else{const g=p.gateways[0]&&m.runtimes.find(x=>x.id===p.gateways[0]);if(g)ids.push(runtimeNode(m,g).id);ids.push(runtimeNode(m,r).id);}
   ids.push(md);return ids;
  };
  for(const p of shown){const ids=pathOf(p);for(let i=1;i<ids.length;i++)edge(ids[i-1],ids[i]);}
  // Known tools without live stats: engines that serve nothing the hub can see.
- for(const k of known.filter(k=>k.role==='runtime'&&laneIds.has(k.machine)))node(`kn:${k.machine}:${k.title}`,{column:'engine',lane:k.machine,label:k.title,sub:k.models.join(', ')||null,state:k.state==='off'?'stopped':'known',known:true,kind:k.kind,machine:k.machine,runtime:null});
+ for(const k of known.filter(k=>k.role==='runtime'&&laneIds.has(k.device)))node(`kn:${k.device}:${k.title}`,{column:'engine',lane:k.device,label:k.title,sub:k.models.join(', ')||null,state:k.state==='off'?'stopped':'known',known:true,kind:k.kind,device:k.device,runtime:null});
  // Traffic: client → the runtime it called → … → the model.
  let cross=0;
  for(const r of requests){
-  const where=clientMachineOf(r,machines),lane=where.machine||'unknown';
-  if(!laneIds.has(lane)){lanes.push({id:lane,name:lane==='unknown'?null:(machines.find(m=>m.id===lane)?.name||lane)});laneIds.add(lane);}
-  const c=node(`cl:${lane}:${r.client}`,{column:'client',lane,label:r.client,sub:where.via==='loopback'?'loopback':null,state:r.client===UNATTRIBUTED?'unknown':'running',machine:where.machine,client:r.client,attributed:r.client!==UNATTRIBUTED});
+  const where=clientDeviceOf(r,devices),lane=where.device||'unknown';
+  if(!laneIds.has(lane)){lanes.push({id:lane,name:lane==='unknown'?null:(devices.find(m=>m.id===lane)?.name||lane)});laneIds.add(lane);}
+  const c=node(`cl:${lane}:${r.client}`,{column:'client',lane,label:r.client,sub:where.via==='loopback'?'loopback':null,state:r.client===UNATTRIBUTED?'unknown':'running',device:where.device,client:r.client,attributed:r.client!==UNATTRIBUTED});
   bump(c,r);
   const p=placementFor(r,list);let ids;
-  if(p&&shown.includes(p)){ids=pathOf(p);const at=ids.indexOf(`rt:${r.machine}:${r.runtime}`);if(at>0)ids=ids.slice(at);}
-  else{const m=live.find(x=>x.machine===r.machine),rt=m?.runtimes.find(x=>x.id===r.runtime);
-   const end=node(`md:${r.machine}:${r.runtime}:${r.model}`,{column:'model',lane:r.machine,label:r.model,sub:null,state:'unknown',kind:inferKind({id:r.model},rt||{}),machine:r.machine,runtime:r.runtime,model:r.model,history:true});
-   if(!laneIds.has(r.machine)){lanes.push({id:r.machine,name:machines.find(x=>x.id===r.machine)?.name||r.machine});laneIds.add(r.machine);}
-   ids=[...(m&&rt?[runtimeNode(m,rt).id]:[node(`rt:${r.machine}:${r.runtime}`,{column:'door',lane:r.machine,label:r.runtime,sub:null,state:'unknown',machine:r.machine,runtime:r.runtime,role:'gateway'}).id]),end.id];}
-  const first=edge(c.id,ids[0]);bump(first,r);if(where.machine&&where.machine!==r.machine){first.cross=true;cross++;}
+  if(p&&shown.includes(p)){ids=pathOf(p);const at=ids.indexOf(`rt:${r.device}:${r.runtime}`);if(at>0)ids=ids.slice(at);}
+  else{const m=live.find(x=>x.device===r.device),rt=m?.runtimes.find(x=>x.id===r.runtime);
+   const end=node(`md:${r.device}:${r.runtime}:${r.model}`,{column:'model',lane:r.device,label:r.model,sub:null,state:'unknown',kind:inferKind({id:r.model},rt||{}),device:r.device,runtime:r.runtime,model:r.model,history:true});
+   if(!laneIds.has(r.device)){lanes.push({id:r.device,name:devices.find(x=>x.id===r.device)?.name||r.device});laneIds.add(r.device);}
+   ids=[...(m&&rt?[runtimeNode(m,rt).id]:[node(`rt:${r.device}:${r.runtime}`,{column:'door',lane:r.device,label:r.runtime,sub:null,state:'unknown',device:r.device,runtime:r.runtime,role:'gateway'}).id]),end.id];}
+  const first=edge(c.id,ids[0]);bump(first,r);if(where.device&&where.device!==r.device){first.cross=true;cross++;}
   for(let i=0;i<ids.length;i++){bump(nodes.get(ids[i]),r);if(i)bump(edge(ids[i-1],ids[i]),r);}
  }
  // Known clients of the stack (site.json input layer): drawn faint, so a lane shows who usually calls from there.
- for(const k of known.filter(k=>k.role==='client'&&laneIds.has(k.machine)))if(![...nodes.values()].some(n=>n.column==='client'&&n.lane===k.machine&&n.label===k.title))
-  node(`kc:${k.machine}:${k.title}`,{column:'client',lane:k.machine,label:k.title,sub:null,state:'known',known:true,machine:k.machine});
+ for(const k of known.filter(k=>k.role==='client'&&laneIds.has(k.device)))if(![...nodes.values()].some(n=>n.column==='client'&&n.lane===k.device&&n.label===k.title))
+  node(`kc:${k.device}:${k.title}`,{column:'client',lane:k.device,label:k.title,sub:null,state:'known',known:true,device:k.device});
  const out=[...nodes.values()].map(n=>({...n,lastAt:n.lastAt?iso(n.lastAt):null}));
  const usedLanes=new Set(out.map(n=>n.lane));
  return {lanes:lanes.filter(l=>usedLanes.has(l.id)),nodes:out,edges:[...edges.values()].map(e=>({...e,cross:Boolean(e.cross),lastAt:e.lastAt?iso(e.lastAt):null})),
@@ -344,10 +344,10 @@ export function buckets(range,now=Date.now(),timeZone='UTC'){
  return {stepMs:spec.stepMs,starts:Array.from({length:n},(_,i)=>end-(n-i)*spec.stepMs),from:end-n*spec.stepMs,to:end};
 }
 const ranked=(rows,key,limit)=>{const c=new Map();for(const r of rows)c.set(key(r),(c.get(key(r))||0)+1);return [...c].sort((a,b)=>b[1]-a[1]||String(a[0]).localeCompare(String(b[0]))).map(([k])=>k).slice(0,limit);};
-export function history(requests,list,{range='24h',now=Date.now(),timeZone='UTC',machines=[]}={}){
+export function history(requests,list,{range='24h',now=Date.now(),timeZone='UTC',devices=[]}={}){
  const b=buckets(range,now,timeZone),n=b.starts.length,idx=at=>Math.min(n-1,Math.floor((at-b.from)/b.stepMs));
  const rows=requests.filter(r=>r.at>=b.from&&r.at<=now).map(r=>({...r,modelName:placementFor(r,list)?.id||r.model}));
- const dims={model:r=>r.modelName,machine:r=>r.machine,client:r=>r.client,kind:r=>r.kind};
+ const dims={model:r=>r.modelName,device:r=>r.device,client:r=>r.client,kind:r=>r.kind};
  const series={};
  for(const [dim,key] of Object.entries(dims)){
   const top=ranked(rows,key,LIMITS.series),bySeries=Object.fromEntries(top.map(k=>[k,Array(n).fill(0)]));let other=null;
@@ -361,5 +361,5 @@ export function history(requests,list,{range='24h',now=Date.now(),timeZone='UTC'
  return {range,stepMs:b.stepMs,from:iso(b.from),to:iso(b.to),buckets:b.starts.map(iso),
   totals:{requests:rows.length,inputTokens:input.reduce((a,v)=>a+v,0),outputTokens:output.reduce((a,v)=>a+v,0),medianTps:round(median(rows.filter(r=>r.generationTps>0&&r.outputTokens>=8).map(r=>r.generationTps))),attributed:rows.filter(r=>r.client!==UNATTRIBUTED).length},
   requests:count,inputTokens:input,outputTokens:output,tps:tps.map(v=>round(median(v))),series,
-  top:{model:table(dims.model),machine:table(dims.machine),client:table(dims.client),kind:table(dims.kind)}};
+  top:{model:table(dims.model),device:table(dims.device),client:table(dims.client),kind:table(dims.kind)}};
 }

@@ -11,5 +11,5 @@ export function systemsParts({name='studio',host='Darwin',collectedAt=AT,interva
   updates:p(updates),packages:p(packages)};
 }
 export const reportTo=h=>(token,body,headers={})=>fetch(`${h.origin}/api/agent/report`,{method:'POST',headers:{...(token?{Authorization:'Bearer '+token}:{}),'Content-Type':'application/json',...headers},body:typeof body==='string'?body:JSON.stringify(body)});
-export const issueAgent=async(h,machine,name)=>{const r=await h.post('/api/admin/agents',{machine,...(name?{name}:{})},h.admin);if(r.status!==201)throw new Error(`issue ${machine}: ${r.status}`);return r.json();};
+export const issueAgent=async(h,device,name)=>{const r=await h.post('/api/admin/agents',{device,...(name?{name}:{})},h.admin);if(r.status!==201)throw new Error(`issue ${device}: ${r.status}`);return r.json();};
 export const errorCode=async r=>(await r.json()).error?.code;

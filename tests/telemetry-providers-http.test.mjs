@@ -1,7 +1,7 @@
 // The new agent-less providers over HTTP and in the device store: WinRM, Node Exporter, Prometheus and Linux SSH,
 // each set up in a server-side draft and saved only after a fresh test of exactly what the form shows; switching
 // between providers in place (id and history kept, the old secrets gone); passwords and tokens one-way (never in a
-// reply, devices.json, machine_list); agents and API keys reach none of it. Every endpoint and tool is faked.
+// reply, devices.json, device_list); agents and API keys reach none of it. Every endpoint and tool is faked.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile,readdir,stat} from 'node:fs/promises';
@@ -69,8 +69,8 @@ test('Node Exporter: tested plain-HTTP connection saved for a new Linux device; 
  assert.equal((await call('/api/home/devices/add',{name:'Box 2',kind:'node-exporter',hostname:'box2.example.lan',telemetry:{provider:'node-exporter',draft:d.id,host:'10.0.0.21',port:9100,scheme:'http'}})).body.error.reason,'draft-missing','a draft saves once');
  const file=path.join(h.dir,'home','telemetry-hosts.json');
  if(process.platform!=='win32')assert.equal((await stat(file)).mode&0o777,0o600);
- const tile=(await home()).machines.find(m=>m.id==='box');assert.equal(tile.telemetry.provider,'node-exporter');assert.equal(tile.kind,'thermo');
- const list=await (await fetch(`${h.origin}/api/home/devices`,{headers:h.admin})).json();assert.ok(!JSON.stringify(list).includes('10.0.0.21'),'machine_list carries no connection');
+ const tile=(await home()).devices.find(m=>m.id==='box');assert.equal(tile.telemetry.provider,'node-exporter');assert.equal(tile.kind,'thermo');
+ const list=await (await fetch(`${h.origin}/api/home/devices`,{headers:h.admin})).json();assert.ok(!JSON.stringify(list).includes('10.0.0.21'),'device_list carries no connection');
  const forged=await call('/api/home/devices/add',{name:'Forged',kind:'node-exporter',hostname:'f.example.lan',telemetry:{provider:'node-exporter',draft:'e'+'0'.repeat(32),host:'10.0.0.9',port:9100,scheme:'http'}});
  assert.equal(forged.body.error.reason,'draft-missing');
  const noDraft=await call('/api/home/devices/add',{name:'Raw',kind:'node-exporter',hostname:'r.example.lan'});assert.equal(noDraft.status,400,'never without a tested draft');
@@ -78,7 +78,7 @@ test('Node Exporter: tested plain-HTTP connection saved for a new Linux device; 
 
 test('HTTPS endpoints: certificate first, pin approved, password one-way; WinRM refuses CA trust it could not verify',async t=>{
  const {h,call,home,pollers,requests}=await setup(t);
- const add=await call('/api/home/devices',{machine:{id:'pc',name:'PC',hostname:'pc.example.lan',platform:'windows'}});assert.equal(add.status,201);
+ const add=await call('/api/home/devices',{device:{id:'pc',name:'PC',hostname:'pc.example.lan',platform:'windows'}});assert.equal(add.status,201);
  const d=(await call('/api/home/devices/endpoint/draft',{provider:'winrm',id:'pc'})).body.draft;
  const early=await call('/api/home/devices/endpoint/draft/test',{draft:d.id,host:'pc.example.lan',port:5986,user:'homehub',password:'correct horse 1'});
  assert.equal(early.body.error.reason,'needs-probe');assert.equal(requests.length,0,'no password before the certificate is trusted');
@@ -109,7 +109,7 @@ test('HTTPS endpoints: certificate first, pin approved, password one-way; WinRM 
 
 test('Prometheus: targets from Prometheus only, exact job+instance, switch providers in place, disconnect removes the secret',async t=>{
  const {h,call,pollers,requests}=await setup(t);
- await call('/api/home/devices',{machine:{id:'storage',name:'Storage',hostname:'storage.example.lan',role:'nas'}});
+ await call('/api/home/devices',{device:{id:'storage',name:'Storage',hostname:'storage.example.lan',role:'nas'}});
  const d=(await call('/api/home/devices/endpoint/draft',{provider:'prometheus',id:'storage'})).body.draft;assert.equal(d.port,9090);
  const early=await call('/api/home/devices/endpoint/draft/test',{draft:d.id,host:'10.0.0.40',port:9090,scheme:'http',auth:'none',job:'nas-node',instance:'nas'});
  assert.equal(early.body.error.reason,'needs-targets');
@@ -126,8 +126,8 @@ test('Prometheus: targets from Prometheus only, exact job+instance, switch provi
  assert.equal(saved.status,200,JSON.stringify(saved.body));assert.deepEqual([saved.body.platform,saved.body.telemetryProvider,saved.body.id],['linux','prometheus','storage']);
  assert.equal(pollers.prometheus.added.at(-1).record.instance,'nas');
  // MCP/API: the platform stays Linux while it is connected.
- const list=await (await fetch(`${h.origin}/api/home/devices`,{headers:h.admin})).json();const m=list.machines.find(x=>x.id==='storage');
- const up=await call('/api/home/devices',{machine:{...Object.fromEntries(Object.entries(m).filter(([k])=>['id','name','hostname','ip','role','hardware','thermoId','picture'].includes(k))),platform:'windows'},base:m.hash});
+ const list=await (await fetch(`${h.origin}/api/home/devices`,{headers:h.admin})).json();const m=list.devices.find(x=>x.id==='storage');
+ const up=await call('/api/home/devices',{device:{...Object.fromEntries(Object.entries(m).filter(([k])=>['id','name','hostname','ip','role','hardware','thermoId','picture'].includes(k))),platform:'windows'},base:m.hash});
  assert.equal(up.status,400);assert.match(JSON.stringify(up.body),/must stay linux/);
  // Switch deliberately to Node Exporter: the device keeps its id; the Prometheus poller forgets it.
  const n=(await call('/api/home/devices/endpoint/draft',{provider:'node-exporter',id:'storage'})).body.draft;
@@ -162,7 +162,7 @@ test('Linux SSH: the app-managed key workflow for os linux; removing the device 
  assert.deepEqual(await own.json(),{address:hubAddress(['10.0.0.0/24'])},'the hub\'s own address in the site networks, or null');
  assert.equal((await fetch(`${h.origin}/api/home/devices/hub-address`,{headers:key.headers})).status,403,'API keys never');
  const list=await (await fetch(`${h.origin}/api/home/devices`,{headers:h.admin})).json();
- const gone=await call('/api/home/devices/remove',{id:'pi',base:list.machines.find(m=>m.id==='pi').hash});assert.equal(gone.status,200);
+ const gone=await call('/api/home/devices/remove',{id:'pi',base:list.devices.find(m=>m.id==='pi').hash});assert.equal(gone.status,200);
  // The key file goes behind the answer: a removed device's connection is forgotten without the reply waiting for the
  // disk (server/core/home.mjs, forget → void detach → the vault's rm), and a loaded disk takes its time. Wait for the
  // empty directory itself, not for a fixed pause; the deadline only bounds how long a key that stays takes to fail.

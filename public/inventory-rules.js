@@ -5,22 +5,22 @@
 // A document is {schema: 1, updated_at: 'YYYY-MM-DD', entries: [...]}. Nothing here knows a household:
 // the names of a site's own secret stores are passed in (site.json → inventory.secretStores).
 
-export const KINDS = ['network', 'machine', 'runtime', 'tool', 'model-store', 'secret-store', 'skill-store', 'external'];
-// Kinds that live on a machine: their "machine" must name a machine entry.
-export const PLACED_KINDS = ['machine', 'runtime', 'tool', 'model-store', 'secret-store', 'skill-store'];
+export const KINDS = ['network', 'device', 'runtime', 'tool', 'model-store', 'secret-store', 'skill-store', 'external'];
+// Kinds that live on a device: their "device" must name a device entry.
+export const PLACED_KINDS = ['device', 'runtime', 'tool', 'model-store', 'secret-store', 'skill-store'];
 export const LINK_KINDS = ['call', 'cert', 'secret', 'data'];
-// runs-on is never written: every placed entry runs on its machine, so walks add that link themselves.
+// runs-on is never written: every placed entry runs on its device, so walks add that link themselves.
 export const DEP_KINDS = ['runs-on', ...LINK_KINDS];
 // Display grouping for the map. Each kind has a default; set "category" only where an entry differs.
 export const CATEGORIES = ['hardware', 'network', 'service', 'model', 'tool', 'llm-support', 'saas', 'secret'];
-export const DEFAULT_CATEGORY = {machine: 'hardware', network: 'network', external: 'saas', runtime: 'service', tool: 'tool', 'model-store': 'model', 'skill-store': 'llm-support', 'secret-store': 'secret'};
+export const DEFAULT_CATEGORY = {device: 'hardware', network: 'network', external: 'saas', runtime: 'service', tool: 'tool', 'model-store': 'model', 'skill-store': 'llm-support', 'secret-store': 'secret'};
 export const categoryOf = e => e.category || DEFAULT_CATEGORY[e.kind];
 export const STORE_PREFIXES = ['keychain:', 'file:', 'app-env:', 'shell-env:', 'app-settings:', 'sso:'];
 // The stores every hub knows. remembered = the user knows it and it is written down nowhere.
 export const BUILTIN_STORES = ['passwords-app', 'remembered', 'unknown'];
 export const CONFIDENCE = ['verified', 'inferred'];
 // Every field an entry may carry through the API (the file itself may hold more; they are left alone).
-export const ENTRY_FIELDS = ['id', 'kind', 'machine', 'name', 'type', 'category', 'address', 'version', 'config', 'data', 'managed_by', 'login', 'notes', 'secrets', 'depends_on', 'models', 'skills', 'verified_at', 'verified_by', 'confidence'];
+export const ENTRY_FIELDS = ['id', 'kind', 'device', 'name', 'type', 'category', 'address', 'version', 'config', 'data', 'managed_by', 'login', 'notes', 'secrets', 'depends_on', 'models', 'skills', 'verified_at', 'verified_by', 'confidence'];
 // The text fields the entry form edits (POST /api/inventory/entry → fields).
 export const EDITABLE = ['name', 'type', 'category', 'address', 'version', 'config', 'data', 'managed_by', 'login', 'notes'];
 export const SECRET_FIELDS = ['what', 'store', 'ref', 'check'];
@@ -30,7 +30,7 @@ export const LIMITS = Object.freeze({idLength: 64, textLength: 2000, notesLength
 export const ID = /^[a-z][a-z0-9-]*$/;
 export const ENTRY_ID = /^[a-z][a-z0-9-]{0,63}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
-const TEXT_FIELDS = ['name', 'machine', 'type', 'category', 'address', 'version', 'config', 'data', 'managed_by', 'login', 'notes', 'verified_at', 'verified_by', 'confidence'];
+const TEXT_FIELDS = ['name', 'device', 'type', 'category', 'address', 'version', 'config', 'data', 'managed_by', 'login', 'notes', 'verified_at', 'verified_by', 'confidence'];
 
 // Patterns that look like a secret value rather than a pointer to one.
 const SECRET_PATTERNS = [
@@ -119,11 +119,11 @@ export function check(doc, {secretStores = []} = {}) {
   const index = new Map(doc.entries.map((e, i) => [e, i]));
   for (const e of byId.values()) {
     const add = (level, field, code, text, values = {}) => issues.push({level, id: e.id, index: index.get(e), field, code, message: `entry "${e.id}": ${text}`, text, ...values});
-    if (e.kind === 'machine') {
-      if (e.machine && !byId.has(e.machine)) add('error', 'machine', 'machine-missing', `machine "${e.machine}" does not exist`, {machine: e.machine});
+    if (e.kind === 'device') {
+      if (e.device && !byId.has(e.device)) add('error', 'device', 'device-missing', `device "${e.device}" does not exist`, {device: e.device});
     } else if (PLACED_KINDS.includes(e.kind)) {
-      const m = byId.get(e.machine);
-      if (!m || m.kind !== 'machine') add('error', 'machine', 'machine-required', 'machine must name a machine entry');
+      const m = byId.get(e.device);
+      if (!m || m.kind !== 'device') add('error', 'device', 'device-required', 'device must name a device entry');
     }
     list(e.depends_on).forEach((d, n) => { if (plain(d) && typeof d.id === 'string' && !byId.has(d.id)) add('error', `depends_on[${n}].id`, 'dep-missing', `depends_on "${d.id}" does not exist`, {target: d.id}); });
     list(e.secrets).forEach((s, n) => { if (plain(s) && s.store === 'unknown') add('warning', `secrets[${n}].store`, 'gap-store', `where "${s.what}" is kept is not recorded`, {what: s.what}); });
@@ -137,12 +137,12 @@ export function validate(doc, options) {
   return {errors, warnings};
 }
 
-// Every dependency edge: the recorded depends_on links plus the implied runs-on link to the entry's machine.
+// Every dependency edge: the recorded depends_on links plus the implied runs-on link to the entry's device.
 export function links(doc) {
   const ids = new Set(doc.entries.map(e => e.id)), out = [];
   for (const e of doc.entries) {
     for (const d of e.depends_on || []) out.push({from: e.id, to: d.id, kind: d.kind, label: d.label || ''});
-    if (e.kind !== 'machine' && e.machine && ids.has(e.machine)) out.push({from: e.id, to: e.machine, kind: 'runs-on', label: 'runs on'});
+    if (e.kind !== 'device' && e.device && ids.has(e.device)) out.push({from: e.id, to: e.device, kind: 'runs-on', label: 'runs on'});
   }
   return out;
 }
@@ -167,23 +167,23 @@ export function find(doc, text) {
 }
 // Entries that name `id` in depends_on or run on it: what must change before `id` can be deleted.
 export function dependents(doc, id) {
-  return doc.entries.filter(e => e.id !== id && (e.machine === id || list(e.depends_on).some(d => d?.id === id))).map(e => e.id);
+  return doc.entries.filter(e => e.id !== id && (e.device === id || list(e.depends_on).some(d => d?.id === id))).map(e => e.id);
 }
 
 // One entry with the form's fields applied: an emptied text field is removed, as are empty lists.
-// fields: any of EDITABLE, plus machine, secrets [{what, store, ref, check}] and depends_on [{id, kind, label}].
+// fields: any of EDITABLE, plus device, secrets [{what, store, ref, check}] and depends_on [{id, kind, label}].
 export function withFields(entry, fields) {
   const next = {...entry};
-  for (const k of [...EDITABLE, 'machine']) if (k in fields) { if (fields[k]) next[k] = fields[k]; else delete next[k]; }
+  for (const k of [...EDITABLE, 'device']) if (k in fields) { if (fields[k]) next[k] = fields[k]; else delete next[k]; }
   for (const k of ['secrets', 'depends_on']) if (k in fields) { if (fields[k].length) next[k] = fields[k]; else delete next[k]; }
   return next;
 }
 
-// Where entries can live: the site's places (site.json → inventory.places), then every machine entry
-// the site did not list. A hub without a site file gets its places from its own machine entries.
+// Where entries can live: the site's places (site.json → inventory.places), then every device entry
+// the site did not list. A hub without a site file gets its places from its own device entries.
 export function placesOf(site = [], entries = []) {
   const known = new Set(site.map(p => p.id));
-  return [...site.map(p => ({...p, source: 'site'})), ...entries.filter(e => e?.kind === 'machine' && typeof e.id === 'string' && !known.has(e.id)).map(e => ({id: e.id, label: e.name || e.id, column: e.name || e.id, source: 'machine'}))];
+  return [...site.map(p => ({...p, source: 'site'})), ...entries.filter(e => e?.kind === 'device' && typeof e.id === 'string' && !known.has(e.id)).map(e => ({id: e.id, label: e.name || e.id, column: e.name || e.id, source: 'device'}))];
 }
 
 // A few generic entries a new hub can start from (the map's "start from a template"): a router, a
@@ -195,13 +195,13 @@ export function templateEntries() {
   return [
     {id: 'example-router', kind: 'network', name: 'Router (example)', type: 'Router · Wi-Fi', address: '10.0.0.1', login: 'Admin page on the LAN', notes: note,
       secrets: [{what: 'Router admin password', store: 'passwords-app', ref: 'Router admin'}]},
-    {id: 'example-server', kind: 'machine', name: 'Home server (example)', type: 'Mini PC · Linux', address: 'server.example.lan', login: 'ssh server', notes: note},
-    {id: 'example-hub', kind: 'runtime', machine: 'example-server', name: 'Home Hub (example)', type: 'Node service', address: 'http://server.example.lan:8799', version: '2', config: '~/home-hub/local/site.json', login: 'Admin password sign-in', notes: note,
+    {id: 'example-server', kind: 'device', name: 'Home server (example)', type: 'Mini PC · Linux', address: 'server.example.lan', login: 'ssh server', notes: note},
+    {id: 'example-hub', kind: 'runtime', device: 'example-server', name: 'Home Hub (example)', type: 'Node service', address: 'http://server.example.lan:8799', version: '2', config: '~/home-hub/local/site.json', login: 'Admin password sign-in', notes: note,
       secrets: [{what: 'Admin password', store: 'passwords-app', ref: 'Home Hub admin'}]},
-    {id: 'example-proxy', kind: 'runtime', machine: 'example-server', name: 'Reverse proxy (example)', type: 'Caddy', address: 'https://hub.example.lan', config: '/etc/caddy/Caddyfile', notes: note,
+    {id: 'example-proxy', kind: 'runtime', device: 'example-server', name: 'Reverse proxy (example)', type: 'Caddy', address: 'https://hub.example.lan', config: '/etc/caddy/Caddyfile', notes: note,
       secrets: [{what: 'DNS API token', store: 'file:example-server', ref: '/etc/caddy/dns.env', check: 'test -s /etc/caddy/dns.env'}],
       depends_on: [{id: 'example-hub', kind: 'call', label: 'forwards to'}, {id: 'example-dns', kind: 'cert', label: 'DNS challenge'}, {id: 'example-router', kind: 'call', label: 'port forward'}]},
-    {id: 'example-backup', kind: 'tool', machine: 'example-server', name: 'Nightly backup (example)', type: 'Scheduled job', config: 'crontab -l', notes: note,
+    {id: 'example-backup', kind: 'tool', device: 'example-server', name: 'Nightly backup (example)', type: 'Scheduled job', config: 'crontab -l', notes: note,
       depends_on: [{id: 'example-hub', kind: 'data', label: 'copies its data folder'}]},
     {id: 'example-dns', kind: 'external', name: 'DNS provider (example)', type: 'SaaS', address: 'https://dns.example.com', login: 'Web sign-in', notes: note,
       secrets: [{what: 'Account password', store: 'unknown'}]},
@@ -210,7 +210,7 @@ export function templateEntries() {
 
 const KIND_HELP = {
   network: 'Network gear: a router, a switch, an access point.',
-  machine: 'A computer, a NAS, a single-board computer: something other entries run on.',
+  device: 'A computer, a NAS, a single-board computer: something other entries run on.',
   runtime: 'A running service (it has an address): a server, a daemon, an app with a port. These are the services catalog.',
   tool: 'A program or job without a network address: a CLI, a scheduled job, a desktop app.',
   'model-store': 'A folder or volume that holds model weights.',
@@ -220,7 +220,7 @@ const KIND_HELP = {
 };
 const LINK_HELP = {call: 'calls it over the network or an API', cert: 'takes a TLS certificate from it', secret: 'takes a credential from it', data: 'reads its files or data'};
 const STORE_HELP = {'passwords-app': 'the operating system\'s or a browser\'s password manager', remembered: 'the owner knows it and it is written down nowhere', unknown: 'not recorded yet (reported as a gap)'};
-const PREFIX_HELP = {'keychain:': ['keychain:<machine id>', 'the Keychain or keyring of that machine'], 'file:': ['file:<machine id>', 'a file on that machine; put its path in ref'], 'app-env:': ['app-env:<app>', 'the environment configured for an app or container'], 'shell-env:': ['shell-env:<machine id>', 'a shell profile variable on that machine; put its name in ref'], 'app-settings:': ['app-settings:<app>', 'kept inside the settings of an app'], 'sso:': ['sso:<provider>', 'signing in with an identity provider, no secret of its own']};
+const PREFIX_HELP = {'keychain:': ['keychain:<device id>', 'the Keychain or keyring of that device'], 'file:': ['file:<device id>', 'a file on that device; put its path in ref'], 'app-env:': ['app-env:<app>', 'the environment configured for an app or container'], 'shell-env:': ['shell-env:<device id>', 'a shell profile variable on that device; put its name in ref'], 'app-settings:': ['app-settings:<app>', 'kept inside the settings of an app'], 'sso:': ['sso:<provider>', 'signing in with an identity provider, no secret of its own']};
 
 /**
  * Everything an agent needs to fill the inventory correctly, as data: the document and entry shape,
@@ -234,10 +234,10 @@ export function describe({places = [], secretStores = []} = {}, entries = []) {
     file: 'data/knowledge.json',
     document: {schema: 'always 1', updated_at: 'YYYY-MM-DD, set by the hub on every write', entries: 'the entries, each as described under entry'},
     entry: {fields: [
-      text('id', 'Lowercase letters, digits and hyphens, starting with a letter; at most 64 characters. Never changes. Convention: <machine>-<service>.', {required: true, pattern: ENTRY_ID.source}),
+      text('id', 'Lowercase letters, digits and hyphens, starting with a letter; at most 64 characters. Never changes. Convention: <device>-<service>.', {required: true, pattern: ENTRY_ID.source}),
       text('kind', 'What it is; see kinds.', {required: true, enum: KINDS}),
       text('name', 'The name people use for it.', {required: true}),
-      text('machine', `The id of the machine entry it runs on. Required for: ${PLACED_KINDS.filter(k => k !== 'machine').join(', ')}. Not used by network and external.`),
+      text('device', `The id of the device entry it runs on. Required for: ${PLACED_KINDS.filter(k => k !== 'device').join(', ')}. Not used by network and external.`),
       text('type', 'A short free-text type, e.g. "Caddy" or "Node service · launchd".'),
       text('category', 'Colour group on the map; set it only when the default for the kind is wrong.', {enum: CATEGORIES}),
       text('address', 'How to reach it: host:port, a URL, an IP address. A runtime without one is reported as a gap.'),
@@ -248,17 +248,17 @@ export function describe({places = [], secretStores = []} = {}, entries = []) {
       text('login', 'How a person signs in, in words. Never a password or token.'),
       text('notes', 'Anything else worth knowing. No secret values.'),
       {name: 'secrets', type: 'array', description: 'Where each credential is kept, never its value: [{what, store, ref, check}]. what and store are required.'},
-      {name: 'depends_on', type: 'array', description: 'What it needs: [{id, kind, label}]. id is another entry, kind is a link kind, label is optional free text. Do not list the machine it runs on: that link is implied by "machine".'},
+      {name: 'depends_on', type: 'array', description: 'What it needs: [{id, kind, label}]. id is another entry, kind is a link kind, label is optional free text. Do not list the device it runs on: that link is implied by "device".'},
       {name: 'models', type: 'array', description: 'For a model store or a model server: model names (strings).'},
       {name: 'skills', type: 'array', description: 'For a skill store: skill names (strings).'},
       text('confidence', 'verified (you checked it; the default) or inferred (deduced, not checked).', {enum: CONFIDENCE}),
       text('verified_at', 'YYYY-MM-DD. Set by the hub on every write.', {setByHub: true}),
       text('verified_by', 'Who wrote it. Set by the hub on every write.', {setByHub: true}),
     ]},
-    kinds: KINDS.map(id => ({id, description: KIND_HELP[id], needsMachine: PLACED_KINDS.includes(id) && id !== 'machine', defaultCategory: DEFAULT_CATEGORY[id]})),
+    kinds: KINDS.map(id => ({id, description: KIND_HELP[id], needsDevice: PLACED_KINDS.includes(id) && id !== 'device', defaultCategory: DEFAULT_CATEGORY[id]})),
     categories: CATEGORIES,
     linkKinds: LINK_KINDS.map(id => ({id, description: LINK_HELP[id]})),
-    impliedLinks: [{id: 'runs-on', description: 'from every entry to its machine; never written in depends_on'}],
+    impliedLinks: [{id: 'runs-on', description: 'from every entry to its device; never written in depends_on'}],
     secrets: {
       fields: [text('what', 'What the credential is, e.g. "Admin password".', {required: true}), text('store', 'Where it is kept: a store name or a prefix form (see stores).', {required: true}),
         text('ref', 'The item name, path or variable name inside the store.'), text('check', 'A command that proves the secret exists without printing it.')],
@@ -270,7 +270,7 @@ export function describe({places = [], secretStores = []} = {}, entries = []) {
       'Record where a password, token or key is kept, never its value. Any text that looks like a secret is refused: an API key or token, a private key block, a JWT, "password=…", credentials inside a URL, a long hex or random-looking string.',
       'A check command must not print the secret: no "security … -w", no cat/less/head/tail of a credential file, no printenv or echo $VAR, no bare env.',
       `kind is one of: ${KINDS.join(', ')}.`,
-      `An entry of kind ${PLACED_KINDS.filter(k => k !== 'machine').join(', ')} must name an existing machine entry in "machine"; create the machine first (or in the same bulk call).`,
+      `An entry of kind ${PLACED_KINDS.filter(k => k !== 'device').join(', ')} must name an existing device entry in "device"; create the device first (or in the same bulk call).`,
       'Every depends_on id must exist, its kind must be a link kind, and an entry cannot depend on itself.',
       'ids are unique and never reused for something else.',
       'An entry that others depend on, or that others run on, cannot be deleted until they are changed or deleted.',

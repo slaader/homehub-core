@@ -1,7 +1,7 @@
-// LLM & Diffusion (#models): local language and generative models across every machine. One answer from
+// LLM & Diffusion (#models): local language and generative models across every device. One answer from
 // GET /api/models (overview, models, clients, graph, known tools) and one from GET /api/models/history
 // (requests, tokens and tok/s over time), both for the chosen range. Everything comes from the hub's runtime
-// providers (home.runtimes, runtimes.requests) and the machines' stacks; this page computes nothing it could
+// providers (home.runtimes, runtimes.requests) and the devices' stacks; this page computes nothing it could
 // get wrong, it only lays it out. A click in the wiring diagram filters the tables below it.
 import {el,onLeave} from './views.js';
 import {pageHeader,setProvenance,emptyState,errorState,loadingState,banner,segmented,statusPill} from './ui.js';
@@ -13,7 +13,7 @@ import {usageCharts,seriesName} from './models-charts.js';
 const RANGES=['24h','7d','30d'];
 const KINDS=['llm','embedding','image','video','music','audio','other'];
 const KIND_LABEL={llm:'LLM',embedding:'embedding',image:'difúze · obraz',video:'difúze · video',music:'hudba',audio:'zvuk a řeč',other:'ostatní'};
-const DIMS=[['model','Model'],['machine','Stroj'],['client','Klient'],['kind','Druh požadavku']];
+const DIMS=[['model','Model'],['device','Stroj'],['client','Klient'],['kind','Druh požadavku']];
 const REFRESH_MS=30000;
 let stylesheet=false;
 
@@ -43,28 +43,28 @@ function svgBar(used,total,cls='used'){
 }
 
 // ── Filters from the diagram ───────────────────────────────────────────────────────────────────
-// filter = {machine, runtime, model} | {machine, runtime} | {client} | {machine} | null
+// filter = {device, runtime, model} | {device, runtime} | {client} | {device} | null
 export function placementMatches(p,f){
  if(!f)return true;if(f.client)return false;
- if(f.machine&&p.machine!==f.machine)return false;
+ if(f.device&&p.device!==f.device)return false;
  if(f.runtime&&p.runtime!==f.runtime&&!(p.gateways||[]).includes(f.runtime))return false;
  if(f.model&&p.id!==f.model)return false;
  return true;
 }
 export function groupMatches(g,f,clients=[]){
  if(!f)return true;
- if(f.client){const used=new Set(clients.filter(c=>c.client===f.client).flatMap(c=>c.targets.flatMap(tg=>tg.models.map(m=>`${tg.machine}\u0000${m.model}`))));
-  return g.placements.some(p=>used.has(`${p.machine}\u0000${p.id}`)||(p.aliases||[]).some(a=>used.has(`${p.machine}\u0000${a}`)));}
+ if(f.client){const used=new Set(clients.filter(c=>c.client===f.client).flatMap(c=>c.targets.flatMap(tg=>tg.models.map(m=>`${tg.device}\u0000${m.model}`))));
+  return g.placements.some(p=>used.has(`${p.device}\u0000${p.id}`)||(p.aliases||[]).some(a=>used.has(`${p.device}\u0000${a}`)));}
  return g.placements.some(p=>placementMatches(p,f));
 }
 export function clientMatches(c,f,models=[]){
  if(!f)return true;if(f.client)return c.client===f.client;
  const placements=models.flatMap(g=>g.placements).filter(p=>placementMatches(p,f));
- return c.targets.some(tg=>(!f.machine||tg.machine===f.machine)&&(!f.runtime&&!f.model?true:tg.runtime===f.runtime||tg.models.some(m=>placements.some(p=>p.machine===tg.machine&&(p.id===m.model||(p.aliases||[]).includes(m.model))))));
+ return c.targets.some(tg=>(!f.device||tg.device===f.device)&&(!f.runtime&&!f.model?true:tg.runtime===f.runtime||tg.models.some(m=>placements.some(p=>p.device===tg.device&&(p.id===m.model||(p.aliases||[]).includes(m.model))))));
 }
 // ── Sorting the models table ───────────────────────────────────────────────────────────────────
 const STATE_RANK={loaded:3,loading:2,unloaded:1,unknown:0};
-const SORTS={name:g=>g.name.toLowerCase(),kind:g=>KINDS.indexOf(g.kind),machine:g=>g.machines.join(','),state:g=>(g.active?20:0)+(g.queued?10:0)+(STATE_RANK[g.state]??0),size:g=>g.sizeGb??-1,context:g=>g.contextTokens??-1,ttl:g=>g.ttlRemainingSeconds??-1,last:g=>g.lastRequestAt?Date.parse(g.lastRequestAt):0,requests:g=>g.requests};
+const SORTS={name:g=>g.name.toLowerCase(),kind:g=>KINDS.indexOf(g.kind),device:g=>g.devices.join(','),state:g=>(g.active?20:0)+(g.queued?10:0)+(STATE_RANK[g.state]??0),size:g=>g.sizeGb??-1,context:g=>g.contextTokens??-1,ttl:g=>g.ttlRemainingSeconds??-1,last:g=>g.lastRequestAt?Date.parse(g.lastRequestAt):0,requests:g=>g.requests};
 export function sortGroups(groups,{key='state',dir='desc'}={}){
  const f=SORTS[key]||SORTS.state,sign=dir==='asc'?1:-1;
  return [...groups].sort((a,b)=>{const x=f(a),y=f(b);return (x<y?-1:x>y?1:0)*sign||b.requests-a.requests||a.name.localeCompare(b.name);});
@@ -75,7 +75,7 @@ function stat(label,value,note){return el('div',{class:'md-stat'},el('span',{cla
 function strip(o){
  const r=o.runtimes,tokens=(o.inputTokens||0)+(o.outputTokens||0);
  return el('section',{class:'md-strip','aria-label':t('Přehled')},
-  stat(t('Stroje s runtimy'),String(o.machines)),
+  stat(t('Stroje s runtimy'),String(o.devices)),
   stat(t('Runtimy'),[String(r.up),el('small',{},` / ${r.total}`)],r.down||r.unknown?[r.down?t('{n} zastavené',{n:r.down}):null,r.down&&r.unknown?' · ':null,r.unknown?t('{n} bez čerstvých dat',{n:r.unknown}):null]:t('všechny běží')),
   stat(t('Načtené modely'),[String(o.models.loaded),el('small',{},` / ${o.models.total}`)],Object.entries(o.models.byKind||{}).map(([k,n])=>`${kindLabel(k)} ${n}`).join(' · ')||null),
   stat(t('Požadavky · {range}',{range:o.range}),short(o.requests),o.requests?t('{n} přiřazených klientům',{n:short(o.attributed)}):t('žádná historie')),
@@ -88,18 +88,18 @@ function strip(o){
 }
 function panel(title,lead,...content){return el('section',{class:'md-panel'},el('div',{class:'md-panel-head'},el('h2',{},title),lead?el('p',{},lead):null),...content);}
 
-// What generates right now on every machine (GET /api/models → work): the models whose runtimes or tools say
+// What generates right now on every device (GET /api/models → work): the models whose runtimes or tools say
 // they run a request or a job, or wait for one. Only what is watched is listed; the note names the rest.
-function workNow(w,machines){
+function workNow(w,devices){
  if(!w)return null;
- const name=id=>machines.find(m=>m.machine===id)?.name||id,running=w.items.filter(x=>x.active).length;
+ const name=id=>devices.find(m=>m.device===id)?.name||id,running=w.items.filter(x=>x.active).length;
  const since=iso=>{const s=(Date.now()-Date.parse(iso))/1000;return Number.isFinite(s)&&s>=0?ttl(s):null;};
  const row=x=>el('li',{class:x.active?'on':'wait'},el('i',{'aria-hidden':'true'}),el('b',{},x.name||x.id),kindTag(x.kind),
-  el('span',{class:'md-dim'},[name(x.machine),x.gateways?.length?t('{runtime} přes {gateways}',{runtime:x.runtimeName,gateways:x.gateways.join(', ')}):x.runtimeName].join(' · ')),
+  el('span',{class:'md-dim'},[name(x.device),x.gateways?.length?t('{runtime} přes {gateways}',{runtime:x.runtimeName,gateways:x.gateways.join(', ')}):x.runtimeName].join(' · ')),
   x.active?statusPill(x.since&&since(x.since)?x.active>1?t('generuje ×{n}, nejdéle {time}',{n:x.active,time:since(x.since)}):t('generuje {time}',{time:since(x.since)}):x.active>1?t('generuje ×{n}',{n:x.active}):t('generuje'),'accent'):null,
   x.queued?statusPill(tp(x.queued,'{n} ve frontě|{n} ve frontě|{n} ve frontě'),'warn'):null);
  const note=[w.watching.length?t('Co se generuje, hlásí: {list}.',{list:[...new Set(w.watching.map(r=>r.name))].join(', ')}):t('Žádný runtime neříká, jestli zrovna generuje.'),
-  w.blind.length?t('Neříká, jestli zrovna generuje: {list}.',{list:[...new Set(w.blind.map(r=>`${r.name} (${name(r.machine)})`))].join(', ')}):null].filter(Boolean).join(' ');
+  w.blind.length?t('Neříká, jestli zrovna generuje: {list}.',{list:[...new Set(w.blind.map(r=>`${r.name} (${name(r.device)})`))].join(', ')}):null].filter(Boolean).join(' ');
  return el('section',{class:`md-work${running?' on':''}`,'aria-label':t('Teď generuje')},
   el('h2',{},el('i',{'aria-hidden':'true'}),running?tp(running,'Teď generuje {n} model|Teď generují {n} modely|Teď generuje {n} modelů'):w.queued?t('Nic negeneruje, úlohy čekají ve frontě'):t('Teď nic negeneruje')),
   w.items.length?el('ul',{},w.items.map(row)):null,el('p',{class:'md-note'},note));
@@ -108,21 +108,21 @@ function workNow(w,machines){
 // The model's own name large, its organisation (org/… or org--…) small under it; the whole id as the title.
 function modelCell(id){const m=/^(.*?)(?:\/|--)([^/]*)$/.exec(id),name=m?m[2]:id;return el('td',{class:'md-name',title:id},name,m?el('span',{class:'md-alias'},m[1]):null);}
 function modelsTable(data,{filter,sort,query,onSort}){
- const kinds=[...new Set(data.models.map(g=>g.kind))],machines=[...new Set(data.models.flatMap(g=>g.machines))];
+ const kinds=[...new Set(data.models.map(g=>g.kind))],devices=[...new Set(data.models.flatMap(g=>g.devices))];
  let groups=data.models.filter(g=>groupMatches(g,filter,data.clients));
- if(query.text){const q=query.text.toLowerCase();groups=groups.filter(g=>[g.name,...g.placements.flatMap(p=>[p.id,p.runtime,p.machine,...(p.aliases||[])])].some(s=>String(s).toLowerCase().includes(q)));}
+ if(query.text){const q=query.text.toLowerCase();groups=groups.filter(g=>[g.name,...g.placements.flatMap(p=>[p.id,p.runtime,p.device,...(p.aliases||[])])].some(s=>String(s).toLowerCase().includes(q)));}
  if(query.kind)groups=groups.filter(g=>g.kind===query.kind);
- if(query.machine)groups=groups.filter(g=>g.machines.includes(query.machine));
+ if(query.device)groups=groups.filter(g=>g.devices.includes(query.device));
  if(query.state==='loaded')groups=groups.filter(g=>g.placements.some(p=>p.state==='loaded'||p.state==='loading'));
  groups=sortGroups(groups,sort);
  const head=(key,label,cls='')=>el('th',{scope:'col',class:cls||null,'aria-sort':sort.key===key?(sort.dir==='asc'?'ascending':'descending'):'none'},el('button',{type:'button',onclick:()=>onSort(key)},label));
- const where=p=>[el('b',{},p.machineName||p.machine),' · ',p.runtimeName||p.runtime,(p.gateways||[]).length?el('span',{class:'md-alias'},t('přes {via} jako {alias}',{via:p.gateways.join(', '),alias:(p.aliases||[]).join(', ')})):null];
+ const where=p=>[el('b',{},p.deviceName||p.device),' · ',p.runtimeName||p.runtime,(p.gateways||[]).length?el('span',{class:'md-alias'},t('přes {via} jako {alias}',{via:p.gateways.join(', '),alias:(p.aliases||[]).join(', ')})):null];
  const rows=[];
  for(const g of groups){
   const one=g.placements.length===1?g.placements[0]:null;
   rows.push(el('tr',{},
    modelCell(g.name),el('td',{},kindTag(g.kind)),
-   el('td',{},one?where(one):tp(g.machines.length,'{n} stroj|{n} stroje|{n} strojů')+' · '+tp(g.placements.length,'{n} umístění|{n} umístění|{n} umístění')),
+   el('td',{},one?where(one):tp(g.devices.length,'{n} stroj|{n} stroje|{n} strojů')+' · '+tp(g.placements.length,'{n} umístění|{n} umístění|{n} umístění')),
    el('td',{class:'md-state'},stateTag(g.state,g)),el('td',{class:'num'},gb(g.sizeGb)),el('td',{class:'num md-hide-narrow'},ctxLen(g.contextTokens)),
    el('td',{class:'num md-hide-narrow'},ttl(g.ttlRemainingSeconds)),el('td',{class:'md-hide-narrow',title:at(g.lastRequestAt)||null},ago(g.lastRequestAt)),el('td',{class:'num'},g.requests?short(g.requests):'—')));
   if(!one)for(const p of g.placements)rows.push(el('tr',{class:'md-sub'},modelCell(p.id),el('td',{},p.engine||''),el('td',{},where(p)),el('td',{class:'md-state'},stateTag(p.state,p)),
@@ -132,23 +132,23 @@ function modelsTable(data,{filter,sort,query,onSort}){
  const search=el('input',{type:'search',placeholder:t('Hledat model, runtime, stroj…'),'aria-label':t('Hledat model'),value:query.text||'',oninput:e=>query.set('text',e.target.value,{soft:true})});
  return [el('div',{class:'md-filters'},search,
    select('kind',t('Všechny druhy'),kinds.map(k=>[k,kindLabel(k)]),query.kind),
-   select('machine',t('Všechny stroje'),machines.map(m=>[m,data.machines.find(x=>x.machine===m)?.name||m]),query.machine),
+   select('device',t('Všechny stroje'),devices.map(m=>[m,data.devices.find(x=>x.device===m)?.name||m]),query.device),
    select('state',t('Načtené i nenačtené'),[['loaded',t('Jen načtené')]],query.state)),
-  groups.length?el('div',{class:'md-table-wrap'},el('table',{class:'md-table'},el('thead',{},el('tr',{},head('name',t('Model')),head('kind',t('Druh')),head('machine',t('Stroj · runtime')),head('state',t('Stav')),
+  groups.length?el('div',{class:'md-table-wrap'},el('table',{class:'md-table'},el('thead',{},el('tr',{},head('name',t('Model')),head('kind',t('Druh')),head('device',t('Stroj · runtime')),head('state',t('Stav')),
    head('size',t('Velikost'),'num'),head('context',t('Kontext'),'num md-hide-narrow'),head('ttl',t('TTL zbývá'),'num md-hide-narrow'),head('last',t('Poslední požadavek'),'md-hide-narrow'),head('requests',t('Požadavky'),'num'))),el('tbody',{},rows)))
    :emptyState({compact:true,icon:'search',title:t('Žádný model neodpovídá filtru'),body:t('Zruš filtr nebo hledání.')})];
 }
 
 function clientsTable(data,filter){
  const rows=data.clients.filter(c=>clientMatches(c,filter,data.models));
- const name=id=>data.machines.find(m=>m.machine===id)?.name||id;
- const from=c=>c.clientMachine?[el('b',{},name(c.clientMachine)),c.via.includes('address')?el('span',{class:'md-alias'},t('podle adresy')):null]
+ const name=id=>data.devices.find(m=>m.device===id)?.name||id;
+ const from=c=>c.clientDevice?[el('b',{},name(c.clientDevice)),c.via.includes('address')?el('span',{class:'md-alias'},t('podle adresy')):null]
   :[el('span',{class:'md-dim'},t('stroj neznámý')),c.via.includes('loopback')?el('span',{class:'md-alias'},t('loopback: tento stroj nebo SSH tunel')):null];
  if(!data.clients.length)return [emptyState({compact:true,icon:'users',title:t('Žádné požadavky v tomto rozsahu'),body:t('Klienti se objeví, jakmile poskytovatel runtimů předá historii požadavků (runtimes.requests).')})];
  return [el('div',{class:'md-table-wrap'},el('table',{class:'md-table'},
   el('thead',{},el('tr',{},el('th',{scope:'col'},t('Klient')),el('th',{scope:'col'},t('Odkud')),el('th',{scope:'col'},t('Kam')),el('th',{scope:'col',class:'num'},t('Požadavky')),el('th',{scope:'col',class:'num md-hide-narrow'},t('Tokeny')),el('th',{scope:'col',class:'md-hide-narrow'},t('Naposledy')))),
   el('tbody',{},rows.map(c=>el('tr',{},el('td',{},c.attributed?el('b',{},c.client):el('span',{class:'md-dim'},t('Nepřiřazeno'))),el('td',{},from(c)),
-   el('td',{},c.targets.map(tg=>el('div',{},`${tg.runtime} @ ${name(tg.machine)}`,c.clientMachine&&tg.machine!==c.clientMachine?[' ',statusPill(t('mezi stroji'),'accent')]:null,el('span',{class:'md-alias'},tg.models.map(m=>`${m.model} ×${m.requests}`).join(', '))))),
+   el('td',{},c.targets.map(tg=>el('div',{},`${tg.runtime} @ ${name(tg.device)}`,c.clientDevice&&tg.device!==c.clientDevice?[' ',statusPill(t('mezi stroji'),'accent')]:null,el('span',{class:'md-alias'},tg.models.map(m=>`${m.model} ×${m.requests}`).join(', '))))),
    el('td',{class:'num'},short(c.requests)),el('td',{class:'num md-hide-narrow'},short(c.inputTokens+c.outputTokens)),el('td',{class:'md-hide-narrow',title:at(c.lastAt)||null},ago(c.lastAt))))))),
   el('p',{class:'md-note'},t('Klienta pozná poskytovatel historie, pokud ho umí určit (u llama-swap podle User-Agent v jeho přístupovém logu). Stroj klienta je známý jen tam, kde to data říkají: llama-swap na loopbacku vidí všechny požadavky z 127.0.0.1, včetně těch, které přišly SSH tunelem z jiného stroje.'))];
 }
@@ -164,14 +164,14 @@ function topTable(h,dim){
 function knownList(known){
  if(!known.length)return null;
  return el('div',{class:'md-known'},known.filter(k=>k.role==='runtime').map(k=>el('article',{},el('h3',{},k.title,kindTag(k.kind),statusPill(k.state==='off'?t('vypnuto'):t('známý, bez živých statistik'),k.state==='off'?'':'plain')),
-  el('p',{},[k.machineName,k.models.length?` · ${k.models.join(', ')}`:'',k.description?` · ${k.description}`:''].join('')))));
+  el('p',{},[k.deviceName,k.models.length?` · ${k.models.join(', ')}`:'',k.description?` · ${k.description}`:''].join('')))));
 }
 
 function emptyPage(known){
  return el('div',{class:'md-page'},emptyState({icon:'flow',title:t('Zatím žádné runtimy modelů'),
   body:t('Tahle stránka ukazuje lokální LLM, embeddingové a difúzní modely (obraz, video, hudba, zvuk) na všech strojích: co je kde načtené, kolik paměti drží, kdo je odkud volá a jak je to zapojené. Data dodávají poskytovatelé runtimů; žádný tu zatím není.'),
   steps:[t('Přidej runtimy do site.json → runtimes (llama-swap, Ollama, LM Studio, vLLM, oMLX…), hub je pak čte přímo.'),t('Nebo je zapoj na stránce Integrace, nebo pluginem, který poskytuje home.runtimes a runtimes.requests (docs/plugins.md).'),t('Nebo připoj agenta přes MCP: runtime_publish zapíše stack stroje a models_overview ukáže, co hub vidí.')],
-  agentPrompt:t('Připoj lokální LLM runtimy k Home Hubu: zjisti, které runtimy (llama-swap, Ollama, LM Studio, vLLM, oMLX, mlx-serve) běží na strojích z machine_list, a zapiš je do site.json → runtimes nebo zveřejni stack přes runtime_publish. Potom ověř models_overview.'),
+  agentPrompt:t('Připoj lokální LLM runtimy k Home Hubu: zjisti, které runtimy (llama-swap, Ollama, LM Studio, vLLM, oMLX, mlx-serve) běží na strojích z device_list, a zapiš je do site.json → runtimes nebo zveřejni stack přes runtime_publish. Potom ověř models_overview.'),
   mcpSnippet:true}),
   known.length?panel(t('Známé ze stacku'),t('Nástroje, které popisuje stack strojů (site.json nebo runtime_publish). Hub k nim nemá živá data.'),knownList(known)):null);
 }
@@ -181,7 +181,7 @@ export function modelsPage(){
  const header=pageHeader({eyebrow:t('Lokální AI'),title:t('LLM a difúze'),lead:t('Lokální jazykové a generativní modely na všech strojích: co je načtené, paměť, provoz a kdo je odkud volá.')});
  const body=el('div',{},loadingState(t('Načítám modely…')));
  const root=el('div',{class:'md-page'},header,body);
- const state={range:'24h',dim:'model',filter:null,sort:{key:'state',dir:'desc'},query:{text:'',kind:'',machine:'',state:''},data:null,history:null};
+ const state={range:'24h',dim:'model',filter:null,sort:{key:'state',dir:'desc'},query:{text:'',kind:'',device:'',state:''},data:null,history:null};
  let graph=null,charts=null,timer=null,left=false,built=false;
  const parts={};
  state.query.set=(name,value,{soft}={})=>{state.query[name]=value;drawModels(soft);};
@@ -194,7 +194,7 @@ export function modelsPage(){
  }
  function drawModels(soft){
   if(!parts.models)return;const focusName=soft?document.activeElement?.getAttribute?.('type'):null;
-  parts.models.replaceChildren(...modelsTable(state.data,{filter:state.filter,sort:state.sort,query:state.query,onSort:key=>{state.sort=state.sort.key===key?{key,dir:state.sort.dir==='asc'?'desc':'asc'}:{key,dir:['name','kind','machine'].includes(key)?'asc':'desc'};drawModels();}}));
+  parts.models.replaceChildren(...modelsTable(state.data,{filter:state.filter,sort:state.sort,query:state.query,onSort:key=>{state.sort=state.sort.key===key?{key,dir:state.sort.dir==='asc'?'desc':'asc'}:{key,dir:['name','kind','device'].includes(key)?'asc':'desc'};drawModels();}}));
   if(focusName==='search'){const input=parts.models.querySelector('input[type=search]');input?.focus();input?.setSelectionRange?.(input.value.length,input.value.length);}
  }
  function drawFiltered(){
@@ -231,13 +231,13 @@ export function modelsPage(){
    built=true;
   }
   parts.stamp.textContent=d.overview.observedAt?t('stav runtimů {when}',{when:ago(d.overview.observedAt)}):'';
-  const stale=d.machines.filter(m=>m.observedAt&&Date.now()-Date.parse(m.observedAt)>180000);
+  const stale=d.devices.filter(m=>m.observedAt&&Date.now()-Date.parse(m.observedAt)>180000);
   const noHistory=!d.providers.requests.length,emptyHistory=!noHistory&&!d.providers.requests.some(p=>p.count);
   parts.banners.replaceChildren(...[
-   stale.length?banner({tone:'warn',title:t('Starší data.'),body:t('{machines}: poslední stav je starší než 3 minuty; runtimy ukazujeme jako neznámé.',{machines:stale.map(m=>m.name).join(', ')})}):null,
+   stale.length?banner({tone:'warn',title:t('Starší data.'),body:t('{devices}: poslední stav je starší než 3 minuty; runtimy ukazujeme jako neznámé.',{devices:stale.map(m=>m.name).join(', ')})}):null,
    noHistory||emptyHistory?banner({tone:'info',title:t('Bez historie požadavků.'),body:noHistory?t('Žádný poskytovatel nedodává runtimes.requests, takže provoz, klienti a grafy jsou prázdné. Živý stav runtimů platí.'):t('Poskytovatel historie je připojený, ale zatím nic nezaznamenal (hub může runtimy číst jen jako snímek, historii pak drží jiný hub).')}):null].filter(Boolean));
   parts.strip.replaceChildren(strip(d.overview));
-  parts.work.replaceChildren(...[workNow(d.work,d.machines)].filter(Boolean));
+  parts.work.replaceChildren(...[workNow(d.work,d.devices)].filter(Boolean));
   graph.update(d.graph,{selected:graph.selected()});
   if(state.filter&&!d.models.some(g=>groupMatches(g,state.filter,d.clients))&&!d.clients.some(c=>clientMatches(c,state.filter,d.models)))state.filter=null;
   drawFiltered();drawUsage();

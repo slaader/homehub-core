@@ -2,7 +2,7 @@
  "schemaVersion": 1,
  "collectedAt": "2026-11-08T12:00:00Z",
  "collectedFrom": "studio",
- "machines": {
+ "devices": {
   "mini": {
    "host": "mini",
    "platform": "mac",

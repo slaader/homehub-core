@@ -2,7 +2,7 @@
  "schemaVersion": 1,
  "collectedAt": "2026-11-08T12:00:00.000Z",
  "collectedFrom": "studio",
- "machines": [
+ "devices": [
   {
    "id": "studio",
    "name": "Mac Studio",
@@ -140,7 +140,7 @@
    "comment": "studio->nas",
    "copies": [
     {
-     "machine": "studio",
+     "device": "studio",
      "owner": "alice",
      "path": "/Users/alice/.ssh/id_a",
      "mode": "600",
@@ -153,7 +153,7 @@
     {
      "target": {
       "kind": "host",
-      "machine": "nas",
+      "device": "nas",
       "user": "admin",
       "ips": [
        "10.0.0.74"
@@ -173,7 +173,7 @@
    ],
    "routes": [
     {
-     "machine": "studio",
+     "device": "studio",
      "user": "alice",
      "alias": "nas",
      "hostname": "10.0.0.74",
@@ -182,7 +182,7 @@
      "proxyJump": null,
      "target": {
       "kind": "host",
-      "machine": "nas"
+      "device": "nas"
      },
      "accepted": true,
      "alsoGit": false,
@@ -194,7 +194,7 @@
  "otherKeys": [],
  "unknownAuthorized": [
   {
-   "machine": "nas",
+   "device": "nas",
    "user": "admin",
    "fingerprint": "SHA256:8bX+tphjMek330TUGqiYcVLJAp/KUNNHcg7EImOoLBM",
    "type": "ssh-ed25519",
@@ -238,9 +238,9 @@
    "detail": "Jeho privátní část není na žádném z prověřených strojů (jiné zařízení nebo zapomenutý klíč). Bez omezení adresy.",
    "titleT": [
     {
-     "key": "Na {machine} ({user}) je povolený cizí klíč „{key}“",
+     "key": "Na {device} ({user}) je povolený cizí klíč „{key}“",
      "params": {
-      "machine": "NAS",
+      "device": "NAS",
       "user": "admin",
       "key": "phone"
      }
@@ -263,9 +263,9 @@
    "detail": "Omezeno přes AllowUsers na alice@10.0.0.25.",
    "titleT": [
     {
-     "key": "{machine}: SSH přijímá i heslo",
+     "key": "{device}: SSH přijímá i heslo",
      "params": {
-      "machine": "Mac Studio"
+      "device": "Mac Studio"
      }
     }
    ],
@@ -284,9 +284,9 @@
    "detail": "Účet má sudo bez hesla a ani from= ani AllowUsers neomezují, odkud se klíč smí použít.",
    "titleT": [
     {
-     "key": "{machine} ({user}): klíč „{key}“ bez omezení adresy",
+     "key": "{device} ({user}): klíč „{key}“ bez omezení adresy",
      "params": {
-      "machine": "NAS",
+      "device": "NAS",
       "user": "admin",
       "key": "phone"
      }

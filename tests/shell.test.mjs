@@ -58,7 +58,7 @@ test('styles: every custom property the shell uses is defined, and old page styl
  // The shell's own rules carry no literal colours: only the tokens (and the brand orb and the category colours).
  const shellRules=hubCss.slice(hubCss.indexOf('*{box-sizing')).split('\n').filter(line=>!/\.hh-orb\{|\.hh-face\{/.test(line)).join('\n');
  assert.deepEqual(shellRules.match(/#[0-9a-fA-F]{3,8}\b|rgba?\(/g)||[],[],'shell rules use tokens for every colour');
- // The overview and machine pages moved to home.css (.hv-*); their old rules are gone from the shell's file.
+ // The overview and device pages moved to home.css (.hv-*); their old rules are gone from the shell's file.
  assert.doesNotMatch(hubCss,/\.(home-|dev-|stack-|sp-|hc\b|qc\b|g-dial|mini-stats|tile-spark)/,'no rules of the old device page');
  // Every class the shell's stylesheet styles is one some page or the shell itself uses (w0…w10 are built from a number).
  const sources=(await Promise.all((await readdir(new URL('../public/',import.meta.url))).filter(f=>f.endsWith('.js')||f.endsWith('.html')).map(read))).join('\n');
@@ -203,37 +203,37 @@ test('command palette: matching ignores case and diacritics, needs every word, a
 });
 
 test('getting started: each step is read from the hub, and a configured household is never nagged',()=>{
- const empty=onboardingSteps({home:{machines:[],router:null},accounts:{accounts:[]},inventory:null,systems:false,security:false});
+ const empty=onboardingSteps({home:{devices:[],router:null},accounts:{accounts:[]},inventory:null,systems:false,security:false});
  assert.deepEqual(empty.steps.map(s=>s.id),[...STEP_IDS]);
  assert.deepEqual(empty.steps.map(s=>s.done),[true,false,false,false,false,false]);
  assert.deepEqual(empty.steps.filter(s=>s.optional).map(s=>s.id),['telemetry','collectors']);
  assert.deepEqual([empty.requiredDone,empty.requiredTotal,empty.complete],[1,4,false]);
 
  const key=(revokedAt=null,lastUsedAt=null)=>({revokedAt,lastUsedAt});
- const agent=accounts=>onboardingSteps({home:{machines:[]},accounts:{accounts},inventory:null}).steps[1];
+ const agent=accounts=>onboardingSteps({home:{devices:[]},accounts:{accounts},inventory:null}).steps[1];
  assert.equal(agent([{name:'a',keys:[]}]).done,false,'an account without a key is not connected');
  assert.equal(agent([{name:'a',keys:[key('2026-01-01')]}]).done,false,'a revoked key does not count');
  assert.equal(agent([{name:'a',disabled:true,keys:[key()]}]).done,false,'nor does a disabled account');
  assert.deepEqual([agent([{name:'a',keys:[key()],lastUsedAt:null}]).done,agent([{name:'a',keys:[key()],lastUsedAt:null}]).detail.used],[true,false]);
  assert.equal(agent([{name:'a',keys:[key(null,'2026-01-02')],lastUsedAt:'2026-01-02'}]).detail.used,true);
 
- const set=onboardingSteps({home:{machines:[{id:'a',kind:'thermo',thermo:'up'},{id:'b',kind:'nas'}],router:{status:'ok'}},accounts:{accounts:[{name:'a',keys:[key()]}]},
+ const set=onboardingSteps({home:{devices:[{id:'a',kind:'thermo',thermo:'up'},{id:'b',kind:'nas'}],router:{status:'ok'}},accounts:{accounts:[{name:'a',keys:[key()]}]},
   inventory:{doc:{entries:[{id:'a'},{id:'b'}]}},systems:true,security:false});
  assert.deepEqual(set.steps.map(s=>s.done),[true,true,true,true,true,true]);assert.equal(set.complete,true);
  assert.deepEqual([set.steps[2].detail.count,set.steps[3].detail.count,set.steps[4].detail.count],[2,1,2]);
  assert.deepEqual(set.steps[5].detail,{systems:true,security:false,router:true});
 
  // A viewer cannot list service accounts or collectors: unknown, and it does not hold the list open.
- const viewer=onboardingSteps({home:{machines:[{id:'a',kind:'other'}],router:null},inventory:{doc:{entries:[{id:'a'}]}}});
+ const viewer=onboardingSteps({home:{devices:[{id:'a',kind:'other'}],router:null},inventory:{doc:{entries:[{id:'a'}]}}});
  assert.deepEqual(viewer.steps.map(s=>s.done),[true,null,true,false,true,false]);assert.equal(viewer.complete,true);
  assert.equal(onboardingSteps({}).steps[2].done,null,'no answer from the hub is unknown, not "empty"');
 
  assert.equal(offersOnboarding(empty,{edition:'public'}),true,'a new public hub is offered the list');
- assert.equal(offersOnboarding(empty,{edition:'private'}),true,'and so is a private tree with no machines yet');
+ assert.equal(offersOnboarding(empty,{edition:'private'}),true,'and so is a private tree with no devices yet');
  assert.equal(offersOnboarding(empty,{edition:'public',dismissed:true}),false);
  assert.equal(offersOnboarding(set,{edition:'public'}),false,'a finished hub is left alone');
- const household=onboardingSteps({home:{machines:[{id:'a',kind:'thermo'}]},accounts:{accounts:[]},inventory:null});
- assert.equal(household.complete,false);assert.equal(offersOnboarding(household,{edition:'private'}),false,'private edition with machines: only from the menu');
+ const household=onboardingSteps({home:{devices:[{id:'a',kind:'thermo'}]},accounts:{accounts:[]},inventory:null});
+ assert.equal(household.complete,false);assert.equal(offersOnboarding(household,{edition:'private'}),false,'private edition with devices: only from the menu');
  assert.equal(offersOnboarding(household,{edition:'public'}),true);assert.equal(offersOnboarding(null,{edition:'public'}),false);
 
  const me={username:'alex'};localStorage.clear();
@@ -252,7 +252,7 @@ test('getting started on a brand-new hub: every read answers 200, and the steps 
  const state=await get('/api/collectors');assert.equal(state.status,200);
  const {collectors,schemaVersion}=await state.json();assert.equal(schemaVersion,1);
  assert.deepEqual(Object.keys(collectors),['systems','security','router']);
- assert.deepEqual([collectors.systems.state,collectors.systems.collectedAt,collectors.security.state,collectors.security.collectedAt],['waiting',null,'waiting',null],'the fixture site has machines to read, nothing read yet');
+ assert.deepEqual([collectors.systems.state,collectors.systems.collectedAt,collectors.security.state,collectors.security.collectedAt],['waiting',null,'waiting',null],'the fixture site has devices to read, nothing read yet');
  assert.deepEqual(Object.keys(collectors.systems),['state','configured','collectedAt','ageSeconds','intervalSeconds','staleAfterSeconds','script'],'the state only, nothing of a snapshot');
  assert.ok(['not-configured','waiting'].includes(collectors.router.state));
  // Like the data routes: administrators and holders of security:read, nobody else.
@@ -273,14 +273,14 @@ test('getting started on a brand-new hub: every read answers 200, and the steps 
  assert.deepEqual([step(fresh,'collectors').detail.systems,step(fresh,'collectors').detail.security],[false,false]);
 
  // An inventory entry and a key snapshot arrive: the same quiet reads see them.
- await writeFile(path.join(h.dir,'knowledge.json'),JSON.stringify({schema:1,updated_at:'2026-11-08',entries:[{id:'studio',kind:'machine',name:'Mac Studio',verified_at:'2026-11-08'}]}));
+ await writeFile(path.join(h.dir,'knowledge.json'),JSON.stringify({schema:1,updated_at:'2026-11-08',entries:[{id:'studio',kind:'device',name:'Mac Studio',verified_at:'2026-11-08'}]}));
  await mkdir(path.join(h.dir,'security'),{recursive:true});
- await writeFile(path.join(h.dir,'security','ssh-keys.json'),JSON.stringify({schemaVersion:SECURITY_SCHEMA,collectedAt:new Date().toISOString(),machines:[],keys:[]}));
+ await writeFile(path.join(h.dir,'security','ssh-keys.json'),JSON.stringify({schemaVersion:SECURITY_SCHEMA,collectedAt:new Date().toISOString(),devices:[],keys:[]}));
  seen.length=0;
  const later=await loadOnboarding(me,{force:true});
  assert.deepEqual(seen.filter(([,status])=>status!==200),[]);
  assert.deepEqual([step(later,'inventory').done,step(later,'inventory').detail.count,step(later,'collectors').done,step(later,'collectors').detail.security],[true,1,true,true]);
- const viewerSteps=onboardingSteps({home:{machines:[]},inventory:{inventory:{entries:3}}});
+ const viewerSteps=onboardingSteps({home:{devices:[]},inventory:{inventory:{entries:3}}});
  assert.deepEqual([viewerSteps.steps[4].done,viewerSteps.steps[4].detail.count],[true,3],'the count comes from the schema route');
 });
 
@@ -327,7 +327,7 @@ test('server: the shell module serves its files, #welcome is a hidden page, a na
 
 test('shell: the pieces the app is built from are wired in, with text-safe DOM and no inline styles',async()=>{
  const app=await read('app.js');
- for(const piece of ["createPalette({","watchNetwork();","startLoading()","themeSwitch()","offersOnboarding(","document.title=pageTitle(machine,page)","manifest.version?","t('verze {version}',{version})","tp(plugins,"])assert.ok(app.includes(piece),piece);
+ for(const piece of ["createPalette({","watchNetwork();","startLoading()","themeSwitch()","offersOnboarding(","document.title=pageTitle(device,page)","manifest.version?","t('verze {version}',{version})","tp(plugins,"])assert.ok(app.includes(piece),piece);
  assert.match(app,/\(e\.metaKey\|\|e\.ctrlKey\)&&!e\.altKey&&!e\.shiftKey&&e\.key\.toLowerCase\(\)==='k'/,'Cmd/Ctrl-K opens the palette');
  assert.match(app,/const pref=\{get:key=>\{try\{return localStorage\.getItem\(key\);\}catch\{return null;\}\}/,'shell preferences survive refused storage');
  assert.doesNotMatch(app,/innerHTML|\.style\.|style:/,'text-safe DOM and no inline styles');

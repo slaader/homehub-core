@@ -31,7 +31,7 @@ const temp=t=>{const d=realpathSync(mkdtempSync(path.join(os.tmpdir(),'hub-agent
 const put=(file,body,mode=0o644)=>{mkdirSync(path.dirname(file),{recursive:true});writeFileSync(file,body);chmodSync(file,mode);};
 const T='\t',rec=(...f)=>f.join(T);
 const TOKEN='hha_'+'d'.repeat(64);
-// What mac-probe.sh prints in narrow-sudo mode without any sudo rule (a placeholder machine), plus one secret-looking line.
+// What mac-probe.sh prints in narrow-sudo mode without any sudo rule (a placeholder device), plus one secret-looking line.
 const MAC_PROBE=[rec('HOST','studio','Darwin','alice','0','2026-11-13T10:00:00Z'),rec('OS','macOS','26.1','25B78','25.1.0','arm64'),rec('HW','Mac16,9','Apple M4 Max','68719476736','16'),
  rec('UPTIME','1793800000'),rec('SWU_NONE'),rec('AUTO','AutomaticCheckEnabled','1'),rec('FW','global','1'),rec('PRIV','pf-info','denied'),rec('PRIV','pf-rules','denied'),rec('PF','unknown'),
  rec('FV','FileVault is On.'),rec('SSHD','remotelogin','off'),rec('PRIV','sshd','denied'),rec('SSHD','effective','unknown'),rec('PRIV','listen','denied'),rec('LISTEN','?','?','*.22'),
@@ -47,7 +47,7 @@ test('agent.json: closed, checked at start; keys per platform; runtimes on loopb
  const mac=ok(base).config,linux=ok(base,'linux').config;
  assert.equal(mac.keys,'own');assert.equal(linux.keys,'off');assert.equal(mac.intervals.heartbeat,60);assert.equal(mac.intervals.os,21600);assert.equal(mac.intervals.packages,21600);
  assert.equal(ok({...base,keys:'own'},'linux').ok,false,'own means nothing for a system account');
- assert.equal(ok({...base,machine:'mini'}).ok,false,'no machine: the key says it');
+ assert.equal(ok({...base,device:'mini'}).ok,false,'no device: the key says it');
  assert.equal(ok({...base,schema:2}).ok,false);assert.equal(ok({...base,intervals:{heartbeat:10}}).ok,false);assert.equal(ok({...base,intervals:{os:900,updates:1000}}).ok,false);
  assert.equal(ok({...base,intervals:{os:900}}).config.intervals.updates,900);
  assert.deepEqual(ok({...base,runtimes:[{id:'ollama',kind:'ollama',url:'http://127.0.0.1:11434/'}]}).config.runtimes,[{id:'ollama',kind:'ollama',url:'http://127.0.0.1:11434'}]);
@@ -174,7 +174,7 @@ test('mac-probe.sh in narrow-sudo mode: one sudo -n per line of the privileged l
 test('linux-probe.sh through the agent: its privileged reads go through sudo -n with the listed full paths only',async t=>{
  const dir=temp(t),bin=path.join(dir,'bin'),log=path.join(dir,'sudo.log');
  // Only stubs on PATH: the host's systemctl, apt, dnf, docker, ss or nft are never reached, so the result is the same
- // on every machine (linux-probe.sh calls its other tools by name; its privileged ones only through the sudo stub).
+ // on every device (linux-probe.sh calls its other tools by name; its privileged ones only through the sudo stub).
  stubTools(bin);
  put(path.join(bin,'timeout'),'#!/bin/sh\nshift\nexec "$@"\n',0o755);
  put(path.join(bin,'sudo'),`#!/bin/sh\nprintf '%s\\n' "$*" >> ${log}\nexit 1\n`,0o755);
@@ -388,7 +388,7 @@ test('the loop: 429 waits Retry-After and resends the batch; 5xx doubles; 401 wa
  const k=hubS.seen.length;a.tick(30000);await a.agent.step();assert.equal(hubS.seen.length,k);
 });
 
-// The first real Linux machine: `systemctl restart` 45 s after a report, and the hub refused os, updates and packages as
+// The first real Linux device: `systemctl restart` 45 s after a report, and the hub refused os, updates and packages as
 // too-soon (it holds this key's copy from less than 15 min ago). They must come again once that minimum has passed, not
 // six hours later (a watch list changed by an install would reach the hub only then).
 test('the loop: systems parts refused as too-soon are collected again after their minimum, not a whole interval later',async t=>{

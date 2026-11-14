@@ -19,7 +19,7 @@ const hooks=path.join(repoRoot,'scripts','hooks');
 const owner=['sg','dovin'].join(''),subnet=['192','168','50'].join('.'),site=['Sla','ader'].join('');
 const mail=['first.last','mail.somewhere.org'].join('@'),domain=['home.',owner,'.xyz'].join('');
 
-// No configuration of this machine and no git state of a caller (git exports GIT_DIR into its hooks).
+// No configuration of this computer and no git state of a caller (git exports GIT_DIR into its hooks).
 const ENV=(()=>{
  const env={...process.env,GIT_CONFIG_GLOBAL:'/dev/null',GIT_CONFIG_SYSTEM:'/dev/null',GIT_TERMINAL_PROMPT:'0',
   GIT_AUTHOR_NAME:NEUTRAL_IDENTITY.name,GIT_AUTHOR_EMAIL:NEUTRAL_IDENTITY.email,GIT_COMMITTER_NAME:NEUTRAL_IDENTITY.name,GIT_COMMITTER_EMAIL:NEUTRAL_IDENTITY.email,

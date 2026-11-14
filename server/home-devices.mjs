@@ -1,7 +1,6 @@
-// Machines that are not in the site configuration: devices added on the overview (⊕ Add device) and
-// machines an agent wrote over MCP (machine_upsert). The site's own machines stay in site.json and are
-// read-only here. One store, one write queue, atomic renames.
-//   state/home/devices.json       the machines: id, name, hostname, ip, role, props, thermoId, picture (no secrets)
+// Added devices, those that are not in the site configuration: added on the overview (⊕ Add device) or
+// written by an agent over MCP (device_upsert). Site devices stay in site.json and are read-only here. One store, one write queue, atomic renames.
+//   state/home/devices.json       the devices: id, name, hostname, ip, role, props, thermoId, picture (no secrets)
 //   state/home/thermo-hosts.json  0600, sealed (server/secret-box.mjs): the Thermo account a device logs in with (password, pinned cert)
 //   state/home/windows-hosts.json 0600: how a Windows device is read: an app-managed connection (host, port,
 //                                 Windows user, the ids of its key and known_hosts in state/home/ssh/, the public
@@ -13,19 +12,19 @@
 //                                 bearer credentials, the job and instance of one node_exporter target) and
 //                                 Linux over SSH (the app-managed record with os "linux": key and known_hosts ids)
 //   state/home/ssh/               0700: the hub's own SSH keys and known_hosts (server/windows-ssh.mjs)
-//   state/home/runtimes.json      runtime stacks published for a machine (runtime_publish), site machines included
-//   state/home/site-telemetry.json 0600: the agent-less telemetry a machine of the site configuration is read through,
+//   state/home/runtimes.json      runtime stacks published for a device (runtime_publish), site devices included
+//   state/home/site-telemetry.json 0600: the agent-less telemetry a device of the site configuration is read through,
 //                                 connected on its tile by the owner: {schema:1, bindings:[{id, provider, platform,
 //                                 configuredAt, configuredBy}]}. No secrets: the connection itself (keys, passwords,
 //                                 trust) is in windows-hosts.json / telemetry-hosts.json under the same id, exactly as
-//                                 for an added device. The machine's identity stays in site.json and is never written.
-//   state/home/site-overrides.json 0600: what the owner changed on the tile of a machine of the site configuration, over
+//                                 for an added device. The device's identity stays in site.json and is never written.
+//   state/home/site-overrides.json 0600: what the owner changed on the tile of a device of the site configuration, over
 //                                 the site's defaults (display only): {schema:1, overrides:[{id, fields:{name?, hostname?,
 //                                 ip?, hardware?{cpu?,gpu?,ramGb?,diskTotalBytes?}, picture?}, image?, imageAt?, updatedAt,
 //                                 updatedBy}]}. A field that is absent (or equal to the site's value) is the site's. Id, role,
 //                                 platform, thermoId, ssh, stack and every collector keep reading site.json, never this file.
 //   state/home/images/<id>.jpg    an uploaded tile picture, cropped to 3:2 in the browser (an added device's, or a site
-//                                 machine's own picture from site-overrides.json: ids never collide, site ids are reserved)
+//                                 device's own picture from site-overrides.json: ids never collide, site ids are reserved)
 // devices.json keeps schema 1: every field added since the first version is optional and is filled in on
 // read (normalize below), so a file written by an older hub loads unchanged and nothing is rewritten.
 // Errors: Error('invalid' | 'secret' | 'not-found' | 'conflict' | 'duplicate' | 'limit' | 'read-only' | 'too-large'),
@@ -41,11 +40,11 @@ import {validSshTarget,validManaged,managedLabel} from './windows-telemetry.mjs'
 import {validWinrmRecord,winrmLabel} from './winrm-telemetry.mjs';
 import {validExporterRecord,validLinuxManaged,exporterLabel,linuxSshLabel} from './linux-telemetry.mjs';
 import {validPromRecord,promLabel} from './prometheus-telemetry.mjs';
-import {inCidrs,MACHINE_ID,MACHINE_ROLES} from './site-config.mjs';
+import {inCidrs,DEVICE_ID,DEVICE_ROLES} from './site-config.mjs';
 import {createPrivatePathGuard} from './windows-ssh.mjs';
 import {secretIn} from './secret-patterns.mjs';
 
-// What the overview's Add form can add (its `kind`): how the new one is read. Not the tile kind (site-config → machineKind).
+// What the overview's Add form can add (its `kind`): how the new one is read. Not the tile kind (site-config → deviceKind).
 export const ADD_KINDS=Object.freeze(['thermo','windows','winrm','node-exporter','prometheus','linux-ssh','other']);
 // The agent-less telemetry providers (telemetryProvider of a device) and the system each one reads. Role is not
 // platform: a Linux NAS or a Windows server reads the same way as a desktop.
@@ -60,16 +59,16 @@ export const feedLabel=(provider,r)=>provider==='winrm'?winrmLabel(r):provider==
 // The operating system, apart from the role: a Windows server and a Windows desktop are both "windows".
 // null = not said. Windows telemetry (SSH + PowerShell) needs "windows" (or null, which it then sets).
 export const PLATFORMS=Object.freeze(['macos','windows','linux','other']);
-// The built-in generic pictures (public/images/generic/<id>.svg). A machine's picture is one of these ids or null.
+// The built-in generic pictures (public/images/generic/<id>.svg). A device's picture is one of these ids or null.
 export const PICTURES=Object.freeze(['desktop','laptop','mini','tower','server','nas','router','board','printer','generic']);
 export const pictureUrl=id=>`/images/generic/${id}.svg`;
 export const defaultPicture=role=>({computer:'desktop',nas:'nas',router:'router'})[role]||'generic';
-// Can a machine of the site configuration be connected to an agent-less provider on its tile? Not when the site reads
+// Can a device of the site configuration be connected to an agent-less provider on its tile? Not when the site reads
 // it through Thermo (thermoId: that stays the site files' business, and two feeds would conflict), not a router (the
 // router adapter reports it). The site's platform, when it says one, limits the providers to that system's.
 export const siteBindable=m=>Boolean(m&&!m.thermoId&&m.role!=='router');
 export const siteProviderFits=(m,provider)=>siteBindable(m)&&Object.hasOwn(PROVIDER_PLATFORM,provider)&&(!PLATFORMS.includes(m.platform)||m.platform===PROVIDER_PLATFORM[provider]);
-// added: how many machines the store holds at most (the site's own do not count).
+// added: how many devices the store holds at most (the site's own do not count).
 export const DEVICE_LIMITS=Object.freeze({added:20,image:3*1024*1024});
 export const RUNTIME_LAYERS=Object.freeze(['input','tool','runtime','engine','hardware']);
 export const RUNTIME_LIMITS=Object.freeze({cols:12,engines:12,blocks:60,models:30});
@@ -85,12 +84,12 @@ const text=(v,max,{empty=true,where='a text field'}={})=>{if(v===undefined||v===
 export const validHost=h=>typeof h==='string'&&(IPV4.test(h)||HOST.test(h));
 const port=v=>v===undefined||v===null?49286:Number.isSafeInteger(v)&&v>=1024&&v<=65535?v:fail('invalid','thermo.port must be 1024-65535');
 const sha=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
-// What the owner may change on a machine of the site configuration (display metadata), and what stays the site's.
+// What the owner may change on a device of the site configuration (display metadata), and what stays the site's.
 export const SITE_OVERRIDE_FIELDS=Object.freeze(['name','hostname','ip','hardware','picture']);
 export const SITE_HARDWARE_FIELDS=Object.freeze(['cpu','gpu','ramGb','diskTotalBytes']);
 export const SITE_CONTROLLED=Object.freeze(['id','role','platform','thermoId','ssh','stack','source']);
 
-// What looks like a secret value rather than a description: machines and runtime stacks are shown to every signed-in
+// What looks like a secret value rather than a description: devices and runtime stacks are shown to every signed-in
 // reader and to agents, so none may be stored. The patterns live in server/secret-patterns.mjs (a leaf module the
 // push agent shares); secretIn is re-exported here, where callers have always imported it from.
 export {secretIn};
@@ -99,7 +98,7 @@ const noSecret=(value,where)=>{const why=secretIn(value);if(why)fail('secret',`$
 // "Mac Studio 2" → "mac-studio-2"; diacritics dropped, never one of the taken ids.
 export function newDeviceId(name,taken){
  const base=(name.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').replace(/^[^a-z]+/,'')||'device').slice(0,28).replace(/-+$/,'')||'device';
- let id=MACHINE_ID.test(base)?base:'device-'+base;id=id.slice(0,28);for(let n=2;taken.includes(id);n++)id=`${base.slice(0,26)}-${n}`;return id;
+ let id=DEVICE_ID.test(base)?base:'device-'+base;id=id.slice(0,28);for(let n=2;taken.includes(id);n++)id=`${base.slice(0,26)}-${n}`;return id;
 }
 
 // A stored device as the current shape. Files written before roles, thermoId, pictures and agents existed
@@ -110,69 +109,69 @@ export function normalizeDevice(d){
  const p=plain(d.props)?d.props:{};
  return {...d,ip:d.ip||null,hostname:typeof d.hostname==='string'?d.hostname:'',image:d.image===true,
   props:{cpu:typeof p.cpu==='string'?p.cpu:'',gpu:typeof p.gpu==='string'?p.gpu:'',ramGb:Number.isFinite(p.ramGb)?p.ramGb:null,diskTotalBytes:Number.isFinite(p.diskTotalBytes)?p.diskTotalBytes:null},
-  role:MACHINE_ROLES.includes(d.role)?d.role:d.kind==='thermo'?'computer':'other',
+  role:DEVICE_ROLES.includes(d.role)?d.role:d.kind==='thermo'?'computer':'other',
   thermoId:d.thermoId===null||typeof d.thermoId==='string'?d.thermoId:d.kind==='thermo'?d.id:null,
   picture:PICTURES.includes(d.picture)?d.picture:null,source:d.source==='agent'?'agent':'ui',
   platform:PLATFORMS.includes(d.platform)?d.platform:null,telemetryProvider:TELEMETRY_PROVIDERS.includes(d.telemetryProvider)?d.telemetryProvider:null};
 }
-// The fields a client reads and writes (machine_list, machine_upsert, the edit dialog), in a fixed order.
-export const machineFields=d=>({id:d.id,name:d.name,hostname:d.hostname,ip:d.ip||null,role:d.role,
+// The fields a client reads and writes (device_list, device_upsert, the edit dialog), in a fixed order.
+export const deviceFields=d=>({id:d.id,name:d.name,hostname:d.hostname,ip:d.ip||null,role:d.role,
  hardware:{cpu:d.props.cpu,gpu:d.props.gpu,ramGb:d.props.ramGb,diskTotalBytes:d.props.diskTotalBytes},thermoId:d.thermoId,picture:d.picture,platform:d.platform??null});
 // Optimistic concurrency, like inventory entries: the hash of what a client read must still match on write.
-// A machine without a platform hashes exactly as before platforms existed, so a hash read from an older hub still matches.
-export const machineHash=d=>{const f=machineFields(d);if(f.platform===null)delete f.platform;return sha(f);};
+// A device without a platform hashes exactly as before platforms existed, so a hash read from an older hub still matches.
+export const deviceHash=d=>{const f=deviceFields(d);if(f.platform===null)delete f.platform;return sha(f);};
 export const runtimeHash=stack=>sha(stack);
 
 // {id?, name, hostname?, ip?, role?, hardware?{cpu,gpu,ramGb,diskTotalBytes}, thermoId?, picture?, platform?} → clean fields.
 // lanCidrs: the site's networks; when set, an ip must be a host address inside one of them.
-// platform: absent = keep what the machine has (undefined here), null = not said.
-export function parseMachine(input,{lanCidrs=[],needId=true}={}){
- extraKeys(input,['id','name','hostname','ip','role','hardware','thermoId','picture','platform'],'machine');
- const id=input.id===undefined&&!needId?null:typeof input.id==='string'&&MACHINE_ID.test(input.id)?input.id:fail('invalid','machine.id must be 2-32 characters: a lowercase letter, then letters, digits, _ or -');
- const name=noSecret(text(input.name,60,{empty:false,where:'machine.name'}),'machine.name');
- const hostname=text(input.hostname,253,{where:'machine.hostname'});if(hostname&&!validHost(hostname))fail('invalid','machine.hostname must be a host name or an IPv4 address');
- const ip=text(input.ip,15,{where:'machine.ip'});
- if(ip&&!IPV4.test(ip))fail('invalid','machine.ip must be an IPv4 address');
- if(ip&&!inCidrs(ip,lanCidrs))fail('invalid',`machine.ip must be a host address inside the site's networks (${lanCidrs.join(', ')})`);
- const role=input.role===undefined||input.role===null?'computer':MACHINE_ROLES.includes(input.role)?input.role:fail('invalid',`machine.role must be one of ${MACHINE_ROLES.join(', ')}`);
- const h=extraKeys(input.hardware??{},['cpu','gpu','ramGb','diskTotalBytes'],'machine.hardware');
+// platform: absent = keep what the device has (undefined here), null = not said.
+export function parseDevice(input,{lanCidrs=[],needId=true}={}){
+ extraKeys(input,['id','name','hostname','ip','role','hardware','thermoId','picture','platform'],'device');
+ const id=input.id===undefined&&!needId?null:typeof input.id==='string'&&DEVICE_ID.test(input.id)?input.id:fail('invalid','device.id must be 2-32 characters: a lowercase letter, then letters, digits, _ or -');
+ const name=noSecret(text(input.name,60,{empty:false,where:'device.name'}),'device.name');
+ const hostname=text(input.hostname,253,{where:'device.hostname'});if(hostname&&!validHost(hostname))fail('invalid','device.hostname must be a host name or an IPv4 address');
+ const ip=text(input.ip,15,{where:'device.ip'});
+ if(ip&&!IPV4.test(ip))fail('invalid','device.ip must be an IPv4 address');
+ if(ip&&!inCidrs(ip,lanCidrs))fail('invalid',`device.ip must be a host address inside the site's networks (${lanCidrs.join(', ')})`);
+ const role=input.role===undefined||input.role===null?'computer':DEVICE_ROLES.includes(input.role)?input.role:fail('invalid',`device.role must be one of ${DEVICE_ROLES.join(', ')}`);
+ const h=extraKeys(input.hardware??{},['cpu','gpu','ramGb','diskTotalBytes'],'device.hardware');
  const number=(v,max,where)=>v===undefined||v===null||v===''?null:typeof v==='number'&&Number.isFinite(v)&&v>0&&v<=max?v:fail('invalid',`${where} must be a number above 0 and at most ${max}, or null`);
- const props={cpu:noSecret(text(h.cpu,60,{where:'machine.hardware.cpu'}),'machine.hardware.cpu'),gpu:noSecret(text(h.gpu,40,{where:'machine.hardware.gpu'}),'machine.hardware.gpu'),
-  ramGb:number(h.ramGb,65536,'machine.hardware.ramGb'),diskTotalBytes:number(h.diskTotalBytes,1e16,'machine.hardware.diskTotalBytes')};
- const thermoId=input.thermoId===undefined||input.thermoId===null||input.thermoId===''?null:typeof input.thermoId==='string'&&MACHINE_ID.test(input.thermoId)?input.thermoId:fail('invalid','machine.thermoId must be a host id of the telemetry agent (same form as machine.id), or null');
- const picture=input.picture===undefined||input.picture===null||input.picture===''?null:PICTURES.includes(input.picture)?input.picture:fail('invalid',`machine.picture must be one of ${PICTURES.join(', ')}, or null`);
- const platform=input.platform===undefined?undefined:input.platform===null||input.platform===''?null:PLATFORMS.includes(input.platform)?input.platform:fail('invalid',`machine.platform must be one of ${PLATFORMS.join(', ')}, or null`);
+ const props={cpu:noSecret(text(h.cpu,60,{where:'device.hardware.cpu'}),'device.hardware.cpu'),gpu:noSecret(text(h.gpu,40,{where:'device.hardware.gpu'}),'device.hardware.gpu'),
+  ramGb:number(h.ramGb,65536,'device.hardware.ramGb'),diskTotalBytes:number(h.diskTotalBytes,1e16,'device.hardware.diskTotalBytes')};
+ const thermoId=input.thermoId===undefined||input.thermoId===null||input.thermoId===''?null:typeof input.thermoId==='string'&&DEVICE_ID.test(input.thermoId)?input.thermoId:fail('invalid','device.thermoId must be a host id of the telemetry agent (same form as device.id), or null');
+ const picture=input.picture===undefined||input.picture===null||input.picture===''?null:PICTURES.includes(input.picture)?input.picture:fail('invalid',`device.picture must be one of ${PICTURES.join(', ')}, or null`);
+ const platform=input.platform===undefined?undefined:input.platform===null||input.platform===''?null:PLATFORMS.includes(input.platform)?input.platform:fail('invalid',`device.platform must be one of ${PLATFORMS.join(', ')}, or null`);
  return {id,name,hostname,ip:ip||null,role,props,thermoId,picture,platform};
 }
-// The site's own values of what an override may change (site.json → machines[]), in the override's shape.
+// The site's own values of what an override may change (site.json → devices[]), in the override's shape.
 export const siteDefaults=m=>({name:m.name,hostname:m.hostname||'',ip:m.ip||'',
  hardware:Object.fromEntries(SITE_HARDWARE_FIELDS.map(k=>[k,m.hardware?.[k]??(k==='cpu'||k==='gpu'?'':null)])),picture:null});
-// The owner's override of a site machine's display metadata: {name?, hostname?, ip?, hardware?{cpu?, gpu?, ramGb?,
+// The owner's override of a site device's display metadata: {name?, hostname?, ip?, hardware?{cpu?, gpu?, ramGb?,
 // diskTotalBytes?}, picture?}. The whole override is replaced: a field that is absent goes back to the site's value, and
 // so does one sent with the site's value (it is not stored). Only what differs is checked, with the rules of an added
-// machine (name, hostname, an ip inside the site's networks, hardware, a built-in picture id; nothing secret-looking).
+// device (name, hostname, an ip inside the site's networks, hardware, a built-in picture id; nothing secret-looking).
 // What the site controls (id, role, platform, thermoId, ssh, stack) is refused by name. → the stored fields, in order.
 export function parseSiteOverride(input,m,{lanCidrs=[]}={}){
  if(!plain(input))fail('invalid','override must be an object');
  const kept=Object.keys(input).filter(k=>SITE_CONTROLLED.includes(k));
- if(kept.length)fail('invalid',`${kept.map(k=>'machine.'+k).join(', ')} stays in the site configuration (site.json) and is not changed here`);
+ if(kept.length)fail('invalid',`${kept.map(k=>'device.'+k).join(', ')} stays in the site configuration (site.json) and is not changed here`);
  extraKeys(input,SITE_OVERRIDE_FIELDS,'override');
  const site=siteDefaults(m),out={};
- if(input.name!==undefined){const name=noSecret(text(input.name,60,{empty:false,where:'machine.name'}),'machine.name');if(name!==site.name)out.name=name;}
- if(input.hostname!==undefined){const h=text(input.hostname,253,{where:'machine.hostname'});
-  if(h!==site.hostname){if(h&&!validHost(h))fail('invalid','machine.hostname must be a host name or an IPv4 address');out.hostname=h;}}
- if(input.ip!==undefined){const ip=text(input.ip,15,{where:'machine.ip'});
-  if(ip!==site.ip){if(ip&&!IPV4.test(ip))fail('invalid','machine.ip must be an IPv4 address');
-   if(ip&&!inCidrs(ip,lanCidrs))fail('invalid',`machine.ip must be a host address inside the site's networks (${lanCidrs.join(', ')})`);out.ip=ip;}}
+ if(input.name!==undefined){const name=noSecret(text(input.name,60,{empty:false,where:'device.name'}),'device.name');if(name!==site.name)out.name=name;}
+ if(input.hostname!==undefined){const h=text(input.hostname,253,{where:'device.hostname'});
+  if(h!==site.hostname){if(h&&!validHost(h))fail('invalid','device.hostname must be a host name or an IPv4 address');out.hostname=h;}}
+ if(input.ip!==undefined){const ip=text(input.ip,15,{where:'device.ip'});
+  if(ip!==site.ip){if(ip&&!IPV4.test(ip))fail('invalid','device.ip must be an IPv4 address');
+   if(ip&&!inCidrs(ip,lanCidrs))fail('invalid',`device.ip must be a host address inside the site's networks (${lanCidrs.join(', ')})`);out.ip=ip;}}
  if(input.hardware!==undefined){
-  const h=extraKeys(input.hardware,SITE_HARDWARE_FIELDS,'machine.hardware'),hw={};
+  const h=extraKeys(input.hardware,SITE_HARDWARE_FIELDS,'device.hardware'),hw={};
   const number=(v,max,where)=>v===null||v===''?null:typeof v==='number'&&Number.isFinite(v)&&v>0&&v<=max?v:fail('invalid',`${where} must be a number above 0 and at most ${max}, or null`);
   const limits={cpu:60,gpu:40};
   for(const k of SITE_HARDWARE_FIELDS){if(h[k]===undefined)continue;
-   const v=k in limits?noSecret(text(h[k],limits[k],{where:`machine.hardware.${k}`}),`machine.hardware.${k}`):number(h[k],k==='ramGb'?65536:1e16,`machine.hardware.${k}`);
+   const v=k in limits?noSecret(text(h[k],limits[k],{where:`device.hardware.${k}`}),`device.hardware.${k}`):number(h[k],k==='ramGb'?65536:1e16,`device.hardware.${k}`);
    if(v!==site.hardware[k])hw[k]=v;}
   if(Object.keys(hw).length)out.hardware=hw;}
- if(input.picture!==undefined&&input.picture!==null){if(!PICTURES.includes(input.picture))fail('invalid',`machine.picture must be one of ${PICTURES.join(', ')}, or null for the site's own picture`);out.picture=input.picture;}
+ if(input.picture!==undefined&&input.picture!==null){if(!PICTURES.includes(input.picture))fail('invalid',`device.picture must be one of ${PICTURES.join(', ')}, or null for the site's own picture`);out.picture=input.picture;}
  return out;
 }
 // The hash a client sends back as base (optimistic concurrency): of the stored fields and the uploaded picture.
@@ -233,8 +232,8 @@ export function parseRuntime(input){
  return {cols,engines,blocks};
 }
 
-// siteMachines: the site configuration's machines ({id, role, thermoId, platform}); only they can carry a site binding.
-export function createHomeDevices(root,{reserved=[],lanCidrs=[],siteMachines=[],box=defaultSecretBox(),log=console}={}){
+// siteDevices: the site configuration's devices ({id, role, thermoId, platform}); only they can carry a site binding.
+export function createHomeDevices(root,{reserved=[],lanCidrs=[],siteDevices=[],box=defaultSecretBox(),log=console}={}){
  const siteFile=path.join(root,'site-telemetry.json'),overrideFile=path.join(root,'site-overrides.json');
  const file=path.join(root,'devices.json'),secrets=path.join(root,'thermo-hosts.json'),windowsFile=path.join(root,'windows-hosts.json'),feedFile=path.join(root,'telemetry-hosts.json'),runtimes=path.join(root,'runtimes.json'),images=path.join(root,'images');
  let queue=Promise.resolve();
@@ -294,7 +293,7 @@ export function createHomeDevices(root,{reserved=[],lanCidrs=[],siteMachines=[],
   if(env.kid==='file'){const m=await readMarker(),kfps=m?.kfps||[];
    if(!m||m.keyFile!==box.keyFile||!kfps.includes(env.kfp))await atomic(markerFile,{schema:2,keyFile:box.keyFile,kfps:[...kfps.filter(k=>k!==env.kfp),env.kfp].slice(-MARKER_KFPS)});}
   await atomic(f,env);};
- const imageFile=id=>MACHINE_ID.test(id)?path.join(images,id+'.jpg'):fail('invalid');
+ const imageFile=id=>DEVICE_ID.test(id)?path.join(images,id+'.jpg'):fail('invalid');
  const sameHost=(a,b)=>a&&b&&a.toLowerCase()===b.toLowerCase();
  // What goes into the file: the legacy "kind" stays in step with thermoId, so an older hub still reads it.
  const stored=d=>({...d,kind:d.thermoId?'thermo':'other'});
@@ -318,12 +317,12 @@ export function createHomeDevices(root,{reserved=[],lanCidrs=[],siteMachines=[],
   if(!entry&&!previous)return null;
   if(entry&&(!Object.hasOwn(FEED_RECORD,entry.provider)||!FEED_RECORD[entry.provider](entry.record)))fail('invalid');
   f.hosts=[...f.hosts.filter(h=>h?.id!==id),...(entry?[{id,provider:entry.provider,record:entry.record}]:[])];await atomicSecret(feedFile,{schema:1,hosts:f.hosts});return previous;};
- // Site bindings (site-telemetry.json). Every stored one, well-formed; effective = its id is a site machine that can
- // take this provider now. One that is not (the machine left site.json, got a thermoId, another platform) is neither
+ // Site bindings (site-telemetry.json). Every stored one, well-formed; effective = its id is a site device that can
+ // take this provider now. One that is not (the device left site.json, got a thermoId, another platform) is neither
  // polled nor shown, and its connection is kept on disk until it is disconnected: an edit of site.json never deletes a key.
- const siteById=id=>siteMachines.find(m=>m?.id===id)||null;
+ const siteById=id=>siteDevices.find(m=>m?.id===id)||null;
  const readSite=async()=>{const f=await readJson(siteFile,()=>({schema:1,bindings:[]}));
-  return (Array.isArray(f?.bindings)?f.bindings:[]).filter(b=>b&&typeof b.id==='string'&&MACHINE_ID.test(b.id)&&TELEMETRY_PROVIDERS.includes(b.provider));};
+  return (Array.isArray(f?.bindings)?f.bindings:[]).filter(b=>b&&typeof b.id==='string'&&DEVICE_ID.test(b.id)&&TELEMETRY_PROVIDERS.includes(b.provider));};
  const effective=b=>siteProviderFits(siteById(b.id),b.provider);
  const bindingOf=b=>({id:b.id,provider:b.provider,platform:PROVIDER_PLATFORM[b.provider],configuredAt:typeof b.configuredAt==='string'?b.configuredAt:null,configuredBy:typeof b.configuredBy==='string'?b.configuredBy:null});
  const saveSite=async(id,next)=>{const all=await readSite();
@@ -332,32 +331,32 @@ export function createHomeDevices(root,{reserved=[],lanCidrs=[],siteMachines=[],
  const siteView=(id,provider)=>{const m=siteById(id);return {id,source:'site',readOnly:true,telemetryProvider:provider||null,platform:m?.platform||(provider?PROVIDER_PLATFORM[provider]:null)};};
  const siteRefusal=(m,provider)=>{
   if(!m)fail('not-found');
-  if(m.thermoId)fail('invalid','the site configuration reads this machine through Thermo (thermoId); its telemetry is set in the site files');
+  if(m.thermoId)fail('invalid','the site configuration reads this device through Thermo (thermoId); its telemetry is set in the site files');
   if(m.role==='router')fail('invalid','a router is reported by the router adapter, not by host telemetry');
-  if(!siteProviderFits(m,provider))fail('invalid',`the site configuration says this machine runs ${m.platform}; this telemetry needs platform ${PROVIDER_PLATFORM[provider]}`);};
- // Site overrides (site-overrides.json): every stored one that is well formed; one whose machine left site.json is kept
+  if(!siteProviderFits(m,provider))fail('invalid',`the site configuration says this device runs ${m.platform}; this telemetry needs platform ${PROVIDER_PLATFORM[provider]}`);};
+ // Site overrides (site-overrides.json): every stored one that is well formed; one whose device left site.json is kept
  // on disk (an edit of site.json never deletes what the owner wrote) and neither shown nor counted until it is reset.
  const readOverrides=async()=>{const f=await readJson(overrideFile,()=>({schema:1,overrides:[]}));
-  return (Array.isArray(f?.overrides)?f.overrides:[]).filter(o=>o&&typeof o.id==='string'&&MACHINE_ID.test(o.id)&&plain(o.fields));};
+  return (Array.isArray(f?.overrides)?f.overrides:[]).filter(o=>o&&typeof o.id==='string'&&DEVICE_ID.test(o.id)&&plain(o.fields));};
  const writeOverrides=all=>atomic(overrideFile,{schema:1,overrides:all});
  const overrideView=o=>({fields:{...o.fields,...(o.fields.hardware?{hardware:{...o.fields.hardware}}:{})},image:o.image===true,imageAt:typeof o.imageAt==='string'?o.imageAt:null,
   updatedAt:typeof o.updatedAt==='string'?o.updatedAt:null,updatedBy:typeof o.updatedBy==='string'?o.updatedBy:null,hash:siteOverrideHash(o)});
- // Whose hostname this would be: an added device's, or another site machine's (its effective one).
+ // Whose hostname this would be: an added device's, or another site device's (its effective one).
  const hostTaken=async(id,host)=>{if(!host)return false;const all=await readOverrides();
   return (await read()).devices.some(x=>sameHost(x.hostname,host))
-   ||siteMachines.some(m=>m.id!==id&&sameHost(all.find(o=>o.id===m.id)?.fields.hostname??m.hostname,host));};
+   ||siteDevices.some(m=>m.id!==id&&sameHost(all.find(o=>o.id===m.id)?.fields.hostname??m.hostname,host));};
  // One override, changed inside the write queue: next(current) → the new entry, or null to drop it.
  const changeOverride=async(id,next)=>{const all=await readOverrides(),current=all.find(o=>o.id===id)||null,entry=next(current);
   if(!current&&!entry)return null;const rest=all.filter(o=>o.id!==id);await writeOverrides(entry?[...rest,entry]:rest);return entry;};
 
  async function list(){return (await read()).devices.map(normalizeDevice);}
- // The effective overrides of site machines: {machineId: {fields, image, imageAt, updatedAt, updatedBy, hash}}.
+ // The effective overrides of site devices: {deviceId: {fields, image, imageAt, updatedAt, updatedBy, hash}}.
  async function siteOverrides(){return Object.fromEntries((await readOverrides()).filter(o=>siteById(o.id)).map(o=>[o.id,overrideView(o)]));}
- // Replace the override of a site machine (the owner's edit dialog). base: the hash it read (GET /api/home →
- // siteOverride.hash, also for a machine without one), required. The uploaded picture is kept (putImage/removeImage own it).
+ // Replace the override of a site device (the owner's edit dialog). base: the hash it read (GET /api/home →
+ // siteOverride.hash, also for a device without one), required. The uploaded picture is kept (putImage/removeImage own it).
  // Returns {id, override, hash, changed}.
  const setSiteOverride=(id,input,{by=null,base}={})=>{
-  if(typeof base!=='string'||!/^[a-f0-9]{64}$/.test(base))fail('invalid','base must be the 64-character siteOverride.hash the machine was read with');
+  if(typeof base!=='string'||!/^[a-f0-9]{64}$/.test(base))fail('invalid','base must be the 64-character siteOverride.hash the device was read with');
   return serial(async()=>{
    const m=siteById(id);if(!m)fail('not-found');
    const fields=parseSiteOverride(input,m,{lanCidrs});
@@ -373,9 +372,9 @@ export function createHomeDevices(root,{reserved=[],lanCidrs=[],siteMachines=[],
   });
  };
  // Back to the site's defaults: the override and the uploaded picture go. base: as for setSiteOverride.
- // An override whose machine left site.json is cleared here as well (the only way it goes).
+ // An override whose device left site.json is cleared here as well (the only way it goes).
  const resetSiteOverride=(id,{base}={})=>{
-  if(typeof base!=='string'||!/^[a-f0-9]{64}$/.test(base))fail('invalid','base must be the 64-character siteOverride.hash the machine was read with');
+  if(typeof base!=='string'||!/^[a-f0-9]{64}$/.test(base))fail('invalid','base must be the 64-character siteOverride.hash the device was read with');
   return serial(async()=>{
    const all=await readOverrides(),current=all.find(o=>o.id===id)||null;
    if(!siteById(id)&&!current)fail('not-found');
@@ -393,8 +392,8 @@ export function createHomeDevices(root,{reserved=[],lanCidrs=[],siteMachines=[],
  }
  // The effective site bindings: [{id, provider, platform, configuredAt, configuredBy}] (no connection, no secret).
  async function siteBindings(){return (await readSite()).filter(effective).map(bindingOf);}
- // What a telemetry set-up is for: an added device, or a site machine that can take a binding (bindable). null = unknown id.
- //   {id, site, thermoId, platform, sitePlatform (site machines: what site.json says), telemetryProvider, role, bindable}
+ // What a telemetry set-up is for: an added device, or a site device that can take a binding (bindable). null = unknown id.
+ //   {id, site, thermoId, platform, sitePlatform (site devices: what site.json says), telemetryProvider, role, bindable}
  async function telemetryTarget(id){
   const d=(await list()).find(x=>x.id===id);
   if(d)return {id,site:false,thermoId:d.thermoId,platform:d.platform,telemetryProvider:d.telemetryProvider,role:d.role,bindable:true};
@@ -428,7 +427,7 @@ export function createHomeDevices(root,{reserved=[],lanCidrs=[],siteMachines=[],
   if(!onlyKeys(input,['name','kind','hostname','ip','props','thermo','role','picture','platform','windows']))fail('invalid');
   const kind=ADD_KINDS.includes(input.kind)?input.kind:fail('invalid','kind must be thermo, windows or other');
   if(input.props!==undefined&&!onlyKeys(input.props,['cpu','gpu','ramGb','diskTotalBytes']))fail('invalid');
-  const m=parseMachine({name:input.name,hostname:input.hostname,ip:input.ip,role:input.role??(kind==='other'?'other':'computer'),picture:input.picture,hardware:input.props,platform:input.platform??null},{lanCidrs,needId:false});
+  const m=parseDevice({name:input.name,hostname:input.hostname,ip:input.ip,role:input.role??(kind==='other'?'other':'computer'),picture:input.picture,hardware:input.props,platform:input.platform??null},{lanCidrs,needId:false});
   if(!m.hostname)fail('invalid','hostname is required');
   if(kind!=='thermo'&&input.thermo!==undefined)fail('invalid');
   if(kind!=='windows'&&input.windows!==undefined)fail('invalid');
@@ -458,14 +457,14 @@ export function createHomeDevices(root,{reserved=[],lanCidrs=[],siteMachines=[],
    return {device:normalizeDevice(device),thermo:thermo?parseHostsConfig({hosts:[thermo]})[0]:null,windows:d.windows?hostOf({...d.windows,id}):null,feed:d.feed?feedOf({id,...d.feed}):null};
   });
  };
- // Create or replace one machine by id (machine_upsert and the edit dialog). The whole record is replaced;
+ // Create or replace one device by id (device_upsert and the edit dialog). The whole record is replaced;
  // what the hub keeps for itself stays: the uploaded picture, who created it and when, the Thermo login.
- //   base absent:  create; or, when the machine already holds exactly these fields, nothing to do (idempotent)
- //   base present: the hash the caller read; a mismatch is a conflict, so is a base for a machine that is not there
+ //   base absent:  create; or, when the device already holds exactly these fields, nothing to do (idempotent)
+ //   base present: the hash the caller read; a mismatch is a conflict, so is a base for a device that is not there
  // Returns {device, hash, created, changed}.
  const upsert=(input,{by=null,source='ui',base}={})=>{
-  const m=parseMachine(input,{lanCidrs});
-  if(base!==undefined&&(typeof base!=='string'||!/^[a-f0-9]{64}$/.test(base)))fail('invalid','base must be the 64-character hash from machine_list');
+  const m=parseDevice(input,{lanCidrs});
+  if(base!==undefined&&(typeof base!=='string'||!/^[a-f0-9]{64}$/.test(base)))fail('invalid','base must be the 64-character hash from device_list');
   if(reserved.includes(m.id))fail('read-only');
   return serial(async()=>{
    const data=await read(),index=data.devices.findIndex(x=>x.id===m.id),current=index<0?null:normalizeDevice(data.devices[index]);
@@ -476,16 +475,16 @@ export function createHomeDevices(root,{reserved=[],lanCidrs=[],siteMachines=[],
     if(data.devices.length>=DEVICE_LIMITS.added)fail('limit');
     const device=stored({...m,platform:m.platform??null,source:source==='agent'?'agent':'ui',image:false,createdAt:now,createdBy:by});
     data.devices.push(device);await atomic(file,data);
-    return {device:normalizeDevice(device),hash:machineHash(normalizeDevice(device)),created:true,changed:true};
+    return {device:normalizeDevice(device),hash:deviceHash(normalizeDevice(device)),created:true,changed:true};
    }
    if(current.telemetryProvider){
     const need=PROVIDER_PLATFORM[current.telemetryProvider],what=need==='windows'?'Windows':'Linux';
-    if(m.thermoId)fail('invalid',`machine.thermoId cannot be set while ${what} telemetry is connected; disconnect it in the web UI first`);
-    if(m.platform!==undefined&&m.platform!==need)fail('invalid',`machine.platform must stay ${need} while ${what} telemetry is connected`);
+    if(m.thermoId)fail('invalid',`device.thermoId cannot be set while ${what} telemetry is connected; disconnect it in the web UI first`);
+    if(m.platform!==undefined&&m.platform!==need)fail('invalid',`device.platform must stay ${need} while ${what} telemetry is connected`);
    }
-   const next={...current,...m,platform:m.platform===undefined?current.platform:m.platform},hash=machineHash(next);
-   if(base===undefined?hash!==machineHash(current):base!==machineHash(current))fail('conflict');
-   if(hash===machineHash(current))return {device:current,hash,created:false,changed:false};
+   const next={...current,...m,platform:m.platform===undefined?current.platform:m.platform},hash=deviceHash(next);
+   if(base===undefined?hash!==deviceHash(current):base!==deviceHash(current))fail('conflict');
+   if(hash===deviceHash(current))return {device:current,hash,created:false,changed:false};
    const device=stored({...next,updatedAt:now,updatedBy:by});
    data.devices[index]=device;await atomic(file,data);
    return {device:normalizeDevice(device),hash,created:false,changed:true};
@@ -496,7 +495,7 @@ export function createHomeDevices(root,{reserved=[],lanCidrs=[],siteMachines=[],
  const remove=(id,{base}={})=>serial(async()=>{
   if(reserved.includes(id))fail('read-only');
   const data=await read(),device=data.devices.find(x=>x.id===id)||fail('not-found');
-  if(base!==undefined&&base!==machineHash(normalizeDevice(device)))fail('conflict');
+  if(base!==undefined&&base!==deviceHash(normalizeDevice(device)))fail('conflict');
   await unlocked(id);
   data.devices=data.devices.filter(x=>x!==device);await atomic(file,data);
   const windows=await saveWindows(id,null),hadWindows=windows!==null;
@@ -541,11 +540,11 @@ export function createHomeDevices(root,{reserved=[],lanCidrs=[],siteMachines=[],
    return {device:normalizeDevice(device),windows:login?hostOf({...login,id}):null,hadLogin:previous!==null,previous,replaced:replaced?{provider:replaced.provider,record:replaced.record}:null};
   });
  };
- // setWindows for a machine of the site configuration (inside the write queue): only a connection the hub manages (no
+ // setWindows for a device of the site configuration (inside the write queue): only a connection the hub manages (no
  // SSH alias of the hub's account), and only where the site allows it. Its binding is written; site.json never is.
  async function siteWindows(id,login,{managed,by}){
   const m=siteById(id),had=(await readSite()).find(b=>b.id===id)||null;
-  if(login){if(!managed)fail('invalid','a machine from the site configuration connects Windows over SSH only with a connection Home Hub manages');siteRefusal(m,'windows');}
+  if(login){if(!managed)fail('invalid','a device from the site configuration connects Windows over SSH only with a connection Home Hub manages');siteRefusal(m,'windows');}
   else if(!m&&!had)fail('not-found');
   const previous=await saveWindows(id,login);
   const replaced=login||had?.provider==='windows'?await saveFeed(id,null):null;
@@ -578,8 +577,8 @@ export function createHomeDevices(root,{reserved=[],lanCidrs=[],siteMachines=[],
     hadLogin:previous!==null||previousWindows!==null,previousProvider:telemetryProvider||null};
   });
  };
- // setFeed for a machine of the site configuration (inside the write queue). Disconnecting (entry null) also clears a
- // binding that is no longer effective (its machine left site.json): that is the only way its secrets go.
+ // setFeed for a device of the site configuration (inside the write queue). Disconnecting (entry null) also clears a
+ // binding that is no longer effective (its device left site.json): that is the only way its secrets go.
  async function siteFeed(id,entry,by){
   const m=siteById(id),had=(await readSite()).find(b=>b.id===id)||null;
   if(entry)siteRefusal(m,entry.provider);else if(!m&&!had)fail('not-found');
@@ -599,12 +598,12 @@ export function createHomeDevices(root,{reserved=[],lanCidrs=[],siteMachines=[],
    await mkdir(images,{recursive:true,mode:0o700});const tmp=imageFile(id)+'.'+randomUUID();
    try{await writeFile(tmp,buf,{mode:0o600,flag:'wx'});await rename(tmp,imageFile(id));}finally{await rm(tmp,{force:true});}
    const at=new Date().toISOString();
-   // A machine of the site configuration: its own picture is part of its override (site.json is never written).
+   // A device of the site configuration: its own picture is part of its override (site.json is never written).
    if(!device){const entry=await changeOverride(id,o=>({id,fields:o?.fields||{},image:true,imageAt:at,updatedAt:at,updatedBy:by}));return {id,source:'site',siteOverride:overrideView(entry)};}
    device.image=true;device.imageAt=at;await atomic(file,data);return normalizeDevice(device);
   });
  }
- // Back to a built-in picture (or, on a site machine, to its override's or the site's own): the uploaded one goes.
+ // Back to a built-in picture (or, on a site device, to its override's or the site's own): the uploaded one goes.
  const removeImage=(id,{by=null}={})=>serial(async()=>{
   const data=await read(),device=data.devices.find(x=>x.id===id)||(siteById(id)?null:fail('not-found'));
   await rm(imageFile(id),{force:true});
@@ -613,28 +612,28 @@ export function createHomeDevices(root,{reserved=[],lanCidrs=[],siteMachines=[],
    return {id,source:'site',siteOverride:entry?overrideView(entry):null};}
   device.image=false;delete device.imageAt;await atomic(file,data);return normalizeDevice(device);
  });
- async function image(id){if(!MACHINE_ID.test(id))fail('not-found');try{const fh=await open(imageFile(id),'r');await fh.close();return imageFile(id);}catch{fail('not-found');}}
+ async function image(id){if(!DEVICE_ID.test(id))fail('not-found');try{const fh=await open(imageFile(id),'r');await fh.close();return imageFile(id);}catch{fail('not-found');}}
 
- // Published runtime stacks: {machineId: {stack, publishedAt, publishedBy}}; stack is what parseRuntime returned.
+ // Published runtime stacks: {deviceId: {stack, publishedAt, publishedBy}}; stack is what parseRuntime returned.
  async function stacks(){return (await readRuntimes()).stacks;}
- // machine must be a known id (the caller passes the site's machines; added devices are checked here).
+ // device must be a known id (the caller passes the site's devices; added devices are checked here).
  // stack = null takes the publication back. base (optional): the hash of the publication the caller read.
- // Returns {machine, hash: of what is now published or null, changed}.
- const publishRuntime=(machine,input,{by=null,base,known=[]}={})=>{
-  if(typeof machine!=='string'||!MACHINE_ID.test(machine))fail('invalid','machine must be a machine id');
+ // Returns {device, hash: of what is now published or null, changed}.
+ const publishRuntime=(device,input,{by=null,base,known=[]}={})=>{
+  if(typeof device!=='string'||!DEVICE_ID.test(device))fail('invalid','device must be a device id');
   if(base!==undefined&&(typeof base!=='string'||!/^[a-f0-9]{64}$/.test(base)))fail('invalid','base must be the 64-character hash of the published stack');
   const stack=input===null?null:parseRuntime(input);
   return serial(async()=>{
-   if(!known.includes(machine)&&!(await read()).devices.some(x=>x.id===machine))fail('not-found');
-   const data=await readRuntimes(),current=Object.hasOwn(data.stacks,machine)?data.stacks[machine]:null,currentHash=current?runtimeHash(current.stack):null;
+   if(!known.includes(device)&&!(await read()).devices.some(x=>x.id===device))fail('not-found');
+   const data=await readRuntimes(),current=Object.hasOwn(data.stacks,device)?data.stacks[device]:null,currentHash=current?runtimeHash(current.stack):null;
    if(base!==undefined&&base!==currentHash)fail('conflict');
    const hash=stack?runtimeHash(stack):null;
-   if(hash===currentHash)return {machine,hash,changed:false,publishedAt:current?.publishedAt||null};
+   if(hash===currentHash)return {device,hash,changed:false,publishedAt:current?.publishedAt||null};
    const publishedAt=new Date().toISOString();
-   if(stack)data.stacks[machine]={stack,publishedAt,publishedBy:by};else delete data.stacks[machine];
+   if(stack)data.stacks[device]={stack,publishedAt,publishedBy:by};else delete data.stacks[device];
    await atomic(runtimes,data);
-   return {machine,hash,changed:true,publishedAt:stack?publishedAt:null};
+   return {device,hash,changed:true,publishedAt:stack?publishedAt:null};
   });
  };
- return {list,siteBindings,siteOverrides,setSiteOverride,resetSiteOverride,isSiteMachine:id=>Boolean(siteById(id)),telemetryTarget,thermoHosts,windowsHosts,windowsEntry,windowsSecrets,feedHosts,feedEntry,add,upsert,remove,setThermo,setWindows,setFeed,putImage,removeImage,image,stacks,publishRuntime};
+ return {list,siteBindings,siteOverrides,setSiteOverride,resetSiteOverride,isSiteDevice:id=>Boolean(siteById(id)),telemetryTarget,thermoHosts,windowsHosts,windowsEntry,windowsSecrets,feedHosts,feedEntry,add,upsert,remove,setThermo,setWindows,setFeed,putImage,removeImage,image,stacks,publishRuntime};
 }

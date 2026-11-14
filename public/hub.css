@@ -1,5 +1,5 @@
 /* Home Hub shell: base, sign-in, sidebar, top bar, command palette, banner, footer, the welcome page
-   and the search box. The overview and the machine pages have their own file (home.css).
+   and the search box. The overview and the device pages have their own file (home.css).
    Colours, spacing and type come from tokens.css (docs/design.md). The short names below are the ones
    page styles written before the tokens use; they are aliases, so those pages follow the theme too. */
 :root{

@@ -1,5 +1,5 @@
 // The push agent's report (server/agent-report.mjs, POST /api/agent/report; docs/agent.md §3, §6): the closed
-// envelope and field table, the limits, the receive time, the per-machine store and the agent audit.
+// envelope and field table, the limits, the receive time, the per-device store and the agent audit.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile,stat,readdir} from 'node:fs/promises';
@@ -24,7 +24,7 @@ const TOKEN='hha_'+'b'.repeat(64),JWT='eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0',SHA
 test('the envelope is closed: an unknown key, a missing or wrong value refuses the report, naming the field',()=>{
  const good=envelope();
  assert.equal(validateReport(good).ok,true);
- const cases=[[{...good,machine:'mini'},'machine'],[{...good,agentId:'x'},'agentId'],[(({parts,...rest})=>rest)(good),'parts'],[{...good,v:2},'v'],
+ const cases=[[{...good,device:'mini'},'device'],[{...good,agentId:'x'},'agentId'],[(({parts,...rest})=>rest)(good),'parts'],[{...good,v:2},'v'],
   [{...good,agentVersion:'1.6'},'agentVersion'],[{...good,agentVersion:' 1.6.0'},'agentVersion'],[{...good,platform:'beos'},'platform'],[{...good,platform:'other'},'platform'],
   [{...good,sentAt:'yesterday'},'sentAt'],[{...good,sentAt:'2026-13-01T00:00:00Z'},'sentAt'],[{...good,parts:{}},'parts'],[{...good,parts:[]},'parts'],
   [{...good,parts:{'Bad Name':{}}},'parts'],[{...good,parts:Object.fromEntries(Array.from({length:17},(_,i)=>[`p${i}`,{}]))},'parts'],
@@ -115,7 +115,7 @@ test('a name from the body is echoed and audited only when it is a name and not 
   assert.ok(!JSON.stringify(r).includes(name),`envelope key ${name}`);
  }
  assert.deepEqual(validateReport({...good,['ghp_abcdefghijklmnopqrstuvwxyz0123']:1}),{ok:false,field:'body'});
- assert.deepEqual(validateReport({...good,machineName:1}),{ok:false,field:'machineName'},'a plain name is still named');
+ assert.deepEqual(validateReport({...good,deviceName:1}),{ok:false,field:'deviceName'},'a plain name is still named');
  // A part name is echoed in refused[] and the audit: one that looks like a secret refuses the report as "parts".
  for(const name of ['sk-abcdefghijklmnopqrstu','ghp_abcdefghijkl']){
   const r=validateReport(envelope({heartbeat:{schema:1,interval:60},[name]:{}}));
@@ -162,7 +162,7 @@ test('os and sshkeys parts need HOST and END ok; HOST names the envelope\'s plat
  assert.deepEqual(one('sshkeys',[rec('HOST','box','Linux','alice','1','2026-11-13T10:00:00Z'),'END\tok'],'linux').refused,[]);
 });
 
-test('runtimes: the home.runtimes shape, closed; core\'s bounds; secrets; endpoints on loopback or the bound machine\'s LAN',()=>{
+test('runtimes: the home.runtimes shape, closed; core\'s bounds; secrets; endpoints on loopback or the bound device\'s LAN',()=>{
  const runtime={id:'ollama',name:'Ollama',kind:'ollama',status:'running',url:'http://127.0.0.1:11434',version:'0.5.1',models:[{id:'gemma-3-27b-it-Q4_K_M.gguf',state:'loaded',sizeGb:17.2,contextTokens:8192}],stats:[{label:'tok/s',value:42}]};
  const rt=(data,opts)=>validateReport(envelope({runtimes:{schema:1,interval:120,collectedAt:AT,data}}),opts);
  assert.deepEqual(rt({runtimes:[runtime]}).refused,[]);assert.deepEqual(rt({runtimes:[]}).refused,[]);
@@ -180,8 +180,8 @@ test('runtimes: the home.runtimes shape, closed; core\'s bounds; secrets; endpoi
  // Big as a whole: 64 KiB.
  const big={runtimes:Array.from({length:20},(_,i)=>({...runtime,id:`r${i}`,models:Array.from({length:30},(_,j)=>({id:`${'m'.repeat(110)}${j}`,state:'loaded',engine:'e'.repeat(40),target:'t'.repeat(110)}))}))};
  assert.equal(code(big),'too-large');
- // The hub's check: runtimeEndpoint for the bound machine, with the site's networks.
- const hubCheck={runtimeUrl:url=>{try{runtimeEndpoint({machine:'studio',url},{lanCidrs:['10.0.0.0/24']});return true;}catch{return false;}}};
+ // The hub's check: runtimeEndpoint for the bound device, with the site's networks.
+ const hubCheck={runtimeUrl:url=>{try{runtimeEndpoint({device:'studio',url},{lanCidrs:['10.0.0.0/24']});return true;}catch{return false;}}};
  assert.deepEqual(rt({runtimes:[{...runtime,url:'http://10.0.0.151:1234'}]},hubCheck).refused,[]);
  assert.equal(code({runtimes:[{...runtime,url:'http://192.168.1.5:1234'}]},hubCheck),'invalid');
  assert.equal(loopbackOrigin('http://127.0.0.1:8081'),true);assert.equal(loopbackOrigin('http://localhost:8081'),false);
@@ -252,7 +252,7 @@ test('malformed input: generated junk through validateReport and the parsers nev
  assert.equal(validateReport(envelope({os:{schema:1,interval:21600,collectedAt:AT,records:[{},null,1]}})).refused[0].code,'invalid');
 });
 
-test('the watch list on the machine: validateSpecs refuses anything a shell could read as code',()=>{
+test('the watch list on the device: validateSpecs refuses anything a shell could read as code',()=>{
  const good=['node|cmd|/opt/homebrew/bin/node|--version|','llama|cmd|~/x/llama-b*/llama-server|--version|com.example.llama','uv|brew|uv,uv@0.9||','app|app|/Applications/Thermo.app||',
   'omlx|pydist|~/omlx/venv*/lib/python*/site-packages|omlx|','cfg|json|~/.config/x/package.json|version|system/com.example.x','x|unsupported-args|||'].map(l=>l+'\n').join('');
  assert.deepEqual(validateSpecs(good),{ok:true,lines:good.trim().split('\n'),errors:[]});
@@ -276,14 +276,14 @@ test('the privileged list: one id per command family, full paths, no wildcard',(
 
 // --- over HTTP ------------------------------------------------------------------------------------------------------
 const start=Date.parse('2026-11-13T10:00:00Z');
-async function agentHub(t,machine='studio'){
+async function agentHub(t,device='studio'){
  const clock={now:start};
  const h=await hub(t,{thermoPoller:quiet,agentClock:()=>clock.now});
- const {token,agent}=await issueAgent(h,machine);
- return {h,clock,token,agent,report:(body,headers)=>reportTo(h)(token,body,headers),state:h.handler.state('agent'),file:path.join(h.dir,'agent',`${machine}.json`)};
+ const {token,agent}=await issueAgent(h,device);
+ return {h,clock,token,agent,report:(body,headers)=>reportTo(h)(token,body,headers),state:h.handler.state('agent'),file:path.join(h.dir,'agent',`${device}.json`)};
 }
 
-test('a report is stored at the hub\'s receive time; the machine\'s clock is information only',async t=>{
+test('a report is stored at the hub\'s receive time; the device\'s clock is information only',async t=>{
  const {clock,report,state,file,agent}=await agentHub(t);
  // collectedAt, the HOST time and sentAt a year ahead of the hub.
  const ahead='2027-11-13T10:00:00Z';
@@ -292,10 +292,10 @@ test('a report is stored at the hub\'s receive time; the machine\'s clock is inf
  assert.deepEqual(await r.json(),{receivedAt:'2026-11-13T10:00:00.000Z',accepted:['heartbeat','os','updates','packages'],refused:[]});
  const doc=JSON.parse(await readFile(file,'utf8'));
  assert.equal((await stat(file)).mode&0o777,0o600);assert.equal((await stat(path.dirname(file))).mode&0o777,0o700);
- assert.deepEqual(Object.keys(doc),['schemaVersion','machine','agentId','agentVersion','platform','lastSeenAt','lastSentAt','parts']);
- assert.deepEqual([doc.schemaVersion,doc.machine,doc.agentId,doc.agentVersion,doc.platform,doc.lastSeenAt,doc.lastSentAt],[1,'studio',agent.id,'1.6.0','macos','2026-11-13T10:00:00.000Z',ahead]);
+ assert.deepEqual(Object.keys(doc),['schemaVersion','device','agentId','agentVersion','platform','lastSeenAt','lastSentAt','parts']);
+ assert.deepEqual([doc.schemaVersion,doc.device,doc.agentId,doc.agentVersion,doc.platform,doc.lastSeenAt,doc.lastSentAt],[1,'studio',agent.id,'1.6.0','macos','2026-11-13T10:00:00.000Z',ahead]);
  assert.deepEqual(Object.keys(doc.parts.os),['schema','collectedAt','receivedAt','interval','digest','withheld','records']);
- assert.equal(doc.parts.os.receivedAt,'2026-11-13T10:00:00.000Z');assert.equal(doc.parts.os.collectedAt,ahead,'kept, as the machine said it');
+ assert.equal(doc.parts.os.receivedAt,'2026-11-13T10:00:00.000Z');assert.equal(doc.parts.os.collectedAt,ahead,'kept, as the device said it');
  assert.match(doc.parts.os.digest,/^[a-f0-9]{64}$/);assert.equal(doc.parts.heartbeat.digest,null);
  // Flagged, fresh by the hub's clock, and no news after 3 × interval: never "off".
  const now=state.status('studio');
@@ -332,7 +332,7 @@ test('flooding: 20 s floor (429 with Retry-After), 512 KiB (413), per-part minim
  const notJson=await report('{"v":1,');assert.equal(notJson.status,400);
 });
 
-test('the disk: one bounded file per machine, written when something changed, the audit rate-limited; no token or body is logged',async t=>{
+test('the disk: one bounded file per device, written when something changed, the audit rate-limited; no token or body is logged',async t=>{
  const logged=[];const original={log:console.log,info:console.info,warn:console.warn,error:console.error};
  for(const k of Object.keys(original))console[k]=(...a)=>{logged.push(a.map(String).join(' '));};
  t.after(()=>Object.assign(console,original));
@@ -343,8 +343,8 @@ test('the disk: one bounded file per machine, written when something changed, th
  // 1000 reports, 21 s apart: each refused part costs an audit line at most every ten minutes, and the file stays one copy.
  for(let i=0;i<1000;i++){clock.now+=21_000;const r=await report(envelope({heartbeat:{schema:1,interval:60},sshkeys:body.parts.sshkeys,bogus:{}}));assert.equal(r.status,200);await r.arrayBuffer();}
  const size=(await stat(file)).size;
- assert.ok(size<=first+200,`the machine file does not grow: ${first} → ${size}`);
- // Beside it only the trend, one line per machine at most every six hours (docs/agent.md §3): here the one systems run.
+ assert.ok(size<=first+200,`the device file does not grow: ${first} → ${size}`);
+ // Beside it only the trend, one line per device at most every six hours (docs/agent.md §3): here the one systems run.
  assert.deepEqual((await readdir(path.join(h.dir,'agent'))).sort(),['history.jsonl','studio.json'],'nothing else beside it');
  assert.equal((await readFile(path.join(h.dir,'agent','history.jsonl'),'utf8')).trim().split('\n').length,1,'the trend is not appended per report');
  const audit=(await readFile(path.join(h.dir,'agent-audit.jsonl'),'utf8')).trim().split('\n').map(l=>JSON.parse(l));
@@ -381,7 +381,7 @@ test('writes: a changed digest at once, only times at most once a minute; the au
  assert.deepEqual(events.reverse(),[['agent-first-report','studio'],['agent-version-changed','studio'],['agent-report-after-no-news','studio']]);
 });
 
-test('runtimes over HTTP: an endpoint inside the site networks is fine for the bound machine, a public one is not',async t=>{
+test('runtimes over HTTP: an endpoint inside the site networks is fine for the bound device, a public one is not',async t=>{
  const {report,clock}=await agentHub(t);
  const data=url=>envelope({runtimes:{schema:1,interval:120,collectedAt:AT,data:{runtimes:[{id:'ollama',status:'running',url}]}}});
  assert.deepEqual((await (await report(data('http://10.0.0.151:11434'))).json()).accepted,['runtimes']);
@@ -407,10 +407,10 @@ test('the 20 s floor holds for reports that arrive together: one 200, the rest 4
 test('the audit stays bounded when every part is refused, and when the version flaps',async t=>{
  const {h,clock,report}=await agentHub(t);
  const writer=await h.account('agent-home',['home:write']);
- await h.post('/api/home/devices',{machine:{id:'box',name:'Box',hostname:'box.example.lan',ip:'10.0.0.60',role:'computer',platform:'linux'}},writer.headers);
+ await h.post('/api/home/devices',{device:{id:'box',name:'Box',hostname:'box.example.lan',ip:'10.0.0.60',role:'computer',platform:'linux'}},writer.headers);
  const box=await issueAgent(h,'box');
  const lines=async()=>(await readFile(path.join(h.dir,'agent-audit.jsonl'),'utf8')).trim().split('\n').map(l=>JSON.parse(l));
- // A platform-mismatched machine: 50 reports, 21 s apart, every part refused. Nothing is stored, so it never
+ // A platform-mismatched device: 50 reports, 21 s apart, every part refused. Nothing is stored, so it never
  // "comes back after no news".
  for(let i=0;i<50;i++){const r=await reportTo(h)(box.token,envelope());assert.equal(r.status,200);await r.arrayBuffer();clock.now+=21_000;}
  const forBox=(await lines()).filter(e=>e.agent===box.agent.id);

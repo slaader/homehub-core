@@ -5,10 +5,10 @@ import {fileURLToPath} from 'node:url';
 import {validate,walk,find,load,validStore} from '../scripts/check-knowledge.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const base=()=>({schema:1,updated_at:'2026-11-01',entries:[
- {id:'mini',kind:'machine',name:'Mac mini',verified_at:'2026-11-01'},
- {id:'gw',kind:'runtime',machine:'mini',name:'Gateway',address:':8790',verified_at:'2026-11-01',secrets:[{what:'Voice token',store:'keychain:mini',ref:'local-ai.gateway.voice-token',check:'security find-generic-password -s local-ai.gateway.voice-token'}],depends_on:[{id:'sync',kind:'cert'}]},
- {id:'sync',kind:'tool',machine:'mini',name:'Cert sync',verified_at:'2026-11-01'},
- {id:'app',kind:'tool',machine:'mini',name:'Client',verified_at:'2026-11-01',depends_on:[{id:'gw',kind:'call'}]}]});
+ {id:'mini',kind:'device',name:'Mac mini',verified_at:'2026-11-01'},
+ {id:'gw',kind:'runtime',device:'mini',name:'Gateway',address:':8790',verified_at:'2026-11-01',secrets:[{what:'Voice token',store:'keychain:mini',ref:'local-ai.gateway.voice-token',check:'security find-generic-password -s local-ai.gateway.voice-token'}],depends_on:[{id:'sync',kind:'cert'}]},
+ {id:'sync',kind:'tool',device:'mini',name:'Cert sync',verified_at:'2026-11-01'},
+ {id:'app',kind:'tool',device:'mini',name:'Client',verified_at:'2026-11-01',depends_on:[{id:'gw',kind:'call'}]}]});
 test('a well-formed document passes and walks both directions',()=>{
  const doc=base();
  assert.deepEqual(validate(doc).errors,[]);
@@ -32,13 +32,13 @@ test('check commands that print a secret are rejected',()=>{
 test('broken references, kinds and stores are reported',()=>{
  const doc=base();
  doc.entries[1].depends_on.push({id:'ghost',kind:'call'});
- doc.entries[2].machine='nowhere';
+ doc.entries[2].device='nowhere';
  doc.entries[3].kind='service';
  doc.entries[1].secrets[0].store='drawer';
  doc.entries[2].category='gadget';
  const {errors}=validate(doc);
  assert.ok(errors.some(e=>e.includes('"ghost" does not exist')));
- assert.ok(errors.some(e=>e.includes('machine must name a machine')));
+ assert.ok(errors.some(e=>e.includes('device must name a device')));
  assert.ok(errors.some(e=>e.includes('kind must be one of')));
  assert.ok(errors.some(e=>e.includes('unknown store "drawer"')));
  assert.ok(errors.some(e=>e.includes('category must be one of')));

@@ -27,24 +27,24 @@ async function scratch(t){
 test('create-agent-key: a 0600 file with the token, never printed; list shows the key without a secret; revoke-agent-key',async t=>{
  const {dir,state,cli}=await scratch(t);
  const output=path.join(dir,'keys','studio.json');
- const made=await cli('create-agent-key','--machine','studio','--name','Studio agent','--output',output);
+ const made=await cli('create-agent-key','--device','studio','--name','Studio agent','--output',output);
  assert.equal(made.code,0,made.err);
  const file=JSON.parse(await readFile(output,'utf8'));
  assert.equal((await stat(output)).mode&0o777,0o600);
  assert.deepEqual(Object.keys(file).sort(),['agent','schema','token']);assert.equal(file.schema,1);
- assert.deepEqual(Object.keys(file.agent).sort(),['createdAt','id','machine','name','prefix']);
- assert.equal(file.agent.machine,'studio');assert.equal(file.agent.name,'Studio agent');
+ assert.deepEqual(Object.keys(file.agent).sort(),['createdAt','device','id','name','prefix']);
+ assert.equal(file.agent.device,'studio');assert.equal(file.agent.name,'Studio agent');
  assert.match(file.token,/^hha_[a-f0-9]{64}$/);assert.equal(file.agent.prefix,file.token.slice(0,12));
  assert.ok(!made.out.includes(file.token)&&!made.err.includes(file.token),'the token goes only into the file');
  assert.deepEqual(JSON.parse(made.out),{ok:true,id:file.agent.id});
- assert.equal(createAgentStore(state).verify(file.token).machine,'studio','the hub would take it');
+ assert.equal(createAgentStore(state).verify(file.token).device,'studio','the hub would take it');
  // An existing --output is never overwritten; a relative one is refused.
- assert.notEqual((await cli('create-agent-key','--machine','studio','--output',output)).code,0);
- assert.notEqual((await cli('create-agent-key','--machine','studio','--output','relative.json')).code,0);
+ assert.notEqual((await cli('create-agent-key','--device','studio','--output',output)).code,0);
+ assert.notEqual((await cli('create-agent-key','--device','studio','--output','relative.json')).code,0);
  // list: the agent keys, without a token or its hash.
  const listed=await cli('list');assert.equal(listed.code,0,listed.err);
  const keys=JSON.parse(listed.out).agentKeys;
- assert.deepEqual(keys.map(k=>[k.id,k.machine,k.name,k.prefix,k.revokedAt]),[[file.agent.id,'studio','Studio agent',file.agent.prefix,null]]);
+ assert.deepEqual(keys.map(k=>[k.id,k.device,k.name,k.prefix,k.revokedAt]),[[file.agent.id,'studio','Studio agent',file.agent.prefix,null]]);
  assert.ok(!listed.out.includes(file.token)&&!/"hash"/.test(listed.out));
  // Revoke: audited as local administration, and the key verifies to nothing.
  const revoked=await cli('revoke-agent-key','--id',file.agent.id);assert.equal(revoked.code,0,revoked.err);
@@ -60,18 +60,18 @@ test('create-agent-key refuses what the admin API refuses: unknown, the router, 
  await mkdir(path.join(state,'home'),{recursive:true});
  const devices=path.join(state,'home','devices.json');
  await writeFile(devices,JSON.stringify({schema:1,devices:[{id:'odd',name:'Odd',platform:'other',role:'computer',createdAt:'2026-11-01T00:00:00.000Z'},{id:'pi-hole',name:'Pi-hole',role:'other',createdAt:'2026-11-01T00:00:00.000Z'}]}));
- for(const [machine,message] of [['ghost',/No machine/],['router',/router adapter/],['nas',/agent-less/],['odd',/platform/],['../x',/No machine/]]){
-  const output=path.join(dir,`${machine.replace(/\W/g,'_')}.json`);
-  const r=await cli('create-agent-key','--machine',machine,'--output',output);
-  assert.notEqual(r.code,0,machine);assert.match(r.err,message,machine);
-  await assert.rejects(stat(output),{code:'ENOENT'},`${machine}: no file written`);
+ for(const [device,message] of [['ghost',/No device/],['router',/router adapter/],['nas',/agent-less/],['odd',/platform/],['../x',/No device/]]){
+  const output=path.join(dir,`${device.replace(/\W/g,'_')}.json`);
+  const r=await cli('create-agent-key','--device',device,'--output',output);
+  assert.notEqual(r.code,0,device);assert.match(r.err,message,device);
+  await assert.rejects(stat(output),{code:'ENOENT'},`${device}: no file written`);
  }
  // An added device takes a key, bound to its createdAt.
- const ok=await cli('create-agent-key','--machine','pi-hole','--output',path.join(dir,'pi.json'));assert.equal(ok.code,0,ok.err);
- assert.equal(JSON.parse(await readFile(path.join(state,'agents.json'),'utf8')).agents[0].machineCreatedAt,'2026-11-01T00:00:00.000Z');
+ const ok=await cli('create-agent-key','--device','pi-hole','--output',path.join(dir,'pi.json'));assert.equal(ok.code,0,ok.err);
+ assert.equal(JSON.parse(await readFile(path.join(state,'agents.json'),'utf8')).agents[0].deviceCreatedAt,'2026-11-01T00:00:00.000Z');
  // devices.json of another schema: refused as the server refuses it, nothing issued.
  await writeFile(devices,JSON.stringify({schema:2,devices:[{id:'pi-hole',role:'other',createdAt:'2026-11-01T00:00:00.000Z'}]}));
- const newer=await cli('create-agent-key','--machine','pi-hole','--output',path.join(dir,'pi2.json'));
+ const newer=await cli('create-agent-key','--device','pi-hole','--output',path.join(dir,'pi2.json'));
  assert.notEqual(newer.code,0);assert.match(newer.err,/Invalid devices file/);
  assert.equal(JSON.parse(await readFile(path.join(state,'agents.json'),'utf8')).agents.length,1);
 });

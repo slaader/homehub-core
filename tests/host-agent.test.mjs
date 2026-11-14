@@ -10,7 +10,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {agentClosure,importsOf,CORE_PREFIX} from '../server/agent-closure.mjs';
 import {installedAgent,AGENT_MANIFEST} from '../server/host-agent.mjs';
-import {planInstall,applyPlan,formatPlan,renderService,readPlacement,chooseMachine} from '../scripts/install-host-agent.mjs';
+import {planInstall,applyPlan,formatPlan,renderService,readPlacement,chooseDevice} from '../scripts/install-host-agent.mjs';
 import {validateSite} from '../server/site-config.mjs';
 import {repoRoot} from '../server/edition.mjs';
 import {CORE_VERSION} from '../server/plugins.mjs';
@@ -22,7 +22,7 @@ function source(t,{agentCode=null}={}){
  const dir=temp(t),plugin=path.join(dir,'plugins','relay');
  put(path.join(plugin,'index.mjs'),`export default {id:'relay',title:'Relay'};`);
  put(path.join(plugin,'plugin.json'),JSON.stringify({id:'relay',version:'2.3.0',core:'*',hostAgents:[{id:'agent',title:'Relay agent',entry:'scripts/agent.mjs',service:'launchd-agent',health:{socket:'private/a.sock',get:'/status'},config:'server/agent-config.mjs'}]}));
- put(path.join(plugin,'server','agent-config.mjs'),`export default ({site,machine})=>({greeting:site.plugins.relay.greeting,machine});`);
+ put(path.join(plugin,'server','agent-config.mjs'),`export default ({site,device})=>({greeting:site.plugins.relay.greeting,device});`);
  put(path.join(dir,'lib','shared.mjs'),`export const shared='lib';`);
  put(path.join(plugin,'scripts','agent.mjs'),agentCode??`import {shared} from '../../../lib/shared.mjs';
 import {CORE_VERSION,installedAgent,resolvePaths} from 'home-hub/plugin-api';
@@ -31,7 +31,7 @@ const config=JSON.parse(readFileSync(path.join(resolvePaths().config,'agent.json
 console.log(JSON.stringify({shared,core:CORE_VERSION,me:installedAgent(),greeting:config.greeting,private:resolvePaths().private}));`);
  return {dir,plugins:path.join(dir,'plugins')};
 }
-const siteFor=target=>validateSite({machines:[{id:'box',name:'Box',hostname:'box.example.lan'}],plugins:{relay:{greeting:'hello',agents:{agent:{box:{target,label:'com.example.relay-agent',env:{RELAY_MODE:'test'}}}}}}});
+const siteFor=target=>validateSite({devices:[{id:'box',name:'Box',hostname:'box.example.lan'}],plugins:{relay:{greeting:'hello',agents:{agent:{box:{target,label:'com.example.relay-agent',env:{RELAY_MODE:'test'}}}}}}});
 
 test('the closure: plugin files at their source paths, core files under node_modules/home-hub, refusals',t=>{
  const s=source(t);
@@ -55,14 +55,14 @@ test('the closure: plugin files at their source paths, core files under node_mod
 test('install --no-service: the copy runs with no checkout and no link, knows what it is, and reads its configuration',async t=>{
  const s=source(t),target=path.join(temp(t),'agent');
  const plan=await planInstall({plugin:'relay',agent:'agent',site:siteFor(target),directories:[s.plugins],allowDirty:true,env:{},hostname:'box'});
- assert.equal(plan.machine,'box');assert.equal(plan.target,target);assert.equal(plan.socket,path.join(target,'private','a.sock'));
+ assert.equal(plan.device,'box');assert.equal(plan.target,target);assert.equal(plan.socket,path.join(target,'private','a.sock'));
  assert.match(formatPlan(plan,{noService:true}).join('\n'),new RegExp(`Host agent "agent" of plugin relay 2\\.3\\.0 \\(core ${CORE_VERSION.replaceAll('.','\\.')};.*for box → `));
  await applyPlan(plan,{noService:true,log:()=>{}});
  const record=JSON.parse(readFileSync(path.join(target,AGENT_MANIFEST),'utf8'));
- assert.deepEqual([record.plugin,record.agent,record.version,record.core,record.machine,record.label,record.entry],['relay','agent','2.3.0',CORE_VERSION,'box','com.example.relay-agent','plugins/relay/scripts/agent.mjs']);
+ assert.deepEqual([record.plugin,record.agent,record.version,record.core,record.device,record.label,record.entry],['relay','agent','2.3.0',CORE_VERSION,'box','com.example.relay-agent','plugins/relay/scripts/agent.mjs']);
  assert.ok(record.files.every(f=>/^[a-f0-9]{64}$/.test(f.sha256)&&existsSync(path.join(target,f.path))));
  const config=JSON.parse(readFileSync(path.join(target,'config','agent.json'),'utf8'));
- assert.deepEqual([config.plugin,config.agent,config.machine,config.greeting],['relay','agent','box','hello']);
+ assert.deepEqual([config.plugin,config.agent,config.device,config.greeting],['relay','agent','box','hello']);
  if(process.platform!=='win32'){assert.equal(statSync(path.join(target,'config','agent.json')).mode&0o777,0o600);assert.equal(statSync(path.join(target,'private')).mode&0o777,0o700);}
  // Run the copy as its service would: HOME_HUB_HOME=<target>, nothing else of this checkout.
  const r=spawnSync(process.execPath,[path.join(target,'plugins','relay','scripts','agent.mjs')],{cwd:target,encoding:'utf8',env:{PATH:process.env.PATH,HOME_HUB_HOME:target}});
@@ -103,17 +103,17 @@ test('what the installer refuses, by name',async t=>{
  const plan=o=>planInstall({plugin:'relay',agent:'agent',site:siteFor(target),directories:[s.plugins],allowDirty:true,env:{},hostname:'box',...o});
  await assert.rejects(plan({plugin:'nothing'}),/No plugin "nothing"/);
  await assert.rejects(plan({agent:'other'}),/declares no host agent "other" \(plugin\.json → hostAgents: agent\)/);
- await assert.rejects(plan({hostname:'elsewhere'}),/Cannot tell which machine of the site this is/);
- await assert.rejects(plan({machine:'nope'}),/--machine nope is not a machine of the site/);
- await assert.rejects(plan({site:validateSite({machines:[{id:'box'}]})}),/plugins\.relay\.agents\.agent\.box is missing/);
- const site=extra=>validateSite({machines:[{id:'box'}],plugins:{relay:{greeting:'x',agents:{agent:{box:{target,label:'com.example.a',...extra}}}}}});
+ await assert.rejects(plan({hostname:'elsewhere'}),/Cannot tell which device of the site this is/);
+ await assert.rejects(plan({device:'nope'}),/--device nope is not a device of the site/);
+ await assert.rejects(plan({site:validateSite({devices:[{id:'box'}]})}),/plugins\.relay\.agents\.agent\.box is missing/);
+ const site=extra=>validateSite({devices:[{id:'box'}],plugins:{relay:{greeting:'x',agents:{agent:{box:{target,label:'com.example.a',...extra}}}}}});
  await assert.rejects(plan({site:site({colour:1})}),/has unknown field\(s\): colour/);
  await assert.rejects(plan({site:site({env:{HOME_HUB_HOME:'/x'}})}),/env must not set HOME_HUB_HOME: the installer sets it/);
  await assert.rejects(plan({site:site({label:'bad label'})}),/label must be a service label/);
  await assert.rejects(plan({site:site({target:'relative/dir'})}),/target must be absolute or start with ~\//);
  await assert.rejects(plan({target:'/'+'x'.repeat(120)}),/longer than the 103 bytes macOS allows/);
- assert.equal(readPlacement(site({target:'~/agent'}),{plugin:'relay',agent:'agent',machine:'box'}).target,path.join(os.homedir(),'agent'));
- assert.equal(chooseMachine(validateSite({machines:[{id:'box',hostname:'Box.example.lan'}]}),null,'box.local'),'box');
+ assert.equal(readPlacement(site({target:'~/agent'}),{plugin:'relay',agent:'agent',device:'box'}).target,path.join(os.homedir(),'agent'));
+ assert.equal(chooseDevice(validateSite({devices:[{id:'box',hostname:'Box.example.lan'}]}),null,'box.local'),'box');
  // A git checkout with an uncommitted agent file is refused.
  const g=(...a)=>spawnSync('git',['-C',s.dir,...a],{encoding:'utf8',env:{...process.env,GIT_CONFIG_GLOBAL:'/dev/null',GIT_AUTHOR_NAME:'T',GIT_AUTHOR_EMAIL:'t@example.lan',GIT_COMMITTER_NAME:'T',GIT_COMMITTER_EMAIL:'t@example.lan'}});
  g('init','-q');g('add','-A');g('commit','-q','-m','x');

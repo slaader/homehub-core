@@ -1,7 +1,7 @@
 # Home Hub: check the newest upstream versions of watched software
 # A user unit. Copy it to ~/.config/systemd/user/ together with its timer and adjust the two paths
 # below: the checkout (WorkingDirectory) and the data directory the server reads (--data = its DATA_DIR).
-# The collector is read-only on the machines it probes. See examples/systemd/README.md.
+# The collector is read-only on the devices it probes. See examples/systemd/README.md.
 [Unit]
 Description=Home Hub: check the newest upstream versions of watched software
 

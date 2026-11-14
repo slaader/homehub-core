@@ -124,7 +124,7 @@ export async function renderCharts(cards,h,range,now={},{keep=false,echarts:give
 // --- the small chart on a tile ----------------------------------------------------------------
 // One utilisation series (m.spark from /api/home) as a bare line with a soft fill: no axes, no labels, no
 // grid, no legend, nothing to hover. The scale starts at 0 and ends at the next quarter above the peak (at
-// least 25 %), so an idle machine stays a low line instead of magnified noise. A step without a reading is
+// least 25 %), so an idle device stays a low line instead of magnified noise. A step without a reading is
 // null and stays a gap. The colour is the measure's token, read again on a theme change like the big charts.
 const SPARK_TOKEN={cpu:'--home-cpu',gpu:'--home-gpu'};
 export function sparkOption(spark){

@@ -63,5 +63,5 @@ test('public edition: no overlay in the tree, nothing seeded, English by default
  assert.equal(loadSite({file:siteConfigPath({})}),EMPTY_SITE);
  const findings=scanLeaks(repoRoot,exportFiles(repoRoot,{generated:true}));
  assert.equal(findings.length,0,`\n${formatFindings(findings.slice(0,40))}\n`);
- assert.equal(EMPTY_SITE.defaultLanguage,'en');assert.deepEqual(EMPTY_SITE.tracker.projects,[]);assert.deepEqual(EMPTY_SITE.machines,[]);
+ assert.equal(EMPTY_SITE.defaultLanguage,'en');assert.deepEqual(EMPTY_SITE.tracker.projects,[]);assert.deepEqual(EMPTY_SITE.devices,[]);
 });

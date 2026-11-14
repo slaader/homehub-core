@@ -68,7 +68,7 @@ function consistent(key){
  if(!ok)fail('key-mismatch');
 }
 // {type, bits, publicKey: "type base64 home-hub", blob (base64), fingerprint}. The comment is always ours,
-// so an imported key's own comment (often user@machine) is never shown or sent anywhere.
+// so an imported key's own comment (often user@host) is never shown or sent anywhere.
 export function describeKey(key){
  const {bits}=checked(key);
  const {type,blob}=blobOfJwk(createPublicKey(key).export({format:'jwk'}));

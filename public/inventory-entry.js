@@ -8,7 +8,7 @@ import {canWrite} from './access.js';
 import {t} from './i18n.js';
 import {el} from './views.js';
 import {pill,statusPill,when} from './systems-view.js';
-import {versionRows,machineOs,versionSummary,systemMachineOf} from './inventory-versions.js';
+import {versionRows,deviceOs,versionSummary,systemDeviceOf} from './inventory-versions.js';
 import {check,dependents,withFields,templateEntries,KINDS,PLACED_KINDS,LINK_KINDS,ENTRY_FIELDS,LIMITS} from './inventory-rules.js';
 import {GROUPS,DEPS,CATS,CAT_LABEL,DEFAULT_CAT,OTHER,catOf,kindName,typeTag,place,placeName,store,storeSuggestions,siteStores,index,isExample,
  cached,hashOf,invalidate,load,systemsDoc,saveFields,removeEntry,bulkUpsert,announce} from './inventory-data.js';
@@ -25,7 +25,7 @@ const clip=(s,n)=>{const x=String(s??'');return x.length>n?`${x.slice(0,n-1)}…
 // shown even if the last upstream check failed (it still proves a newer release), flagged "neověřeno".
 export function versionBlock(e){
  const systems=systemsDoc();if(!systems)return '';
- const os=machineOs(e,systems),rows=versionRows(e,systems),machine=systemMachineOf(e);
+ const os=deviceOs(e,systems),rows=versionRows(e,systems),device=systemDeviceOf(e);
  if(!os&&!rows.length)return '';
  const unverified=r=>r.upstreamStale&&r.status!=='unknown'?pill(t('neověřeno'),'warn',r.upstreamError?t('Poslední kontrola nejnovější verze selhala: {error}; údaj z {when}.',{error:t(r.upstreamError),when:when(r.upstreamCheckedAt)}):t('Poslední kontrola nejnovější verze selhala; údaj z {when}.',{when:when(r.upstreamCheckedAt)})):null;
  const item=(name,r)=>{const s=versionSummary(r);
@@ -33,9 +33,9 @@ export function versionBlock(e){
    s.update?el('span',{class:'inv-ver-up'},t('dostupná aktualizace → '),el('b',{},link(s.update,r.latestUrl))):null,
    s.note&&(s.update||s.unverified)?el('small',{class:'inv-ver-note'},t(s.note)):null);};
  return el('div',{class:'inv-versions'},
-  el('div',{class:'inv-ver-head'},el('span',{class:'eyebrow'},t('VERZE · SYSTÉMY')),el('a',{href:`#versions/${machine}`},t('Verze a aktualizace →'))),
+  el('div',{class:'inv-ver-head'},el('span',{class:'eyebrow'},t('VERZE · SYSTÉMY')),el('a',{href:`#versions/${device}`},t('Verze a aktualizace →'))),
   el('ul',{},os?item(os.name||t('Systém'),{...os,upstreamStale:false}):null,rows.map(r=>item(r.name,r))),
-  el('small',{class:'inv-ver-src'},t('Stroje {machines} · vydání {releases}',{machines:when(systems.collectedAt),releases:when(systems.upstreamCheckedAt)})));
+  el('small',{class:'inv-ver-src'},t('Stroje {devices} · vydání {releases}',{devices:when(systems.collectedAt),releases:when(systems.upstreamCheckedAt)})));
 }
 
 // --- the dialog ------------------------------------------------------------------------------
@@ -51,11 +51,11 @@ const docNow=()=>cached()?.doc||{schema:1,updated_at:null,entries:[]};
 // --- detail ----------------------------------------------------------------------------------
 function detail(doc,e,pick){
  const {byId,usedBy}=index(doc);
- const crumbs=e.kind==='network'?t('Nejvyšší úroveň'):e.kind==='machine'?t('Domácí síť'):e.kind==='external'?t('Vnější služby'):`${place(e)} › ${GROUPS[e.kind]?t(GROUPS[e.kind]):kindName(e.kind)}`;
+ const crumbs=e.kind==='network'?t('Nejvyšší úroveň'):e.kind==='device'?t('Domácí síť'):e.kind==='external'?t('Vnější služby'):`${place(e)} › ${GROUPS[e.kind]?t(GROUPS[e.kind]):kindName(e.kind)}`;
  const row=(label,value,mono,always=true)=>value?[el('dt',{},label),el('dd',{class:mono?'mono':''},typeof value==='string'?linkify(value):value)]:always?[el('dt',{},label),el('dd',{class:'muted'},t('Nezapsáno'))]:[];
  const links=(title,list)=>list.length?[el('h3',{},`${title} · ${list.length}`),el('div',{class:'inv-links'},list.map(x=>{const to=byId.get(x.id);return el('button',{class:'inv-btn',type:'button',onclick:()=>pick(x.id)},to?to.name:x.id,el('span',{class:'muted'},` · ${DEPS[x.kind]?t(DEPS[x.kind]):x.kind}${x.label?` · ${t(x.label)}`:''}`));}))]:[];
  const copy=text=>el('button',{class:'inv-btn',type:'button',onclick:async ev=>{const b=ev.currentTarget;try{await navigator.clipboard.writeText(text);b.textContent=t('Zkopírováno');}catch{b.textContent=t('Nejde zkopírovat');}}},t('Kopírovat'));
- const runsHere=e.kind==='machine'?doc.entries.filter(x=>x.machine===e.id&&x.id!==e.id).map(x=>({id:x.id,kind:'runs-on',label:''})):[];
+ const runsHere=e.kind==='device'?doc.entries.filter(x=>x.device===e.id&&x.id!==e.id).map(x=>({id:x.id,kind:'runs-on',label:''})):[];
  const status=el('span',{class:'inv-inline-status',role:'status'});
  // "Still true": stamps today's date and the person, changing nothing else.
  const confirm=el('button',{type:'button',class:'inv-btn',title:t('Zapíše dnešní datum ověření a nic jiného nezmění.'),onclick:async()=>{confirm.disabled=true;
@@ -70,7 +70,7 @@ function detail(doc,e,pick){
   status,
   versionBlock(e),
   e.notes?el('p',{class:'muted inv-detail-notes'},linkify(e.notes)):'',
-  el('dl',{class:'inv-dl'},row(t('Druh'),`${kindName(e.kind)}${e.type?` · ${e.type}`:''}`),row('ID',e.id,true),e.kind!=='network'&&e.kind!=='external'&&(e.kind!=='machine'||e.machine)?row(t('Stroj'),e.kind==='machine'?placeName(e.machine):place(e)):[],row(t('Adresa'),e.address,true,e.kind==='runtime'||e.kind==='machine'),row(t('Verze (zapsaná)'),e.version,false,false),row(t('Konfigurace'),e.config,true,e.kind!=='external'),row(t('Data'),e.data,true,false),row(t('Spravuje'),e.managed_by,true,false),row(t('Jak se přihlásit'),e.login,false,false)),
+  el('dl',{class:'inv-dl'},row(t('Druh'),`${kindName(e.kind)}${e.type?` · ${e.type}`:''}`),row('ID',e.id,true),e.kind!=='network'&&e.kind!=='external'&&(e.kind!=='device'||e.device)?row(t('Stroj'),e.kind==='device'?placeName(e.device):place(e)):[],row(t('Adresa'),e.address,true,e.kind==='runtime'||e.kind==='device'),row(t('Verze (zapsaná)'),e.version,false,false),row(t('Konfigurace'),e.config,true,e.kind!=='external'),row(t('Data'),e.data,true,false),row(t('Spravuje'),e.managed_by,true,false),row(t('Jak se přihlásit'),e.login,false,false)),
   e.models?.length?[el('h3',{},t('Modely · {n}',{n:e.models.length})),el('ul',{class:'inv-list mono'},e.models.map(m=>el('li',{},m)))]:'',
   e.skills?.length?[el('h3',{},t('Skilly · {n}',{n:e.skills.length})),el('ul',{class:'inv-list mono'},e.skills.map(m=>el('li',{},m)))]:'',
   el('h3',{},t('Tajemství · kde jsou uložená')),
@@ -104,8 +104,8 @@ const ISSUE={
  'dep-kind':'Vyber druh závislosti.',
  'dep-self':'Záznam nemůže záviset sám na sobě.',
  'dep-missing':'Záznam „{target}“ neexistuje.',
- 'machine-required':'Vyber stroj, na kterém běží.',
- 'machine-missing':'Stroj „{machine}“ neexistuje.',
+ 'device-required':'Vyber stroj, na kterém běží.',
+ 'device-missing':'Stroj „{device}“ neexistuje.',
  'gap-address':'Služba bez adresy se počítá jako mezera.',
  'gap-store':'Nezapsané místo se počítá jako mezera.',
 };
@@ -116,7 +116,7 @@ export const issueText=i=>ISSUE[i.code]?t(ISSUE[i.code],{...i,why:WHY[i.why]?t(W
 
 // --- the form --------------------------------------------------------------------------------
 const TEXT=[['name','Název'],['type','Typ'],['category','Kategorie na mapě'],['address','Adresa'],['version','Verze'],['managed_by','Spravuje'],['login','Jak se přihlásit'],['config','Konfigurace'],['data','Data'],['notes','Poznámky']];
-const LABEL={...Object.fromEntries(TEXT),machine:'Stroj',secrets:'Tajemství',depends_on:'Závisí na',id:'ID',kind:'Druh'};
+const LABEL={...Object.fromEntries(TEXT),device:'Stroj',secrets:'Tajemství',depends_on:'Závisí na',id:'ID',kind:'Druh'};
 const LONG=new Set(['config','data','login','notes']);
 const HINT={address:'host:port, URL nebo IP adresa',config:'Cesta ke konfiguraci, ne její obsah',login:'Slovy, jak se přihlásit. Nikdy heslo ani token.',managed_by:'launchd, systemd, kontejner, cron…'};
 const norm=v=>typeof v==='string'?v.trim():'';
@@ -131,21 +131,21 @@ export function slug(text){
 export function changedFields(entry,values){
  const out={};
  for(const [k] of TEXT)if(norm(values[k])!==norm(entry[k]))out[k]=norm(values[k]);
- if('machine'in values&&norm(values.machine)!==norm(entry.machine))out.machine=norm(values.machine);
+ if('device'in values&&norm(values.device)!==norm(entry.device))out.device=norm(values.device);
  if(JSON.stringify(values.secrets)!==JSON.stringify(secretsOf(entry)))out.secrets=values.secrets;
  if(JSON.stringify(values.depends_on)!==JSON.stringify(depsOf(entry)))out.depends_on=values.depends_on;
  return out;
 }
 
 /**
- * The form for one entry. entry: the stored entry, or for a new one a stub {kind, machine}.
+ * The form for one entry. entry: the stored entry, or for a new one a stub {kind, device}.
  * prefill: field values to put in the form instead of the entry's (edits carried over a conflict);
  * theirs: names of fields somebody else changed meanwhile, marked in the form; note: a line shown on top.
  */
 export function showEditor(entry,{isNew=false,prefill=null,theirs=null,note=''}={}){
  const doc=docNow(),hash=isNew?null:hashOf(entry.id),inputs={},errors={},wraps={};
- const machines=doc.entries.filter(e=>e.kind==='machine'&&e.id!==entry.id);
- const start={...Object.fromEntries(TEXT.map(([k])=>[k,norm(entry[k])])),machine:norm(entry.machine),secrets:secretsOf(entry),depends_on:depsOf(entry),...prefill};
+ const devices=doc.entries.filter(e=>e.kind==='device'&&e.id!==entry.id);
+ const start={...Object.fromEntries(TEXT.map(([k])=>[k,norm(entry[k])])),device:norm(entry.device),secrets:secretsOf(entry),depends_on:depsOf(entry),...prefill};
  const field=(k,label,input,{hint,wide}={})=>{
   errors[k]=el('small',{class:'inv-field-error',id:`inv-e-${k}`});inputs[k]=input;input.setAttribute('aria-describedby',`inv-e-${k}`);
   wraps[k]=el('div',{class:`inv-field${wide?' wide':''}${theirs?.has(k)?' theirs':''}`},el('label',{for:input.getAttribute('id')},label,theirs?.has(k)?el('span',{class:'inv-theirs'},t('změněno jinde')):null),input,hint?el('small',{class:'inv-hint'},hint):null,errors[k]);
@@ -157,21 +157,21 @@ export function showEditor(entry,{isNew=false,prefill=null,theirs=null,note=''}=
  const idInput=el('input',{id:'inv-f-id',name:'id',maxlength:String(LIMITS.idLength),autocomplete:'off',spellcheck:'false',autocapitalize:'none',oninput:()=>{idTouched=true;}});
  const kindSelect=select('inv-f-kind',KINDS.map(k=>[k,`${kindName(k)} (${k})`]),KINDS.includes(entry.kind)?entry.kind:'runtime');
  const kind=()=>isNew?kindSelect.value:entry.kind;
- const machineSelect=select('inv-f-machine',[['',t('— žádný —')],...machines.map(m=>[m.id,`${m.name} (${m.id})`]),...(start.machine&&!machines.some(m=>m.id===start.machine)?[[start.machine,start.machine]]:[])],start.machine);
+ const deviceSelect=select('inv-f-device',[['',t('— žádný —')],...devices.map(m=>[m.id,`${m.name} (${m.id})`]),...(start.device&&!devices.some(m=>m.id===start.device)?[[start.device,start.device]]:[])],start.device);
  const category=select('inv-f-category',[['',''],...CATS.map(([v,l])=>[v,t(l)])],start.category||'');
  const paintKind=()=>{const k=kind();category.children[0].textContent=t('Výchozí pro druh ({category})',{category:t(CAT_LABEL[DEFAULT_CAT[k]]||OTHER)});
-  wraps.machine.hidden=!PLACED_KINDS.includes(k);wraps.machine.children[0].childNodes[0].textContent=k==='machine'?t('Běží na stroji (nepovinné)'):t('Stroj');};
+  wraps.device.hidden=!PLACED_KINDS.includes(k);wraps.device.children[0].childNodes[0].textContent=k==='device'?t('Běží na stroji (nepovinné)'):t('Stroj');};
  const basics=el('div',{class:'inv-fields'},
   field('name',t('Název'),text('name')),
   isNew?field('kind',t('Druh'),kindSelect):null,
   isNew?field('id','ID',idInput,{hint:t('Malá písmena, číslice a pomlčky. Už se nikdy nezmění.')}):null,
-  field('machine',t('Stroj'),machineSelect),
+  field('device',t('Stroj'),deviceSelect),
   field('type',t('Typ'),text('type')),field('category',t('Kategorie na mapě'),category),
   field('address',t('Adresa'),text('address'),{hint:t(HINT.address)}),field('version',t('Verze'),text('version')),
   field('managed_by',t('Spravuje'),text('managed_by'),{hint:t(HINT.managed_by)}),field('login',t('Jak se přihlásit'),text('login'),{hint:t(HINT.login)}),
   field('config',t('Konfigurace'),text('config'),{hint:t(HINT.config)}),field('data',t('Data'),text('data')),
   field('notes',t('Poznámky'),text('notes'),{wide:true}));
- if(isNew)inputs.name.addEventListener('input',()=>{if(!idTouched)idInput.value=slug([PLACED_KINDS.includes(kind())?machineSelect.value:'',inputs.name.value].filter(Boolean).join(' '));});
+ if(isNew)inputs.name.addEventListener('input',()=>{if(!idTouched)idInput.value=slug([PLACED_KINDS.includes(kind())?deviceSelect.value:'',inputs.name.value].filter(Boolean).join(' '));});
  // Rows: where each secret is kept, and what the entry depends on.
  const secretRows=el('div',{class:'inv-rows'}),depRows=el('div',{class:'inv-rows'});
  const rowInput=(name,label,value,extra={})=>{const i=el('input',{name,'aria-label':label,placeholder:label,autocomplete:'off',spellcheck:'false',...extra});i.value=value||'';return i;};
@@ -190,8 +190,8 @@ export function showEditor(entry,{isNew=false,prefill=null,theirs=null,note=''}=
   const value=row=>Object.fromEntries([...row.querySelectorAll('input,select')].map(i=>[i.name,i.value.trim()]));
   const sRows=[...secretRows.children].map(row=>[row,value(row)]).filter(([,v])=>v.what||v.store||v.ref||v.check);
   const dRows=[...depRows.children].map(row=>[row,value(row)]).filter(([,v])=>v.id||v.label);
-  // machine is part of the form only for kinds that live on one; elsewhere whatever the entry holds is left alone.
-  const values={...Object.fromEntries(TEXT.map(([k])=>[k,inputs[k].value.trim()])),...(PLACED_KINDS.includes(kind())?{machine:machineSelect.value}:{}),
+  // device is part of the form only for kinds that live on one; elsewhere whatever the entry holds is left alone.
+  const values={...Object.fromEntries(TEXT.map(([k])=>[k,inputs[k].value.trim()])),...(PLACED_KINDS.includes(kind())?{device:deviceSelect.value}:{}),
    secrets:sRows.map(([,v])=>Object.fromEntries(Object.entries(v).filter(([,x])=>x))),depends_on:dRows.map(([,v])=>({id:v.id,...(v.kind?{kind:v.kind}:{}),...(v.label?{label:v.label}:{})}))};
   return {values,rows:{secrets:sRows.map(([r])=>r),depends_on:dRows.map(([r])=>r)}};
  };
@@ -240,7 +240,7 @@ export function showEditor(entry,{isNew=false,prefill=null,theirs=null,note=''}=
   let fresh;try{fresh=await refresh();}catch{summary.textContent=t('Záznam se mezitím změnil a novou verzi se nepodařilo načíst. Zkus to znovu.');return;}
   const now=fresh.doc.entries.find(e=>e.id===entry.id);
   if(!now){summary.replaceChildren(el('p',{},t('Tenhle záznam mezitím někdo smazal. Tvoje úpravy už není kam uložit.')));actions.replaceChildren(el('span',{class:'inv-actions-gap'}),el('button',{type:'button',class:'inv-btn primary',onclick:()=>dialogEl().close()},t('Zavřít')));return;}
-  const mine=changedFields(entry,values),theirChanges=changedFields(entry,{...Object.fromEntries(TEXT.map(([k])=>[k,norm(now[k])])),machine:norm(now.machine),secrets:secretsOf(now),depends_on:depsOf(now)});
+  const mine=changedFields(entry,values),theirChanges=changedFields(entry,{...Object.fromEntries(TEXT.map(([k])=>[k,norm(now[k])])),device:norm(now.device),secrets:secretsOf(now),depends_on:depsOf(now)});
   const show=k=>Array.isArray(theirChanges[k])?t('změněno'):`${clip(norm(entry[k])||'—',40)} → ${clip(theirChanges[k]||'—',60)}`;
   const both=Object.keys(mine).filter(k=>k in theirChanges);
   summary.replaceChildren(el('div',{class:'inv-conflict'},
@@ -267,7 +267,7 @@ export function showEditor(entry,{isNew=false,prefill=null,theirs=null,note=''}=
     }catch{summary.textContent=t('Home Hub není dosažitelný. Zkus to znovu.');normalActions();}}},t('Smazat natrvalo'));
   actions.replaceChildren(el('span',{class:'inv-actions-gap'}),el('button',{type:'button',class:'inv-btn',onclick:()=>{summary.replaceChildren();normalActions();}},t('Zpět')),yes);
  }
- const form=el('form',{class:'inv-edit',novalidate:'',oninput:soon,onchange:()=>{if(isNew){paintKind();if(!idTouched)idInput.value=slug([PLACED_KINDS.includes(kind())?machineSelect.value:'',inputs.name.value].filter(Boolean).join(' '));}soon();},onsubmit:async ev=>{ev.preventDefault();clearTimeout(timer);
+ const form=el('form',{class:'inv-edit',novalidate:'',oninput:soon,onchange:()=>{if(isNew){paintKind();if(!idTouched)idInput.value=slug([PLACED_KINDS.includes(kind())?deviceSelect.value:'',inputs.name.value].filter(Boolean).join(' '));}soon();},onsubmit:async ev=>{ev.preventDefault();clearTimeout(timer);
    const v=validate();
    if(v.failed){status.textContent=t('Oprav označená pole.');v.first?.focus();return;}
    if(!isNew&&!Object.keys(v.changed).length){status.textContent=t('Nic se nezměnilo.');return;}
@@ -296,7 +296,7 @@ export function showEditor(entry,{isNew=false,prefill=null,theirs=null,note=''}=
  else if(prefill)validate();
  if(isNew)inputs.name.focus?.();
 }
-// A new entry. stub: {kind, machine} to start from (the services page starts with a runtime).
+// A new entry. stub: {kind, device} to start from (the services page starts with a runtime).
 export const showCreate=(stub={})=>showEditor({kind:'runtime',...stub},{isNew:true});
 
 // --- template, examples, import --------------------------------------------------------------

@@ -80,7 +80,7 @@ export function signingPlan({key,sign=false,unsigned=false}){
  if(sign)refuse(`--sign needs a signing key, and none is configured.\n${SIGNING_HELP}`);
  return {signed:false,warn:true};
 }
-export const SIGNING_HELP=`To sign release tags with an SSH key (keep the private key off the machine that runs the hub):
+export const SIGNING_HELP=`To sign release tags with an SSH key (keep the private key off the computer that runs the hub):
   ssh-keygen -t ed25519 -f ~/.ssh/home-hub-release -C home-hub-release
   git config gpg.format ssh
   git config user.signingkey ~/.ssh/home-hub-release.pub

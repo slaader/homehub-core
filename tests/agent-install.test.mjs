@@ -24,7 +24,7 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const temp=t=>{const d=realpathSync(mkdtempSync(path.join(os.tmpdir(),'hub-agent-inst-')));t.after(()=>rmSync(d,{recursive:true,force:true}));return d;};
 const put=(file,body)=>{mkdirSync(path.dirname(file),{recursive:true});writeFileSync(file,body);};
 const TOKEN='hha_'+'f'.repeat(64);
-const KEY_TEXT=JSON.stringify({schema:1,agent:{id:'ag_1',machine:'studio',name:'studio',prefix:TOKEN.slice(0,12),createdAt:'2026-11-13T10:00:00Z'},token:TOKEN});
+const KEY_TEXT=JSON.stringify({schema:1,agent:{id:'ag_1',device:'studio',name:'studio',prefix:TOKEN.slice(0,12),createdAt:'2026-11-13T10:00:00Z'},token:TOKEN});
 const HOSTILE=['x|cmd|/bin/sh|-c id|\n','x|cmd|/usr/bin/$(id)|--version|\n','x|cmd|/usr/bin/`id`|--version|\n','x|json|/etc/a;id||\n',
  // validateSpecs passes these; the agent's path rules do not (a space in a glob, a binary any account can drop in).
  'x|cmd|/nonexist xprobe*|--version|\n','x|pydist|/opt/a b/*/site-packages|foo|\n','x|cmd|/tmp/*|--version|\n','x|cmd|/private/tmp/x|--version|\n','x|cmd|/Users/Shared/bin/x|--version|\n','x|cmd|/var//tmp/x|--version|\n',
@@ -89,7 +89,7 @@ test('sudoers: one exact rule per PRIVILEGED line, escaped, no wildcard; listen 
  for(const bad of ['root ALL','al ice','$(id)',''])assert.throws(()=>renderSudoers({platform:'macos',account:bad,keys:'own'}),/account name/);
 });
 
-// A plan with everything passed in: no file of this machine but the checkout is read.
+// A plan with everything passed in: no file of this device but the checkout is read.
 const planFor=(platform,o={},inputs={})=>planCoreInstall({hub:'https://hub.example.lan',pins:[],ca:null,keyFile:'/k.json',specs:null,runtimes:[],keys:null,account:platform==='macos'?'alice':null,wait:90,allowDirty:false,...o},
  {platform,home:'/Users/alice',uid:501,node:platform==='macos'?'/opt/homebrew/bin/node':'/usr/bin/node',systemd:252,keyText:KEY_TEXT,git:clean,...inputs});
 
@@ -129,7 +129,7 @@ test('rendered files: agent.json, the launchd agent, the systemd system unit (Lo
  const mac=planFor('macos',{pins:['AB'.repeat(32)],runtimes:['ollama=http://127.0.0.1:11434']},{specsText:'node|cmd|/opt/homebrew/bin/node|--version|\n'});
  const cfg=parseConfig(mac.configText,{platform:'macos'});
  assert.equal(cfg.ok,true);assert.deepEqual(cfg.config.trust,{mode:'pin',pins:['ab'.repeat(32)]});assert.equal(cfg.config.keys,'own');assert.equal(cfg.config.runtimes[0].id,'ollama');
- assert.ok(!mac.configText.includes('machine')&&!mac.configText.includes(TOKEN));
+ assert.ok(!mac.configText.includes('device')&&!mac.configText.includes(TOKEN));
  const base='/Users/alice/Library/Application Support/Home Hub Agent';
  assert.deepEqual([mac.paths.config,mac.paths.key,mac.paths.state,mac.paths.log],[`${base}/config`,`${base}/private/agent.key`,`${base}/state`,'/Users/alice/Library/Logs/Home Hub Agent/agent.log']);
  assert.equal(mac.service.kind,'launchd-agent');assert.equal(mac.service.file,'/Users/alice/Library/LaunchAgents/home-hub-agent.plist');assert.equal(mac.service.domain,'gui/501');
@@ -137,7 +137,7 @@ test('rendered files: agent.json, the launchd agent, the systemd system unit (Lo
  assert.doesNotMatch(mac.service.text,/\{\{|UserName|hha_/);
  if(process.platform==='darwin'&&existsSync('/usr/bin/plutil')){const r=spawnSync('/usr/bin/plutil',['-lint','-'],{input:mac.service.text,encoding:'utf8'});assert.equal(r.status,0,r.stdout+r.stderr);}
  const text=formatCorePlan(mac).join('\n');
- assert.ok(!text.includes(TOKEN),'never the token');assert.match(text,/key hha_ffffffff… for machine studio/);assert.match(text,/  1  node\|cmd\|\/opt\/homebrew\/bin\/node\|--version\|/);
+ assert.ok(!text.includes(TOKEN),'never the token');assert.match(text,/key hha_ffffffff… for device studio/);assert.match(text,/  1  node\|cmd\|\/opt\/homebrew\/bin\/node\|--version\|/);
  assert.match(text,/alice ALL=\(root\) NOPASSWD: \/sbin\/pfctl -s info/);
  const unit=planFor('linux',{keys:'all-accounts'},{ssOk:p=>p!=='/bin/ss'});
  assert.equal(unit.account,'home-hub-agent');assert.equal(unit.keyMode,'credential');assert.equal(unit.service.kind,'systemd-system');assert.equal(unit.service.file,'/etc/systemd/system/home-hub-agent.service');
@@ -156,7 +156,7 @@ test('rendered files: agent.json, the launchd agent, the systemd system unit (Lo
  assert.equal(planFor('linux',{},{systemd:null}).keyMode,'file','unknown systemd: the fallback that works everywhere');
 });
 
-// The first real Linux machine (systemd 257 in a container) took a unit with LoadCredential= and dropped the setting
+// The first real Linux device (systemd 257 in a container) took a unit with LoadCredential= and dropped the setting
 // without a word: no $CREDENTIALS_DIRECTORY, so the agent stopped with key-missing and the install rolled back.
 test('Linux: LoadCredential= is used only when a test unit was handed one; else the account\'s 0400 key file',async t=>{
  const dropped=planFor('linux',{},{systemd:257,loadCredential:false});
@@ -401,13 +401,13 @@ test('the status the installer waits for, and the watch list the hub hands out',
  assert.equal(specsFileText(registry,'other'),'');
  // The agent's path rules too: a space in a glob, a binary in a directory every account can write.
  for(const [kind,p] of [['cmd','/opt/a b/*'],['cmd','/tmp/x'],['pydist','/opt/x y/*']]){
-  const r=agentSpecs({registry:{items:[{id:'x',detect:{studio:kind==='cmd'?{kind,path:p,args:'--version'}:{kind,glob:p,package:'foo'}}}]},machine:'studio',platform:'macos'});
+  const r=agentSpecs({registry:{items:[{id:'x',detect:{studio:kind==='cmd'?{kind,path:p,args:'--version'}:{kind,glob:p,package:'foo'}}}]},device:'studio',platform:'macos'});
   assert.equal(r.ok,false,p);assert.equal(r.errors[0].line,1);
  }
- assert.equal(agentSpecs({registry,machine:'studio',platform:'macos'}).ok,true,'a cmd rule with other arguments reaches the machine as unsupported-args');
- assert.equal(agentSpecs({registry,machine:'studio',platform:'linux'}).ok,false);
+ assert.equal(agentSpecs({registry,device:'studio',platform:'macos'}).ok,true,'a cmd rule with other arguments reaches the device as unsupported-args');
+ assert.equal(agentSpecs({registry,device:'studio',platform:'linux'}).ok,false);
  const hostile={items:[{id:'x',detect:{studio:{kind:'json',path:'/etc/$(id)',key:'version'}}}]};
- assert.equal(agentSpecs({registry:hostile,machine:'studio',platform:'macos'}).ok,false);
+ assert.equal(agentSpecs({registry:hostile,device:'studio',platform:'macos'}).ok,false);
 });
 
 // --- the launchd daemon (--service launchd-daemon) -------------------------------------------------------------------
@@ -686,10 +686,10 @@ test('a plugin\'s host agent: the plan is exactly what it was before the core en
  const dir=temp(t),plugin=path.join(dir,'plugins','relay');
  put(path.join(plugin,'index.mjs'),`export default {id:'relay',title:'Relay'};`);
  put(path.join(plugin,'plugin.json'),JSON.stringify({id:'relay',version:'2.3.0',core:'*',hostAgents:[{id:'agent',title:'Relay agent',entry:'scripts/agent.mjs',service:'systemd-user',health:{socket:'private/a.sock',get:'/status'},config:'server/agent-config.mjs'}]}));
- put(path.join(plugin,'server','agent-config.mjs'),`export default ({site,machine})=>({greeting:site.plugins.relay.greeting,machine});`);
+ put(path.join(plugin,'server','agent-config.mjs'),`export default ({site,device})=>({greeting:site.plugins.relay.greeting,device});`);
  put(path.join(plugin,'scripts','agent.mjs'),`import {CORE_VERSION} from 'home-hub/plugin-api';console.log(CORE_VERSION);`);
  const target=path.join(dir,'agent'),home=path.join(dir,'home');
- const site=validateSite({machines:[{id:'box',name:'Box',hostname:'box.example.lan'}],plugins:{relay:{greeting:'hello',agents:{agent:{box:{target,label:'com.example.relay-agent',node:'/opt/node/bin/node',env:{RELAY_MODE:'test'}}}}}}});
+ const site=validateSite({devices:[{id:'box',name:'Box',hostname:'box.example.lan'}],plugins:{relay:{greeting:'hello',agents:{agent:{box:{target,label:'com.example.relay-agent',node:'/opt/node/bin/node',env:{RELAY_MODE:'test'}}}}}}});
  const p=await planInstall({plugin:'relay',agent:'agent',site,directories:[path.join(dir,'plugins')],allowDirty:true,env:{},hostname:'box',stateHome:home,serviceHome:home,backups:path.join(dir,'b'),root});
  const norm=s=>String(s).split(dir).join('<T>').split(root).join('<CORE>');
  assert.deepEqual({lines:formatPlan(p).map(l=>norm(l).replace(/commits core [0-9a-f?]+/,'commits core <C>').replace(/\(core [^;]+;/,'(core <V>;').replace(/, dirty\) for /,') for ')),service:norm(p.service.text),file:norm(p.service.file),files:p.files.map(f=>f.to),config:norm(p.config.text)},expected);

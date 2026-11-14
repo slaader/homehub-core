@@ -16,7 +16,7 @@ export const CORE_SCOPES=Object.freeze({
  'review:write':{label:'Review – zápis',desc:'Nahrávat varianty k posouzení (mockupy, rendery) a ukládat rozhodnutí a připomínky.'},
  'security:read':{label:'Bezpečnost – čtení',desc:'Číst inventář SSH klíčů, verze systémů a ochranu strojů.',readOnly:true,legacy:false},
 
- // Overview module (server/core/home.mjs): machine_upsert, machine_remove, runtime_publish. New, so old read/write keys never get it.
+ // Overview module (server/core/home.mjs): device_upsert, device_remove, runtime_publish. New, so old read/write keys never get it.
  'home:write':{label:'Přehled – zápis',desc:'Přidávat, měnit a odebírat stroje v přehledu a zveřejňovat jejich runtime stack a endpointy LLM runtimů, které hub čte (s kontrolou otisku a bez tajemství).',legacy:false},
  'software:write':{label:'Sledovaný software – zápis',desc:'Číst a měnit seznam sledovaného softwaru: odkud se bere nejnovější verze a jak se na stroji zjistí nainstalovaná.',legacy:false},
  // Backups (server/core/backups.mjs): run now, cancel, delete a snapshot. Setting a job up stays with administrators.

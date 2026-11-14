@@ -161,7 +161,7 @@ emptyState({icon: 'box', title: 'No entries yet', body: 'What belongs here, in o
   actions: [{label: 'Open the map', href: '#inventory-map', primary: true}]})
 
 notInstalled({dependency: 'Thermo', installUrl: 'https://example.com/…',
-  steps: ['Install it on the machine.', 'Add the machine on the Overview.']})
+  steps: ['Install it on the device.', 'Add the device on the Overview.']})
 
 errorState({title: 'The inventory could not be loaded', body: 'What happened, if you know.', retry: () => load()})
 
@@ -250,7 +250,7 @@ flowchart TB
   from the top bar. A plugin's entry may name its icon: `icon: 'cpu'` (a name from `public/icons.js`) or a
   short glyph; without one it gets the first letter of its label.
 - **Command palette** (Cmd-K or Ctrl-K, or the box in the top bar). Jump to any page this account may open,
-  run a shell action (theme, language, collapse, sign out), open a machine, or search tickets and reviews.
+  run a shell action (theme, language, collapse, sign out), open a device, or search tickets and reviews.
 - **Page title.** The browser tab says which page this is.
 - **Focus and scroll.** When the page changes, the content starts at its top and the keyboard is at the
   content. A change inside a page (`#items` → `#items/HH-12`) leaves both alone.
@@ -260,7 +260,7 @@ flowchart TB
 - **Footer.** The version (`1.1.0`, or `1.1.0+dev` off a release tag; the commit and deploy time in its tooltip) and the
   number of plugins. An administrator also sees `→ 1.2.0`, a link to Integrations, while a newer release is known.
 
-A page is one function, `(context) => Node`, with `context = {me, page, sub, machine, site}`. Register
+A page is one function, `(context) => Node`, with `context = {me, page, sub, device, site}`. Register
 listeners on `document` or `window` and timers with `onLeave()` from `/views.js`, so they go when the page
 does.
 

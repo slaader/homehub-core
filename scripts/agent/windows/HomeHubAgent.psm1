@@ -10,7 +10,7 @@
 #     updates   WINUP / WINUP_NONE / WINUP_ERR: the Windows Update Agent's search of its own cache
 #               (Microsoft.Update.Session, Online = false) in a background job with a timeout; never a download,
 #               never an install, never a scan against Microsoft's servers
-#     packages  SW / RUN for each line of the local specs.txt (kind winreg: the machine-wide uninstall keys), SPECS
+#     packages  SW / RUN for each line of the local specs.txt (kind winreg: the system-wide uninstall keys), SPECS
 # No sshkeys part and no PRIV line in this series. The hub's answer is read for its status, Retry-After and the
 # acknowledgement, and for nothing else.
 #
@@ -20,7 +20,7 @@
 #
 # The key: Initialize-Agent reads it into $script:Token, and only Send-AgentReport reads that, into the Authorization
 # header. It is never a parameter of a function or a cmdlet: Module Logging (event 4103) records the value of every
-# parameter a command of a module is called with, and that log is readable by the machine's interactive users.
+# parameter a command of a module is called with, and that log is readable by the device's interactive users.
 Set-StrictMode -Version 2.0
 
 $script:Invariant = [Globalization.CultureInfo]::InvariantCulture
@@ -240,7 +240,7 @@ function Get-Sha256Hex {
 
 # --- configuration ------------------------------------------------------------------------------------------------------
 # The hub's origin -> @{host; port; secure; origin}, or $null (scripts/agent/config.mjs, parseHub): https://<name or IPv4>
-# with an optional port, or http://127.0.0.1 on the hub's own machine; written as its origin (lower case, no default
+# with an optional port, or http://127.0.0.1 on the hub's own host; written as its origin (lower case, no default
 # port, no path, query, fragment or user).
 function Test-HubOrigin {
   param([string]$Value)
@@ -570,7 +570,7 @@ function Get-OsRecords {
 # The Windows Update Agent's search of what it already knows (Online = false: its own cache, as the last scan Windows
 # made left it), in a job of its own so that a search that hangs can be stopped. Its lines come back as text.
 # An update offered only for browsing (an optional or preview update, a driver) is not pending and is left out. An empty
-# answer is an all-clear only when Windows' own last successful search is recent (UpdateSearchMaxAgeDays): a machine
+# answer is an all-clear only when Windows' own last successful search is recent (UpdateSearchMaxAgeDays): a device
 # that never searched, or not for days (switched off, a broken or WSUS-blocked scan), has an empty cache, and that is
 # sent as WINUP_ERR, never as WINUP_NONE.
 $script:UpdateSearch = {
@@ -633,7 +633,7 @@ function Receive-UpdateSearch {
 }
 
 # --- the probe: packages ------------------------------------------------------------------------------------------------
-# The machine-wide uninstall entries (HKLM, the 64- and 32-bit views), read once per run.
+# The system-wide uninstall entries (HKLM, the 64- and 32-bit views), read once per run.
 function Get-UninstallEntries {
   $list = New-Object 'Collections.Generic.List[object]'
   $views = @(@{ view = [Microsoft.Win32.RegistryView]::Registry64; name = 'x64' }, @{ view = [Microsoft.Win32.RegistryView]::Registry32; name = 'x86' })

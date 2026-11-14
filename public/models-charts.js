@@ -1,5 +1,5 @@
 // Usage charts of the LLM & Diffusion page on Apache ECharts (vendored, served by the overview module):
-// requests stacked by one dimension (model, machine, client or kind of request), tokens in and out, and the
+// requests stacked by one dimension (model, device, client or kind of request), tokens in and out, and the
 // median generation speed. Compact on purpose: no titles inside the canvas, one axis line, a text legend
 // under each chart. Colours come from the series tokens of models.css; tooltips are drawn on the canvas
 // (richText), so no name from the data ever becomes markup. Charts redraw on themechange and go with the page.

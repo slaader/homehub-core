@@ -8,7 +8,7 @@ import {authGuard} from './session-cache.js';
 import {t,tp,say,locale} from './i18n.js';
 import {timeZone} from './site.js';
 import {pageHeader,emptyState,errorState,loadingState,statusPill,toast,icon} from './ui.js';
-import {machinesSection,machinePage} from './machines-view.js';
+import {devicesSection,devicePage} from './devices-view.js';
 import {openAddDevice} from './home-add-device.js';
 import {updateDetails} from './updates-view.js';
 
@@ -161,17 +161,17 @@ function plugins(doc){
    el('span',{class:'ig-dim'},p.integrations.length?` · ${p.integrations.map(id=>byId.get(id)?titleOf(byId.get(id)):id).join(', ')}`:` · ${t('bez integrací')}`))))
    :emptyState({compact:true,icon:'puzzle',title:t('Žádné pluginy'),body:t('Tahle instalace je jen jádro. Plugin je složka local/plugins/<id>/ s index.mjs (docs/plugins.md).')}));
 }
-// #integrations/machine/<id> → that machine's page; anything else → the list.
-export const machineOfHash=hash=>{const p=String(hash||'').replace(/^#/,'').split('/');if(p[0]!=='integrations'||p[1]!=='machine'||!p[2])return null;try{return decodeURIComponent(p[2]);}catch{return null;}};
+// #integrations/device/<id> → that device's page; anything else → the list.
+export const deviceOfHash=hash=>{const p=String(hash||'').replace(/^#/,'').split('/');if(p[0]!=='integrations'||p[1]!=='device'||!p[2])return null;try{return decodeURIComponent(p[2]);}catch{return null;}};
 export function integrationsView({me}={}){
- const machineId=machineOfHash(globalThis.location?.hash);
- if(machineId)return machineView(machineId);
+ const deviceId=deviceOfHash(globalThis.location?.hash);
+ if(deviceId)return deviceView(deviceId);
  const body=el('div',{class:'ig-body'},loadingState(t('Načítám integrace…')));
  const head=pageHeader({eyebrow:t('Správa'),title:t('Integrace'),
   lead:t('Odkud Home Hub bere data, jestli to funguje a kde je to nastavené. Vypnutou integraci hub nečte a stránky místo starých dat řeknou, že je vypnutá. Zapnout ji jde zase bez restartu.'),
   actions:[{label:t('Obnovit'),onclick:()=>draw()}]});
- let doc=null,machines=null;
- const addMachine=()=>openAddDevice({meta:machines?.telemetry,onSaved:()=>{toast.good(t('Stroj je přidaný.'));draw();}});
+ let doc=null,devices=null;
+ const addDevice=()=>openAddDevice({meta:devices?.telemetry,onSaved:()=>{toast.good(t('Stroj je přidaný.'));draw();}});
  const paint=()=>{
   const rows=doc.integrations;let stats=counts(rows);
   // A card redraws itself after a change (focus stays where it was); only the counts follow.
@@ -179,22 +179,22 @@ export function integrationsView({me}={}){
   const groups=doc.kinds.filter(k=>rows.some(r=>r.kind===k)).map(k=>el('section',{class:'ig-group','aria-labelledby':`ig-k-${k}`},
    el('h2',{id:`ig-k-${k}`},icon(KIND_ICON[k]||'puzzle'),kindLabel(k)),
    el('div',{class:'ig-grid'},rows.filter(r=>r.kind===k).map(r=>card(r,{onchange})))));
-  body.replaceChildren(stats,machines?machinesSection(machines,{onAdd:me?.canWrite?addMachine:null}):el('p',{class:'ig-dim'},t('Stroje se nepodařilo načíst.')),
+  body.replaceChildren(stats,devices?devicesSection(devices,{onAdd:me?.canWrite?addDevice:null}):el('p',{class:'ig-dim'},t('Stroje se nepodařilo načíst.')),
    ...(rows.length?groups:[emptyState({icon:'plug',title:t('Žádné integrace'),body:t('Žádný načtený modul nehlásí integraci.')})]),
    plugins(doc));
  };
  async function draw(){
-  try{[doc,machines]=await Promise.all([api('/api/admin/integrations'),api('/api/admin/machines').catch(()=>null)]);paint();}
+  try{[doc,devices]=await Promise.all([api('/api/admin/integrations'),api('/api/admin/devices').catch(()=>null)]);paint();}
   catch(e){body.replaceChildren(e.status===403?emptyState({icon:'shield',title:t('Jen pro administrátora'),body:t('Integrace spravuje administrátor přihlášený heslem.')})
    :errorState({title:t('Integrace se nepodařilo načíst'),body:e.name==='TimeoutError'?t('Home Hub neodpovídá. Zkus to znovu.'):e.message,retry:draw}));}
  }
  draw();
  return el('div',{class:'ig-page'},head,body);
 }
-function machineView(id){
+function deviceView(id){
  const body=el('div',{class:'ig-body'},loadingState(t('Načítám stroj…')));
- api('/api/admin/machines').then(doc=>body.replaceChildren(machinePage(doc,id)))
-  .catch(e=>body.replaceChildren(errorState({title:t('Stroj se nepodařilo načíst'),body:e.message,retry:()=>{body.replaceWith(machineView(id));}})));
+ api('/api/admin/devices').then(doc=>body.replaceChildren(devicePage(doc,id)))
+  .catch(e=>body.replaceChildren(errorState({title:t('Stroj se nepodařilo načíst'),body:e.message,retry:()=>{body.replaceWith(deviceView(id));}})));
  return body;
 }
 export const integrationsPage=({me}={})=>integrationsView({me});

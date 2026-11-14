@@ -1,22 +1,22 @@
-// Machines beyond the site configuration: the store (UI devices, agent machines, published runtime stacks),
-// the machine API with its home:write scope, the MCP tools, telemetry states and the home.runtimes extension point.
+// Devices beyond the site configuration: the store (UI devices, agent devices, published runtime stacks),
+// the device API with its home:write scope, the MCP tools, telemetry states and the home.runtimes extension point.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,rm,readFile,writeFile,mkdir} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {readStore} from './support/sealed.mjs';
-import {createHomeDevices,parseRuntime,machineHash,secretIn,PICTURES,DEVICE_LIMITS} from '../server/home-devices.mjs';
-import {buildHome as build,telemetryFor,runtimesFor,sparkFor,machineList,homeHistoryQuery,gpuProcessesFor,TELEMETRY_ADAPTERS,SPARK_WINDOW_SECONDS,SPARK_STEP_SECONDS} from '../server/home-data.mjs';
+import {createHomeDevices,parseRuntime,deviceHash,secretIn,PICTURES,DEVICE_LIMITS} from '../server/home-devices.mjs';
+import {buildHome as build,telemetryFor,runtimesFor,sparkFor,deviceList,homeHistoryQuery,gpuProcessesFor,TELEMETRY_ADAPTERS,SPARK_WINDOW_SECONDS,SPARK_STEP_SECONDS} from '../server/home-data.mjs';
 import {TELEMETRY_REPO_URL,TELEMETRY_STALE_SECONDS} from '../server/thermo-client.mjs';
 import {legacyScopes,SCOPES} from '../server/scopes.mjs';
 import {EMPTY_SITE} from '../server/site-config.mjs';
 import {hub,SITE} from './hub-helper.mjs';
 
-const SITE_IDS=SITE.machines.map(m=>m.id),LAN=[...SITE.lanCidrs];
+const SITE_IDS=SITE.devices.map(m=>m.id),LAN=[...SITE.lanCidrs];
 const quiet={status:()=>({}),seconds:()=>[],minutes:()=>[],live:()=>({}),disks:()=>({}),interval:()=>({intervalSeconds:15,lastPollAt:null}),addHost(){},removeHost(){},start:async()=>{},hosts:()=>[]};
 const buildHome=input=>build({site:SITE,thermo:quiet,...input});
-async function store(t,options={reserved:SITE_IDS,lanCidrs:LAN}){const dir=await mkdtemp(path.join(os.tmpdir(),'home-machines-'));t.after(()=>rm(dir,{recursive:true,force:true}));return {dir,d:createHomeDevices(dir,options)};}
+async function store(t,options={reserved:SITE_IDS,lanCidrs:LAN}){const dir=await mkdtemp(path.join(os.tmpdir(),'home-devices-'));t.after(()=>rm(dir,{recursive:true,force:true}));return {dir,d:createHomeDevices(dir,options)};}
 const pi={id:'pi-hole',name:'Pi-hole',hostname:'pi.example.lan',ip:'10.0.0.53',role:'other',hardware:{cpu:'4c Cortex-A76',gpu:'',ramGb:8},picture:'board'};
 const STACK={cols:['gguf','mlx'],engines:{gguf:'llama.cpp',mlx:'Apple MLX'},blocks:[
  {id:'api',layer:'input',col0:0,col1:1,title:'OpenAI-compatible API',port:':8080',desc:'What clients call.'},
@@ -26,7 +26,7 @@ const STACK={cols:['gguf','mlx'],engines:{gguf:'llama.cpp',mlx:'Apple MLX'},bloc
 const rejects=(promiseOrFn,code,detail)=>{const check=e=>{assert.equal(e.message,code);if(detail)assert.match(e.detail||'',detail);return true;};
  return typeof promiseOrFn==='function'?assert.throws(promiseOrFn,check):assert.rejects(promiseOrFn,check);};
 
-test('machine store: create, idempotent repeat, hash-checked replace, refusals',async t=>{
+test('device store: create, idempotent repeat, hash-checked replace, refusals',async t=>{
  const {d}=await store(t);
  const made=await d.upsert(pi,{by:'agent-a',source:'agent'});
  assert.equal(made.created,true);assert.equal(made.changed,true);assert.match(made.hash,/^[a-f0-9]{64}$/);
@@ -36,21 +36,21 @@ test('machine store: create, idempotent repeat, hash-checked replace, refusals',
  // Different fields need the hash that was read; a stale or missing one is a conflict and nothing changes.
  await rejects(d.upsert({...pi,name:'Pi-hole 2'}),'conflict');
  await rejects(d.upsert({...pi,name:'Pi-hole 2'},{base:'0'.repeat(64)}),'conflict');
- await rejects(d.upsert({...pi,id:'new-one',hostname:'new.example.lan'},{base:made.hash}),'conflict');// a base for a machine that does not exist
+ await rejects(d.upsert({...pi,id:'new-one',hostname:'new.example.lan'},{base:made.hash}),'conflict');// a base for a device that does not exist
  const changed=await d.upsert({...pi,name:'Pi-hole 2',thermoId:'pi-hole'},{by:'admin',base:made.hash});
  assert.equal(changed.changed,true);assert.notEqual(changed.hash,made.hash);
  assert.deepEqual([changed.device.name,changed.device.kind,changed.device.source,changed.device.createdBy,changed.device.updatedBy],['Pi-hole 2','thermo','agent','agent-a','admin'],'provenance survives a replace');
- assert.equal(machineHash((await d.list())[0]),changed.hash);
- // Refusals: a site machine, a second machine on the same hostname, an address outside the site's networks, bad fields, secrets.
+ assert.equal(deviceHash((await d.list())[0]),changed.hash);
+ // Refusals: a site device, a second device on the same hostname, an address outside the site's networks, bad fields, secrets.
  rejects(()=>d.upsert({id:'studio',name:'Not mine'}),'read-only');
  await rejects(d.upsert({id:'other-pi',name:'Other',hostname:'PI.example.lan'}),'duplicate');
  rejects(()=>d.upsert({...pi,id:'far',hostname:'far.example.lan',ip:'192.168.1.5'}),'invalid',/10\.0\.0\.0\/24/);
  rejects(()=>d.upsert({...pi,id:'net',ip:'10.0.0.0'}),'invalid',/host address/);
- for(const [bad,detail] of [[{id:'X',name:'x'},/machine\.id/],[{id:'ok',name:''},/machine\.name/],[{id:'ok',name:'x',role:'toaster'},/machine\.role/],[{id:'ok',name:'x',picture:'/images/x.png'},/machine\.picture/],
+ for(const [bad,detail] of [[{id:'X',name:'x'},/device\.id/],[{id:'ok',name:''},/device\.name/],[{id:'ok',name:'x',role:'toaster'},/device\.role/],[{id:'ok',name:'x',picture:'/images/x.png'},/device\.picture/],
   [{id:'ok',name:'x',hardware:{ramGb:-1}},/ramGb/],[{id:'ok',name:'x',thermoId:'Bad Id'},/thermoId/],[{id:'ok',name:'x',hostname:'bad host'},/hostname/],[{id:'ok',name:'x',password:'p'},/unknown field/],[{id:'ok',name:'x',hardware:{serial:'1'}},/unknown field/]])
   rejects(()=>d.upsert(bad),'invalid',detail);
  rejects(()=>d.upsert({id:'leaky',name:'x',hardware:{cpu:'token=abcdef123456'}}),'secret',/hardware\.cpu/);
- rejects(()=>d.upsert({id:'leaky',name:'pwd=hunter2hunter2'}),'secret',/machine\.name/);
+ rejects(()=>d.upsert({id:'leaky',name:'pwd=hunter2hunter2'}),'secret',/device\.name/);
  assert.equal(secretIn('M4 Pro · 14c'),null);assert.equal(secretIn('~/models/gemma-3-27b-it-Q4_K_M.gguf'),null);
  assert.equal((await d.list()).length,1,'nothing refused was stored');
  // Without networks in the site configuration any well-formed address is accepted.
@@ -62,16 +62,16 @@ test('machine store: create, idempotent repeat, hash-checked replace, refusals',
  assert.deepEqual(await d.list(),[]);assert.deepEqual(await d.stacks(),{});
 });
 
-test('machine store: at most 20 added machines',async t=>{
+test('device store: at most 20 added devices',async t=>{
  const {d}=await store(t,{reserved:[]});
  for(let i=0;i<DEVICE_LIMITS.added;i++)await d.upsert({id:`box-${i}`,name:`Box ${i}`});
  await rejects(d.upsert({id:'one-more',name:'One more'}),'limit');
- assert.equal((await d.upsert({id:'box-3',name:'Box 3'})).changed,false,'an existing machine can still be repeated');
+ assert.equal((await d.upsert({id:'box-3',name:'Box 3'})).changed,false,'an existing device can still be repeated');
 });
 
 test('devices.json written before roles, pictures and agents existed loads unchanged and shows the same tile',async t=>{
  const {dir,d}=await store(t);
- // The exact shape the first version of the store wrote (home-devices.mjs before machine_upsert).
+ // The exact shape the first version of the store wrote (home-devices.mjs before device_upsert).
  const old={schema:1,devices:[
   {id:'mac-studio-2',name:'Mac Studio 2',kind:'thermo',hostname:'studio2.example.lan',ip:'10.0.0.30',props:{cpu:'M4 Max',gpu:'40c',ramGb:128},image:true,imageAt:'2026-11-08T10:00:00.000Z',createdAt:'2026-11-08T09:59:00.000Z',createdBy:'admin'},
   {id:'printer',name:'Printer',kind:'other',hostname:'10.0.0.40',ip:null,props:{cpu:'',gpu:'',ramGb:null},image:false,createdAt:'2026-11-08T10:05:00.000Z',createdBy:'admin'}]};
@@ -80,13 +80,13 @@ test('devices.json written before roles, pictures and agents existed loads uncha
  assert.deepEqual(list.map(x=>[x.id,x.role,x.thermoId,x.picture,x.source,x.kind]),[['mac-studio-2','computer','mac-studio-2',null,'ui','thermo'],['printer','other',null,null,'ui','other']]);
  assert.equal(await readFile(path.join(dir,'devices.json'),'utf8'),text,'reading migrates nothing on disk');
  // The tile keeps every field it had, with the values it had.
- const tiles=buildHome({added:list}).machines.filter(m=>m.added);
+ const tiles=buildHome({added:list}).devices.filter(m=>m.added);
  assert.deepEqual(tiles.map(m=>[m.id,m.name,m.hostname,m.ip,m.kind,m.added,m.online]),[['mac-studio-2','Mac Studio 2','studio2.example.lan','10.0.0.30','thermo',true,'offline'],['printer','Printer','10.0.0.40','','other',true,'unknown']]);
  assert.equal(tiles[0].image,'/images/home/mac-studio-2.jpg?v=2026-11-08T10%3A00%3A00.000Z');assert.equal(tiles[1].image,null);
  assert.deepEqual(tiles[0].props,{cpu:'M4 Max',gpu:'40c',ramGb:128});assert.deepEqual(tiles[1].props,{cpu:'',gpu:'—',ramGb:null});
- assert.equal(homeHistoryQuery({machine:'mac-studio-2',range:'30m'},list,SITE).reason,undefined,'an old Thermo device still has history');
+ assert.equal(homeHistoryQuery({device:'mac-studio-2',range:'30m'},list,SITE).reason,undefined,'an old Thermo device still has history');
  // And it can be edited: the write keeps what the old file held and stays readable by the old code (schema 1, kind).
- const edited=await d.upsert({id:'printer',name:'Printer (hall)',hostname:'10.0.0.40',role:'other',picture:'printer'},{by:'admin',base:machineHash(list[1])});
+ const edited=await d.upsert({id:'printer',name:'Printer (hall)',hostname:'10.0.0.40',role:'other',picture:'printer'},{by:'admin',base:deviceHash(list[1])});
  assert.equal(edited.changed,true);
  const after=JSON.parse(await readFile(path.join(dir,'devices.json'),'utf8'));
  assert.equal(after.schema,1);assert.deepEqual(after.devices[0],{...old.devices[0]},'the untouched device is written back as it was');
@@ -106,26 +106,26 @@ test('runtime stacks: validated, bounded, hash-checked; a publication replaces t
   rejects(()=>parseRuntime(bad),'invalid',detail);
  rejects(()=>parseRuntime({...STACK,blocks:[{...STACK.blocks[0],desc:'call it with api_key=sk-live-0123456789abcdef'}]}),'secret',/blocks\[0\]\.desc/);
  await rejects(d.publishRuntime('unknown-box',STACK,{known:SITE_IDS}),'not-found');
- // On a site machine that has a stack in site.json: the publication replaces it.
+ // On a site device that has a stack in site.json: the publication replaces it.
  const first=await d.publishRuntime('mini',STACK,{by:'agent-a',known:SITE_IDS});
  assert.equal(first.changed,true);assert.match(first.hash,/^[a-f0-9]{64}$/);
  assert.deepEqual(await d.publishRuntime('mini',STACK,{by:'agent-b',known:SITE_IDS}).then(r=>[r.changed,r.hash]),[false,first.hash],'the same stack again changes nothing');
  await rejects(d.publishRuntime('mini',{...STACK,cols:['gguf','torch']},{known:SITE_IDS,base:'0'.repeat(64)}),'conflict');
- const stack=buildHome({published:await d.stacks()}).machines.find(m=>m.id==='mini').stack;
+ const stack=buildHome({published:await d.stacks()}).devices.find(m=>m.id==='mini').stack;
  assert.equal(stack.source,'published');assert.equal(stack.publishedBy,'agent-a');assert.equal(stack.hash,first.hash);
  assert.deepEqual(stack.layers,['INPUT','TOOL','RUNTIME','HARDWARE'],'only the layers that hold a block, top to bottom');assert.deepEqual(stack.layerKeys,['input','tool','runtime','hardware']);
  assert.deepEqual(stack.blocks.map(b=>[b.id,b.layer,b.state]),[['api',0,'on'],['swap',1,'on'],['llama',2,'off'],['hw',3,'on']]);
  assert.equal(stack.blocks[3].hw,true);assert.equal(stack.blocks[2].models[0].path,'~/models/gemma-3-27b-it-Q4_K_M.gguf');
  // A live service refines its block; a block whose service is not reported keeps what was published.
- const live=buildHome({published:await d.stacks(),snapshots:{mini:{snapshot:{collectedAt:new Date().toISOString(),services:[{id:'llama-swap',status:'unreachable',url:'http://127.0.0.1:8081',models:[]}]}}}}).machines.find(m=>m.id==='mini').stack;
+ const live=buildHome({published:await d.stacks(),snapshots:{mini:{snapshot:{collectedAt:new Date().toISOString(),services:[{id:'llama-swap',status:'unreachable',url:'http://127.0.0.1:8081',models:[]}]}}}}).devices.find(m=>m.id==='mini').stack;
  assert.equal(live.blocks[1].state,'off');assert.equal(live.blocks[2].models.length,1);
- // On a machine without one (mini_server has no stack in the fixture) it adds it; taking it back returns to none.
- assert.equal(buildHome({}).machines.find(m=>m.id==='mini_server').stack,null);
+ // On a device without one (mini_server has no stack in the fixture) it adds it; taking it back returns to none.
+ assert.equal(buildHome({}).devices.find(m=>m.id==='mini_server').stack,null);
  await d.publishRuntime('mini_server',STACK,{known:SITE_IDS});
- assert.equal(buildHome({published:await d.stacks()}).machines.find(m=>m.id==='mini_server').stack.blocks.length,4);
+ assert.equal(buildHome({published:await d.stacks()}).devices.find(m=>m.id==='mini_server').stack.blocks.length,4);
  assert.deepEqual(await d.publishRuntime('mini_server',null,{known:SITE_IDS}).then(r=>[r.changed,r.hash]),[true,null]);
  await d.publishRuntime('mini',null,{known:SITE_IDS});
- assert.equal(buildHome({published:await d.stacks()}).machines.find(m=>m.id==='mini').stack.source,undefined,'back to the stack from the site configuration');
+ assert.equal(buildHome({published:await d.stacks()}).devices.find(m=>m.id==='mini').stack.source,undefined,'back to the stack from the site configuration');
 });
 
 test('telemetry states: not installed, unreachable, stale and ok are told apart',()=>{
@@ -144,7 +144,7 @@ test('telemetry states: not installed, unreachable, stale and ok are told apart'
  assert.deepEqual(['down','denied','up',undefined].map(state=>telemetryFor(def('box'),thermo({status:()=>({box:{state}})}),now).reason),['down','denied','no-data','waiting']);
  const noLogin=telemetryFor(def('box'),thermo({hosts:()=>[]}),now);assert.deepEqual([noLogin.state,noLogin.reason],['unreachable','no-login']);
  assert.equal(telemetryFor(def('box'),{seconds:()=>[],minutes:()=>[],live:()=>({}),status:()=>({})},now).reason,'waiting','a poller that cannot list its hosts is not blamed for a missing login');
- // In the payload: every machine carries its state, and the page learns where the agent lives from one constant.
+ // In the payload: every device carries its state, and the page learns where the agent lives from one constant.
  const home=buildHome({added:[{id:'box',name:'Box',hostname:'box.example.lan',kind:'other',props:{}}].map(d=>({...d,role:'computer',thermoId:null,picture:null,source:'agent',props:{cpu:'',gpu:'',ramGb:null,diskTotalBytes:null}}))});
  // …and which agents the hub can connect a device to: the list the Add device dialog offers.
  assert.deepEqual({...home.telemetry,adapters:home.telemetry.adapters.slice(0,2)},{agent:'Thermo',repoUrl:TELEMETRY_REPO_URL,staleAfterSeconds:180,adapters:[{id:'thermo',name:'Thermo',repoUrl:TELEMETRY_REPO_URL,connect:'account',platform:'macos',defaultPort:49286,summary:'CPU, GPU, paměť, příkon, teploty a disky'},
@@ -152,10 +152,10 @@ test('telemetry states: not installed, unreachable, stale and ok are told apart'
  assert.deepEqual(home.telemetry.adapters.map(a=>[a.id,a.platform,a.connect]),[['thermo','macos','account'],['windows','windows','ssh'],['winrm','windows','endpoint'],['node-exporter','linux','endpoint'],['prometheus','linux','endpoint'],['linux-ssh','linux','ssh']]);
  assert.equal(home.telemetry.adapters.filter(a=>a.recommended).map(a=>a.id).join(),'node-exporter','Node Exporter is the recommended Linux choice');
  home.telemetry.adapters[0].name='changed';assert.equal(TELEMETRY_ADAPTERS[0].name,'Thermo','a payload never hands out the shared list');
- assert.deepEqual(machineList({site:SITE}).telemetry,buildHome({}).telemetry,'machine_list names the same adapters');
+ assert.deepEqual(deviceList({site:SITE}).telemetry,buildHome({}).telemetry,'device_list names the same adapters');
  assert.match(TELEMETRY_REPO_URL,/^https:\/\/github\.com\/OWNER\//,'still the placeholder to be filled');
- assert.deepEqual(Object.fromEntries(home.machines.map(m=>[m.id,m.telemetry.state])),{mini:'unreachable',studio:'unreachable',mini_server:'unreachable',nas:'not-installed',router:'not-applicable',box:'not-installed'});
- assert.deepEqual(home.machines.map(m=>m.online),['offline','offline','offline','unknown','offline','unknown'],'the online field keeps its old meaning');
+ assert.deepEqual(Object.fromEntries(home.devices.map(m=>[m.id,m.telemetry.state])),{mini:'unreachable',studio:'unreachable',mini_server:'unreachable',nas:'not-installed',router:'not-applicable',box:'not-installed'});
+ assert.deepEqual(home.devices.map(m=>m.online),['offline','offline','offline','unknown','offline','unknown'],'the online field keeps its old meaning');
 });
 
 test('home.runtimes extension point: provided runtimes are bounded and cleaned, absent ones are null',()=>{
@@ -166,14 +166,14 @@ test('home.runtimes extension point: provided runtimes are bounded and cleaned, 
   models:[{id:'qwen3:14b',state:'loaded',kind:'llm',sizeGb:9.3,contextTokens:32768,ttlRemainingSeconds:240},{id:'idle',state:'',kind:'llm',sizeGb:null,contextTokens:null,ttlRemainingSeconds:null}],stats:[{label:'tokens/s',value:'42'}]});
  assert.equal(r.runtimes[1].status,'unknown');
  const home=buildHome({runtimes:{mini:{runtimes:[{id:'llama-swap',status:'running'}]},ghost:{runtimes:[]}}});
- assert.equal(home.machines.find(m=>m.id==='mini').runtimes.runtimes[0].id,'llama-swap');assert.equal(home.machines.find(m=>m.id==='studio').runtimes,null);
- // A hub without a provider (a public install): no machine carries runtimes, so no page draws the section.
- assert.deepEqual(buildHome({}).machines.map(m=>m.runtimes),Array(SITE.machines.length).fill(null));
+ assert.equal(home.devices.find(m=>m.id==='mini').runtimes.runtimes[0].id,'llama-swap');assert.equal(home.devices.find(m=>m.id==='studio').runtimes,null);
+ // A hub without a provider (a public install): no device carries runtimes, so no page draws the section.
+ assert.deepEqual(buildHome({}).devices.map(m=>m.runtimes),Array(SITE.devices.length).fill(null));
 });
 
 // What the GPU works on: how busy each runtime and model is, only where a provider says and only while it is
 // not stale; a request through a gateway is counted once, at the engine it reached.
-test('what runs now: activity is kept only when reported and fresh; the machine page lists the busy models once',()=>{
+test('what runs now: activity is kept only when reported and fresh; the device page lists the busy models once',()=>{
  const r=runtimesFor({runtimes:[
   {id:'llama-swap',status:'running',url:'http://127.0.0.1:8081',activity:{active:1,queued:0},models:[{id:'qwen-27b',state:'loaded',active:1,queued:0,since:'2026-11-12T00:20:00Z',via:'omlx',target:'Qwen3.8-27B-8bit'}]},
   {id:'omlx',status:'running',url:'http://127.0.0.1:8000',activity:{active:1,queued:2},models:[{id:'Qwen3.8-27B-8bit',state:'loaded',active:1,queued:2,since:'2026-11-12T00:20:01Z'},{id:'idle-one',state:'unloaded',active:0,queued:0}]},
@@ -188,19 +188,19 @@ test('what runs now: activity is kept only when reported and fresh; the machine 
  assert.equal(mx.activity,undefined);assert.equal(mx.models[0].active,undefined,'not reported: unknown, not zero');
  assert.equal(old.activity,undefined,'a stale runtime says nothing about now');assert.equal(old.models[0].active,undefined);
  assert.equal(odd.activity,undefined);assert.equal(odd.models[0].active,undefined,'nonsense is dropped');
- // The machine page: busy models once each (the llama-swap alias folds into the oMLX model), running first.
+ // The device page: busy models once each (the llama-swap alias folds into the oMLX model), running first.
  const home=buildHome({runtimes:{studio:{source:'x',observedAt:new Date().toISOString(),runtimes:[
   {id:'llama-swap',role:'gateway',status:'running',url:'http://127.0.0.1:8081',activity:{active:1,queued:0},models:[{id:'qwen-27b',state:'loaded',active:1,queued:0,since:'2026-11-12T00:20:00Z',via:'omlx',target:'Qwen3.8-27B-8bit'}]},
   {id:'omlx',status:'running',url:'http://127.0.0.1:8000',activity:{active:1,queued:2},models:[{id:'Qwen3.8-27B-8bit',state:'loaded',active:1,queued:2,since:'2026-11-12T00:20:01Z'}]},
   {id:'mflux',name:'mflux',mode:'cli',status:'running',activity:{active:1,queued:1},models:[{id:'seedvr2-3b',kind:'image',state:'loaded',active:1,queued:0,since:'2026-11-12T00:19:00Z'},{id:'seedvr2-7b',kind:'image',state:'loading',active:0,queued:1}]},
   {id:'mlx-serve',name:'mlx-serve',status:'running',url:'http://127.0.0.1:11234',models:[]}]}}});
- const work=home.machines.find(m=>m.id==='studio').work;
+ const work=home.devices.find(m=>m.id==='studio').work;
  assert.deepEqual(work.items.map(x=>[x.id,x.kind,x.runtime,x.active,x.queued,x.gateways]),[
   ['seedvr2-3b','image','mflux',1,0,[]],['Qwen3.8-27B-8bit','llm','omlx',1,2,['llama-swap']],['seedvr2-7b','image','mflux',0,1,[]]],'running first and oldest first; the gateway request is not counted twice');
  assert.equal(work.items[1].since,'2026-11-12T00:20:00.000Z','the request began at the gateway');
  assert.deepEqual([work.active,work.queued],[2,3]);
  assert.deepEqual(work.watching,['llama-swap','omlx','mflux']);assert.deepEqual(work.blind,['mlx-serve'],'what cannot be seen is said');
- assert.equal(home.machines.find(m=>m.id==='mini').work,null,'no runtimes: no such part');
+ assert.equal(home.devices.find(m=>m.id==='mini').work,null,'no runtimes: no such part');
  // The busiest GPU processes from the telemetry agent, named by the runtime or the job whose process it is.
  const thermo={gpuProcesses:()=>({studio:{at:Date.parse('2026-11-12T00:30:00Z'),gpu:64,attributedPercent:61,rows:[{pid:6640,name:'Python',percent:52.3},{pid:99605,name:'python3.11',percent:6},{pid:5772,name:'WindowServer',percent:2.7}]}})};
  const raw={runtimes:[{id:'omlx',name:'oMLX',status:'running',pids:[6640],models:[]},{id:'mflux',name:'mflux',status:'running',pids:[99605],models:[{id:'seedvr2-3b',pids:[99605]}]},
@@ -211,8 +211,8 @@ test('what runs now: activity is kept only when reported and fresh; the machine 
 });
 
 // The small chart on a tile: one series over the live window, in clock-aligned steps; a step without a
-// reading is null (a gap on the chart), and a machine that reports LLM runtimes shows its GPU.
-test('tile spark: ten minutes in 10 s steps, gaps stay null, GPU for a machine with runtimes',()=>{
+// reading is null (a gap on the chart), and a device that reports LLM runtimes shows its GPU.
+test('tile spark: ten minutes in 10 s steps, gaps stay null, GPU for a device with runtimes',()=>{
  const now=1_800_000_007,end=1_800_000_000,n=SPARK_WINDOW_SECONDS/SPARK_STEP_SECONDS;
  assert.equal(n,60);
  // Readings every second for the last two minutes, except a 30 s hole; one stray row older than the window.
@@ -228,30 +228,30 @@ test('tile spark: ten minutes in 10 s steps, gaps stay null, GPU for a machine w
  assert.equal(sparkFor({seconds:()=>[{t:now-10,cpu:12.34}]},'mini',now,'gpu').series,'cpu','no GPU readings: the CPU is drawn');
  assert.equal(sparkFor({seconds:()=>[{t:now-10,cpu:12.34}]},'mini',now).values.at(-1),12.3);
  assert.equal(sparkFor({seconds:()=>[]},'mini',now),null);assert.equal(sparkFor({seconds:()=>[{t:end-601,cpu:5}]},'mini',now),null,'older than the window');
- // In the payload: only machines with telemetry carry one, and the series follows the runtimes.
+ // In the payload: only devices with telemetry carry one, and the series follows the runtimes.
  const live={...quiet,seconds:host=>host==='mini'||host==='studio'?[{t:Math.floor(Date.now()/1000)-12,cpu:11,gpu:66}]:[]};
  const home=build({site:SITE,thermo:live,runtimes:{studio:{runtimes:[{id:'llama-swap',status:'running'}]}}});
- const spark=id=>home.machines.find(m=>m.id===id).spark;
+ const spark=id=>home.devices.find(m=>m.id===id).spark;
  assert.deepEqual([spark('mini').series,spark('studio').series,spark('mini_server'),spark('nas'),spark('router')],['cpu','gpu',null,null,null]);
  assert.equal(spark('studio').values.filter(v=>v!=null).join(),'66');
 });
 
-test('machine list: site machines are read-only, stored ones carry their hash and provenance',async t=>{
+test('device list: site devices are read-only, stored ones carry their hash and provenance',async t=>{
  const {d}=await store(t);const made=await d.upsert(pi,{by:'agent-a',source:'agent'});await d.publishRuntime('pi-hole',STACK,{by:'agent-a'});
  const added=await d.list(),published=await d.stacks();
- const list=machineList({site:SITE,added,published,home:buildHome({added,published}),withStack:true});
- assert.deepEqual(list.machines.map(m=>[m.id,m.source,m.readOnly]),[...SITE_IDS.map(id=>[id,'site',true]),['pi-hole','agent',false]]);
- const mini=list.machines[0],box=list.machines.at(-1);
+ const list=deviceList({site:SITE,added,published,home:buildHome({added,published}),withStack:true});
+ assert.deepEqual(list.devices.map(m=>[m.id,m.source,m.readOnly]),[...SITE_IDS.map(id=>[id,'site',true]),['pi-hole','agent',false]]);
+ const mini=list.devices[0],box=list.devices.at(-1);
  assert.equal(mini.hash,null);assert.equal(mini.runtime.source,'site');assert.equal(mini.thermoId,'mini');
  assert.deepEqual({id:box.id,name:box.name,hostname:box.hostname,ip:box.ip,role:box.role,hardware:box.hardware,thermoId:box.thermoId,picture:box.picture},{...pi,hardware:{...pi.hardware,diskTotalBytes:null},thermoId:null});
  assert.equal(box.hash,made.hash);assert.equal(box.createdBy,'agent-a');assert.equal(box.telemetry.state,'not-installed');
  assert.equal(box.runtime.source,'published');assert.deepEqual(box.runtime.stack,parseRuntime(STACK),'the stack comes back in the form runtime_publish takes');
  assert.deepEqual(list.pictures.map(p=>p.id),[...PICTURES]);assert.ok(list.pictures.every(p=>p.url===`/images/generic/${p.id}.svg`));
  assert.deepEqual(list.lanCidrs,LAN);assert.deepEqual(list.runtimeLayers,['input','tool','runtime','engine','hardware']);assert.equal(list.telemetry.repoUrl,TELEMETRY_REPO_URL);
- assert.deepEqual(machineList({site:EMPTY_SITE}).machines,[],'a hub without a site configuration lists nothing');
+ assert.deepEqual(deviceList({site:EMPTY_SITE}).devices,[],'a hub without a site configuration lists nothing');
 });
 
-test('machine API over HTTP: home:write for keys, a write session for people, site machines read-only, old keys gain nothing',async t=>{
+test('device API over HTTP: home:write for keys, a write session for people, site devices read-only, old keys gain nothing',async t=>{
  const h=await hub(t,{thermoPoller:quiet});
  assert.ok(SCOPES['home:write']);assert.equal(legacyScopes('write').includes('home:write'),false,'keys from before scopes never get the new scope');
  const writer=await h.account('agent-home',['home:write']),reader=await h.account('agent-reader',['inventory:write','tickets:write']);
@@ -260,49 +260,49 @@ test('machine API over HTTP: home:write for keys, a write session for people, si
  assert.equal((await get('/api/home/devices',{})).status,401);
  assert.equal((await get('/api/home/devices',reader.headers)).status,200,'reading needs only read');
  for(const headers of [reader.headers,legacy]){
-  const r=await h.post('/api/home/devices',{machine:pi},headers);assert.equal(r.status,403);assert.equal((await r.json()).error.code,'SCOPE_REQUIRED');
+  const r=await h.post('/api/home/devices',{device:pi},headers);assert.equal(r.status,403);assert.equal((await r.json()).error.code,'SCOPE_REQUIRED');
   assert.equal((await h.post('/api/home/devices/remove',{id:'pi-hole',base:'0'.repeat(64)},headers)).status,403);
-  assert.equal((await h.post('/api/home/runtime',{machine:'mini',stack:STACK},headers)).status,403);}
+  assert.equal((await h.post('/api/home/runtime',{device:'mini',stack:STACK},headers)).status,403);}
  // An agent creates, repeats and replaces.
- const created=await h.post('/api/home/devices',{machine:pi},writer.headers);assert.equal(created.status,201);
+ const created=await h.post('/api/home/devices',{device:pi},writer.headers);assert.equal(created.status,201);
  const made=await created.json();assert.deepEqual([made.ok,made.id,made.created,made.changed,made.by],[true,'pi-hole',true,true,'agent-home']);
- const repeat=await h.post('/api/home/devices',{machine:pi},writer.headers);assert.equal(repeat.status,200);assert.equal((await repeat.json()).changed,false);
- const stale=await h.post('/api/home/devices',{machine:{...pi,name:'Renamed'}},writer.headers);assert.equal(stale.status,409);assert.equal((await stale.json()).error.code,'MACHINE_CONFLICT');
- // A person with a write session edits the same machine in the UI.
- const edited=await h.post('/api/home/devices',{machine:{...pi,name:'Pi-hole (rack)'},base:made.hash},h.admin);assert.equal(edited.status,200);const editedBody=await edited.json();
+ const repeat=await h.post('/api/home/devices',{device:pi},writer.headers);assert.equal(repeat.status,200);assert.equal((await repeat.json()).changed,false);
+ const stale=await h.post('/api/home/devices',{device:{...pi,name:'Renamed'}},writer.headers);assert.equal(stale.status,409);assert.equal((await stale.json()).error.code,'DEVICE_CONFLICT');
+ // A person with a write session edits the same device in the UI.
+ const edited=await h.post('/api/home/devices',{device:{...pi,name:'Pi-hole (rack)'},base:made.hash},h.admin);assert.equal(edited.status,200);const editedBody=await edited.json();
  // Each refusal has its own code, and details name the field.
- const cases=[[{machine:{...pi,id:'studio'}},403,'MACHINE_READ_ONLY'],[{machine:{...pi,id:'pi-2'}},409,'MACHINE_DUPLICATE'],[{machine:{id:'pi-2',name:'x',ip:'172.16.0.9'}},400,'MACHINE_INVALID',/machine\.ip/],
-  [{machine:{id:'pi-2',name:'x',hardware:{cpu:'password: hunter2hunter2'}}},422,'MACHINE_SECRET',/hardware\.cpu/],[{machine:pi,extra:true},400,'MACHINE_INVALID',/expected only/],[{},400,'MACHINE_INVALID']];
+ const cases=[[{device:{...pi,id:'studio'}},403,'DEVICE_READ_ONLY'],[{device:{...pi,id:'pi-2'}},409,'DEVICE_DUPLICATE'],[{device:{id:'pi-2',name:'x',ip:'172.16.0.9'}},400,'DEVICE_INVALID',/device\.ip/],
+  [{device:{id:'pi-2',name:'x',hardware:{cpu:'password: hunter2hunter2'}}},422,'DEVICE_SECRET',/hardware\.cpu/],[{device:pi,extra:true},400,'DEVICE_INVALID',/expected only/],[{},400,'DEVICE_INVALID']];
  for(const [body,status,code,detail] of cases){const r=await h.post('/api/home/devices',body,writer.headers),e=(await r.json()).error;assert.equal(r.status,status,code);assert.equal(e.code,code);if(detail)assert.match(e.details[0],detail);}
- // The overview shows it next to the site's machines, which keep every field they had.
+ // The overview shows it next to the site's devices, which keep every field they had.
  const home=await (await get('/api/home',reader.headers)).json();
- assert.deepEqual(home.machines.map(m=>m.id),[...SITE_IDS,'pi-hole']);
- const tile=home.machines.at(-1);
+ assert.deepEqual(home.devices.map(m=>m.id),[...SITE_IDS,'pi-hole']);
+ const tile=home.devices.at(-1);
  assert.deepEqual([tile.name,tile.added,tile.kind,tile.role,tile.source,tile.readOnly,tile.picture,tile.pictureId,tile.image,tile.hash],['Pi-hole (rack)',true,'other','other','agent',false,'/images/generic/board.svg','board',null,editedBody.hash]);
- for(const m of home.machines)for(const field of ['id','name','hostname','ip','kind','props','online','lastSeen','thermo','bridge','quad','volumes','memoryUsedBytes','memoryTotalBytes','uptimeSeconds','services','collectedAt','reviewNeeded','stack','telemetry','runtimes','spark','role','source'])assert.ok(field in m,`${m.id}.${field}`);
- for(const field of ['poll','schemaVersion','generatedAt','machines','router','telemetry'])assert.ok(field in home,field);
- assert.deepEqual(home.machines.slice(0,5).map(m=>[m.source,m.readOnly,m.added]),Array(5).fill(['site',true,undefined]));
+ for(const m of home.devices)for(const field of ['id','name','hostname','ip','kind','props','online','lastSeen','thermo','bridge','quad','volumes','memoryUsedBytes','memoryTotalBytes','uptimeSeconds','services','collectedAt','reviewNeeded','stack','telemetry','runtimes','spark','role','source'])assert.ok(field in m,`${m.id}.${field}`);
+ for(const field of ['poll','schemaVersion','generatedAt','devices','router','telemetry'])assert.ok(field in home,field);
+ assert.deepEqual(home.devices.slice(0,5).map(m=>[m.source,m.readOnly,m.added]),Array(5).fill(['site',true,undefined]));
  const picture=await get('/images/generic/board.svg',h.admin);assert.equal(picture.status,200);assert.match(picture.headers.get('content-type'),/image\/svg\+xml/);
- // The tile order knows the new machine.
+ // The tile order knows the new device.
  assert.ok((await (await get('/api/profile/home-order',h.admin)).json()).known.includes('pi-hole'));
- // The runtime stack of a site machine may be published; the machine itself stays read-only.
- const pub=await h.post('/api/home/runtime',{machine:'mini',stack:STACK},writer.headers);assert.equal(pub.status,200);const published=await pub.json();assert.deepEqual([published.ok,published.id,published.changed,published.published],[true,'mini',true,true]);
- assert.equal((await h.post('/api/home/runtime',{machine:'ghost',stack:STACK},writer.headers)).status,404);
- const badStack=await h.post('/api/home/runtime',{machine:'mini',stack:{...STACK,cols:[]}},writer.headers);assert.equal(badStack.status,400);assert.match((await badStack.json()).error.details[0],/stack\.cols/);
- assert.equal((await h.post('/api/home/runtime',{machine:'mini'},writer.headers)).status,400,'stack must be given, null takes it back');
+ // The runtime stack of a site device may be published; the device itself stays read-only.
+ const pub=await h.post('/api/home/runtime',{device:'mini',stack:STACK},writer.headers);assert.equal(pub.status,200);const published=await pub.json();assert.deepEqual([published.ok,published.id,published.changed,published.published],[true,'mini',true,true]);
+ assert.equal((await h.post('/api/home/runtime',{device:'ghost',stack:STACK},writer.headers)).status,404);
+ const badStack=await h.post('/api/home/runtime',{device:'mini',stack:{...STACK,cols:[]}},writer.headers);assert.equal(badStack.status,400);assert.match((await badStack.json()).error.details[0],/stack\.cols/);
+ assert.equal((await h.post('/api/home/runtime',{device:'mini'},writer.headers)).status,400,'stack must be given, null takes it back');
  const listed=await (await get('/api/home/devices?stack=1',reader.headers)).json();
- assert.equal(listed.machines.find(m=>m.id==='mini').runtime.hash,published.hash);assert.equal(listed.machines.find(m=>m.id==='mini').runtime.stack.blocks.length,4);
- assert.equal((await (await get('/api/home/devices',reader.headers)).json()).machines[0].runtime.stack,undefined);
- // Removal needs the current hash; site machines cannot be removed. Only a person signed in with a password may leave
+ assert.equal(listed.devices.find(m=>m.id==='mini').runtime.hash,published.hash);assert.equal(listed.devices.find(m=>m.id==='mini').runtime.stack.blocks.length,4);
+ assert.equal((await (await get('/api/home/devices',reader.headers)).json()).devices[0].runtime.stack,undefined);
+ // Removal needs the current hash; site devices cannot be removed. Only a person signed in with a password may leave
  // base out, and a base that is sent is checked for everyone.
  const noBase=await h.post('/api/home/devices/remove',{id:'pi-hole'},writer.headers),noBaseError=(await noBase.json()).error;
- assert.equal(noBase.status,400);assert.equal(noBaseError.code,'MACHINE_INVALID');assert.match(noBaseError.details[0],/^base /);
- const staleSession=await h.post('/api/home/devices/remove',{id:'pi-hole',base:made.hash},h.admin);assert.equal(staleSession.status,409);assert.equal((await staleSession.json()).error.code,'MACHINE_CONFLICT');
+ assert.equal(noBase.status,400);assert.equal(noBaseError.code,'DEVICE_INVALID');assert.match(noBaseError.details[0],/^base /);
+ const staleSession=await h.post('/api/home/devices/remove',{id:'pi-hole',base:made.hash},h.admin);assert.equal(staleSession.status,409);assert.equal((await staleSession.json()).error.code,'DEVICE_CONFLICT');
  assert.equal((await h.post('/api/home/devices/remove',{id:'pi-hole',base:'nonsense'},h.admin)).status,400);
  assert.equal((await h.post('/api/home/devices/remove',{id:'pi-hole',extra:1},h.admin)).status,400);
- const spare=await (await h.post('/api/home/devices',{machine:{id:'spare',name:'Spare'}},writer.headers)).json();assert.equal(spare.created,true);
+ const spare=await (await h.post('/api/home/devices',{device:{id:'spare',name:'Spare'}},writer.headers)).json();assert.equal(spare.created,true);
  assert.deepEqual(await (await h.post('/api/home/devices/remove',{id:'spare'},h.admin)).json(),{ok:true,id:'spare',removed:true},'a session removes without base');
- const siteRemove=await h.post('/api/home/devices/remove',{id:'studio'},h.admin);assert.equal(siteRemove.status,403);assert.equal((await siteRemove.json()).error.code,'MACHINE_READ_ONLY');
+ const siteRemove=await h.post('/api/home/devices/remove',{id:'studio'},h.admin);assert.equal(siteRemove.status,403);assert.equal((await siteRemove.json()).error.code,'DEVICE_READ_ONLY');
  assert.equal((await h.post('/api/home/devices/remove',{id:'pi-hole',base:made.hash},writer.headers)).status,409);
  assert.equal((await h.post('/api/home/devices/remove',{id:'studio',base:made.hash},writer.headers)).status,403);
  assert.deepEqual(await (await h.post('/api/home/devices/remove',{id:'pi-hole',base:editedBody.hash},writer.headers)).json(),{ok:true,id:'pi-hole',removed:true});
@@ -316,65 +316,65 @@ test('machine API over HTTP: home:write for keys, a write session for people, si
  const refusedLine=e=>e.event==='api-write'&&e.subject==='agent-reader'&&e.status===403;
  let audit;const deadline=Date.now()+10000;
  do{audit=await (await get('/api/admin/audit',h.admin)).json();if([createdLine,publishedLine,refusedLine].every(line=>audit.events.some(line)))break;await new Promise(r=>setTimeout(r,10));}while(Date.now()<deadline);
- assert.ok(audit.events.some(createdLine),'the created machine is in the write log');
+ assert.ok(audit.events.some(createdLine),'the created device is in the write log');
  assert.ok(audit.events.some(publishedLine),'the published stack is in the write log');
  assert.ok(audit.events.some(refusedLine),'a refused write is in the write log too');
  // A read-only person cannot write either.
  const guest=await (await h.post('/api/admin/users',{username:'guest'},h.admin)).json();
  const login=await h.post('/api/session',{username:'guest',password:guest.initialPassword});const viewer={Cookie:login.headers.get('set-cookie').split(';')[0]};
- const denied=await h.post('/api/home/devices',{machine:pi},viewer);assert.equal(denied.status,403);assert.equal((await denied.json()).error.code,'READ_ONLY');
+ const denied=await h.post('/api/home/devices',{device:pi},viewer);assert.equal(denied.status,403);assert.equal((await denied.json()).error.code,'READ_ONLY');
 });
 
-test('MCP: an agent fills an empty hub with machine_upsert and runtime_publish, and cleans up with machine_remove',async t=>{
+test('MCP: an agent fills an empty hub with device_upsert and runtime_publish, and cleans up with device_remove',async t=>{
  // No site configuration at all: what a public installer starts with.
  const h=await hub(t,{site:EMPTY_SITE,thermoPoller:quiet});
  const rpc=(headers,method,params)=>fetch(h.origin+'/mcp',{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify({jsonrpc:'2.0',id:1,method,...(params?{params}:{})})}).then(r=>r.json());
  const call=async(headers,name,args)=>(await rpc(headers,'tools/call',{name,arguments:args})).result;
  const agent=await h.account('setup-agent',['home:write']),reader=await h.account('reader',[]);
  const names=async headers=>(await rpc(headers,'tools/list')).result.tools.map(x=>x.name);
- const mine=['machine_list','machine_upsert','machine_remove','runtime_publish'];
+ const mine=['device_list','device_upsert','device_remove','runtime_publish'];
  assert.deepEqual((await names(agent.headers)).filter(n=>mine.includes(n)).sort(),[...mine].sort());
- assert.deepEqual((await names(reader.headers)).filter(n=>mine.includes(n)),['machine_list'],'write tools are hidden without home:write');
+ assert.deepEqual((await names(reader.headers)).filter(n=>mine.includes(n)),['device_list'],'write tools are hidden without home:write');
  const tools=(await rpc(agent.headers,'tools/list')).result.tools;
  for(const name of mine){const tool=tools.find(x=>x.name===name);assert.equal(tool.inputSchema.type,'object');assert.equal(tool.inputSchema.additionalProperties,false);assert.equal(tool.scope,undefined);}
- assert.deepEqual(tools.find(x=>x.name==='machine_upsert').inputSchema.properties.machine.properties.picture.enum,[...PICTURES,null]);
- const refused=await call(reader.headers,'machine_upsert',{machine:pi});assert.equal(refused.isError,true);assert.match(refused.content[0].text,/home:write/);
+ assert.deepEqual(tools.find(x=>x.name==='device_upsert').inputSchema.properties.device.properties.picture.enum,[...PICTURES,null]);
+ const refused=await call(reader.headers,'device_upsert',{device:pi});assert.equal(refused.isError,true);assert.match(refused.content[0].text,/home:write/);
  // Empty to begin with; the list tells the agent what it may use.
- const empty=(await call(agent.headers,'machine_list',{})).structuredContent;
- assert.deepEqual(empty.machines,[]);assert.deepEqual(empty.lanCidrs,[]);assert.equal(empty.pictures.length,PICTURES.length);assert.deepEqual(empty.roles,['computer','nas','router','other']);
- // Two machines, one with the telemetry agent named.
- const mini=(await call(agent.headers,'machine_upsert',{machine:{id:'mac-mini',name:'Mac mini',hostname:'mini.example.lan',ip:'192.168.1.20',role:'computer',hardware:{cpu:'10c M4',gpu:'10c',ramGb:24},thermoId:'mac-mini',picture:'mini'}})).structuredContent;
+ const empty=(await call(agent.headers,'device_list',{})).structuredContent;
+ assert.deepEqual(empty.devices,[]);assert.deepEqual(empty.lanCidrs,[]);assert.equal(empty.pictures.length,PICTURES.length);assert.deepEqual(empty.roles,['computer','nas','router','other']);
+ // Two devices, one with the telemetry agent named.
+ const mini=(await call(agent.headers,'device_upsert',{device:{id:'mac-mini',name:'Mac mini',hostname:'mini.example.lan',ip:'192.168.1.20',role:'computer',hardware:{cpu:'10c M4',gpu:'10c',ramGb:24},thermoId:'mac-mini',picture:'mini'}})).structuredContent;
  assert.deepEqual([mini.ok,mini.id,mini.created,mini.by],[true,'mac-mini',true,'setup-agent']);
- const nas=(await call(agent.headers,'machine_upsert',{machine:{id:'nas',name:'NAS',hostname:'nas.example.lan',role:'nas'}})).structuredContent;assert.equal(nas.created,true);
- assert.equal((await call(agent.headers,'machine_upsert',{machine:{id:'nas',name:'NAS',hostname:'nas.example.lan',role:'nas'}})).structuredContent.changed,false,'the same call again is harmless');
+ const nas=(await call(agent.headers,'device_upsert',{device:{id:'nas',name:'NAS',hostname:'nas.example.lan',role:'nas'}})).structuredContent;assert.equal(nas.created,true);
+ assert.equal((await call(agent.headers,'device_upsert',{device:{id:'nas',name:'NAS',hostname:'nas.example.lan',role:'nas'}})).structuredContent.changed,false,'the same call again is harmless');
  // Refusals come back as tool errors that say what to do, and nothing is stored.
- const conflict=await call(agent.headers,'machine_upsert',{machine:{id:'nas',name:'Storage'}});assert.equal(conflict.isError,true);assert.match(conflict.content[0].text,/machine_list again/);
- const secret=await call(agent.headers,'machine_upsert',{machine:{id:'leak',name:'Leak',hardware:{cpu:'ghp_abcdefghij1234567890'}}});assert.equal(secret.isError,true);assert.match(secret.content[0].text,/looks like a secret.*hardware\.cpu/);
- const invalid=await call(agent.headers,'machine_upsert',{machine:{id:'bad',name:'Bad',role:'fridge'}});assert.equal(invalid.isError,true);assert.match(invalid.content[0].text,/machine\.role must be one of computer, nas, router, other/);
- assert.equal((await call(agent.headers,'machine_upsert',{machine:{id:'x1',name:'x'},force:true})).isError,true,'unknown arguments are refused');
+ const conflict=await call(agent.headers,'device_upsert',{device:{id:'nas',name:'Storage'}});assert.equal(conflict.isError,true);assert.match(conflict.content[0].text,/device_list again/);
+ const secret=await call(agent.headers,'device_upsert',{device:{id:'leak',name:'Leak',hardware:{cpu:'ghp_abcdefghij1234567890'}}});assert.equal(secret.isError,true);assert.match(secret.content[0].text,/looks like a secret.*hardware\.cpu/);
+ const invalid=await call(agent.headers,'device_upsert',{device:{id:'bad',name:'Bad',role:'fridge'}});assert.equal(invalid.isError,true);assert.match(invalid.content[0].text,/device\.role must be one of computer, nas, router, other/);
+ assert.equal((await call(agent.headers,'device_upsert',{device:{id:'x1',name:'x'},force:true})).isError,true,'unknown arguments are refused');
  // Change one with the hash from the list.
- const before=(await call(agent.headers,'machine_list',{})).structuredContent.machines.find(m=>m.id==='nas');
+ const before=(await call(agent.headers,'device_list',{})).structuredContent.devices.find(m=>m.id==='nas');
  assert.deepEqual([before.source,before.readOnly,before.createdBy,before.picture,before.telemetry.state],['agent',false,'setup-agent',null,'not-installed']);
- const renamed=(await call(agent.headers,'machine_upsert',{machine:{id:'nas',name:'Storage',hostname:'nas.example.lan',role:'nas',picture:'nas'},base:before.hash})).structuredContent;assert.equal(renamed.changed,true);
+ const renamed=(await call(agent.headers,'device_upsert',{device:{id:'nas',name:'Storage',hostname:'nas.example.lan',role:'nas',picture:'nas'},base:before.hash})).structuredContent;assert.equal(renamed.changed,true);
  // The runtime stack of the mini.
- const pub=(await call(agent.headers,'runtime_publish',{machine:'mac-mini',stack:STACK})).structuredContent;assert.deepEqual([pub.ok,pub.id,pub.changed,pub.published],[true,'mac-mini',true,true]);
- const badLayer=await call(agent.headers,'runtime_publish',{machine:'mac-mini',stack:{...STACK,blocks:[{...STACK.blocks[0],layer:'middleware'}]}});assert.equal(badLayer.isError,true);assert.match(badLayer.content[0].text,/input, tool, runtime, engine, hardware/);
- assert.equal((await call(agent.headers,'runtime_publish',{machine:'nope',stack:STACK})).isError,true);
+ const pub=(await call(agent.headers,'runtime_publish',{device:'mac-mini',stack:STACK})).structuredContent;assert.deepEqual([pub.ok,pub.id,pub.changed,pub.published],[true,'mac-mini',true,true]);
+ const badLayer=await call(agent.headers,'runtime_publish',{device:'mac-mini',stack:{...STACK,blocks:[{...STACK.blocks[0],layer:'middleware'}]}});assert.equal(badLayer.isError,true);assert.match(badLayer.content[0].text,/input, tool, runtime, engine, hardware/);
+ assert.equal((await call(agent.headers,'runtime_publish',{device:'nope',stack:STACK})).isError,true);
  // What a person now sees on the overview and what the status tool reports.
  const home=await (await fetch(h.origin+'/api/home',{headers:h.admin})).json();
- assert.deepEqual(home.machines.map(m=>[m.id,m.name,m.kind,m.source,m.picture,m.telemetry.state,m.telemetry.reason]),[['mac-mini','Mac mini','thermo','agent','/images/generic/mini.svg','unreachable','no-login'],['nas','Storage','nas','agent','/images/generic/nas.svg','not-installed',null]]);
- assert.equal(home.machines[0].stack.source,'published');assert.equal(home.machines[0].stack.publishedBy,'setup-agent');assert.equal(home.machines[1].stack,null);
- assert.deepEqual((await call(reader.headers,'home_status',{})).structuredContent.machines.map(m=>m.id),['mac-mini','nas']);
- const withStack=(await call(reader.headers,'machine_list',{runtime:true})).structuredContent.machines[0];assert.equal(withStack.runtime.hash,pub.hash);assert.equal(withStack.runtime.stack.blocks.length,4);
+ assert.deepEqual(home.devices.map(m=>[m.id,m.name,m.kind,m.source,m.picture,m.telemetry.state,m.telemetry.reason]),[['mac-mini','Mac mini','thermo','agent','/images/generic/mini.svg','unreachable','no-login'],['nas','Storage','nas','agent','/images/generic/nas.svg','not-installed',null]]);
+ assert.equal(home.devices[0].stack.source,'published');assert.equal(home.devices[0].stack.publishedBy,'setup-agent');assert.equal(home.devices[1].stack,null);
+ assert.deepEqual((await call(reader.headers,'home_status',{})).structuredContent.devices.map(m=>m.id),['mac-mini','nas']);
+ const withStack=(await call(reader.headers,'device_list',{runtime:true})).structuredContent.devices[0];assert.equal(withStack.runtime.hash,pub.hash);assert.equal(withStack.runtime.stack.blocks.length,4);
  // Remove: the hash is required and checked.
- assert.equal((await call(agent.headers,'machine_remove',{id:'nas'})).isError,true);assert.equal((await call(agent.headers,'machine_remove',{id:'nas',base:before.hash})).isError,true,'a stale hash');
- assert.deepEqual((await call(agent.headers,'machine_remove',{id:'nas',base:renamed.hash})).structuredContent,{ok:true,id:'nas',removed:true});
- assert.deepEqual((await call(agent.headers,'machine_list',{})).structuredContent.machines.map(m=>m.id),['mac-mini']);
- // Every write call is logged with the machine it touched, refused ones included; arguments never are.
+ assert.equal((await call(agent.headers,'device_remove',{id:'nas'})).isError,true);assert.equal((await call(agent.headers,'device_remove',{id:'nas',base:before.hash})).isError,true,'a stale hash');
+ assert.deepEqual((await call(agent.headers,'device_remove',{id:'nas',base:renamed.hash})).structuredContent,{ok:true,id:'nas',removed:true});
+ assert.deepEqual((await call(agent.headers,'device_list',{})).structuredContent.devices.map(m=>m.id),['mac-mini']);
+ // Every write call is logged with the device it touched, refused ones included; arguments never are.
  const log=(await readFile(path.join(h.dir,'api-audit.jsonl'),'utf8')).trim().split('\n').map(l=>JSON.parse(l)).filter(e=>e.event==='mcp-call');
- assert.ok(log.some(e=>e.tool==='machine_upsert'&&e.status==='ok'&&e.subject==='mac-mini'&&e.name==='setup-agent'));
- assert.ok(log.some(e=>e.tool==='runtime_publish'&&e.status==='ok'&&e.subject==='mac-mini'));assert.ok(log.some(e=>e.tool==='machine_remove'&&e.status==='ok'&&e.subject==='nas'));
- assert.ok(log.some(e=>e.tool==='machine_upsert'&&e.status==='denied'&&e.name==='reader'));assert.ok(log.some(e=>e.tool==='machine_upsert'&&e.status==='error'));
+ assert.ok(log.some(e=>e.tool==='device_upsert'&&e.status==='ok'&&e.subject==='mac-mini'&&e.name==='setup-agent'));
+ assert.ok(log.some(e=>e.tool==='runtime_publish'&&e.status==='ok'&&e.subject==='mac-mini'));assert.ok(log.some(e=>e.tool==='device_remove'&&e.status==='ok'&&e.subject==='nas'));
+ assert.ok(log.some(e=>e.tool==='device_upsert'&&e.status==='denied'&&e.name==='reader'));assert.ok(log.some(e=>e.tool==='device_upsert'&&e.status==='error'));
  assert.equal(JSON.stringify(log).includes('ghp_'),false);
 });
 
@@ -383,7 +383,7 @@ test('an existing device is connected to Thermo after its login was checked; key
  const thermoPoller={...quiet,addHost:c=>added.push(c.id),removeHost:id=>removed.push(id)};
  const h=await hub(t,{thermoPoller,checkThermo:async c=>{logins.push(c);if(c.password!=='correct horse battery')throw new Error('denied');return 'ok';}});
  const agent=await h.account('agent-home',['home:write']);
- await h.post('/api/home/devices',{machine:{id:'mac-mini-2',name:'Mac mini 2',hostname:'mini2.example.lan',role:'computer'}},agent.headers);
+ await h.post('/api/home/devices',{device:{id:'mac-mini-2',name:'Mac mini 2',hostname:'mini2.example.lan',role:'computer'}},agent.headers);
  const thermo={port:49286,username:'homehub',password:'correct horse battery',pin:PIN};
  assert.equal((await h.post('/api/home/devices/thermo',{id:'mac-mini-2',thermo},agent.headers)).status,403,'never with an API key');
  assert.equal((await h.post('/api/home/devices/image/remove',{id:'mac-mini-2'},agent.headers)).status,403);
@@ -395,17 +395,17 @@ test('an existing device is connected to Thermo after its login was checked; key
  assert.deepEqual(added,['mac-mini-2']);assert.equal(logins.at(-1).host,'mini2.example.lan');assert.equal(logins.at(-1).pin,PIN);
  const secrets=await readStore(path.join(h.dir,'home','thermo-hosts.json'));assert.equal(secrets.hosts[0].id,'mac-mini-2');
  assert.equal((await readFile(path.join(h.dir,'home','devices.json'),'utf8')).includes('correct horse'),false,'the password stays in the 0600 file');
- // Forgetting the login stops the pull and returns the machine to "not installed".
+ // Forgetting the login stops the pull and returns the device to "not installed".
  const off=await h.post('/api/home/devices/thermo',{id:'mac-mini-2',thermo:null},h.admin);assert.equal(off.status,200);assert.equal((await off.json()).thermoId,null);assert.deepEqual(removed,['mac-mini-2']);
  assert.deepEqual((await readStore(path.join(h.dir,'home','thermo-hosts.json'))).hosts,[]);
- // A machine removed through the API takes a stored login along, and only then is the poller told.
+ // A device removed through the API takes a stored login along, and only then is the poller told.
  await h.post('/api/home/devices/thermo',{id:'mac-mini-2',thermo},h.admin);
  const list=await (await fetch(h.origin+'/api/home/devices',{headers:agent.headers})).json();
- assert.equal((await h.post('/api/home/devices/remove',{id:'mac-mini-2',base:list.machines.find(m=>m.id==='mac-mini-2').hash},agent.headers)).status,200);
+ assert.equal((await h.post('/api/home/devices/remove',{id:'mac-mini-2',base:list.devices.find(m=>m.id==='mac-mini-2').hash},agent.headers)).status,200);
  assert.deepEqual(removed,['mac-mini-2','mac-mini-2']);
- const plain=await (await h.post('/api/home/devices',{machine:{id:'plain',name:'Plain',thermoId:'mini'}},agent.headers)).json();
+ const plain=await (await h.post('/api/home/devices',{device:{id:'plain',name:'Plain',thermoId:'mini'}},agent.headers)).json();
  await h.post('/api/home/devices/remove',{id:'plain',base:plain.hash},agent.headers);
- assert.deepEqual(removed,['mac-mini-2','mac-mini-2'],'a machine that only names a host of the hosts file does not end that host\'s session');
+ assert.deepEqual(removed,['mac-mini-2','mac-mini-2'],'a device that only names a host of the hosts file does not end that host\'s session');
 });
 
 test('the uploaded picture can be dropped again for a built-in one',async t=>{

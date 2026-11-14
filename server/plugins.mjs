@@ -348,7 +348,7 @@ export function readPluginManifest(directory,name,{source=pluginSource(directory
    if(a.health.get!==undefined&&(typeof a.health.get!=='string'||!/^\/[A-Za-z0-9._~/-]{0,199}$/.test(a.health.get)))no(`${where}.health.get must be a URL path such as /status`);
    health=Object.freeze({socket:a.health.socket??null,get:a.health.get??null});
   }
-  // config: a module of the plugin whose default export ({site, machine}) => object is what the agent needs to know;
+  // config: a module of the plugin whose default export ({site, device}) => object is what the agent needs to know;
   // the installer writes it to <target>/config/<agent id>.json.
   if(a.config!==undefined&&(!relative(a.config)||!/\.m?js$/.test(a.config)||!existsSync(path.join(dir,a.config))))no(`${where}.config must be a .mjs module inside the plugin that exists`);
   return Object.freeze({id:a.id,title:a.title??a.id,entry:a.entry,service:a.service,health,config:a.config??null});

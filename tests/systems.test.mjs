@@ -132,10 +132,10 @@ test('version status: legacy llama.cpp builds, Node lines, feed builds, gaps',()
  assert.equal(versionStatus({installed:'0.44.2',upstream:{ok:true,version:'0.44.0'},up:{type:'github'}}).status,'ahead');
 });
 
-test('payload: rows pick the running binary and the newest venv; checks and summary per machine',()=>{
- const snapshot={collectedAt:'2026-11-08T12:00:00Z',machines:{mini:parseSystemsProbe(macProbe),nas:parseSystemsProbe(nasProbe)}};
+test('payload: rows pick the running binary and the newest venv; checks and summary per device',()=>{
+ const snapshot={collectedAt:'2026-11-08T12:00:00Z',devices:{mini:parseSystemsProbe(macProbe),nas:parseSystemsProbe(nasProbe)}};
  const doc=buildSystems({snapshot,upstream,registry,now:Date.parse('2026-11-08T12:05:00Z')});
- const row=(id,m='mini')=>doc.software.find(r=>r.id===id&&r.machine===m);
+ const row=(id,m='mini')=>doc.software.find(r=>r.id===id&&r.device===m);
  assert.equal(row('llama.cpp').installed,'0.5.0-dev','running candidate wins over the older install');
  assert.deepEqual(row('llama.cpp').others,['8670 (/u/llama-b8670/llama-server)']);
  assert.equal(row('llama.cpp').status,'update');assert.equal(row('llama.cpp').running,'running');
@@ -146,7 +146,7 @@ test('payload: rows pick the running binary and the newest venv; checks and summ
  assert.equal(row('docker:open-design').status,'floating');
  assert.equal(row('app:immich','nas').status,'update');assert.equal(row('app:immich','nas').latest,'v3.3.6_1.14.62');
  assert.match(row('app:wiki','nas').note,/nový obraz/);assert.equal(row('app:home-hub','nas').running,'absent');
- const mini=doc.machines.find(m=>m.id==='mini'),nas=doc.machines.find(m=>m.id==='nas');
+ const mini=doc.devices.find(m=>m.id==='mini'),nas=doc.devices.find(m=>m.id==='nas');
  assert.equal(mini.os.status,'update','26.7.2 is in the same major line');
  assert.deepEqual(mini.os.updates.map(u=>u.kind),['app','minor','major']);
  const c=(m,id)=>m.checks.find(x=>x.id===id);
@@ -157,7 +157,7 @@ test('payload: rows pick the running binary and the newest venv; checks and summ
  assert.match(c(nas,'os-update').detail,/^Bezpečnostní vydání/);
  assert.equal(c(nas,'exposed').value,'2 portů');
  assert.equal(nas.summary.appUpdates,2);assert.equal(nas.summary.osUpdate,1);
- assert.equal(doc.machines.find(m=>m.id==='studio').reachable,false);
+ assert.equal(doc.devices.find(m=>m.id==='studio').reachable,false);
 });
 
 test('upstream: highest stable release, prefixes, patterns, ETag reuse and stale fallback',async()=>{
@@ -209,7 +209,7 @@ test('shipped registry: every item resolves to a known upstream and detect kind'
   assert.ok(reg.categories[item.category],`${item.id}: category`);
   assert.ok(item.upstream.type==='none'||upstreamKey(item.upstream),`${item.id}: upstream`);
   for(const [m,d] of Object.entries(item.detect)){
-   assert.ok(['mini','studio','mini_server'].includes(m),`${item.id}: machine ${m}`);
+   assert.ok(['mini','studio','mini_server'].includes(m),`${item.id}: device ${m}`);
    assert.ok(['brew','cask','app','cmd','pydist','json'].includes(d.kind),`${item.id}/${m}: kind`);
    assert.doesNotMatch(systemsSpecs({items:[item]},m),/\n/);
   }
@@ -236,17 +236,17 @@ test('/api/systems: sign-in required, admin only, 404 until collected, assets se
  const missing=await fetch(`${base}/api/systems`,{headers:{Cookie:cookie}});
  assert.equal(missing.status,404);assert.equal((await missing.json()).error.code,'SYSTEMS_MISSING');
  await mkdir(path.join(dir,'systems'),{recursive:true});
- await writeFile(path.join(dir,'systems','snapshot.json'),JSON.stringify({collectedAt:'2026-11-08T12:00:00Z',machines:{nas:parseSystemsProbe(nasProbe)}}));
+ await writeFile(path.join(dir,'systems','snapshot.json'),JSON.stringify({collectedAt:'2026-11-08T12:00:00Z',devices:{nas:parseSystemsProbe(nasProbe)}}));
  const ok=await fetch(`${base}/api/systems`,{headers:{Cookie:cookie}});
  assert.equal(ok.status,200);const doc=await ok.json();
- assert.equal(doc.machines.length,4);assert.equal(doc.machines.find(m=>m.id==='nas').os.status,'update');
+ assert.equal(doc.devices.length,4);assert.equal(doc.devices.find(m=>m.id==='nas').os.status,'update');
  assert.ok(doc.software.some(r=>r.id==='app:immich'));
  for(const asset of ['/systems-view.js','/systems.css','/session-cache.js'])assert.equal((await fetch(`${base}${asset}`)).status,200,asset);
 });
 
 test('nftables without input hooks is unfiltered ingress (warn), not a policy named "none"',()=>{
  const withNft=line=>nasProbe.replace(/NFT\t[^\n]*/,line);
- const fw=probe=>{const h=parseSystemsProbe(probe);return {nft:h.nft,check:buildSystems({snapshot:{machines:{nas:{...h,complete:true}}},upstream,registry}).machines.find(m=>m.id==='nas').checks.find(c=>c.id==='firewall')};};
+ const fw=probe=>{const h=parseSystemsProbe(probe);return {nft:h.nft,check:buildSystems({snapshot:{devices:{nas:{...h,complete:true}}},upstream,registry}).devices.find(m=>m.id==='nas').checks.find(c=>c.id==='firewall')};};
  // Empty ruleset: no tables, no chains.
  let r=fw(withNft(rec('NFT','none','0','')));
  assert.deepEqual(r.nft.inputPolicies,[]);assert.equal(r.nft.inputHooks,0);
@@ -261,19 +261,19 @@ test('nftables without input hooks is unfiltered ingress (warn), not a policy na
  assert.equal(fw(withNft(rec('NFT','unknown'))).check.state,'unknown');
  // Snapshot persisted by the old parser (policy "none") still reads as unfiltered.
  const legacy=parseSystemsProbe(nasProbe);legacy.nft={inputPolicies:[{policy:'none',chains:null}],rules:0,tables:[]};
- assert.equal(buildSystems({snapshot:{machines:{nas:{...legacy,complete:true}}},upstream,registry}).machines.find(m=>m.id==='nas').checks.find(c=>c.id==='firewall').value,'vstup nefiltrován');
+ assert.equal(buildSystems({snapshot:{devices:{nas:{...legacy,complete:true}}},upstream,registry}).devices.find(m=>m.id==='nas').checks.find(c=>c.id==='firewall').value,'vstup nefiltrován');
 });
 
 test('a failed upstream check (403/429) reaches the payload as stale/unverified, never as fresh "current"',async()=>{
  const reg={categories:{ai:'AI'},items:[
   {id:'omlx',name:'oMLX',category:'ai',upstream:{type:'github',repo:'jundot/omlx'},detect:{mini:{kind:'pydist',glob:'~/omlx/venv*/lib/python*/site-packages',package:'omlx'}}},
   {id:'llama-swap',name:'llama-swap',category:'ai',upstream:{type:'github',repo:'mostlygeek/llama-swap'},detect:{mini:{kind:'brew',formula:'llama-swap'}}}]};
- const snapshot={machines:{mini:parseSystemsProbe(macProbe)}};
+ const snapshot={devices:{mini:parseSystemsProbe(macProbe)}};
  const rel=v=>({tag_name:`v${v}`,html_url:`https://x/${v}`});
  // First run succeeds: omlx is current (0.7.3), llama-swap has an update (installed 268 < 271).
  const ok=async url=>url.includes('jundot/omlx')?{status:200,etag:'"o"',json:[rel('0.7.3')]}:{status:200,etag:'"l"',json:[rel('271')]};
  const first=await checkUpstreams(reg,{fetchJson:ok,now:()=>'2026-11-08T06:00:00.000Z'});
- const row=(up,id)=>buildSystems({snapshot,upstream:up,registry:reg}).software.find(r=>r.id===id&&r.machine==='mini');
+ const row=(up,id)=>buildSystems({snapshot,upstream:up,registry:reg}).software.find(r=>r.id===id&&r.device==='mini');
  const omlx0=row(first,'omlx');
  assert.equal(omlx0.upstreamStale,false);assert.equal(omlx0.upstreamCheckedAt,'2026-11-08T06:00:00.000Z');
  // Second run: GitHub rate-limits every request.
@@ -282,9 +282,9 @@ test('a failed upstream check (403/429) reaches the payload as stale/unverified,
  const r=second.results['github:jundot/omlx'];
  assert.equal(r.stale,true);assert.match(r.error,/HTTP 403/);assert.equal(r.checkedAt,'2026-11-08T06:00:00.000Z','checkedAt stays the last success');assert.equal(r.failedAt,'2026-11-08T18:00:00.000Z');
  const doc=buildSystems({snapshot,upstream:second,registry:reg});
- const omlx=doc.software.find(x=>x.id==='omlx'&&x.machine==='mini');
+ const omlx=doc.software.find(x=>x.id==='omlx'&&x.device==='mini');
  assert.equal(omlx0.status,'current');assert.equal(omlx.status,'unknown','a stale source cannot claim current');assert.match(omlx.note,/selhala \(HTTP 403/);
- const swap=doc.software.find(x=>x.id==='llama-swap'&&x.machine==='mini');assert.equal(swap.status,'update','a known newer release stays an update');assert.equal(swap.upstreamStale,true);
+ const swap=doc.software.find(x=>x.id==='llama-swap'&&x.device==='mini');assert.equal(swap.status,'update','a known newer release stays an update');assert.equal(swap.upstreamStale,true);
  assert.equal(omlx.upstreamStale,true);assert.match(omlx.upstreamError,/HTTP 403/);
  assert.equal(omlx.upstreamCheckedAt,'2026-11-08T06:00:00.000Z');assert.equal(omlx.upstreamFailedAt,'2026-11-08T18:00:00.000Z');
  assert.equal(doc.upstreamFailed,2);
@@ -358,9 +358,9 @@ test('a failed GitHub /releases/latest fails the source: the shipped llama.cpp e
  const shipped=JSON.parse(await (await import('node:fs/promises')).readFile(path.join(root,'config','software-watch.json'),'utf8'));
  const reg={categories:shipped.categories,items:shipped.items.filter(i=>i.id==='llama.cpp')};
  const key=upstreamKey(reg.items[0].upstream);assert.equal(key,'github:ggml-org/llama.cpp');
- const snapshot={machines:{mini_server:{...parseSystemsProbe([rec('HOST','mini_server','Darwin','alice','1','2026-11-08T12:00:00Z'),
+ const snapshot={devices:{mini_server:{...parseSystemsProbe([rec('HOST','mini_server','Darwin','alice','1','2026-11-08T12:00:00Z'),
   rec('SW','llama.cpp','cmd','version: 1.0.0 (build 12100, commit abc)','/u/llama-b12100/llama-server','running'),rec('END','ok')].join('\n')),complete:true}}};
- const row=up=>buildSystems({snapshot,upstream:up,registry:reg}).software.find(r=>r.id==='llama.cpp'&&r.machine==='mini_server');
+ const row=up=>buildSystems({snapshot,upstream:up,registry:reg}).software.find(r=>r.id==='llama.cpp'&&r.device==='mini_server');
  const rel=tag=>({tag_name:tag,html_url:`https://github.com/ggml-org/llama.cpp/releases/tag/${tag}`});
  // The first 20 releases are build tags plus 1.0.0; 2.0.0 is only reachable through /releases/latest.
  const page=[...Array.from({length:19},(_,i)=>rel(`b${12200-i}`)),rel('v1.0.0')];
@@ -379,7 +379,7 @@ test('a failed GitHub /releases/latest fails the source: the shipped llama.cpp e
  assert.equal(r.stale,true);assert.match(r.error,/HTTP 403 .*\/releases\/latest/);
  assert.equal(r.checkedAt,'2026-11-08T06:00:00.000Z');assert.equal(r.failedAt,'2026-11-08T18:00:00.000Z');
  assert.equal(r.cache.list.etag,'"e1"','the ETag of the rejected page is not stored, so a later 304 cannot confirm it');
- const doc=buildSystems({snapshot,upstream:second,registry:reg}),x=doc.software.find(s=>s.id==='llama.cpp'&&s.machine==='mini_server');
+ const doc=buildSystems({snapshot,upstream:second,registry:reg}),x=doc.software.find(s=>s.id==='llama.cpp'&&s.device==='mini_server');
  assert.notEqual(x.status,'current');assert.equal(x.status,'update');assert.equal(x.latest,'2.0.0');
  assert.equal(x.upstreamStale,true);assert.match(x.upstreamError,/HTTP 403/);assert.equal(x.upstreamCheckedAt,'2026-11-08T06:00:00.000Z');
  assert.ok(doc.upstreamFailed>=1);
@@ -410,9 +410,9 @@ function releaseSite({list=200,latest=200,listEtag='"L1"',latestEtag='"R1"',late
 async function llamaFixture(){
  const shipped=JSON.parse(await (await import('node:fs/promises')).readFile(path.join(root,'config','software-watch.json'),'utf8'));
  const reg={categories:shipped.categories,items:shipped.items.filter(i=>i.id==='llama.cpp')};
- const snapshot={machines:{mini_server:{...parseSystemsProbe([rec('HOST','mini_server','Darwin','alice','1','2026-11-08T12:00:00Z'),
+ const snapshot={devices:{mini_server:{...parseSystemsProbe([rec('HOST','mini_server','Darwin','alice','1','2026-11-08T12:00:00Z'),
   rec('SW','llama.cpp','cmd','version: 1.0.0 (build 12100, commit abc)','/u/llama-b12100/llama-server','running'),rec('END','ok')].join('\n')),complete:true}}};
- const row=up=>buildSystems({snapshot,upstream:up,registry:reg}).software.find(r=>r.id==='llama.cpp'&&r.machine==='mini_server');
+ const row=up=>buildSystems({snapshot,upstream:up,registry:reg}).software.find(r=>r.id==='llama.cpp'&&r.device==='mini_server');
  const run=async(spec,previous,now)=>{const seen=[];const doc=await checkUpstreams(reg,{fetchJson:createFetchJson({fetchImpl:releaseSite(spec,seen)}),previous,now:()=>now});return {doc,seen,r:doc.results['github:ggml-org/llama.cpp']};};
  return {row,run};
 }
@@ -492,7 +492,7 @@ test('ETag on other providers: Codeberg revalidates its single request; a 304 no
 // --- push agents: the readers join agent records (docs/agent.md §3, §6; step 2) ------------------------------------
 import {readFile as readText,readdir as listDir} from 'node:fs/promises';
 import {readFileSync} from 'node:fs';
-import {agentSystemsHost,pickSource,collectorTime,systemMachines} from '../server/systems-data.mjs';
+import {agentSystemsHost,pickSource,collectorTime,systemDevices} from '../server/systems-data.mjs';
 import {splitSystemsRecords,checkLine} from '../server/agent-report.mjs';
 import {collectSystems} from '../scripts/collect-systems.mjs';
 import {SITE} from './hub-helper.mjs';
@@ -503,7 +503,7 @@ const probeLines=name=>readFileSync(path.join(root,'tests','fixtures','probes',n
 // A stored agent record (server/agent-store.mjs) whose os, updates and packages parts hold one run of a systems probe.
 function agentRecord(lines,{platform='macos',receivedAt='2026-11-13T11:45:00.000Z',interval=21600,collectedAt='2026-11-13T11:44:00Z',withheld=[]}={}){
  const split=splitSystemsRecords(lines),part=records=>({schema:1,collectedAt,receivedAt,interval,digest:'0'.repeat(64),withheld,records});
- return {schemaVersion:1,machine:'x',agentId:'0123456789abcdef',agentVersion:'1.6.0',platform,lastSeenAt:receivedAt,lastSentAt:receivedAt,
+ return {schemaVersion:1,device:'x',agentId:'0123456789abcdef',agentVersion:'1.6.0',platform,lastSeenAt:receivedAt,lastSentAt:receivedAt,
   parts:{os:part(split.os),updates:part(split.updates),packages:part(split.packages)}};
 }
 const macAgent=(root,priv,time='2026-11-13T11:44:00Z')=>[rec('HOST','mini','Darwin','alice',root,time),rec('OS','macOS','26.7.1','25G241','25.6.0','arm64'),...priv,
@@ -520,12 +520,12 @@ test('readers: no agent state answers byte for byte what 1.4 answered on /api/sy
  const h=await readerHub(t,{thermoPoller:quiet});
  const now=await readerAnswers(h);
  for(const name of ['systems','security','endpoints','homeRuntimes'])assert.equal(JSON.stringify(now[name]),JSON.stringify(golden[name]),name);
- // /api/models lists every home.runtimes provider: the agent module is one more, with no machine. Nothing else moves.
- const agentSource={module:'agent',source:'agent',machines:0,lastAt:null,failed:false};
+ // /api/models lists every home.runtimes provider: the agent module is one more, with no device. Nothing else moves.
+ const agentSource={module:'agent',source:'agent',devices:0,lastAt:null,failed:false};
  assert.deepEqual(now.models.body.providers.runtimes.at(-1),agentSource);
  now.models.body.providers.runtimes.pop();assert.equal(JSON.stringify(now.models),JSON.stringify(golden.models),'models');
  // The snapshot is an old one (no probedAt anywhere) and loads as it did.
- assert.ok(Object.values(JSON.parse(readFileSync(path.join(READERS_DIR,'snapshot.json'),'utf8')).machines).every(m=>!('probedAt' in m)));
+ assert.ok(Object.values(JSON.parse(readFileSync(path.join(READERS_DIR,'snapshot.json'),'utf8')).devices).every(m=>!('probedAt' in m)));
 });
 
 test('parser: PKGUP, WINUP, PRIV and the Windows records, additively; a record without them has none of the fields',()=>{
@@ -553,11 +553,11 @@ test('parser: PKGUP, WINUP, PRIV and the Windows records, additively; a record w
  assert.equal(odd.privileged,undefined,'no inherited names');assert.equal(Object.getPrototypeOf(odd.windows.bitlocker),Object.prototype);
 });
 
-test('who wins per machine: current, then coverage, then the hub\'s time (collector record vs agent part)',()=>{
+test('who wins per device: current, then coverage, then the hub\'s time (collector record vs agent part)',()=>{
  const now=Date.parse('2026-11-13T12:00:00Z');
  const C={...parseSystemsProbe(macProbe),stale:false,lastError:null,probedAt:'2026-11-13T11:30:00.000Z'};// root 1, complete
- const pick=({record=C,lines,receivedAt,snapshotTime=null,interval})=>buildSystems({snapshot:{collectedAt:'2026-11-13T11:30:00.000Z',machines:{mini:record}},upstream,registry,now,snapshotTime,
-  agents:[{id:'mini',name:'Mac mini',record:agentRecord(lines,{receivedAt,interval})}]}).machines.find(m=>m.id==='mini');
+ const pick=({record=C,lines,receivedAt,snapshotTime=null,interval})=>buildSystems({snapshot:{collectedAt:'2026-11-13T11:30:00.000Z',devices:{mini:record}},upstream,registry,now,snapshotTime,
+  agents:[{id:'mini',name:'Mac mini',record:agentRecord(lines,{receivedAt,interval})}]}).devices.find(m=>m.id==='mini');
  // A lower-coverage agent part never beats a current root collector record, however new.
  let m=pick({lines:macAgent('0',[rec('PRIV','listen','denied'),rec('PRIV','sshd','ok'),rec('PRIV','pf-info','ok'),rec('PRIV','pf-rules','ok')]),receivedAt:'2026-11-13T11:59:00.000Z'});
  assert.equal(m.source,'collector');assert.equal(m.sourceAt,'2026-11-13T11:30:00.000Z');assert.equal(m.os.version,'26.7.1');assert.equal(m.checks.find(c=>c.id==='ssh-password').state,'warn');
@@ -588,16 +588,16 @@ test('who wins per machine: current, then coverage, then the hub\'s time (collec
 test('agent records: receive time in place of HOST, source "agent", reader kinds mac, linux and windows from the platform, never HOST',()=>{
  const now=Date.parse('2026-11-13T12:00:00Z');
  const debian=agentRecord(probeLines('linux-debian-apt.txt'),{platform:'linux'}),win=agentRecord(windowsLines,{platform:'windows',withheld:[{tag:'SW',field:3,reason:'secret',count:1}]});
- const doc=buildSystems({snapshot:{collectedAt:'2026-11-08T12:00:00Z',machines:{nas:{...parseSystemsProbe(nasProbe),stale:false}}},upstream,registry,now,machines:systemMachines(SITE),
+ const doc=buildSystems({snapshot:{collectedAt:'2026-11-08T12:00:00Z',devices:{nas:{...parseSystemsProbe(nasProbe),stale:false}}},upstream,registry,now,devices:systemDevices(SITE),
   agents:[{id:'nas',name:'NAS',record:agentRecord(probeLines('linux-debian-apt.txt'),{platform:'linux'})},{id:'pi',name:'Pi',record:debian},{id:'winbox',name:'Win box',record:win},
    {id:'laptop',name:'Laptop',record:agentRecord(probeLines('linux-fedora-dnf.txt'),{platform:'linux'})},{id:'box',name:'Box',record:agentRecord(probeLines('linux-minimal.txt'),{platform:'linux'})},
    {id:'alp',name:'Alpine',record:agentRecord(probeLines('linux-alpine-apk.txt'),{platform:'linux'})}]});
- const at=id=>doc.machines.find(m=>m.id===id),ids=m=>m.checks.map(c=>c.id),c=(m,id)=>m.checks.find(x=>x.id===id);
+ const at=id=>doc.devices.find(m=>m.id===id),ids=m=>m.checks.map(c=>c.id),c=(m,id)=>m.checks.find(x=>x.id===id);
  // The NAS stays agent-less: an agent record for it is not read, and its checks stay the NAS ones.
  const nas=at('nas');assert.equal('source' in nas,false);assert.equal(nas.kind,'nas');assert.ok(ids(nas).includes('ftp'));
  const pi=at('pi');
  assert.deepEqual([pi.kind,pi.source,pi.name,pi.reachable,pi.stale],['linux','agent','Pi',true,false]);
- assert.equal(pi.collectedAt,'2026-11-13T11:45:00.000Z','the hub\'s receive time');assert.equal(pi.machineCollectedAt,'2026-11-13T09:40:12Z','the machine\'s own, as information');
+ assert.equal(pi.collectedAt,'2026-11-13T11:45:00.000Z','the hub\'s receive time');assert.equal(pi.deviceCollectedAt,'2026-11-13T09:40:12Z','the device\'s own, as information');
  assert.deepEqual(ids(pi),['firewall','ssh-password','ssh-root','security-updates','os-update','auto-updates','exposed'],'Linux checks: never the NAS or the Mac ones');
  assert.deepEqual([c(pi,'firewall').state,c(pi,'ssh-password').state,c(pi,'security-updates').state,c(pi,'auto-updates').state],['ok','ok','warn','ok']);
  assert.equal(c(pi,'security-updates').detail,'openssl');assert.equal(c(pi,'exposed').value,'2 portů');
@@ -615,25 +615,25 @@ test('agent records: receive time in place of HOST, source "agent", reader kinds
  assert.deepEqual(['defender','bitlocker','firewall','rdp','os-update'].map(id=>c(w,id).state),['ok','crit','warn','info','warn']);
  assert.equal(c(w,'bitlocker').detail,'Nešifrované svazky: D:.');assert.equal(c(w,'exposed').detail,'3389 svchost');
  assert.deepEqual(w.withheld,[{part:'os',tag:'SW',field:3,reason:'secret',count:1},{part:'updates',tag:'SW',field:3,reason:'secret',count:1},{part:'packages',tag:'SW',field:3,reason:'secret',count:1}]);
- // A Linux record behind a Mac site machine is read as Linux: the kind follows the platform of the record that won.
- const studio=buildSystems({snapshot:{machines:{}},upstream,registry,now,machines:systemMachines(SITE),agents:[{id:'studio',name:'Mac Studio',record:debian}]}).machines.find(m=>m.id==='studio');
+ // A Linux record behind a Mac site device is read as Linux: the kind follows the platform of the record that won.
+ const studio=buildSystems({snapshot:{devices:{}},upstream,registry,now,devices:systemDevices(SITE),agents:[{id:'studio',name:'Mac Studio',record:debian}]}).devices.find(m=>m.id==='studio');
  assert.equal(studio.kind,'linux');assert.equal(studio.checks.some(x=>['filevault','sip','gatekeeper'].includes(x.id)),false);
  // The top level: the newest of the collector's time and the receive times; the collector's state stays the collector's.
  assert.equal(doc.collectedAt,'2026-11-13T11:45:00.000Z');assert.equal(doc.collector.collectedAt,'2026-11-08T12:00:00Z');
- assert.deepEqual(doc.collector.agents,{machines:6,fresh:6,noNews:0});
+ assert.deepEqual(doc.collector.agents,{devices:6,fresh:6,noNews:0});
  assert.deepEqual(doc.provenance.kinds.map(k=>[k.id,k.kind]),[['systems','collector'],['agents','telemetry'],['upstream','collector']]);
  assert.equal(agentSystemsHost(agentRecord(windowsLines,{platform:'other'})),null,'no reader kind, no record');
 });
 
-test('collect-systems writes probedAt per machine: the collecting machine\'s clock when that probe came back; a failed probe leaves it',async t=>{
+test('collect-systems writes probedAt per device: the collecting host\'s clock when that probe came back; a failed probe leaves it',async t=>{
  const outDir=await mkdtemp(path.join(os.tmpdir(),'hub-probed-'));t.after(()=>rm(outDir,{recursive:true,force:true}));
- const site={...SITE,machines:SITE.machines.filter(m=>m.id==='mini')};
+ const site={...SITE,devices:SITE.devices.filter(m=>m.id==='mini')};
  const exec=fail=>async(cmd)=>cmd==='hostname'?{code:0,stdout:'collector\n',stderr:''}:fail?{code:255,stdout:'',stderr:'ssh: timed out'}:{code:0,stdout:macProbe+'\n',stderr:''};
  let n=0;const now=()=>new Date(Date.parse('2026-11-13T10:00:00Z')+(n++)*1000).toISOString();
  const r1=await collectSystems({site,registry:{items:[]},outDir,exec:exec(false),now});
- assert.equal(r1.snapshot.machines.mini.probedAt,'2026-11-13T10:00:00.000Z');
+ assert.equal(r1.snapshot.devices.mini.probedAt,'2026-11-13T10:00:00.000Z');
  const r2=await collectSystems({site,registry:{items:[]},outDir,exec:exec(true),now});
- assert.equal(r2.snapshot.machines.mini.probedAt,'2026-11-13T10:00:00.000Z','kept from the last probe that came back');assert.equal(r2.snapshot.machines.mini.stale,true);
+ assert.equal(r2.snapshot.devices.mini.probedAt,'2026-11-13T10:00:00.000Z','kept from the last probe that came back');assert.equal(r2.snapshot.devices.mini.stale,true);
 });
 
 test('over HTTP: a report a year ahead makes nothing look fresh; receivedAt is the time shown; no news is stale, not unreachable; runtimes and the trend',async t=>{
@@ -645,12 +645,12 @@ test('over HTTP: a report a year ahead makes nothing look fresh; receivedAt is t
  const answer=await report(key.token,envelope({...systemsParts({name:'mini',collectedAt:ahead}),runtimes},{sentAt:ahead}));
  assert.equal(answer.status,200);const {receivedAt,accepted}=await answer.json();assert.deepEqual(accepted,['os','updates','packages','runtimes']);
  const systems=async()=>(await (await fetch(h.origin+'/api/systems',{headers:h.admin})).json());
- let doc=await systems(),mini=doc.machines.find(m=>m.id==='mini');
+ let doc=await systems(),mini=doc.devices.find(m=>m.id==='mini');
  assert.equal(receivedAt,'2026-11-13T10:00:00.000Z');
- assert.deepEqual([mini.source,mini.collectedAt,mini.machineCollectedAt,mini.stale],['agent',receivedAt,ahead,false]);
- assert.equal(doc.collectedAt,receivedAt,'the top level shows the receive time, not the machine\'s year ahead');
- assert.equal(doc.collector.collectedAt,'2026-11-08T12:00:00Z','the collector state stays the collector\'s');assert.deepEqual(doc.collector.agents,{machines:1,fresh:1,noNews:0});
- const home=async()=>(await (await fetch(h.origin+'/api/home',{headers:h.admin})).json()).machines.find(m=>m.id==='mini').runtimes;
+ assert.deepEqual([mini.source,mini.collectedAt,mini.deviceCollectedAt,mini.stale],['agent',receivedAt,ahead,false]);
+ assert.equal(doc.collectedAt,receivedAt,'the top level shows the receive time, not the device\'s year ahead');
+ assert.equal(doc.collector.collectedAt,'2026-11-08T12:00:00Z','the collector state stays the collector\'s');assert.deepEqual(doc.collector.agents,{devices:1,fresh:1,noNews:0});
+ const home=async()=>(await (await fetch(h.origin+'/api/home',{headers:h.admin})).json()).devices.find(m=>m.id==='mini').runtimes;
  let rt=await home();assert.equal(rt.source,'agent');assert.equal(rt.observedAt,receivedAt);assert.equal(rt.runtimes[0].status,'running');assert.deepEqual(rt.runtimes[0].activity,{active:1,queued:0});
  // Past receivedAt + 3 × interval by the hub's clock: no news. The runtimes part (120 s) first.
  clock+=361_000;
@@ -659,13 +659,13 @@ test('over HTTP: a report a year ahead makes nothing look fresh; receivedAt is t
  const provided=(await h.handler.state('agent').runtimes()).mini.runtimes[0];
  assert.deepEqual([provided.pids,provided.models[0].pids,provided.stats,provided.activity],[undefined,undefined,[],undefined]);
  clock+=3*21600_000;
- doc=await systems();mini=doc.machines.find(m=>m.id==='mini');
+ doc=await systems();mini=doc.devices.find(m=>m.id==='mini');
  assert.deepEqual([mini.source,mini.stale,mini.reachable,mini.error],['agent',true,true,null],'no news: stale, never off');
- assert.deepEqual(doc.collector.agents,{machines:1,fresh:0,noNews:1});
- // The trend: one line per machine at most every six hours, beside the record, never in the collector's history.jsonl.
+ assert.deepEqual(doc.collector.agents,{devices:1,fresh:0,noNews:1});
+ // The trend: one line per device at most every six hours, beside the record, never in the collector's history.jsonl.
  const trend=async()=>(await readText(path.join(h.dir,'agent','history.jsonl'),'utf8')).trim().split('\n').map(l=>JSON.parse(l));
- assert.deepEqual((await trend()).map(l=>[l.at,Object.keys(l.machines)]),[[receivedAt,['mini']]]);
- assert.deepEqual(Object.keys((await trend())[0].machines.mini),['os','software','apps','warn','crit','stale']);
+ assert.deepEqual((await trend()).map(l=>[l.at,Object.keys(l.devices)]),[[receivedAt,['mini']]]);
+ assert.deepEqual(Object.keys((await trend())[0].devices.mini),['os','software','apps','warn','crit','stale']);
  clock+=60_000;
  assert.equal((await report(key.token,envelope(systemsParts({name:'mini',collectedAt:'2026-11-14T05:00:00Z'})))).status,200);
  assert.equal((await trend()).length,2,'more than six hours later: a second line');
@@ -684,33 +684,33 @@ test('agent records naming what every object inherits (SW, RUN, SHARE, AUTO, FW,
  assert.equal(h.sshd.constructor,'x');assert.ok(Object.hasOwn(h.sshd,'__proto__'));assert.equal(Object.getPrototypeOf(h.sshd),Object.prototype);
  const now=Date.parse('2026-11-13T12:00:00Z');
  const lines=[...macAgent('0',ALL_MAC_PRIV),...odd];
- const doc=buildSystems({snapshot:{collectedAt:'2026-11-13T11:30:00.000Z',machines:{}},upstream,registry,now,agents:[{id:'mini',name:'Mac mini',record:agentRecord(lines)}]});
- const mini=doc.machines.find(m=>m.id==='mini');assert.equal(mini.source,'agent');assert.ok(mini.summary);
+ const doc=buildSystems({snapshot:{collectedAt:'2026-11-13T11:30:00.000Z',devices:{}},upstream,registry,now,agents:[{id:'mini',name:'Mac mini',record:agentRecord(lines)}]});
+ const mini=doc.devices.find(m=>m.id==='mini');assert.equal(mini.source,'agent');assert.ok(mini.summary);
  // A watch item whose id is an inherited name reads nothing it was not given (a snapshot read back from JSON).
  const named={items:[{id:'constructor',name:'C',category:'ai',upstream:{type:'none'},detect:{studio:{kind:'cmd',path:'/x',args:'--version'}}}]};
- const json=buildSystems({snapshot:JSON.parse(JSON.stringify({collectedAt:'2026-11-08T12:00:00Z',machines:{studio:{...parseSystemsProbe(macProbe),stale:false}}})),upstream,registry:named,now});
+ const json=buildSystems({snapshot:JSON.parse(JSON.stringify({collectedAt:'2026-11-08T12:00:00Z',devices:{studio:{...parseSystemsProbe(macProbe),stale:false}}})),upstream,registry:named,now});
  assert.equal(json.software.find(r=>r.id==='constructor').installed,null);
- // One machine's record that cannot be read at all is left out, and its collector record stands; the answer is whole.
+ // One device's record that cannot be read at all is left out, and its collector record stands; the answer is whole.
  const bad=agentRecord(macAgent('0',ALL_MAC_PRIV));bad.parts.os.records=[{toString(){throw new Error('unreadable');}}];
  const C={...parseSystemsProbe(macProbe),stale:false,lastError:null,probedAt:'2026-11-13T11:30:00.000Z'};
- const both=buildSystems({snapshot:{collectedAt:'2026-11-13T11:30:00.000Z',machines:{mini:C}},upstream,registry,now,agents:[{id:'mini',name:'Mac mini',record:bad},{id:'studio',name:'Mac Studio',record:agentRecord(lines)}]});
- assert.equal(both.machines.find(m=>m.id==='mini').source,undefined,'the collector\'s, as without an agent');assert.equal(both.machines.find(m=>m.id==='studio').source,'agent');
+ const both=buildSystems({snapshot:{collectedAt:'2026-11-13T11:30:00.000Z',devices:{mini:C}},upstream,registry,now,agents:[{id:'mini',name:'Mac mini',record:bad},{id:'studio',name:'Mac Studio',record:agentRecord(lines)}]});
+ assert.equal(both.devices.find(m=>m.id==='mini').source,undefined,'the collector\'s, as without an agent');assert.equal(both.devices.find(m=>m.id==='studio').source,'agent');
 });
 
-test('a collector placeholder for a machine never reached has no time: an agent record that is no news wins, stale and reachable',()=>{
+test('a collector placeholder for a device never reached has no time: an agent record that is no news wins, stale and reachable',()=>{
  // collect-systems' emptyRecord: complete false, no probedAt, no HOST time, no data.
  const placeholder={host:'mini',alias:'mini',complete:false,stale:false,lastError:'ssh: connect timed out',lastAttemptAt:'2026-11-13T11:00:00Z',os:{},hw:{},osUpdates:{checked:false,items:[]},
   autoUpdate:{},firewall:{},sshd:{allowUsers:[]},sharing:{},listening:[],software:{},running:{},brewOutdated:[],docker:[],apps:[],services:[],errors:[]};
- const m=buildSystems({snapshot:{collectedAt:'2026-11-13T11:00:00Z',machines:{mini:placeholder}},upstream,registry,now:Date.parse('2026-11-13T12:00:00Z'),snapshotTime:Date.parse('2026-11-13T11:00:00Z'),
-  agents:[{id:'mini',name:'Mac mini',record:agentRecord(macAgent('0',ALL_MAC_PRIV,'2026-11-13T00:00:00Z'),{receivedAt:'2026-11-13T00:00:00.000Z',interval:900})}]}).machines.find(x=>x.id==='mini');
+ const m=buildSystems({snapshot:{collectedAt:'2026-11-13T11:00:00Z',devices:{mini:placeholder}},upstream,registry,now:Date.parse('2026-11-13T12:00:00Z'),snapshotTime:Date.parse('2026-11-13T11:00:00Z'),
+  agents:[{id:'mini',name:'Mac mini',record:agentRecord(macAgent('0',ALL_MAC_PRIV,'2026-11-13T00:00:00Z'),{receivedAt:'2026-11-13T00:00:00.000Z',interval:900})}]}).devices.find(x=>x.id==='mini');
  assert.deepEqual([m.source,m.stale,m.reachable,m.error,m.os.version],['agent',true,true,null,'26.7.1']);
 });
 
 test('coverage counts a PRIV ok only with the records that read leaves',()=>{
  const now=Date.parse('2026-11-13T12:00:00Z');
  const C={...parseSystemsProbe(macProbe),stale:false,lastError:null,probedAt:'2026-11-13T11:30:00.000Z'};// root 1, current
- const pick=lines=>buildSystems({snapshot:{collectedAt:'2026-11-13T11:30:00.000Z',machines:{mini:C}},upstream,registry,now,
-  agents:[{id:'mini',name:'Mac mini',record:agentRecord(lines,{receivedAt:'2026-11-13T11:45:00.000Z'})}]}).machines.find(m=>m.id==='mini');
+ const pick=lines=>buildSystems({snapshot:{collectedAt:'2026-11-13T11:30:00.000Z',devices:{mini:C}},upstream,registry,now,
+  agents:[{id:'mini',name:'Mac mini',record:agentRecord(lines,{receivedAt:'2026-11-13T11:45:00.000Z'})}]}).devices.find(m=>m.id==='mini');
  const bare=['pf-info','pf-rules','listen','sshd'].map(id=>rec('PRIV',id,'ok'));
  const without=[rec('HOST','mini','Darwin','alice','0','2026-11-13T11:44:00Z'),rec('OS','macOS','26.7.1','25G241','25.6.0','arm64'),...bare,rec('END','ok'),rec('SWU_NONE')];
  assert.equal(pick(without).source,'collector','four PRIV ok lines and no PF, SSHD or LISTEN record');
@@ -718,14 +718,14 @@ test('coverage counts a PRIV ok only with the records that read leaves',()=>{
  assert.equal(pick(macAgent('0',ALL_MAC_PRIV)).source,'agent');
 });
 
-test('readers: a revoked key, a reused device id, a changed platform and a machine that takes no key leave the agent records unread',async t=>{
+test('readers: a revoked key, a reused device id, a changed platform and a device that takes no key leave the agent records unread',async t=>{
  const {createAgentStore}=await import('../server/agent-store.mjs');
  const {mkdtemp:temp}=await import('node:fs/promises');
  // The router: an active key (written straight to the store, as no admin route issues one) and a stored os part.
  const state=await temp(path.join(os.tmpdir(),'hub-readers-'));let h,clock;
  try{
   await createAgentStore(state).issue({id:'router',createdAt:null});
-  const routerRecord={...agentRecord(macAgent('0',ALL_MAC_PRIV),{receivedAt:'2026-11-13T09:59:00.000Z'}),machine:'router'};
+  const routerRecord={...agentRecord(macAgent('0',ALL_MAC_PRIV),{receivedAt:'2026-11-13T09:59:00.000Z'}),device:'router'};
   await mkdir(path.join(state,'agent'),{recursive:true});await writeFile(path.join(state,'agent','router.json'),JSON.stringify(routerRecord));
   // The hub's clock is the real one here: a device's createdAt is written by it.
   clock=Date.now();
@@ -737,32 +737,32 @@ test('readers: a revoked key, a reused device id, a changed platform and a machi
   // teardown never ran and its server kept the run alive. Hence also the retries, as in tests/hub-helper.mjs.
   t.after(()=>rm(state,{recursive:true,force:true,maxRetries:10,retryDelay:25}));}
  const report=reportTo(h),writer=await h.account('agent-home',['home:write']);
- const systems=async()=>(await (await fetch(h.origin+'/api/systems',{headers:h.admin})).json()).machines;
+ const systems=async()=>(await (await fetch(h.origin+'/api/systems',{headers:h.admin})).json()).devices;
  const agentIds=async()=>(await systems()).filter(m=>m.source==='agent').map(m=>m.id).sort();
  assert.deepEqual(await agentIds(),[],'the router never takes an agent, whatever is stored');
  assert.equal((await systems()).some(m=>m.id==='router'),false);
- // A Mac site machine: read while its key lives, not once it is revoked.
+ // A Mac site device: read while its key lives, not once it is revoked.
  const mini=await issueAgent(h,'mini');
  // Its packages name what every object inherits: stored, shown, and the trend is written (no 500, no failed history).
  assert.equal((await report(mini.token,envelope(systemsParts({name:'mini',packages:[rec('SW','constructor','cmd','v1','/x'),rec('RUN','toString','123','job')]})))).status,200);
  assert.equal((await fetch(h.origin+'/api/systems',{headers:h.admin})).status,200);
  assert.deepEqual(await agentIds(),['mini']);
- assert.deepEqual(Object.keys(JSON.parse(await readText(path.join(state,'agent','history.jsonl'),'utf8')).machines),['mini']);
+ assert.deepEqual(Object.keys(JSON.parse(await readText(path.join(state,'agent','history.jsonl'),'utf8')).devices),['mini']);
  assert.equal((await h.post('/api/admin/agents/revoke',{id:mini.agent.id},h.admin)).status,200);
  assert.deepEqual(await agentIds(),[],'revoked: no longer trusted');
  // An added device: a report, then the device goes and one with the same id comes; a new key, no report yet.
  const pi={id:'pi-hole',name:'Pi-hole',hostname:'pi.example.lan',ip:'10.0.0.53',role:'other'};
- let made=await (await h.post('/api/home/devices',{machine:pi},writer.headers)).json();
+ let made=await (await h.post('/api/home/devices',{device:pi},writer.headers)).json();
  const k1=await issueAgent(h,'pi-hole');await new Promise(r=>setTimeout(r,3));clock=Date.now();
  assert.equal((await report(k1.token,envelope(systemsParts({name:'pi'})))).status,200);
  assert.deepEqual(await agentIds(),['pi-hole']);
  // The platform is set to linux: the stored macos record is not read, though the key stays.
- const listed=async()=>(await (await fetch(h.origin+'/api/home/devices',{headers:h.admin})).json()).machines.find(m=>m.id==='pi-hole');
- made=await (await h.post('/api/home/devices',{machine:{...pi,platform:'linux'},base:(await listed()).hash},writer.headers)).json();
- assert.deepEqual(await agentIds(),[],'a record of another platform than the machine now says');
+ const listed=async()=>(await (await fetch(h.origin+'/api/home/devices',{headers:h.admin})).json()).devices.find(m=>m.id==='pi-hole');
+ made=await (await h.post('/api/home/devices',{device:{...pi,platform:'linux'},base:(await listed()).hash},writer.headers)).json();
+ assert.deepEqual(await agentIds(),[],'a record of another platform than the device now says');
  assert.equal((await h.post('/api/home/devices/remove',{id:'pi-hole',base:(await listed()).hash},writer.headers)).status,200);
  await new Promise(r=>setTimeout(r,3));
- assert.equal((await h.post('/api/home/devices',{machine:pi},writer.headers)).status,201);
+ assert.equal((await h.post('/api/home/devices',{device:pi},writer.headers)).status,201);
  await issueAgent(h,'pi-hole');// the sweep revokes the old key
- assert.deepEqual(await agentIds(),[],'parts received before the device was created belong to the earlier machine');
+ assert.deepEqual(await agentIds(),[],'parts received before the device was created belong to the earlier device');
 });

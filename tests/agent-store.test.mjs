@@ -6,7 +6,7 @@ import {mkdtemp,writeFile,readFile,rm,stat,readdir} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
-import {createAgentStore,createReportStore,agentBearerOf,findMachine,machineRefusal,boundTo,AGENTS_SCHEMA,AGENT_REPORTS_SCHEMA,AGENT_LIMITS} from '../server/agent-store.mjs';
+import {createAgentStore,createReportStore,agentBearerOf,findDevice,deviceRefusal,boundTo,AGENTS_SCHEMA,AGENT_REPORTS_SCHEMA,AGENT_LIMITS} from '../server/agent-store.mjs';
 import {apiBearerOf,createAccessStore} from '../server/access-store.mjs';
 import {bearerOf} from '../server/app-tokens.mjs';
 import {secretIn,namedSecretIn} from '../server/secret-patterns.mjs';
@@ -14,7 +14,7 @@ import {secretIn as reexported} from '../server/home-devices.mjs';
 import {credentials,SITE} from './hub-helper.mjs';
 
 const tmp=async t=>{const dir=await mkdtemp(path.join(os.tmpdir(),'hub-agent-store-'));t.after(()=>rm(dir,{recursive:true,force:true,maxRetries:10,retryDelay:25}));return dir;};
-const machine=(id,createdAt=null)=>({id,createdAt,site:createdAt===null,role:'computer',platform:null,probe:null});
+const device=(id,createdAt=null)=>({id,createdAt,site:createdAt===null,role:'computer',platform:null,probe:null});
 
 test('older parsers reject hha_, and only the agent parser takes it',()=>{
  const token='hha_'+'a'.repeat(64),header='Bearer '+token;
@@ -35,15 +35,15 @@ test('agents.json: hashes only, 0600, its own file; access.json round-trips unch
  const accessStore=createAccessStore(dir,credentials);
  const store=createAgentStore(dir,{now});
  assert.deepEqual(store.list(),[],'no agents.json: no keys, and the store loads');
- const {token,agent}=await store.issue(machine('studio'),{name:'Studio agent',by:'admin'});
+ const {token,agent}=await store.issue(device('studio'),{name:'Studio agent',by:'admin'});
  assert.match(token,/^hha_[a-f0-9]{64}$/);
- assert.deepEqual(agent,{id:agent.id,machine:'studio',name:'Studio agent',prefix:token.slice(0,12),createdAt:'2026-11-13T10:00:00.000Z',createdBy:'admin',revokedAt:null,revokedBy:null});
+ assert.deepEqual(agent,{id:agent.id,device:'studio',name:'Studio agent',prefix:token.slice(0,12),createdAt:'2026-11-13T10:00:00.000Z',createdBy:'admin',revokedAt:null,revokedBy:null});
  const file=path.join(dir,'agents.json'),raw=await readFile(file,'utf8'),doc=JSON.parse(raw);
  assert.equal((await stat(file)).mode&0o777,0o600);
  assert.equal(doc.schemaVersion,AGENTS_SCHEMA);
  assert.ok(!raw.includes(token),'the token is never stored');
  assert.equal(doc.agents[0].hash,createHash('sha256').update(token).digest('hex'));
- assert.deepEqual(Object.keys(doc.agents[0]).sort(),['createdAt','createdBy','hash','id','machine','machineCreatedAt','name','prefix','revokedAt','revokedBy']);
+ assert.deepEqual(Object.keys(doc.agents[0]).sort(),['createdAt','createdBy','device','deviceCreatedAt','hash','id','name','prefix','revokedAt','revokedBy']);
  assert.equal(store.verify(token).authKind,'agent');assert.deepEqual(store.verify(token).scopes,[],'an agent key holds no scope');
  assert.equal(accessStore.verifyKey(token),null,'the access store does not know it');
  await store.revoke(agent.id,{by:'admin'});
@@ -56,36 +56,36 @@ test('agents.json: hashes only, 0600, its own file; access.json round-trips unch
  assert.equal(createAgentStore(dir).list()[0].revokedBy,'admin');
 });
 
-test('limits: two keys per machine, 100 that are not revoked; a newer agents.json is refused',async t=>{
+test('limits: two keys per device, 100 that are not revoked; a newer agents.json is refused',async t=>{
  const dir=await tmp(t),store=createAgentStore(dir);
- await store.issue(machine('mini'));const second=await store.issue(machine('mini'));
- await assert.rejects(store.issue(machine('mini')),/limit/,'a third key for one machine');
- await store.revoke(second.agent.id);await store.issue(machine('mini'));
- for(let i=0;i<AGENT_LIMITS.active-2;i++)await store.issue(machine(`m${String(i).padStart(3,'0')}`));
- await assert.rejects(store.issue(machine('another')),/limit/,'the 101st active key');
- await assert.rejects(store.issue(machine('x1'),{name:'bad\nname'}),/invalid/);
+ await store.issue(device('mini'));const second=await store.issue(device('mini'));
+ await assert.rejects(store.issue(device('mini')),/limit/,'a third key for one device');
+ await store.revoke(second.agent.id);await store.issue(device('mini'));
+ for(let i=0;i<AGENT_LIMITS.active-2;i++)await store.issue(device(`m${String(i).padStart(3,'0')}`));
+ await assert.rejects(store.issue(device('another')),/limit/,'the 101st active key');
+ await assert.rejects(store.issue(device('x1'),{name:'bad\nname'}),/invalid/);
  await writeFile(path.join(dir,'agents.json'),JSON.stringify({schemaVersion:2,agents:[]}));
  assert.throws(()=>createAgentStore(dir),/Invalid agent key store/,'older code refuses newer state');
 });
 
-test('the machine a key binds: site machines without a stamp, devices with their createdAt; router and NAS refused',()=>{
+test('the device a key binds: site devices without a stamp, added devices with their createdAt; router and NAS refused',()=>{
  const added=[{id:'pi-hole',role:'other',createdAt:'2026-11-01T00:00:00.000Z'},{id:'gw',role:'router',createdAt:'2026-11-01T00:00:00.000Z'}];
- const at=id=>findMachine(id,{siteMachines:SITE.machines,addedMachines:added});
+ const at=id=>findDevice(id,{siteDevices:SITE.devices,addedDevices:added});
  assert.deepEqual(at('studio'),{id:'studio',createdAt:null,site:true,role:'computer',platform:null,probe:'mac'});
  assert.equal(at('pi-hole').createdAt,'2026-11-01T00:00:00.000Z');
- assert.deepEqual(['studio','pi-hole','nas','router','gw','ghost','../x'].map(id=>machineRefusal(at(id))),[null,null,'nas','router','router','unknown','unknown']);
- assert.equal(boundTo({machine:'pi-hole',machineCreatedAt:'2026-11-01T00:00:00.000Z'},at('pi-hole')),true);
- assert.equal(boundTo({machine:'pi-hole',machineCreatedAt:'2026-10-01T00:00:00.000Z'},at('pi-hole')),false,'re-created: another stamp');
- assert.equal(boundTo({machine:'studio',machineCreatedAt:null},null),false,'gone');
+ assert.deepEqual(['studio','pi-hole','nas','router','gw','ghost','../x'].map(id=>deviceRefusal(at(id))),[null,null,'nas','router','router','unknown','unknown']);
+ assert.equal(boundTo({device:'pi-hole',deviceCreatedAt:'2026-11-01T00:00:00.000Z'},at('pi-hole')),true);
+ assert.equal(boundTo({device:'pi-hole',deviceCreatedAt:'2026-10-01T00:00:00.000Z'},at('pi-hole')),false,'re-created: another stamp');
+ assert.equal(boundTo({device:'studio',deviceCreatedAt:null},null),false,'gone');
 });
 
 test('report store: an older-format state directory loads unchanged; a newer file is left alone',async t=>{
  const dir=await tmp(t);
- assert.deepEqual(createReportStore(dir).machines(),[],'no agent/ directory: nothing, and nothing is written');
+ assert.deepEqual(createReportStore(dir).devices(),[],'no agent/ directory: nothing, and nothing is written');
  assert.deepEqual((await readdir(dir)),[]);
  await writeFile(path.join(dir,'access.json'),'{}');
  const {mkdir}=await import('node:fs/promises');await mkdir(path.join(dir,'agent'));
- await writeFile(path.join(dir,'agent','mini.json'),JSON.stringify({schemaVersion:AGENT_REPORTS_SCHEMA+1,machine:'mini',parts:{}}));
+ await writeFile(path.join(dir,'agent','mini.json'),JSON.stringify({schemaVersion:AGENT_REPORTS_SCHEMA+1,device:'mini',parts:{}}));
  const warned=[],store=createReportStore(dir,{log:{warn:m=>warned.push(m)}});
  assert.equal(store.locked('mini'),true);assert.equal(warned.length,1);
  await assert.rejects(store.accept('mini',{agentId:'a'.repeat(16),report:{agentVersion:'1.0.0',platform:'macos',sentAt:'2026-11-13T10:00:00Z'},parts:{},receivedAt:'2026-11-13T10:00:00.000Z'}),/newer-state/);

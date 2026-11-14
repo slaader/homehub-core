@@ -1,7 +1,7 @@
-// The push agent of a machine on the overview (GET /api/home → machines[].agent; docs/agent.md §7, step 4): a line on
-// its tile and a section on its page. A machine without an agent key has agent: null and shows neither.
+// The push agent of a device on the overview (GET /api/home → devices[].agent; docs/agent.md §7, step 4): a line on
+// its tile and a section on its page. A device without an agent key has agent: null and shows neither.
 // "No news" is the word for an agent that went quiet: never off, offline or down. A quiet agent says nothing about
-// whether the machine runs, and the tile's online state does not follow it.
+// whether the device runs, and the tile's online state does not follow it.
 // refused: the integration agent.reports is turned off on this hub (GET /api/home → integrations.disabled), so the hub
 // refuses every report; the line and the section say that instead of "no news", since the agent may well be sending.
 // Text-safe DOM only: the version and every time land in text nodes or attributes.
@@ -39,7 +39,7 @@ export function agentLine(m,{refused=false}={}){
   a.specsDiffer===true?el('span',{class:'hv-agent-flag'},t('jiný seznam sledování')):null);
 }
 
-// The machine page's section. admin: the signed-in account manages the keys (Users and API → Push agents).
+// The device page's section. admin: the signed-in account manages the keys (Users and API → Push agents).
 export function agentSection(m,{admin=false,refused=false}={}){
  const a=m?.agent;if(!a||typeof a!=='object')return null;
  const [label,tone]=agentState(a,{refused});

@@ -2,7 +2,7 @@
 // downloads, installs or restarts anything; an update is applied by a person on the server, with
 // scripts/update.mjs (docs/updating.md).
 //
-// What leaves the machine: GET https://api.github.com/repos/<repo>/releases?per_page=20 and …/releases/latest,
+// What leaves the device: GET https://api.github.com/repos/<repo>/releases?per_page=20 and …/releases/latest,
 // about twice a day, with the constant User-Agent below, no query beyond per_page, no version, no instance id
 // and no site name. Nothing is sent to the project. A token is not needed; when GITHUB_TOKEN or
 // private/github-token exists (server/systems-upstream.mjs → loadGithubToken) it is used, for api.github.com only.

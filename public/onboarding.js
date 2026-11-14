@@ -3,8 +3,8 @@
 // account in this browser.
 //   signin      you are here
 //   agent       a service account with a key (GET /api/admin/accounts, administrators only)
-//   machines    at least one machine on the overview (GET /api/home)
-//   telemetry   optional: a machine reports live numbers (GET /api/home)
+//   devices    at least one device on the overview (GET /api/home)
+//   telemetry   optional: a device reports live numbers (GET /api/home)
 //   inventory   at least one inventory entry (GET /api/inventory/schema → inventory.entries)
 //   collectors  optional: a collector has delivered something (GET /api/collectors, the router census)
 // Every read is one that answers 200 on a brand-new hub (a count, a state), never the data route itself:
@@ -12,7 +12,7 @@
 // log each of those in the console of a hub that is merely new.
 // done is true, false, or null when this account may not look (a viewer cannot list service accounts).
 // The checklist is offered on its own to a hub that looks new. A household that runs the private edition
-// with machines configured never sees it unless someone opens it from the account menu.
+// with devices configured never sees it unless someone opens it from the account menu.
 import {sessionCache,authGuard,currentPrincipal} from './session-cache.js';
 
 const KEY=me=>`hh-welcome:${me?.username||''}`;
@@ -21,7 +21,7 @@ export function setDismissed(me,value){
  try{if(value)globalThis.localStorage?.setItem(KEY(me),'dismissed');else globalThis.localStorage?.removeItem(KEY(me));}catch{}
  globalThis.dispatchEvent?.(new Event('onboardingchange'));
 }
-export const STEP_IDS=Object.freeze(['signin','agent','machines','telemetry','inventory','collectors']);
+export const STEP_IDS=Object.freeze(['signin','agent','devices','telemetry','inventory','collectors']);
 const OPTIONAL=['telemetry','collectors'];
 
 // What the APIs said → the six steps. Pure, so the rules can be tested without a hub.
@@ -29,8 +29,8 @@ const OPTIONAL=['telemetry','collectors'];
 //   inventory: /api/inventory/schema body ({inventory:{entries}}; an /api/inventory body works too) or null;
 //   systems, security: true (has data), false (none), undefined (not allowed)
 export function onboardingSteps({home=null,accounts,inventory=null,systems,security}={}){
- const machines=Array.isArray(home?.machines)?home.machines:[];
- const live=machines.filter(m=>m.kind==='thermo'&&(m.thermo==='up'||m.quad));
+ const devices=Array.isArray(home?.devices)?home.devices:[];
+ const live=devices.filter(m=>m.kind==='thermo'&&(m.thermo==='up'||m.quad));
  const list=Array.isArray(accounts?.accounts)?accounts.accounts.filter(a=>a.disabled!==true):null;
  const withKey=list?list.filter(a=>(a.keys||[]).some(k=>!k.revokedAt)):[];
  const used=list?list.some(a=>a.lastUsedAt):false;
@@ -41,26 +41,26 @@ export function onboardingSteps({home=null,accounts,inventory=null,systems,secur
  const steps=[
   {id:'signin',done:true},
   {id:'agent',done:list?withKey.length>0:null,detail:{accounts:list?.length??null,withKey:withKey.length,used}},
-  {id:'machines',done:home?machines.length>0:null,detail:{count:machines.length}},
+  {id:'devices',done:home?devices.length>0:null,detail:{count:devices.length}},
   {id:'telemetry',done:home?live.length>0:null,detail:{count:live.length}},
   {id:'inventory',done:inventory?entries>0:false,detail:{count:entries}},
   {id:'collectors',done:known.length?known.some(Boolean):null,detail:collectors},
  ].map(s=>({...s,optional:OPTIONAL.includes(s.id)}));
  const required=steps.filter(s=>!s.optional);
- return {steps,machines:machines.length,done:steps.filter(s=>s.done===true).length,total:steps.length,
+ return {steps,devices:devices.length,done:steps.filter(s=>s.done===true).length,total:steps.length,
   requiredDone:required.filter(s=>s.done===true).length,requiredTotal:required.length,
   // A step this account cannot check does not hold the checklist open.
   complete:required.every(s=>s.done!==false)};
 }
 // Offered without being asked for? Not when dismissed, complete, or a configured private household.
-export const offersOnboarding=(status,{edition,dismissed}={})=>Boolean(status)&&!dismissed&&!status.complete&&!(edition==='private'&&status.machines>0);
+export const offersOnboarding=(status,{edition,dismissed}={})=>Boolean(status)&&!dismissed&&!status.complete&&!(edition==='private'&&status.devices>0);
 
 const cache=sessionCache(20000);
 const getJson=async(url,lost)=>{try{const r=await fetch(url);if(r.status===401){lost(r);return null;}return r.ok?await r.json():null;}catch{return null;}};
 // Has this collector delivered a snapshot? (state ok or stale; waiting and not-configured have no collectedAt)
 const delivered=collector=>Boolean(collector?.collectedAt);
 // me: the /api/me document. quick:true asks only /api/home, which is enough to decide whether to offer
-// the checklist to a hub that already has machines.
+// the checklist to a hub that already has devices.
 const pending=new Map();// one read at a time per account and depth: the shell and the page often ask together
 export function loadOnboarding(me,{force=false,quick=false}={}){
  const key=quick?'quick':'full',hit=force?undefined:cache.get(key)??(quick?cache.get('full'):undefined);

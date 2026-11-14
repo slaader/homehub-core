@@ -38,8 +38,8 @@ const registry={categories:{infra:'Servers and infrastructure',tools:'Toolchain'
  {id:'ghost',name:'Ghost',category:'tools',upstream:{type:'none',note:'No feed.'},detect:{mini:{kind:'brew',formula:'ghost'}}}]};
 const upstream=checked=>({checkedAt:checked,results:{node:{ok:true,version:'26.13.0',url:'https://nodejs.org/en/about/previous-releases',checkedAt:checked,ltsMajor:26,ltsMajors:[24,26],latestByMajor:{24:'24.22.2',26:'26.13.0'}},
  'github:astral-sh/uv':{ok:true,version:'0.9.4',url:'https://github.com/astral-sh/uv/releases/tag/0.9.4',publishedAt:'2026-11-01T00:00:00Z',checkedAt:iso(40*HOUR),stale:true,error:'HTTP 403 api.github.com',failedAt:checked}}});
-const systemsDoc=(age=HOUR)=>buildSystems({snapshot:{collectedAt:iso(age),collectedFrom:'studio',machines:{mini:{...parseSystemsProbe(macProbe(iso(age))),stale:false},nas:parseSystemsProbe(nasProbe(iso(age)))}},
- upstream:upstream(iso(age)),registry,machines:[{id:'mini',name:'Mac mini',kind:'mac'},{id:'nas',name:'NAS',kind:'nas'},{id:'studio',name:'Mac Studio',kind:'mac'}],now:NOW,watchSource:'local'});
+const systemsDoc=(age=HOUR)=>buildSystems({snapshot:{collectedAt:iso(age),collectedFrom:'studio',devices:{mini:{...parseSystemsProbe(macProbe(iso(age))),stale:false},nas:parseSystemsProbe(nasProbe(iso(age)))}},
+ upstream:upstream(iso(age)),registry,devices:[{id:'mini',name:'Mac mini',kind:'mac'},{id:'nas',name:'NAS',kind:'nas'},{id:'studio',name:'Mac Studio',kind:'mac'}],now:NOW,watchSource:'local'});
 
 const KEY_A='SHA256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',KEY_R='SHA256:rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr';
 const securityDoc=()=>buildSecurity({site:SITE,now:NOW,collectedFrom:'studio',probes:{
@@ -49,7 +49,7 @@ const securityDoc=()=>buildSecurity({site:SITE,now:NOW,collectedFrom:'studio',pr
   rec('KEY','/Users/alice/.ssh/id_rsa','644','alice','1262304000','OPENSSH','no',`1024 ${KEY_R} ancient (RSA)`),
   rec('KEY','/Users/alice/certs/privkey.pem','600','alice','1793480361','','no','256 SHA256:dddd no comment (ECDSA)'),rec('END','ok')].join('\n')},
  nas:{error:'Permission denied (publickey).'}},
- extraMachines:[{id:'router',sshOpen:false,note:'SSH je na routeru vypnuté (port 22 zavřený).'}]});
+ extraDevices:[{id:'router',sshOpen:false,note:'SSH je na routeru vypnuté (port 22 zavřený).'}]});
 
 let routes={};
 globalThis.fetch=async url=>{const hit=routes[String(url)];if(!hit)return {ok:false,status:500,json:async()=>({})};return {ok:hit.status===200,status:hit.status,json:async()=>structuredClone(hit.body)};};
@@ -59,23 +59,23 @@ async function mount(make,answers){routes=answers;setPrincipal(null);setPrincipa
 const all=sel=>document.body.querySelectorAll(sel);
 // English must be complete: no Czech letter and no leaked placeholder or broken value anywhere on the page.
 const clean=text=>{assert.doesNotMatch(text,/[ěščřžýáíůúťďňĚŠČŘŽÝÁÍŮÚŤĎŇ]/,'a Czech string without English');assert.doesNotMatch(text,/undefined|NaN|\[object|\{\w+\}/);return text;};
-const missing=collector=>({status:404,body:{error:{code:'SYSTEMS_MISSING',message:'No machine snapshot yet. Run node scripts/collect-systems.mjs.'},collector}});
+const missing=collector=>({status:404,body:{error:{code:'SYSTEMS_MISSING',message:'No device snapshot yet. Run node scripts/collect-systems.mjs.'},collector}});
 
 test('versions: not configured, configured without a snapshot, and an error each get their own screen',async()=>{
  let text=clean(await mount(()=>systemsView('versions'),{'/api/systems':missing(systemsSetup(validateSite({})))}));
  assert.match(text,/Versions and updates/);assert.match(text,/Version and host-protection collection is not configured/);
  for(const step of [/local\/site\.json/,/ssh <alias> true/,/node scripts\/collect-systems\.mjs/,/node scripts\/check-upstream\.mjs/,/sh scripts\/systems\/install-launchd\.sh/,/examples\/systemd\//])assert.match(text,step);
- assert.equal(all('.ui-missing').length,1);assert.doesNotMatch(text,/Mac Studio/,'no old instruction that names one household\'s machine');
+ assert.equal(all('.ui-missing').length,1);assert.doesNotMatch(text,/Mac Studio/,'no old instruction that names one household\'s device');
  text=clean(await mount(()=>systemsView('hardening'),{'/api/systems':missing(systemsSetup(SITE))}));
- assert.match(text,/Host protection/);assert.match(text,/Collection is configured but has not run yet/);assert.match(text,/The configuration has 4 machines with a probe\./);assert.equal(all('.ui-missing').length,0);
+ assert.match(text,/Host protection/);assert.match(text,/Collection is configured but has not run yet/);assert.match(text,/The configuration has 4 devices with a probe\./);assert.equal(all('.ui-missing').length,0);
  text=clean(await mount(()=>systemsView('versions'),{'/api/systems':{status:403,body:{error:{code:'ADMIN_REQUIRED',message:'x'}}}}));assert.match(text,/Administrators only/);
- text=clean(await mount(()=>systemsView('versions'),{}));assert.match(text,/Machine status could not be loaded/);assert.match(text,/Try again/);
+ text=clean(await mount(()=>systemsView('versions'),{}));assert.match(text,/Device status could not be loaded/);assert.match(text,/Try again/);
 });
 
-test('versions: grouped by machine, update badges that link to the release notes, an outdated-only filter, last-checked times',async()=>{
+test('versions: grouped by device, update badges that link to the release notes, an outdated-only filter, last-checked times',async()=>{
  const text=clean(await mount(()=>systemsView('versions'),{'/api/systems':{status:200,body:systemsDoc()}}));
- assert.equal(all('.col-card').length,3,'one card per machine');
- for(const s of [/Mac mini/,/NAS/,/Mac Studio/,/macOS 26\.7\.1/,/TrueNAS 25\.10\.7/,/Node\.js/,/Servers and infrastructure/,/Toolchain/,/NAS apps/,/Containers \(Docker\)/,/Machines:/,/Latest versions:/,/every 6 h/,/every 12 h/,/fresh/,/Checked/])assert.match(text,s);
+ assert.equal(all('.col-card').length,3,'one card per device');
+ for(const s of [/Mac mini/,/NAS/,/Mac Studio/,/macOS 26\.7\.1/,/TrueNAS 25\.10\.7/,/Node\.js/,/Servers and infrastructure/,/Toolchain/,/NAS apps/,/Containers \(Docker\)/,/Devices:/,/Latest versions:/,/every 6 h/,/every 12 h/,/fresh/,/Checked/])assert.match(text,s);
  const updates=all('.col-badge').filter(b=>b.tagName==='a');
  assert.deepEqual(updates.map(a=>[a.textContent,a.getAttribute('href'),a.getAttribute('title')]),[
   ['update to 24.22.2 ↗','https://nodejs.org/en/about/previous-releases','Release notes'],['update to 0.9.4 ↗','https://github.com/astral-sh/uv/releases/tag/0.9.4','Release notes']]);
@@ -87,10 +87,10 @@ test('versions: grouped by machine, update badges that link to the release notes
  const rowsBefore=all('.attn').length,cardsBefore=all('.col-card').length;
  const box=all('.col-switch')[0].children[0];box.checked=true;fire(box,'change');
  const filtered=clean(document.body.textContent);
- assert.equal(all('.col-card').length,2,'a machine with nothing to update drops out');assert.ok(cardsBefore>2&&rowsBefore>0);
+ assert.equal(all('.col-card').length,2,'a device with nothing to update drops out');assert.ok(cardsBefore>2&&rowsBefore>0);
  assert.doesNotMatch(filtered,/Ghost/);assert.match(filtered,/Node\.js/);assert.doesNotMatch(filtered,/Other Homebrew/);
  box.checked=false;fire(box,'change');assert.equal(all('.col-card').length,3);
- // One machine only (#versions/nas).
+ // One device only (#versions/nas).
  const one=clean(await mount(()=>systemsView('versions','nas'),{'/api/systems':{status:200,body:systemsDoc()}}));
  assert.equal(all('.col-card').length,1);assert.match(one,/immich/);assert.doesNotMatch(one,/Node\.js/);
 });
@@ -102,9 +102,9 @@ test('a stale snapshot is labelled as stale, with what to do',async()=>{
  assert.equal(all('.col-banner').filter(b=>b.classList.contains('warn')).length>=1,true);
 });
 
-test('host protection: a pass / warning / fail checklist per machine, each check with its reason; issues first, ports in their own block',async()=>{
+test('host protection: a pass / warning / fail checklist per device, each check with its reason; issues first, ports in their own block',async()=>{
  const text=clean(await mount(()=>systemsView('hardening'),{'/api/systems':{status:200,body:systemsDoc()}}));
- for(const s of [/Host protection/,/Failed/,/Warnings/,/Passed/,/failed: 1/,/warnings: \d/,/passed: \d/,/FileVault \(disk encryption\)/,/Disk encryption protects the data when the machine is lost or carried away\./,
+ for(const s of [/Host protection/,/Failed/,/Warnings/,/Passed/,/failed: 1/,/warnings: \d/,/passed: \d/,/FileVault \(disk encryption\)/,/Disk encryption protects the data when the device is lost or carried away\./,
   /on · 12 rules/,/Only from the addresses in AllowUsers: 10\.0\.0\.151\./,/Screen sharing/,/Ports: 1/,/No chain on the input hook \(tables ip nat\)/,/Port 21 on all interfaces, local accounts only\./,/Security release: Fixes CVE-1\./,/Ports open to the network: 1/,/SSH keys/])assert.match(text,s);
  const mini=all('.col-card')[0],marks=mini.querySelectorAll('.col-check').map(c=>c.getAttribute('class').replace('col-check ',''));
  assert.equal(marks[0],'bad','what failed comes first');assert.deepEqual([...new Set(marks)],['bad','warn','unknown','info','good'].filter(m=>marks.includes(m)),'then warnings, unverified, info, passed');
@@ -116,21 +116,21 @@ test('host protection: a pass / warning / fail checklist per machine, each check
 });
 
 test('software watch: an empty list explains itself with a copyable agent prompt; a filled one lists items and rules',async()=>{
- const machines=[{id:'mini',name:'Mac mini'}],base={file:'local/software-watch.json',example:'config/software-watch.json'};
- let text=clean(await mount(()=>systemsView('versions','~watch'),{'/api/systems':{status:200,body:systemsDoc()},'/api/software-watch':{status:200,body:{...describeWatch({source:'none',registry:emptyWatch()},{machines}),...base}}}));
- for(const s of [/No software is watched yet/,/software:write/,/software_watch_list/,/software_watch_put/,/on the machines mini/,/config\/software-watch\.json/,/local\/software-watch\.json/,/claude mcp add --transport http home-hub/,/Users and API/])assert.match(text,s);
+ const devices=[{id:'mini',name:'Mac mini'}],base={file:'local/software-watch.json',example:'config/software-watch.json'};
+ let text=clean(await mount(()=>systemsView('versions','~watch'),{'/api/systems':{status:200,body:systemsDoc()},'/api/software-watch':{status:200,body:{...describeWatch({source:'none',registry:emptyWatch()},{devices}),...base}}}));
+ for(const s of [/No software is watched yet/,/software:write/,/software_watch_list/,/software_watch_put/,/on the devices mini/,/config\/software-watch\.json/,/local\/software-watch\.json/,/claude mcp add --transport http home-hub/,/Users and API/])assert.match(text,s);
  assert.equal(all('.ui-copy').length,2,'the agent prompt and the MCP connection, each with a Copy button');
- text=clean(await mount(()=>systemsView('versions','~watch'),{'/api/systems':{status:200,body:systemsDoc()},'/api/software-watch':{status:200,body:{...describeWatch({source:'none',registry:emptyWatch()},{machines:[]}),...base}}}));
- assert.match(text,/First give your machines an ssh entry with the "mac" probe/);assert.match(text,/from local\/site\.json/);
- text=clean(await mount(()=>systemsView('versions','~watch'),{'/api/systems':{status:200,body:systemsDoc()},'/api/software-watch':{status:200,body:{...describeWatch({source:'local',registry},{machines}),...base}}}));
- for(const s of [/Node\.js/,/github · astral-sh\/uv/,/brew · node/,/not checked/,/Latest version from/,/Machines and rules/,/never a command/])assert.match(text,s);
+ text=clean(await mount(()=>systemsView('versions','~watch'),{'/api/systems':{status:200,body:systemsDoc()},'/api/software-watch':{status:200,body:{...describeWatch({source:'none',registry:emptyWatch()},{devices:[]}),...base}}}));
+ assert.match(text,/First give your devices an ssh entry with the "mac" probe/);assert.match(text,/from local\/site\.json/);
+ text=clean(await mount(()=>systemsView('versions','~watch'),{'/api/systems':{status:200,body:systemsDoc()},'/api/software-watch':{status:200,body:{...describeWatch({source:'local',registry},{devices}),...base}}}));
+ for(const s of [/Node\.js/,/github · astral-sh\/uv/,/brew · node/,/not checked/,/Latest version from/,/Devices and rules/,/never a command/])assert.match(text,s);
  assert.equal(all('.ui-copy').length,1);
  text=clean(await mount(()=>systemsView('versions','~watch'),{'/api/systems':{status:200,body:systemsDoc()}}));assert.match(text,/The software watch list could not be loaded/);
  // No snapshot yet: the address still shows the list, under what to set up first.
- text=clean(await mount(()=>systemsView('versions','~watch'),{'/api/systems':missing(systemsSetup(validateSite({}))),'/api/software-watch':{status:200,body:{...describeWatch({source:'none',registry:emptyWatch()},{machines:[]}),...base}}}));
+ text=clean(await mount(()=>systemsView('versions','~watch'),{'/api/systems':missing(systemsSetup(validateSite({}))),'/api/software-watch':{status:200,body:{...describeWatch({source:'none',registry:emptyWatch()},{devices:[]}),...base}}}));
  assert.match(text,/collection is not configured/);assert.match(text,/No software is watched yet/);assert.match(text,/software_watch_put/);
- // A snapshot without a watch list: the machines page says so and links to the list.
- const bare=buildSystems({snapshot:{collectedAt:iso(HOUR),machines:{nas:parseSystemsProbe(nasProbe(iso(HOUR)))}},upstream:null,registry:emptyWatch(),machines:[{id:'nas',name:'NAS',kind:'nas'}],now:NOW,watchSource:'none'});
+ // A snapshot without a watch list: the devices page says so and links to the list.
+ const bare=buildSystems({snapshot:{collectedAt:iso(HOUR),devices:{nas:parseSystemsProbe(nasProbe(iso(HOUR)))}},upstream:null,registry:emptyWatch(),devices:[{id:'nas',name:'NAS',kind:'nas'}],now:NOW,watchSource:'none'});
  text=clean(await mount(()=>systemsView('versions'),{'/api/systems':{status:200,body:bare}}));
  assert.match(text,/No software is watched yet: you see only operating systems, NAS apps and containers\./);assert.match(text,/Set up the software watch list/);assert.match(text,/immich/);
 });
@@ -140,14 +140,14 @@ test('SSH keys: states, the key matrix with type, age and where each key is auth
  let text=clean(await mount(()=>securityView(),{'/api/security':{status:404,body:{...none,collector:securitySetup(validateSite({}))}}}));
  assert.match(text,/The SSH key inventory is not configured/);assert.match(text,/node scripts\/collect-security\.mjs/);assert.match(text,/install-launchd\.sh --with-security/);
  text=clean(await mount(()=>securityView(),{'/api/security':{status:404,body:{...none,collector:securitySetup(SITE)}}}));
- assert.match(text,/Key collection is configured but has not run yet/);assert.match(text,/The configuration has 4 machines with an ssh alias\./);
+ assert.match(text,/Key collection is configured but has not run yet/);assert.match(text,/The configuration has 4 devices with an ssh alias\./);
  const doc=securityDoc();
  text=clean(await mount(()=>securityView(),{'/api/security':{status:200,body:{...doc,collector:securitySetup(SITE,{collectedAt:doc.collectedAt,now:NOW})}}}));
  for(const s of [/SSH keys/,/Snapshot from studio:/,/fresh/,/Key matrix/,/id_ed25519/,/id_rsa/,/ED25519 256/,/RSA 1024/,/weak type/,/old/,/20 d/,/16\.\d y/,/passphrase-protected/,/no passphrase/,/Weak and old keys/,/1 weak type · 0 to replace/,
   /id_rsa \(ancient\): weak key type \(RSA 1024\)/,/the file is readable by others \(644\)/,/Mac Studio: SSH accepts passwords too/,/Router: SSH is off on the router \(port 22 closed\)\./])assert.match(text,s);
  const rows=all('.col-matrix')[0].children[1].children,weak=rows.find(r=>/id_rsa/.test(r.textContent)),fine=rows.find(r=>/id_ed25519/.test(r.textContent));
  assert.equal(weak.getAttribute('class'),'bad');assert.equal(fine.getAttribute('class'),'');
- const tabs=all('.col-chip');assert.deepEqual(tabs.map(b=>b.textContent),['Key matrix','Key inventory','Accounts on machines','Other keys']);
+ const tabs=all('.col-chip');assert.deepEqual(tabs.map(b=>b.textContent),['Key matrix','Key inventory','Accounts on devices','Other keys']);
  assert.equal(tabs[0].getAttribute('aria-selected'),'true');
  fire(tabs[1],'click');text=clean(document.body.textContent);assert.match(text,/Location/);assert.match(text,/~\/\.ssh\/id_rsa/);assert.match(text,/ssh nas/);assert.equal(tabs[1].getAttribute('aria-selected'),'true');
  fire(tabs[2],'click');text=clean(document.body.textContent);assert.match(text,/password login allowed/);assert.match(text,/Permission denied \(publickey\)\./);assert.match(text,/password-less sudo/);
@@ -161,22 +161,22 @@ test('SSH keys: states, the key matrix with type, age and where each key is auth
 });
 
 // Push agent, step 4 (docs/agent.md §7): where a record came from, "no news" for an agent's record gone quiet, and every
-// string an agent supplies (records, the machine's clock, withheld notes) drawn as text.
+// string an agent supplies (records, the device's clock, withheld notes) drawn as text.
 const MARKUP='<img src=x onerror=alert(1)>';
 const agentRecord=(lines,{receivedAt,interval=21600,withheld=[]})=>{const part=(records,w=[])=>({schema:1,collectedAt:receivedAt,receivedAt,interval,digest:'0'.repeat(64),withheld:w,records});
- return {schemaVersion:1,machine:'mini',agentId:'0123456789abcdef',agentVersion:'1.6.0',platform:'macos',lastSeenAt:receivedAt,lastSentAt:receivedAt,parts:{os:part(lines,withheld),updates:part([]),packages:part([])}};};
+ return {schemaVersion:1,device:'mini',agentId:'0123456789abcdef',agentVersion:'1.6.0',platform:'macos',lastSeenAt:receivedAt,lastSentAt:receivedAt,parts:{os:part(lines,withheld),updates:part([]),packages:part([])}};};
 test('systems: an agent\'s record says it came from the agent; gone quiet it is "no news", never unreachable; markup stays text',async()=>{
  const lines=macProbe(iso(30*HOUR)).replace(rec('LISTEN','Python','alice','127.0.0.1:8000'),rec('LISTEN',MARKUP,'alice','*:8080')).split('\n');
  const withheld=[{tag:MARKUP,field:3,reason:'secret',count:2}];
- const quiet=buildSystems({snapshot:{collectedAt:iso(HOUR),collectedFrom:'studio',machines:{nas:parseSystemsProbe(nasProbe(iso(HOUR)))}},upstream:upstream(iso(HOUR)),registry,
-  machines:[{id:'mini',name:MARKUP,kind:'mac'},{id:'nas',name:'NAS',kind:'nas'}],now:NOW,watchSource:'local',
+ const quiet=buildSystems({snapshot:{collectedAt:iso(HOUR),collectedFrom:'studio',devices:{nas:parseSystemsProbe(nasProbe(iso(HOUR)))}},upstream:upstream(iso(HOUR)),registry,
+  devices:[{id:'mini',name:MARKUP,kind:'mac'},{id:'nas',name:'NAS',kind:'nas'}],now:NOW,watchSource:'local',
   agents:[{id:'mini',name:MARKUP,record:agentRecord(lines,{receivedAt:iso(30*HOUR),withheld})}]});
- const mini=quiet.machines.find(m=>m.id==='mini');
+ const mini=quiet.devices.find(m=>m.id==='mini');
  assert.deepEqual([mini.source,mini.stale,mini.reachable],['agent',true,true],'the server says: the agent\'s, no news, not unreachable');
  const text=clean(await mount(()=>systemsView('hardening'),{'/api/systems':{status:200,body:quiet}}));
  assert.match(text,/no news/);assert.match(text,/from the agent/);assert.match(text,/2 lines withheld/);
  assert.doesNotMatch(text,/unreachable/,'a quiet agent is never shown as unreachable');
- assert.ok(text.includes(MARKUP),'the machine name and the process name are on the page, as text');assert.equal(all('img').length,0,'and no element was made of them');
+ assert.ok(text.includes(MARKUP),'the device name and the process name are on the page, as text');assert.equal(all('img').length,0,'and no element was made of them');
  const titles=all('col-badge').map(b=>b.getAttribute('title')||'');
  assert.ok(titles.some(x=>/The agent has gone quiet/.test(x)),'what no news means, in English');
  assert.ok(titles.some(x=>x.includes(`${MARKUP} field 3 · looks like a secret × 2`)),'the withheld note names the tag as text');
@@ -184,7 +184,7 @@ test('systems: an agent\'s record says it came from the agent; gone quiet it is 
  // The NAS is the collector's and looks as it always did: no source badge.
  assert.equal(all('col-badge').filter(b=>/from the (agent|collector)/.test(b.textContent)).length,1);
  // Fresh, the agent's record carries no stale badge; Czech stays the source language.
- const fresh=buildSystems({snapshot:{collectedAt:iso(HOUR),machines:{}},upstream:upstream(iso(HOUR)),registry,machines:[{id:'mini',name:'Mac mini',kind:'mac'}],now:NOW,
+ const fresh=buildSystems({snapshot:{collectedAt:iso(HOUR),devices:{}},upstream:upstream(iso(HOUR)),registry,devices:[{id:'mini',name:'Mac mini',kind:'mac'}],now:NOW,
   agents:[{id:'mini',name:'Mac mini',record:agentRecord(macProbe(iso(HOUR)).split('\n'),{receivedAt:iso(HOUR)})}]});
  const freshText=clean(await mount(()=>systemsView('versions'),{'/api/systems':{status:200,body:fresh}}));
  assert.match(freshText,/from the agent/);assert.doesNotMatch(freshText,/no news|stale snapshot/);
@@ -198,9 +198,9 @@ test('SSH keys: an account card says the record came from the agent, and "no new
   rec('USER',MARKUP,'501','/Users/alice','/bin/zsh','1'),rec('END','ok')].join('\n');
  const at=iso(30*HOUR);
  const quiet=buildSecurity({site:SITE,now:NOW,collectedFrom:'studio',probes:{studio:{text,agent:true,receivedAt:at,source:'agent',sourceAt:at,stale:true},nas:{error:'Permission denied (publickey).'}}});
- const studio=quiet.machines.find(m=>m.id==='studio');
+ const studio=quiet.devices.find(m=>m.id==='studio');
  assert.deepEqual([studio.source,studio.stale,studio.reachable],['agent',true,true]);
- assert.equal(quiet.machines.find(m=>m.id==='nas').source,undefined,'a machine no agent reports on carries no source');
+ assert.equal(quiet.devices.find(m=>m.id==='nas').source,undefined,'a device no agent reports on carries no source');
  await mount(()=>securityView(),{'/api/security':{status:200,body:{...quiet,collector:securitySetup(SITE,{collectedAt:quiet.collectedAt,now:NOW})}}});
  fire(all('col-chip')[2],'click');
  const page=clean(document.body.textContent);
@@ -213,7 +213,7 @@ test('SSH keys: an account card says the record came from the agent, and "no new
 });
 
 test('router panel: not configured, waiting, fine with census and hardware, stale, failed',async()=>{
- const lanCidrs=['10.0.0.0/24'],extra={configured:{adapter:null,host:'10.0.0.1',lanCidrs},siteMachine:{id:'router',name:'Router',ip:'10.0.0.1'}};
+ const lanCidrs=['10.0.0.0/24'],extra={configured:{adapter:null,host:'10.0.0.1',lanCidrs},siteDevice:{id:'router',name:'Router',ip:'10.0.0.1'}};
  const obs=(over={})=>({status:'ok',observedAt:iso(30e3),model:'Gateway 7',firmware:'4.3.6',applicationVersion:'9.4',clientCounts:{wired:1,wireless:1,other:0},knownClients:{a:{},b:{},c:{}},
   unifiDevices:[{name:'Gateway',model:'UDR7',state:'ONLINE',firmware:'4.3.6',ip:'10.0.0.1'},{name:'Switch',model:'USW',state:'OFFLINE',firmware:'7.1',ip:'10.0.0.2'}],
   devices:[{mac:'aa:bb:cc:dd:ee:01',ip:'10.0.0.151',name:'Desktop',connection:'Ethernet',presence:'reachable'},{mac:'aa:bb:cc:dd:ee:02',ip:'10.0.0.77',name:'',connection:'Wi-Fi · 5 GHz',presence:'associated'}],...over});
@@ -241,7 +241,7 @@ test('Czech stays the source language: the same pages in Czech; shared helpers',
   text=await mount(()=>systemsView('hardening'),{'/api/systems':{status:200,body:systemsDoc()}});
   for(const s of [/Ochrana strojů/,/nesplněno: 1/,/zapnutý · 12 pravidel/,/Šifrování disku chrání data/,/Portů: 1/])assert.match(text,s);
   text=await mount(()=>systemsView('versions'),{'/api/systems':missing(systemsSetup(validateSite({})))});assert.match(text,/Sběr verzí a ochrany strojů není nastavený/);
-  text=await mount(()=>routerPanel(),{'/api/router':{status:200,body:{...normalizeRouter(null,{}),configured:{adapter:null,host:null,lanCidrs:[]},siteMachine:null}}});assert.match(text,/Router není nastavený/);
+  text=await mount(()=>routerPanel(),{'/api/router':{status:200,body:{...normalizeRouter(null,{}),configured:{adapter:null,host:null,lanCidrs:[]},siteDevice:null}}});assert.match(text,/Router není nastavený/);
   assert.equal(say('zapnutý · 3 pravidel',[{key:'zapnutý · {rules} pravidel',params:{rules:3}}]),'zapnutý · 3 pravidel');
  }finally{i18n.setLang('en');}
  assert.equal(say('zapnutý · 3 pravidel',[{key:'zapnutý · {rules} pravidel',params:{rules:3}}]),'on · 3 rules');
@@ -254,8 +254,8 @@ test('a probe record holding markup is drawn as text, never as markup (docs/agen
  const markup='<img src=x onerror=alert(1)>';
  const probe=macProbe(iso(HOUR)).replace(rec('LISTEN','Python','alice','127.0.0.1:8000'),rec('LISTEN',markup,'alice','*:8080'));
  assert.ok(probe.includes(markup));
- const body=buildSystems({snapshot:{collectedAt:iso(HOUR),collectedFrom:'studio',machines:{mini:{...parseSystemsProbe(probe),stale:false}}},
-  upstream:upstream(iso(HOUR)),registry,machines:[{id:'mini',name:'Mac mini',kind:'mac'}],now:NOW,watchSource:'local'});
+ const body=buildSystems({snapshot:{collectedAt:iso(HOUR),collectedFrom:'studio',devices:{mini:{...parseSystemsProbe(probe),stale:false}}},
+  upstream:upstream(iso(HOUR)),registry,devices:[{id:'mini',name:'Mac mini',kind:'mac'}],now:NOW,watchSource:'local'});
  const text=await mount(()=>systemsView('hardening'),{'/api/systems':{status:200,body}});
  assert.ok(text.includes(markup),'the process name is on the page, as text');
  assert.equal(all('img').length,0,'and no element was made of it');

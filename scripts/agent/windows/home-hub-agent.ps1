@@ -4,7 +4,7 @@
 
 .DESCRIPTION
   Installed and registered as a Scheduled Task by install-agent.ps1, run as NT AUTHORITY\LocalService; it updates only
-  when the installer is run again from a newer checkout. Reports to the hub of <Root>\config\agent.json what this machine
+  when the installer is run again from a newer checkout. Reports to the hub of <Root>\config\agent.json what this computer
   is (os), what Windows Update already knows is pending (updates) and the watched software of the local specs.txt
   (packages), and a heartbeat. The hub's answer is read for its status, Retry-After and acknowledgement, nothing else.
 
@@ -17,7 +17,7 @@
                                                check a watch list as the agent will at start; prints its lines
     home-hub-agent.ps1 -SelfTest <vectors.json> [-FixtureDir <dir>]
                                                run the shared test vectors (tests/fixtures/agent-windows/) through
-                                               this agent's checks: the owner's check on a machine with PowerShell
+                                               this agent's checks: the owner's check on a computer with PowerShell
 
   Where things are (docs/agent.md section 5): <Root> is C:\ProgramData\Home Hub Agent; the code in <Root>\agent, the
   configuration in <Root>\config (agent.json, specs.txt, hub-ca.pem), the key in <Root>\private\agent.key, status.json

@@ -2,7 +2,7 @@
 
 Home Hub is a generic core plus whatever one household adds. The additions come in two forms:
 
-- **`site.json`** — facts about the site: its name, network, machines. Core reads it.
+- **`site.json`** — facts about the site: its name, network, devices. Core reads it.
 - **plugins** — features only this household has, each a directory with `plugin.json` and `index.mjs`. Core loads them.
 
 Both live apart from the code: the site file in an instance's `config/` (`HOME_HUB_HOME`, `docs/storage.md`) and
@@ -39,23 +39,23 @@ the field. `HOME_HUB_SITE_CONFIG=/path/to/file.json` selects another file; `none
 | Field | Meaning | Without it |
 |---|---|---|
 | `siteName` | Shown in the page title, the footer and the installable-app name | Just "Home Hub" |
-| `lanCidrs` | Your networks, e.g. `["10.0.0.0/24"]`. The router adapter and machine descriptors keep only host addresses inside them | Any well-formed IPv4 address is accepted |
+| `lanCidrs` | Your networks, e.g. `["10.0.0.0/24"]`. The router adapter and device descriptors keep only host addresses inside them | Any well-formed IPv4 address is accepted |
 | `timeZone` | IANA zone for every time the UI shows | The browser's zone in the UI, the process zone on the server |
 | `defaultLanguage` | `en` or `cs`: the language a browser starts in until its user picks one | `en` |
 | `publicOrigin` | The origin browsers use, e.g. `https://hub.example.lan`. Used when `ORIGIN` is not set | `ORIGIN` must be set (a local preview is its own origin) |
-| `machines[]` | The machines on the overview. See below | No tiles; add devices in the UI |
-| `inventory.places[]` | `{id, label, short, column, lane}`: where inventory entries live. `column` gives the place its own column on the map, `lane` (`net` or `outside`) puts it in a shared one, `short` tags its cards. Order is column order | Every machine entry of the inventory gets a column of its own, named after it, next to Network and Outside |
+| `devices[]` | The devices on the overview. See below | No tiles; add devices in the UI |
+| `inventory.places[]` | `{id, label, short, column, lane}`: where inventory entries live. `column` gives the place its own column on the map, `lane` (`net` or `outside`) puts it in a shared one, `short` tags its cards. Order is column order | Every device entry of the inventory gets a column of its own, named after it, next to Network and Outside |
 | `inventory.secretStores[]` | Names of your secret stores (a password manager vault, …) that inventory entries may point at | Only the built-in ones: `passwords-app`, `remembered`, `unknown`, and the `keychain:` / `file:` / … prefixes |
 | `tracker.projects[]` | `{id, key, name, type}`: projects a brand-new tracker starts with | The tracker starts with no projects |
-| `security` | `gitHost` / `gitUrl` of a Forgejo the SSH-key collector should read, `certificates[]` (`{match, label}` names for TLS key files), `order[]` (machine order in the key list) | No git server is queried; TLS keys are labelled generically |
-| `runtimes[]` | `{id?, machine, kind, url, name?}`: local LLM runtimes the hub reads directly (core module `runtimes`). `machine` is a machine of this file; `kind` is `auto` (detected) or one of `llama-swap`, `ollama`, `lmstudio`, `llama-cpp`, `vllm`, `sglang`, `omlx`, `mlx-serve`, `openai`; `url` is an origin only (`http://127.0.0.1:11434`): no path, no user or password, an IP address on loopback or inside `lanCidrs` (any private range when `lanCidrs` is empty). `id` defaults to `<machine>-<port>`. At most 40, each URL once. Entries added through the API live in `state/runtimes-config.json`; these are read-only there | No direct reads; a plugin may still provide `home.runtimes` |
+| `security` | `gitHost` / `gitUrl` of a Forgejo the SSH-key collector should read, `certificates[]` (`{match, label}` names for TLS key files), `order[]` (device order in the key list) | No git server is queried; TLS keys are labelled generically |
+| `runtimes[]` | `{id?, device, kind, url, name?}`: local LLM runtimes the hub reads directly (core module `runtimes`). `device` is a device of this file; `kind` is `auto` (detected) or one of `llama-swap`, `ollama`, `lmstudio`, `llama-cpp`, `vllm`, `sglang`, `omlx`, `mlx-serve`, `openai`; `url` is an origin only (`http://127.0.0.1:11434`): no path, no user or password, an IP address on loopback or inside `lanCidrs` (any private range when `lanCidrs` is empty). `id` defaults to `<device>-<port>`. At most 40, each URL once. Entries added through the API live in `state/runtimes-config.json`; these are read-only there | No direct reads; a plugin may still provide `home.runtimes` |
 | `runtimeClients` | `{"<User-Agent family>": "<client name>"}`: what the runtime request history calls a client, by the first word of its User-Agent (`deno`, `python-httpx`, …), matched without regard to case. Wins over the generic names in `server/runtime-history.mjs` (`claude-cli` → Claude Code, `codex` → Codex, …). At most 60; a family is letters, digits and `._+-` (≤ 40), a name ≤ 60 characters. Applies to stored history too: the name is looked up when the history is read | The generic names; an unknown family is shown as itself |
-| `router` | `{adapter, host, site}`: the router feed. `adapter` is `unifi` (included) or the id of an adapter a plugin provides; `host` is the gateway the included collector reads (default: the machine with role `router`); `site` its UniFi site name | No router feed: the router tile and page say what to set up |
+| `router` | `{adapter, host, site}`: the router feed. `adapter` is `unifi` (included) or the id of an adapter a plugin provides; `host` is the gateway the included collector reads (default: the device with role `router`); `site` its UniFi site name | No router feed: the router tile and page say what to set up |
 | `updates` | `{repo, channel, intervalHours}`: the update check. `repo` follows another GitHub repository's releases (`"owner/name"`, for a fork), `channel` is `stable` or `prerelease`, `intervalHours` is 6 to 168 | The repository in `package.json → homeHub.updates.repo`, stable releases, every 12 hours |
 | `strings.en` | English for your own labels (the UI's source language is Czech): `{"source text": "translation"}` | Your labels show as written |
 | `plugins.<id>` | Settings for a plugin. Core checks only that the keys its `plugin.json → config.required` names are there; the plugin validates the values | — |
 
-A machine:
+A device:
 
 | Field | Meaning |
 |---|---|
@@ -66,19 +66,19 @@ A machine:
 | `thermoId` | The host id in the Thermo hosts file. Set it and the tile shows live CPU, GPU, power, temperature and memory from the Thermo app. Thermo is optional: without it the tile is static, or the owner connects an agent-less source on the tile (below) |
 | `platform` | Optional: `macos`, `windows`, `linux` or `other`. Limits the agent-less sources offered on the tile to that system's; without it every one is offered |
 | `hardware` | Static facts: `cpu`, `gpu`, `ramGb`, `diskTotalBytes`, `pools`, `wifi` |
-| `ssh` | `{alias, probe, keys}`: how the collectors reach it. `alias` is an ssh config alias, or `local` for the machine the collector runs on. `probe` is `mac` or `nas` for `scripts/collect-systems.mjs`. `keys:false` leaves it out of `scripts/collect-security.mjs` |
-| `stack` | The runtime grid drawn on the machine page: `{layers, cols, engines, blocks}` |
-| `reach` | Whether the hub checks the machine's address with a TCP connect (the overview's `reachability`, shown beside `online`, which it does not change). Absent = port 22; `{"ports": [22, 2222]}` = those ports, 1 to 4 of them, tried in order; `false` = never checked. A bad value stops the start, by name |
+| `ssh` | `{alias, probe, keys}`: how the collectors reach it. `alias` is an ssh config alias, or `local` for the device the collector runs on. `probe` is `mac` or `nas` for `scripts/collect-systems.mjs`. `keys:false` leaves it out of `scripts/collect-security.mjs` |
+| `stack` | The runtime grid drawn on the device page: `{layers, cols, engines, blocks}` |
+| `reach` | Whether the hub checks the device's address with a TCP connect (the overview's `reachability`, shown beside `online`, which it does not change). Absent = port 22; `{"ports": [22, 2222]}` = those ports, 1 to 4 of them, tried in order; `false` = never checked. A bad value stops the start, by name |
 
-A machine without `thermoId` that is not the router can be read without an agent (Windows over SSH or WinRM, Linux
+A device without `thermoId` that is not the router can be read without an agent (Windows over SSH or WinRM, Linux
 over Node Exporter, Prometheus or SSH): its page has **Telemetry settings** for an account with write access signed
 in with a password. Only the connection is stored, in the hub's state (`state/home/site-telemetry.json` and the
-private connection files); this file is never written and the machine stays read-only everywhere else
+private connection files); this file is never written and the device stays read-only everywhere else
 (`docs/API.md` → Agent-less telemetry). Its name, hostname, ip, hardware and picture can be overridden on its tile
 (**Edit**, stored in `state/home/site-overrides.json`); collectors and plugins keep reading the values of this file.
 
 Pictures: any image under `local/images/` is served at `/images/<same path>`. The overview looks for
-`/images/home/<machine id>.jpg`. The software watch list for the versions page is `local/software-watch.json`;
+`/images/home/<device id>.jpg`. The software watch list for the versions page is `local/software-watch.json`;
 `config/software-watch.json` is an example to copy from, never the active list (`docs/API.md` → Software watch list).
 
 ## A plugin
@@ -123,7 +123,7 @@ local/plugins/notes/
 | `requires` | Other plugins it needs, each with a range. Use it instead of importing another plugin silently |
 | `dataEpoch` | A positive integer you raise whenever the plugin's own stored format changes |
 | `config.required` | Keys of `site.json → plugins.<id>` it cannot work without; a missing one stops the start, by name. Checking the values stays the plugin's job, in `setup` |
-| `hostAgents` | Code the plugin runs as a service on another machine ([Host agents](#host-agents)): `id`, `title`, `entry` (a `.mjs` file in the plugin), `service` (`launchd-agent`, `launchd-daemon` or `systemd-user`), `health` (`socket` relative to the agent's directory, and a `get` path it answers), `config` (a module of the plugin that says what the agent needs to know). Nothing about one household goes here: no label, path or machine; that is configuration |
+| `hostAgents` | Code the plugin runs as a service on another computer ([Host agents](#host-agents)): `id`, `title`, `entry` (a `.mjs` file in the plugin), `service` (`launchd-agent`, `launchd-daemon` or `systemd-user`), `health` (`socket` relative to the agent's directory, and a `get` path it answers), `config` (a module of the plugin that says what the agent needs to know). Nothing about one household goes here: no label, path or device; that is configuration |
 
 An unknown field, a wrong value, a core range this core is outside of, an unmet `requires` or a missing required
 setting stops the start with the plugin's name (`node server/index.mjs --check` runs every one of these checks and
@@ -144,7 +144,7 @@ import {hub, createHandler, hashPassword} from 'home-hub/testing'; // tests
 | Export | What it has |
 |---|---|
 | `home-hub/plugin-api` (`server/plugin-api.mjs`) | `tx`, `sentences` (text to translate), `worstState` (integrations), `provenance`, `authoredProvenance`, `collectorSource`, `toolError` (MCP refusals), `byteRange` (Range requests), `readRouter`, `mergeRouter` (the router census), `createKnowledgeEditor`, `entryHash`, `validateKnowledge` (the inventory file), `satisfies`, `validRange`, `compareVersions`, `parseVersion` (semver), `site`, `loadSite` (the site configuration, for a plugin's scripts), `resolvePaths` (where data and secrets are), `CORE_VERSION` |
-| `home-hub/testing` (`tests/plugin-testing.mjs`) | `createHandler`, `buildRegistry`, `STARTUP_PLUGINS`, the `hub(t, options)` helper with `credentials` and `knowledge`, `hashPassword`, `createAuth`, `createAccessStore`, `SCOPES`, `scopeFor`, `legacyScopes`, `site`, `loadSite`, `validateSite`, `machineKind`, `sshHosts`, the front-end test hook `BROWSER_PATHS_HOOK`, `CORE_FIXTURES`; and what a household's tests check their data against: `readEdition`, `homeDefinitions`, `stackLayouts`, `systemMachines`, `buildSystems`, `parseSystemsProbe`, `liveState`, `placements`, `buildGraph`, `cleanRequest`, `READ_PATHS`, `EVENT_PATH`, `walkKnowledge`, `findKnowledge`, `loadKnowledge`, `validStore`, `storeNames`, `softwareWatchPath` |
+| `home-hub/testing` (`tests/plugin-testing.mjs`) | `createHandler`, `buildRegistry`, `STARTUP_PLUGINS`, the `hub(t, options)` helper with `credentials` and `knowledge`, `hashPassword`, `createAuth`, `createAccessStore`, `SCOPES`, `scopeFor`, `legacyScopes`, `site`, `loadSite`, `validateSite`, `deviceKind`, `sshHosts`, the front-end test hook `BROWSER_PATHS_HOOK`, `CORE_FIXTURES`; and what a household's tests check their data against: `readEdition`, `homeDefinitions`, `stackLayouts`, `systemDevices`, `buildSystems`, `parseSystemsProbe`, `liveState`, `placements`, `buildGraph`, `cleanRequest`, `READ_PATHS`, `EVENT_PATH`, `walkKnowledge`, `findKnowledge`, `loadKnowledge`, `validStore`, `storeNames`, `softwareWatchPath` |
 
 These two files **are** the server-side plugin contract and fall under semver; anything not exported there is
 internal and may change in any release. The browser side is unchanged: page modules import `/views.js`, `/ui.js`,
@@ -167,9 +167,9 @@ with the same hint. The link points at core itself: no third-party package, no `
 
 ### Host agents
 
-A **host agent** is the part of a plugin that runs as a service on another machine than the hub (a bridge to that
-machine's runtimes, say). The plugin declares it in `plugin.json → hostAgents`; the household says where it runs, in
-`site.json → plugins.<plugin>.agents.<agent>.<machine>`:
+A **host agent** is the part of a plugin that runs as a service on another computer than the hub (a bridge to that
+device's runtimes, say). The plugin declares it in `plugin.json → hostAgents`; the household says where it runs, in
+`site.json → plugins.<plugin>.agents.<agent>.<device>`:
 
 ```json
 "plugins": {"notes": {"agents": {"bridge": {"studio": {
@@ -177,7 +177,7 @@ machine's runtimes, say). The plugin declares it in `plugin.json → hostAgents`
   "env": {"NOTES_MODE": "live"}, "logs": "~/Library/Logs/notes"}}}}}
 ```
 
-`node scripts/install-host-agent.mjs --plugin notes --agent bridge`, run **on that machine** (the hub never pushes code
+`node scripts/install-host-agent.mjs --plugin notes --agent bridge`, run **on that device** (the hub never pushes code
 to another host), installs or updates it: `--dry-run` prints the change, `--target` and `--label` make a side-by-side
 test install, `--no-service` only lays the files out. It
 
@@ -185,7 +185,7 @@ test install, `--no-service` only lays the files out. It
   `home-hub/*` through core's `exports`) as real files: plugin files at their path in the plugin source
   (`<target>/plugins/<id>/…`, `<target>/lib/…`), core files under `<target>/node_modules/home-hub/`, so the agent runs
   with no checkout and no link. Files with uncommitted changes are refused;
-- writes the agent's configuration, what the plugin's `config` module (`({site, machine}) => object`) returns, to
+- writes the agent's configuration, what the plugin's `config` module (`({site, device}) => object`) returns, to
   `<target>/config/<agent>.json` (0600), and `<target>/.agent-install.json`: the plugin and its version, the core
   version, both commits, every file with its sha256. Files the previous record listed and the new one does not are removed;
 - archives the previous copy and service file, writes the service (a launchd agent or daemon, or a systemd user unit,
@@ -193,7 +193,7 @@ test install, `--no-service` only lays the files out. It
   restarts it and waits for the health `GET` to answer; otherwise it puts the archive back and starts the previous agent.
 
 The same script installs core's own push agent with `--core` (`docs/agent.md` §5, `docs/API.md` → Push agent): no
-plugin and no `site.json` on the machine, a launchd agent of the owner on macOS (`launchd-agent`) or a systemd system
+plugin and no `site.json` on the device, a launchd agent of the owner on macOS (`launchd-agent`) or a systemd system
 unit (`systemd-system`, core's only) on Linux. A plugin's host agent installs exactly as before.
 
 The agent reads its configuration from `resolvePaths().config` and says what it is with `installedAgent()` (both from
@@ -361,17 +361,17 @@ fine).
 
 | Name | Value | Used by |
 |---|---|---|
-| `home.snapshots` | `{machineId: {snapshot, bridge}}` — what an agent on the machine reports: `snapshot.services[]`, `memory`, `uptimeSeconds`, `collectedAt` | Overview tiles and the machine page stack |
-| `home.services` | `{machineId: services[]}` — reachability probes for a machine without an agent (role `nas`) | The NAS tile's online state and service list |
-| `home.runtimes` | `{machineId: {source, observedAt, runtimes: [{id, name, kind, status: running\|stopped\|unknown, url, version, source?, models: [{id, state, sizeGb, contextTokens, ttlRemainingSeconds}], stats: [{label, value}]}]}}` — local LLM runtimes on a machine (llama-swap, Ollama, LM Studio, llama.cpp, vLLM, …). Core provides it too, from the runtimes it reads directly, and joins every provider's report per machine (below). Core bounds it (20 runtimes, 30 models, 12 stats each). A model's `state` is `loaded`, `loading` or anything else for "not in memory"; the first of `stats` is the figure a card prints large; `label` and `source` go through the plugin's `strings`. Optional, for what runs **now** (only where the runtime says; leave them out when it cannot tell, never send 0 for "unknown"): `activity: {active, queued}` on a runtime, `active`, `queued` and `since` (when the oldest running one began) on a model; `mode: "cli"` marks a command-line tool started per job (mflux), not a server: `running` while a job runs or waits, `stopped` with nothing to do, its models being those of its jobs; a model's `kind` (`llm`, `image`, …); `pids` (process ids on that machine) on a runtime or a model, so the GPU processes its telemetry agent reports can be named by it | The "Local LLM runtimes" section of a machine page, one card per runtime, and above the cards "what the GPU does" (`GET /api/home` → `machines[].work`): the models that generate or wait, next to the GPU reading of its telemetry and its three busiest GPU processes (`machines[].gpuProcesses`). The telemetry agent does not report runtimes; the push agent does, through the core module `agent` (below): a machine that neither a provider nor a direct endpoint reports on has no such section. Report `runtimes: []` only when you watch the machine and it runs none. A machine with runtimes shows its GPU on its tile's small chart, any other its CPU |
-| `runtimes.requests` | `{id, read({from, to, limit}) → Promise<items[]>}` — request history of local model runtimes. An item: `{machine, runtime, model, at, path, inputTokens, outputTokens, promptTps, generationTps, durationMs, client, clientMachine?, clientAddress?, metricId?}`; `metricId` is the runtime's own record id, when it has one. `path` is the URL path or a kind (`chat`, `embeddings`, `images`, `audio`); `model` is the name the client asked for (a gateway alias is fine); `client` is who sent it when the provider can tell, else empty ("Unattributed"); `clientMachine` is a machine id, only when the provider knows it; `clientAddress` is the address the request came from (a site machine's `ip` names that machine, loopback names none). Core provides it too, from the history it keeps of the llama-swaps it reads (below). Core de-duplicates items two providers both report: by `machine`, `runtime`, `metricId` and `at` when `metricId` is given (the copy that names a client is kept), else by the whole item | The LLM & Diffusion page: requests, tokens and tok/s over time, the clients table and the traffic in the wiring diagram. Without a provider the page shows live state only |
+| `home.snapshots` | `{deviceId: {snapshot, bridge}}` — what an agent on the device reports: `snapshot.services[]`, `memory`, `uptimeSeconds`, `collectedAt` | Overview tiles and the device page stack |
+| `home.services` | `{deviceId: services[]}` — reachability probes for a device without an agent (role `nas`) | The NAS tile's online state and service list |
+| `home.runtimes` | `{deviceId: {source, observedAt, runtimes: [{id, name, kind, status: running\|stopped\|unknown, url, version, source?, models: [{id, state, sizeGb, contextTokens, ttlRemainingSeconds}], stats: [{label, value}]}]}}` — local LLM runtimes on a device (llama-swap, Ollama, LM Studio, llama.cpp, vLLM, …). Core provides it too, from the runtimes it reads directly, and joins every provider's report per device (below). Core bounds it (20 runtimes, 30 models, 12 stats each). A model's `state` is `loaded`, `loading` or anything else for "not in memory"; the first of `stats` is the figure a card prints large; `label` and `source` go through the plugin's `strings`. Optional, for what runs **now** (only where the runtime says; leave them out when it cannot tell, never send 0 for "unknown"): `activity: {active, queued}` on a runtime, `active`, `queued` and `since` (when the oldest running one began) on a model; `mode: "cli"` marks a command-line tool started per job (mflux), not a server: `running` while a job runs or waits, `stopped` with nothing to do, its models being those of its jobs; a model's `kind` (`llm`, `image`, …); `pids` (process ids on that device) on a runtime or a model, so the GPU processes its telemetry agent reports can be named by it | The "Local LLM runtimes" section of a device page, one card per runtime, and above the cards "what the GPU does" (`GET /api/home` → `devices[].work`): the models that generate or wait, next to the GPU reading of its telemetry and its three busiest GPU processes (`devices[].gpuProcesses`). The telemetry agent does not report runtimes; the push agent does, through the core module `agent` (below): a device that neither a provider nor a direct endpoint reports on has no such section. Report `runtimes: []` only when you watch the device and it runs none. A device with runtimes shows its GPU on its tile's small chart, any other its CPU |
+| `runtimes.requests` | `{id, read({from, to, limit}) → Promise<items[]>}` — request history of local model runtimes. An item: `{device, runtime, model, at, path, inputTokens, outputTokens, promptTps, generationTps, durationMs, client, clientDevice?, clientAddress?, metricId?}`; `metricId` is the runtime's own record id, when it has one. `path` is the URL path or a kind (`chat`, `embeddings`, `images`, `audio`); `model` is the name the client asked for (a gateway alias is fine); `client` is who sent it when the provider can tell, else empty ("Unattributed"); `clientDevice` is a device id, only when the provider knows it; `clientAddress` is the address the request came from (a site device's `ip` names that device, loopback names none). Core provides it too, from the history it keeps of the llama-swaps it reads (below). Core de-duplicates items two providers both report: by `device`, `runtime`, `metricId` and `at` when `metricId` is given (the copy that names a client is kept), else by the whole item | The LLM & Diffusion page: requests, tokens and tok/s over time, the clients table and the traffic in the wiring diagram. Without a provider the page shows live state only |
 | `inventory.writer` | `{put(change, by), edit(input)}` or `null` — where inventory edits go instead of the local file. Optional: `remove(change)` and `bulk(change, {by, user})`; without them delete and bulk upsert answer `501` | Inventory map and services catalog |
 | `router.adapter` | `{id, title, read(context)}` — another router's census and health. `read` resolves to an observation `{status, observedAt, model, firmware, routerMac, devices[], hardware[]}` or `null`; core validates and bounds it (`server/router-data.mjs`). Optional `staleAfterSeconds` | `GET /api/router`, the router tile and page |
 | `git-lfs.providers` | `[provider]` — more kinds of git host for the Git LFS page (GitLab, a host with its own LFS store). The shape and the rules are in `docs/git-lfs.md` → Providers; a provider that is not valid, or reuses a built-in id, is left out and logged. Only a provider whose `capabilities.deleteObjects` (and `listObjects`) is true is ever asked to delete | The Git LFS page (`#git-lfs`, core module `git-lfs`) |
-| `machines.facets` | `(machines) => report \| [report]` (a promise is fine) — what this module knows about each machine. `machines` are the overview's machines (`GET /api/home` → `machines`). A report: `{id, title, icon?, order?, page?, howTo?, off?, machines: {[machineId]: entry}, fallback?: entry}`; an entry: `{state, summary?, summaryT?, details?: [{label, value, valueT?}], href?}`. `state` is `ok`, `warn`, `stale`, `error`, `off`, `not-configured` or `not-applicable`. A machine the report does not name gets `fallback` (default: `not-configured` with `howTo`); `off: true` shows the whole facet as turned off. `only: true` shows the facet only on the machines it names. `how: {by, text}` says who does the work (`hub`: Home Hub alone; `source`: Home Hub reads something that must run on the machine; `collector`: a scheduled script on the hub's machine; `agent`: an agent writes it over MCP; `integration`) and how, in one sentence. `prompt` is a Czech source template for the person's own coding agent (`{id}`, `{name}`, `{hostname}` are filled per machine; `promptParams` adds more, a list being translated text); the page offers it where the part is not set up or needs attention, so give an English translation in `strings`. `href` must be a `#hash` (default `#<page>`); `title`, `label` and a plain `summary` go through `strings`. Read-only: never open a connection here, read what your module already holds. Core provides `telemetry`, `backups`, `versions`, `protection`, `ssh-keys`, `inventory`, `runtimes` and `git-lfs` (`server/machine-facet-sources.mjs`); the first report of an id wins | Integrations → Machines (`#integrations`, `#integrations/machine/<id>`, `GET /api/admin/machines`; `server/machine-facets.mjs`) |
+| `devices.facets` | `(devices) => report \| [report]` (a promise is fine) — what this module knows about each device. `devices` are the overview's devices (`GET /api/home` → `devices`). A report: `{id, title, icon?, order?, page?, howTo?, off?, devices: {[deviceId]: entry}, fallback?: entry}`; an entry: `{state, summary?, summaryT?, details?: [{label, value, valueT?}], href?}`. `state` is `ok`, `warn`, `stale`, `error`, `off`, `not-configured` or `not-applicable`. A device the report does not name gets `fallback` (default: `not-configured` with `howTo`); `off: true` shows the whole facet as turned off. `only: true` shows the facet only on the devices it names. `how: {by, text}` says who does the work (`hub`: Home Hub alone; `source`: Home Hub reads something that must run on the device; `collector`: a scheduled script on the hub's host; `agent`: an agent writes it over MCP; `integration`) and how, in one sentence. `prompt` is a Czech source template for the person's own coding agent (`{id}`, `{name}`, `{hostname}` are filled per device; `promptParams` adds more, a list being translated text); the page offers it where the part is not set up or needs attention, so give an English translation in `strings`. `href` must be a `#hash` (default `#<page>`); `title`, `label` and a plain `summary` go through `strings`. Read-only: never open a connection here, read what your module already holds. Core provides `telemetry`, `backups`, `versions`, `protection`, `ssh-keys`, `inventory`, `runtimes` and `git-lfs` (`server/device-facet-sources.mjs`); the first report of an id wins | Integrations → Devices (`#integrations`, `#integrations/device/<id>`, `GET /api/admin/devices`; `server/device-facets.mjs`) |
 
 The LLM & Diffusion page (core module `models`, `server/models-data.mjs`) reads `home.runtimes` too, and draws its wiring
-from optional fields the machine pages ignore. All are optional; without them the page infers what it can (a runtime
+from optional fields the device pages ignore. All are optional; without them the page infers what it can (a runtime
 whose name says llama-swap, gateway, proxy or router is a front door; a model's kind comes from its name):
 
 | Field | On | Meaning |
@@ -381,7 +381,7 @@ whose name says llama-swap, gateway, proxy or router is a front door; a model's 
 | `name`, `kind`, `capabilities[]`, `engine` | model | Display name; `kind` one of `llm`, `embedding`, `image`, `video`, `music`, `audio`, `other`; capabilities such as `image`, `audio`, `embedding`; the engine family (`vlm`, `audio_tts`, …) |
 | `lastRequestAt`, `ttlSeconds` | model | When it was last asked for; its unload timeout |
 | `active`, `queued`, `since`; `activity` | model; runtime | What it works on now (see `home.runtimes`). A request sent through a gateway is in flight there and at the engine at once: where the gateway's entry names the engine's model (`via`, `target`), the page counts the larger of the two, never their sum |
-| `via`, `target` | model on a gateway | The engine it is handed to: a runtime id on the same machine, or an engine inside the gateway (`llama.cpp`); `target` is that engine's model id. A gateway entry with both is drawn as an alias of the engine's model, not as a second model |
+| `via`, `target` | model on a gateway | The engine it is handed to: a runtime id on the same device, or an engine inside the gateway (`llama.cpp`); `target` is that engine's model id. A gateway entry with both is drawn as an alias of the engine's model, not as a second model |
 
 Plugins can define their own names for each other: `hub.collect(name)` returns every provider's value,
 `hub.provided(name)` the first.
@@ -394,10 +394,10 @@ GET-only on a fixed list of paths (`server/runtime-adapters.mjs` → `READ_PATHS
 `GET /api/events` (`EVENT_PATH`), read only up to its first in-flight snapshot and then closed: of each request in
 flight only the model and its start time are kept. That, oMLX's admin stats (requests running and waiting per model)
 and the request gauges of llama.cpp, vLLM and SGLang give `activity`, `active` and `queued`. Its entries carry
-`source: "přímo z runtimu"` on the machine and on each runtime. The core module `agent` (`server/core/agent.mjs`) is a
+`source: "přímo z runtimu"` on the device and on each runtime. The core module `agent` (`server/core/agent.mjs`) is a
 provider too: the runtimes each push agent reports in its `runtimes` part (`docs/agent.md`), `source: "agent"` and
 `observedAt` the hub's receive time; once that part is no news each runtime is `status: "unknown"`, with no
-`activity`, `pids` or figures. When a plugin reports the same machine, home
+`activity`, `pids` or figures. When a plugin reports the same device, home
 joins the two (`mergeRuntimeReports` in `server/home-data.mjs`):
 
 - Two entries are the same runtime when their `url` names the same address and port (every loopback name
@@ -408,7 +408,7 @@ joins the two (`mergeRuntimeReports` in `server/home-data.mjs`):
   with a label it lacks (up to four figures in all); the wiring fields of the LLM & Diffusion page (`role`,
   `memory`, a model's `name`, `kind`, `engine`, `via`, `target`, …); and, unless the other is stale, how busy the
   runtime and its models are (`activity`, `active`, `queued`, `since`). Models only the other lists are added unless that one is stale.
-- The machine gets `sources` (every source that contributed) and the oldest `observedAt` of the entries kept
+- The device gets `sources` (every source that contributed) and the oldest `observedAt` of the entries kept
   (one that only filled gaps does not count).
 
 So a plugin needs to do nothing to coexist with the direct reads: report your runtimes with their real `url`.
@@ -426,21 +426,21 @@ refused before a request for any other path or query. A record is joined to the 
 path and status, a duration within 1.5 s or 10 %, that arrived from 10 s before its time to 15 s after it
 ended; while the stream is connected, a record that ended less than 15 s ago waits for the next read.
 
-Stored per machine in `<state>/runtimes/<machine>/requests-YYYY-MM.jsonl` (UTC months, files 0600, 13 months
-kept, pruned once a month): `{machine, runtime, model, at, metricId, path, status, inputTokens, outputTokens,
-cacheTokens, promptTps, generationTps, durationMs, client, uaFamily?, clientMachine?, clientAddress?}`. The
-runtime id is the one `home.runtimes` gives the endpoint. Records are de-duplicated by `metricKey` (machine,
+Stored per device in `<state>/runtimes/<device>/requests-YYYY-MM.jsonl` (UTC months, files 0600, 13 months
+kept, pruned once a month): `{device, runtime, model, at, metricId, path, status, inputTokens, outputTokens,
+cacheTokens, promptTps, generationTps, durationMs, client, uaFamily?, clientDevice?, clientAddress?}`. The
+runtime id is the one `home.runtimes` gives the endpoint. Records are de-duplicated by `metricKey` (device,
 runtime, `metricId`, `at`) over the last 35 days (at most 200 000 keys); a record older than that is not taken
 from a runtime. `scripts/import-runtime-history.mjs` adds older history from a local file (this format, or v1's
 `history-YYYY-MM.jsonl`), de-duplicated over every month it touches.
-A runtime may carry its own `source` (a source-language label, like the machine's).
+A runtime may carry its own `source` (a source-language label, like the device's).
 When no host agent reports a service, a runtime with the same `id` as a stack block's `service` fills that
 block (state and models), as a bridge's service does.
 
 ### Integrations
 
 An integration is something a module reads from outside: a telemetry agent, a router, a collector's snapshot,
-a bridge to another machine. Declaring one puts a card on Administration → Integrations (`#integrations`) with
+a bridge to another computer. Declaring one puts a card on Administration → Integrations (`#integrations`) with
 its health, where it is configured, a switch, a "Test now" button and its settings. The other agent-facing view
 is the read-only MCP tool `integrations_status`. Nothing turns an integration off over MCP or with an API key.
 
@@ -454,8 +454,8 @@ integrations: [{
   toggleNote: undefined,
   provides: ['home.snapshots'],// optional: providers of this module that answer nothing while it is off
   howTo: '…', page: 'overview', docs: 'docs/plugins.md → …',   // optional: shown on a not-configured card
-  machines: (state, hub) => [{machine: 'nas', item: 'nas'}],   // optional: the machines it belongs to; each machine's page
-                               // under Integrations → Machines then shows it, in the state of status item `item` (or of the
+  devices: (state, hub) => [{device: 'nas', item: 'nas'}],   // optional: the devices it belongs to; each device's page
+                               // under Integrations → Devices then shows it, in the state of status item `item` (or of the
                                // whole integration), with howTo turned into a prompt for the person's agent
   status: async (state, hub, {enabled}) => Status,              // required, cheap: no network call when !enabled
   test: async (state, hub) => Status,                           // optional: a real check, run by "Test now"
@@ -543,7 +543,7 @@ building blocks for the page itself are described in [design.md](design.md). A p
 tokens and `ui.js` follows the theme and looks like the core pages without any CSS of its own.
 
 A page module exports one function per page: `(context) => Node`, with
-`context = {me, page, sub, machine, site}` (`#notes/42` gives `page: 'notes'`, `sub: '42'`). Import core helpers
+`context = {me, page, sub, device, site}` (`#notes/42` gives `page: 'notes'`, `sub: '42'`). Import core helpers
 by URL, as the browser sees them:
 
 ```js

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Read-only UniFi inventory collector for Home Hub: the included router adapter ("unifi").
 
-Runs from a scheduled job on the machine that serves Home Hub (any unprivileged user that owns
+Runs from a scheduled job on the computer that serves Home Hub (any unprivileged user that owns
 router-private/). It reads the UniFi Network local integration API on the gateway with an API key kept in
 router-private/unifi-api-key (0600) and writes data/router-observations.json, the observation file
 server/router-data.mjs reads (client census plus the state of the network hardware). GET requests only.
@@ -9,7 +9,7 @@ The router's self-signed certificate is pinned by SHA-256 fingerprint (router-pr
 the key is never sent before the pin matches, and nothing here prints or stores the key.
 
 Which gateway and which networks: local/site.json. The gateway is router.host, else the address of the
-machine with role "router"; the networks are lanCidrs (clients outside them are dropped); router.site is
+device with role "router"; the networks are lanCidrs (clients outside them are dropped); router.site is
 the UniFi site name. UNIFI_HOST, UNIFI_LAN and UNIFI_SITE override the file. HOME_HUB_SITE_CONFIG selects
 another file ("none" = no file), else site.json in HOME_HUB_CONFIG_DIR, else in HOME_HUB_HOME/config/. HOME_HUB_ROOT
 is where data/ and router-private/ live (default: the instance directory HOME_HUB_HOME, else the checkout, or its
@@ -69,8 +69,8 @@ def load_site(env=os.environ, repo=REPO):
 def site_settings(site, env=os.environ):
     """(gateway host, [networks], UniFi site name) from the environment, then site.json, then defaults."""
     router = site.get('router') if isinstance(site.get('router'), dict) else {}
-    site_machines = [m for m in site.get('machines') or [] if isinstance(m, dict)] if isinstance(site.get('machines'), list) else []
-    gateway = next((m.get('ip') for m in site_machines if m.get('role') == 'router' and isinstance(m.get('ip'), str) and m.get('ip')), None)
+    site_devices = [m for m in site.get('devices') or [] if isinstance(m, dict)] if isinstance(site.get('devices'), list) else []
+    gateway = next((m.get('ip') for m in site_devices if m.get('role') == 'router' and isinstance(m.get('ip'), str) and m.get('ip')), None)
     host = env.get('UNIFI_HOST') or (router.get('host') if isinstance(router.get('host'), str) else None) or gateway or '192.168.1.1'
     wanted = [env['UNIFI_LAN']] if env.get('UNIFI_LAN') else [c for c in site.get('lanCidrs') or [] if isinstance(c, str)][:16] if isinstance(site.get('lanCidrs'), list) else []
     networks = []

@@ -1,8 +1,8 @@
 // The wiring diagram of the LLM & Diffusion page, drawn on a canvas from GET /api/models → graph (built in
-// server/models-data.mjs → buildGraph, never here). Lanes are machines, columns are the stages a request goes
+// server/models-data.mjs → buildGraph, never here). Lanes are devices, columns are the stages a request goes
 // through: client → front door (llama-swap, a gateway) → engine → model. A line's width follows the requests in
 // the selected range; particles move along it only for traffic of the last few minutes, faster and denser the
-// more there is. Idle lines stay faint and still. A request from a client on one machine to a runtime on
+// more there is. Idle lines stay faint and still. A request from a client on one device to a runtime on
 // another crosses lanes and is drawn dashed in its own colour.
 //   wiringDiagram({onSelect}) → {node, update(graph, {selected}), destroy()}
 // Hover or tap a node or a line to light its path and read its numbers below the canvas; click (Enter) a model,
@@ -32,8 +32,8 @@ function palette(){
 }
 function cubic(e,t){const u=1-t;return [u*u*u*e.x1+3*u*u*t*e.c1x+3*u*t*t*e.c2x+t*t*t*e.x2,u*u*u*e.y1+3*u*u*t*e.y1+3*u*t*t*e.y2+t*t*t*e.y2];}
 
-// Positions for every node and edge at a given width. Lane order: clients of unknown machines first, then the
-// machines as the server listed them.
+// Positions for every node and edge at a given width. Lane order: clients of unknown devices first, then the
+// devices as the server listed them.
 export function layout(graph,width=MIN_WIDTH){
  const W=Math.max(MIN_WIDTH,Math.floor(width)),lanes=[...graph.lanes].sort((a,b)=>(a.id==='unknown'?-1:0)-(b.id==='unknown'?-1:0));
  const widths={client:150,door:130,engine:150,model:0};const fixed=widths.client+widths.door+widths.engine,gap=Math.max(36,Math.min(110,(W-24-fixed-200)/3));
@@ -162,7 +162,7 @@ export function wiringDiagram({onSelect}={}){
  }
  function choose(id){
   const n=graph.nodes.find(x=>x.id===id);selected=n?id:null;
-  const filter=!n?null:n.column==='model'?{machine:n.machine,runtime:n.runtime,model:n.model,label:n.label}:n.column==='client'?(n.client?{client:n.client,label:n.label}:null):n.runtime?{machine:n.machine,runtime:n.runtime,label:`${n.label} · ${n.machine}`}:{machine:n.machine,label:n.machine};
+  const filter=!n?null:n.column==='model'?{device:n.device,runtime:n.runtime,model:n.model,label:n.label}:n.column==='client'?(n.client?{client:n.client,label:n.label}:null):n.runtime?{device:n.device,runtime:n.runtime,label:`${n.label} · ${n.device}`}:{device:n.device,label:n.device};
   if(!filter)selected=null;onSelect?.(filter);say(null);kick();
  }
  canvas.addEventListener('pointermove',ev=>{if(!geo)return;const h=hit(...point(ev));const key=JSON.stringify(h);if(key!==JSON.stringify(hover)){hover=h;canvas.classList.toggle('md-pointer',Boolean(h?.node));say(h);if(!frame)draw(performance.now());}});

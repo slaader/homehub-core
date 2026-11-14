@@ -14,7 +14,7 @@ node scripts/update.mjs backup              # only the archive (stop, archive, s
 
 Without a tag, `preflight` and `apply` take the newest release tag after a fetch. `--to v1.3.0` is the same as the
 bare tag. There is no button and no MCP tool for any of this, on purpose: the hub holds SSH keys and tokens for other
-machines, and a web request that can replace its code would turn a stolen session into code execution with them.
+devices, and a web request that can replace its code would turn a stolen session into code execution with them.
 
 This page is for a hub that runs from a git checkout. A container is rebuilt instead: [docker.md](docker.md).
 
@@ -180,5 +180,5 @@ Delete the tag right away: while it is there, a bare `apply` would take it for t
 - The Node that runs the command is the one whose version is checked and that runs the tests; start the command with
   the Node the service uses.
 - A relative `DATA_DIR`, `STATE_DIR` or `AUTH_FILE` is resolved against the directory the command is run in.
-- The command does not install or update host agents on other machines (`scripts/install-host-agent.mjs` does, on
-  the machine in question).
+- The command does not install or update host agents on other devices (`scripts/install-host-agent.mjs` does, on
+  the device in question).
