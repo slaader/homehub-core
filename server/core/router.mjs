@@ -26,13 +26,13 @@ export default {
  routes:[
   // What the router device page draws: state, census, health, and what to set up when there is none.
   {method:'GET',path:'/api/router',async handler(c){
-    // siteDevice: the site's own entry with the role router. Not one of `devices`, which are the network clients the router saw.
+    // siteDevice: the site's own entry with the role router. Not one of `clients`, which are the network clients the router saw.
     const site=c.hub.site,siteDevice=site.devices.find(m=>m.role==='router')||null;
     const router=await readRouterFor(c.hub);
     // disabled = an administrator turned the router feed off; the page says so and shows no census.
-    if(router.state==='disabled')return c.json(200,{schemaVersion:1,generatedAt:new Date().toISOString(),...router,provenance:routerProvenance(router),
+    if(router.state==='disabled')return c.json(200,{schemaVersion:2,generatedAt:new Date().toISOString(),...router,provenance:routerProvenance(router),
      configured:{adapter:site.router?.adapter||null,host:site.router?.host||siteDevice?.ip||null,lanCidrs:[...site.lanCidrs]},siteDevice:siteDevice?{id:siteDevice.id,name:siteDevice.name,ip:siteDevice.ip||null}:null});
-    return c.json(200,{schemaVersion:1,generatedAt:new Date().toISOString(),...router,provenance:routerProvenance(router),
+    return c.json(200,{schemaVersion:2,generatedAt:new Date().toISOString(),...router,provenance:routerProvenance(router),
      configured:{adapter:site.router?.adapter||null,host:site.router?.host||siteDevice?.ip||null,lanCidrs:[...site.lanCidrs]},
      siteDevice:siteDevice?{id:siteDevice.id,name:siteDevice.name,ip:siteDevice.ip||null}:null});}},
  ],

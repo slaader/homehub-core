@@ -27,7 +27,7 @@ const snapshot=services=>({collectedAt:new Date(nowMs).toISOString(),memory:{use
 
 test('home tiles merge thermo quad, bridge services and router',()=>{
  const home=buildHome({snapshots:{mini:{bridge:'connected',snapshot:snapshot([{id:'llama-swap',name:'llama-swap',status:'reachable',url:'http://127.0.0.1:8081',models:[{id:'gemma-4-26B-A4B-it-OptiQ-4bit',state:'loaded'}]}])}},thermo:thermoStub(),
-  router:{status:'ok',freshness:'fresh',observedAt:new Date(nowMs).toISOString(),model:'UniFi Dream Router 7',firmware:'4.2.7',devices:[{presence:'associated'},{presence:'reachable'}]},now:nowMs});
+  router:{status:'ok',freshness:'fresh',observedAt:new Date(nowMs).toISOString(),model:'UniFi Dream Router 7',firmware:'4.2.7',clients:[{presence:'associated'},{presence:'reachable'}]},now:nowMs});
  const mini=home.devices.find(m=>m.id==='mini'),studio=home.devices.find(m=>m.id==='studio'),router=home.devices.find(m=>m.id==='router');
  assert.equal(mini.online,'online');
  // quad = mean of the last 15 one-second readings (i=105..119 → cpu 30+(i%10))

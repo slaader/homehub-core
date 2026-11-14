@@ -372,32 +372,32 @@ test('key strength: DSA and short RSA or ECDSA are weak, RSA under 3072 is legac
  assert.deepEqual(view.keyHealth(key(null,null),now),{strength:null,ageDays:null,old:false,level:''});
 });
 
-const observation=(over={})=>({schemaVersion:1,status:'ok',observedAt:'2026-11-08T11:59:30Z',attemptedAt:'2026-11-08T11:59:30Z',error:null,model:'UniFi Dream Router 7 (UDR7)',firmware:'4.3.6',routerMac:'A8:9C:6C:0E:8D:15',
+const observation=(over={})=>({schemaVersion:2,status:'ok',observedAt:'2026-11-08T11:59:30Z',attemptedAt:'2026-11-08T11:59:30Z',error:null,model:'UniFi Dream Router 7 (UDR7)',firmware:'4.3.6',routerMac:'A8:9C:6C:0E:8D:15',
  source:'UniFi Network API',backend:'integration-api',applicationVersion:'9.4.19',clientCounts:{wired:1,wireless:1,other:0},knownClients:{'aa:bb:cc:dd:ee:01':{},'aa:bb:cc:dd:ee:02':{},'aa:bb:cc:dd:ee:03':{}},
- unifiDevices:[{name:'Gateway',model:'UDR7',mac:'a8:9c:6c:0e:8d:15',ip:'10.0.0.1',state:'ONLINE',firmware:'4.3.6'},{name:'Switch',model:'USW',mac:'',ip:'10.0.0.2',state:'OFFLINE',firmware:'7.1'}],
- devices:[{mac:'AA:BB:CC:DD:EE:01',ip:'10.0.0.151',name:'Desktop',connection:'Ethernet',presence:'reachable'},{mac:'aa:bb:cc:dd:ee:02',ip:'10.0.0.77',name:'Phone',connection:'Wi-Fi · 5 GHz',presence:'associated'},
+ hardware:[{name:'Gateway',model:'UDR7',mac:'a8:9c:6c:0e:8d:15',ip:'10.0.0.1',state:'ONLINE',firmware:'4.3.6'},{name:'Switch',model:'USW',mac:'',ip:'10.0.0.2',state:'OFFLINE',firmware:'7.1'}],
+ clients:[{mac:'AA:BB:CC:DD:EE:01',ip:'10.0.0.151',name:'Desktop',connection:'Ethernet',presence:'reachable'},{mac:'aa:bb:cc:dd:ee:02',ip:'10.0.0.77',name:'Phone',connection:'Wi-Fi · 5 GHz',presence:'associated'},
   {mac:'aa:bb:cc:dd:ee:03',ip:'10.9.0.5',name:'VPN',connection:'Ethernet',presence:'reachable'},{mac:'nope',ip:'10.0.0.9',name:'Broken'},{mac:'aa:bb:cc:dd:ee:04',ip:'10.0.0.255',name:'Broadcast'}],...over});
 test('router adapter: one contract (census + health), five states, and the fields the overview always read',()=>{
  const now=Date.parse('2026-11-08T12:00:00Z'),lanCidrs=['10.0.0.0/24'],unifi=ROUTER_ADAPTERS.unifi;
  const none=normalizeRouter(null,{lanCidrs,now});
- assert.deepEqual({status:none.status,state:none.state,adapter:none.adapter,devices:none.devices,health:none.health,freshness:none.freshness},{status:'not-configured',state:'not-configured',adapter:null,devices:[],health:null,freshness:'unknown'});
+ assert.deepEqual({status:none.status,state:none.state,adapter:none.adapter,clients:none.clients,health:none.health,freshness:none.freshness},{status:'not-configured',state:'not-configured',adapter:null,clients:[],health:null,freshness:'unknown'});
  assert.equal(normalizeRouter(null,{lanCidrs,now,adapter:unifi}).state,'waiting');assert.equal(normalizeRouter(null,{lanCidrs,now,adapter:unifi}).status,'not-configured','older clients read this as "no feed"');
  const ok=normalizeRouter(observation(),{lanCidrs,now,adapter:unifi});
  assert.deepEqual({status:ok.status,state:ok.state,freshness:ok.freshness,observedAt:ok.observedAt,model:ok.model,firmware:ok.firmware,routerMac:ok.routerMac,error:ok.error},
   {status:'ok',state:'ok',freshness:'fresh',observedAt:'2026-11-08T11:59:30Z',model:'UniFi Dream Router 7 (UDR7)',firmware:'4.3.6',routerMac:'a8:9c:6c:0e:8d:15',error:null});
  assert.deepEqual(ok.adapter,{id:'unifi',title:'UniFi Network'});
- assert.deepEqual(ok.devices,[{mac:'aa:bb:cc:dd:ee:01',id:'aabbccddee01',ip:'10.0.0.151',name:'Desktop',connection:'Ethernet',presence:'reachable'},{mac:'aa:bb:cc:dd:ee:02',id:'aabbccddee02',ip:'10.0.0.77',name:'Phone',connection:'Wi-Fi · 5 GHz',presence:'associated'}],
+ assert.deepEqual(ok.clients,[{mac:'aa:bb:cc:dd:ee:01',id:'aabbccddee01',ip:'10.0.0.151',name:'Desktop',connection:'Ethernet',presence:'reachable'},{mac:'aa:bb:cc:dd:ee:02',id:'aabbccddee02',ip:'10.0.0.77',name:'Phone',connection:'Wi-Fi · 5 GHz',presence:'associated'}],
   'only well-formed clients with a host address inside the site networks');
- assert.deepEqual(ok.health.clients,{connected:2,wired:1,wireless:1,other:0,known:3});assert.equal(ok.health.status,'degraded','a piece of network hardware is offline');assert.equal(ok.health.hardwareDown,1);
+ assert.deepEqual(ok.health.clientCounts,{connected:2,wired:1,wireless:1,other:0,known:3});assert.equal(ok.health.status,'degraded','a piece of network hardware is offline');assert.equal(ok.health.hardwareDown,1);
  assert.deepEqual(ok.health.hardware[0],{name:'Gateway',model:'UDR7',state:'ONLINE',firmware:'4.3.6',ip:'10.0.0.1'});assert.equal(ok.health.softwareVersion,'9.4.19');
- assert.equal(normalizeRouter(observation({unifiDevices:[{name:'Gateway',state:'online'}]}),{lanCidrs,now,adapter:unifi}).health.status,'ok');
+ assert.equal(normalizeRouter(observation({hardware:[{name:'Gateway',state:'online'}]}),{lanCidrs,now,adapter:unifi}).health.status,'ok');
  const stale=normalizeRouter(observation({observedAt:'2026-11-08T11:50:00Z'}),{lanCidrs,now,adapter:unifi});assert.equal(stale.state,'stale');assert.equal(stale.freshness,'stale');assert.equal(stale.status,'ok');assert.equal(stale.health.status,'unknown');
  const failed=normalizeRouter(observation({status:'unavailable',error:'certificate-changed'}),{lanCidrs,now,adapter:unifi});
- assert.equal(failed.state,'unavailable');assert.equal(failed.error,'certificate-changed');assert.equal(failed.devices.length,2,'the last census is kept, never shown as "no clients"');
- assert.equal(normalizeRouter(observation(),{lanCidrs:[],now,adapter:unifi}).devices.length,4,'no networks configured: any IPv4 address');
+ assert.equal(failed.state,'unavailable');assert.equal(failed.error,'certificate-changed');assert.equal(failed.clients.length,2,'the last census is kept, never shown as "no clients"');
+ assert.equal(normalizeRouter(observation(),{lanCidrs:[],now,adapter:unifi}).clients.length,4,'no networks configured: any IPv4 address');
  // Hostile or broken input is bounded.
- const junk=normalizeRouter({status:'ok',observedAt:'x',devices:'no',unifiDevices:[null,{name:'<b>'.repeat(100),state:5}],model:{},clientCounts:{wired:-1,wireless:'9'},knownClients:[]},{lanCidrs,now,adapter:unifi});
- assert.equal(junk.freshness,'unknown');assert.deepEqual(junk.devices,[]);assert.equal(junk.model,'');assert.equal(junk.health.hardware[0].name.length,80);assert.deepEqual(junk.health.clients,{connected:0,wired:0,wireless:0,other:0,known:0});
+ const junk=normalizeRouter({status:'ok',observedAt:'x',clients:'no',hardware:[null,{name:'<b>'.repeat(100),state:5}],model:{},clientCounts:{wired:-1,wireless:'9'},knownClients:[]},{lanCidrs,now,adapter:unifi});
+ assert.equal(junk.freshness,'unknown');assert.deepEqual(junk.clients,[]);assert.equal(junk.model,'');assert.equal(junk.health.hardware[0].name.length,80);assert.deepEqual(junk.health.clientCounts,{connected:0,wired:0,wireless:0,other:0,known:0});
 });
 
 test('router adapter: site.json names it, a plugin can provide one, a hub with an observation file keeps working; GET /api/router',async t=>{
@@ -408,9 +408,9 @@ test('router adapter: site.json names it, a plugin can provide one, a hub with a
  assert.equal((await readRouterFor(fake({router:{adapter:'unifi'}}),{now})).state,'waiting','configured, nothing written yet');
  const unknown=await readRouterFor(fake({router:{adapter:'mikrotik'}}),{now});assert.equal(unknown.state,'waiting');assert.equal(unknown.error,'unknown-adapter');
  // A plugin's adapter: its own read, the same normalization and LAN filter.
- const plugin={id:'mikrotik',title:'MikroTik',staleAfterSeconds:900,read:async({site})=>observation({observedAt:'2026-11-08T11:50:00Z',hardware:[{name:'hEX',model:'RB750',state:'ONLINE'}],unifiDevices:undefined,note:site.lanCidrs[0]})};
+ const plugin={id:'mikrotik',title:'MikroTik',staleAfterSeconds:900,read:async({site})=>observation({observedAt:'2026-11-08T11:50:00Z',hardware:[{name:'hEX',model:'RB750',state:'ONLINE'}],note:site.lanCidrs[0]})};
  const viaPlugin=await readRouterFor(fake({lanCidrs:['10.0.0.0/24'],router:{adapter:'mikrotik'}},plugin),{now});
- assert.deepEqual(viaPlugin.adapter,{id:'mikrotik',title:'MikroTik'});assert.equal(viaPlugin.state,'ok','its own staleness limit');assert.equal(viaPlugin.devices.length,2);assert.equal(viaPlugin.health.hardware[0].name,'hEX');
+ assert.deepEqual(viaPlugin.adapter,{id:'mikrotik',title:'MikroTik'});assert.equal(viaPlugin.state,'ok','its own staleness limit');assert.equal(viaPlugin.clients.length,2);assert.equal(viaPlugin.health.hardware[0].name,'hEX');
  assert.equal((await readRouterFor(fake({},plugin),{now})).adapter.id,'mikrotik','a provided adapter needs no site setting');
  assert.equal((await routerAdapter(fake({router:{adapter:'unifi'}},plugin))).id,'unifi','site.json decides when both exist');
  assert.equal((await readRouterFor(fake({},{id:'broken',read:async()=>{throw new Error('boom');}}),{now})).state,'unavailable');
@@ -418,21 +418,47 @@ test('router adapter: site.json names it, a plugin can provide one, a hub with a
  // The file adapter without any setting: what a hub from before the adapter contract has.
  await writeFile(path.join(dir,ROUTER_FILE),JSON.stringify(observation()));
  assert.equal((await routerAdapter(fake({}))).id,'unifi');assert.equal((await readRouterFor(fake({lanCidrs:['10.0.0.0/24']}),{now})).state,'ok');
- const legacy=await readRouter(dir,{lanCidrs:['10.0.0.0/24'],now});assert.equal(legacy.status,'ok');assert.equal(legacy.devices.length,2);assert.equal((await readRouter(path.join(dir,'missing'))).status,'not-configured');
+ const legacy=await readRouter(dir,{lanCidrs:['10.0.0.0/24'],now});assert.equal(legacy.status,'ok');assert.equal(legacy.clients.length,2);assert.equal((await readRouter(path.join(dir,'missing'))).status,'not-configured');
  for(const bad of [{adapter:'UniFi'},{adapter:'unifi',host:'bad host'},{adapter:'unifi',site:'../x'},{adapter:'unifi',key:'secret'},{}])assert.throws(()=>validateSite({router:bad}),/site config: router/,JSON.stringify(bad));
  assert.equal(validateSite({}).router,null);
  // Over HTTP: every signed-in account may read it; the overview payload still carries its router summary.
  const h=await hub(t);
  assert.equal((await fetch(h.origin+'/api/router')).status,401);
  const empty=await (await fetch(h.origin+'/api/router',{headers:h.admin})).json();
+ assert.equal(empty.schemaVersion,2,'2.0: the census is clients');assert.deepEqual(empty.clients,[]);
  assert.equal(empty.state,'not-configured');assert.deepEqual(empty.configured,{adapter:null,host:'10.0.0.1',lanCidrs:['10.0.0.0/24']});assert.deepEqual(empty.siteDevice,{id:'router',name:'Router',ip:'10.0.0.1'});
  assert.equal((await (await fetch(h.origin+'/api/home',{headers:h.admin})).json()).router.status,'not-configured');
  await writeFile(path.join(h.dir,ROUTER_FILE),JSON.stringify(observation({observedAt:new Date().toISOString()})));
  const live=await (await fetch(h.origin+'/api/router',{headers:(await h.account('reader',[])).headers})).json();
- assert.equal(live.state,'ok');assert.equal(live.devices.length,2);assert.equal(live.adapter.id,'unifi');
+ assert.equal(live.state,'ok');assert.equal(live.clients.length,2);assert.equal(live.adapter.id,'unifi');
+ assert.equal(live.devices,undefined,'the census is `clients`; `devices` means the household devices');assert.equal(live.health.clients,undefined);assert.equal(live.health.clientCounts.connected,2);
  const home=await (await fetch(h.origin+'/api/home',{headers:h.admin})).json();
  assert.deepEqual({status:home.router.status,freshness:home.router.freshness,clients:home.router.clients,model:home.router.model},{status:'ok',freshness:'fresh',clients:2,model:'UniFi Dream Router 7 (UDR7)'});
  assert.equal(home.devices.find(m=>m.id==='router').online,'online');assert.deepEqual(home.devices.find(m=>m.id==='router').quad,{clients:2,wifi:1,power:null,temp:null});
+});
+
+test('router observation: a 2.0 collector writes clients and hardware, a 1.x one devices and unifiDevices; both are read',async t=>{
+ const dir=await tmp(t),now=Date.parse('2026-11-08T12:00:00Z'),lanCidrs=['10.0.0.0/24'],file=path.join(dir,ROUTER_FILE);
+ const census=[{mac:'aa:bb:cc:dd:ee:01',ip:'10.0.0.151',name:'Desktop',connection:'Ethernet',presence:'reachable'},{mac:'aa:bb:cc:dd:ee:02',ip:'10.0.0.77',name:'Phone',connection:'Wi-Fi · 5 GHz',presence:'associated'}];
+ const gear=[{name:'Gateway',model:'UDR7',state:'ONLINE',firmware:'4.3.6',ip:'10.0.0.1'}];
+ const base={status:'ok',observedAt:'2026-11-08T11:59:30Z',model:'UDR7',clientCounts:{wired:1,wireless:1,other:0}};
+ const read=async doc=>{await writeFile(file,JSON.stringify(doc));return readRouter(dir,{lanCidrs,now});};
+ // The 2.0 collector: clients and hardware.
+ const current=await read({...base,schemaVersion:2,clients:census,hardware:gear});
+ assert.deepEqual(current.clients.map(c=>c.name),['Desktop','Phone']);assert.equal(current.health.hardware[0].name,'Gateway');
+ assert.deepEqual(current.health.clientCounts,{connected:2,wired:1,wireless:1,other:0,known:null});assert.equal(current.devices,undefined);
+ // A 1.x collector on another host keeps writing devices and unifiDevices: the same census, and the file stays its own.
+ const written={...base,schemaVersion:1,devices:census,unifiDevices:gear},before=JSON.stringify(written);
+ const old=await read(written);
+ assert.deepEqual({clients:old.clients,hardware:old.health.hardware,counts:old.health.clientCounts},{clients:current.clients,hardware:current.health.hardware,counts:current.health.clientCounts});
+ assert.equal(await readFile(file,'utf8'),before,'the hub never rewrites the collector\'s file');
+ assert.equal((await readRouterFor({site:validateSite({lanCidrs}),directory:dir,provided:()=>undefined},{now})).clients.length,2,'the file adapter of a hub');
+ // A file that carries both (a 2.0 collector over a 1.x file): the 2.0 keys win.
+ const both=await read({...base,clients:census.slice(0,1),devices:census,hardware:gear,unifiDevices:[]});
+ assert.equal(both.clients.length,1);assert.equal(both.health.hardware.length,1);
+ // A plugin's adapter speaks 2.0: a census it still returns as devices is not read.
+ const plugin={id:'mikrotik',title:'MikroTik',read:async()=>({...base,observedAt:new Date(now).toISOString(),devices:census})};
+ assert.deepEqual((await readRouterFor({site:validateSite({lanCidrs,router:{adapter:'mikrotik'}}),directory:dir,provided:name=>name==='router.adapter'?plugin:undefined},{now})).clients,[]);
 });
 
 test('collectors with nothing configured say what to add, exit cleanly and write nothing',async t=>{

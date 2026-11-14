@@ -37,8 +37,7 @@ A major release: names on the public surface change, with no alias for the old o
 - **Breaking: a machine is now a device, everywhere.** What the hub called a machine (a computer, a NAS, the router:
   whatever `site.json` lists or the overview adds) is a device in the configuration, the API, the MCP tools, the
   commands and the plugin contract. The old names are gone, with no alias. Where the difference matters, a **site
-  device** is one from `site.json` and an **added device** one added on the overview or written by an agent. The
-  router's census keeps its name: `router.devices` are the network clients the router saw.
+  device** is one from `site.json` and an **added device** one added on the overview or written by an agent.
   - `site.json`: the key `machines` is `devices`, and `runtimes[].machine` is `runtimes[].device`. A file that still
     has `machines` is refused at start with a message that names the new key. Host agents are placed under
     `plugins.<id>.agents.<agent>.<device id>`, as before.
@@ -65,6 +64,11 @@ A major release: names on the public surface change, with no alias for the old o
   - Commands: `--device` replaces `--machine` (`scripts/manage-access.mjs create-agent-key`,
     `scripts/import-runtime-history.mjs`, `scripts/install-host-agent.mjs`), and the environment variable
     `DEVICES_DIR` replaces `MACHINES_DIR`.
+- **Breaking: the router's census is `clients`**, so that a device is only ever the household's. `GET /api/router`
+  answers `schemaVersion: 2` with the network clients the router saw as `clients` (was `devices`) and their counts as
+  `health.clientCounts` (was `health.clients`); `health.hardware` (gateway, switches, access points) is unchanged.
+  `GET /api/home → router.clients` and a router tile's `quad.clients` were already counts and stay as they are.
+  The UniFi collector writes `clients` and `hardware` (were `devices` and `unifiDevices`), `schemaVersion: 2`.
 
 ### Plugin contract
 
@@ -79,6 +83,9 @@ A major release: names on the public surface change, with no alias for the old o
 - **Breaking:** a provenance source counts `unit: "devices"` (was `"machines"`), and a `runtimes.requests` item
   names `device` and `clientDevice` (were `machine`, `clientMachine`).
 - **Breaking:** a host agent's `config` module gets `{site, device}` (was `{site, machine}`).
+- **Breaking:** a `router.adapter` observation lists the router's network clients as `clients` (was `devices`); one
+  that still returns `devices` reports no clients. `readRouter` and `readRouterFor` answer with `clients` and
+  `health.clientCounts`, and `mergeRouter` reads `router.clients`.
 - **Breaking:** `createKnowledgeEditor` and `validateKnowledge` work on the `schema: 2` inventory document (kind and
   field `device`). The editor reads a `schema: 1` file forward; `validateKnowledge` refuses a `schema: 1` document.
 
@@ -106,6 +113,10 @@ A major release: names on the public surface change, with no alias for the old o
   (`state/runtimes/<id>/requests-YYYY-MM.jsonl`) holds `device` and `clientDevice` in each line.
   `scripts/import-runtime-history.mjs` still takes a history file of a 1.x store.
 - Inventory: `data/knowledge.json` is `schema: 2`, with the kind and the field `device`.
+- Router: `data/router-observations.json` is the UniFi collector's file, and the collector may run on another host,
+  its file copied to the hub. The 2.0 collector writes `schemaVersion: 2` with `clients` and `hardware`; the hub
+  reads a 1.x collector's file (`devices`, `unifiDevices`) forward on every read and never rewrites it, so a collector
+  left on 1.x keeps working. A 1.x hub reads a 2.0 collector's file as no clients.
 - The descriptor directory `data/machines/` is renamed to `data/devices/` at the first start, while no
   `data/devices/` exists. A directory named by `DEVICES_DIR` is used as it is.
 - The audit files are not rewritten. Lines 1.x wrote about agents and agent keys are shown with the new words.
@@ -116,6 +127,8 @@ A major release: names on the public surface change, with no alias for the old o
 
 - **Update the collectors with the hub.** `scripts/collect-systems.mjs` and `scripts/collect-security.mjs` run from a
   checkout of their own schedule; one left on 1.x does not read a 2.0 `site.json`.
+  The UniFi collector (`scripts/collect-router-unifi.py`) may be updated later: the hub reads its 1.x file, and a
+  1.x collector finds the gateway through `router.host` (or `UNIFI_HOST`), since it does not read a 2.0 `devices` list.
 - **The push agents keep reporting**: the report format and the keys are unchanged. A key file downloaded from 1.x
   (`agent.machine`) is still accepted by the 2.0 installers; the hub now writes `agent.device`.
 - **Plugins** must name a core range that holds 2.x (`plugin.json → core`) and move to the new names before the hub

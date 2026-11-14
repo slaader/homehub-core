@@ -367,7 +367,7 @@ fine).
 | `home.runtimes` | `{deviceId: {source, observedAt, runtimes: [{id, name, kind, status: running\|stopped\|unknown, url, version, source?, models: [{id, state, sizeGb, contextTokens, ttlRemainingSeconds}], stats: [{label, value}]}]}}` — local LLM runtimes on a device (llama-swap, Ollama, LM Studio, llama.cpp, vLLM, …). Core provides it too, from the runtimes it reads directly, and joins every provider's report per device (below). Core bounds it (20 runtimes, 30 models, 12 stats each). A model's `state` is `loaded`, `loading` or anything else for "not in memory"; the first of `stats` is the figure a card prints large; `label` and `source` go through the plugin's `strings`. Optional, for what runs **now** (only where the runtime says; leave them out when it cannot tell, never send 0 for "unknown"): `activity: {active, queued}` on a runtime, `active`, `queued` and `since` (when the oldest running one began) on a model; `mode: "cli"` marks a command-line tool started per job (mflux), not a server: `running` while a job runs or waits, `stopped` with nothing to do, its models being those of its jobs; a model's `kind` (`llm`, `image`, …); `pids` (process ids on that device) on a runtime or a model, so the GPU processes its telemetry agent reports can be named by it | The "Local LLM runtimes" section of a device page, one card per runtime, and above the cards "what the GPU does" (`GET /api/home` → `devices[].work`): the models that generate or wait, next to the GPU reading of its telemetry and its three busiest GPU processes (`devices[].gpuProcesses`). The telemetry agent does not report runtimes; the push agent does, through the core module `agent` (below): a device that neither a provider nor a direct endpoint reports on has no such section. Report `runtimes: []` only when you watch the device and it runs none. A device with runtimes shows its GPU on its tile's small chart, any other its CPU |
 | `runtimes.requests` | `{id, read({from, to, limit}) → Promise<items[]>}` — request history of local model runtimes. An item: `{device, runtime, model, at, path, inputTokens, outputTokens, promptTps, generationTps, durationMs, client, clientDevice?, clientAddress?, metricId?}`; `metricId` is the runtime's own record id, when it has one. `path` is the URL path or a kind (`chat`, `embeddings`, `images`, `audio`); `model` is the name the client asked for (a gateway alias is fine); `client` is who sent it when the provider can tell, else empty ("Unattributed"); `clientDevice` is a device id, only when the provider knows it; `clientAddress` is the address the request came from (a site device's `ip` names that device, loopback names none). Core provides it too, from the history it keeps of the llama-swaps it reads (below). Core de-duplicates items two providers both report: by `device`, `runtime`, `metricId` and `at` when `metricId` is given (the copy that names a client is kept), else by the whole item | The LLM & Diffusion page: requests, tokens and tok/s over time, the clients table and the traffic in the wiring diagram. Without a provider the page shows live state only |
 | `inventory.writer` | `{put(change, by), edit(input)}` or `null` — where inventory edits go instead of the local file. Optional: `remove(change)` and `bulk(change, {by, user})`; without them delete and bulk upsert answer `501` | Inventory map and services catalog |
-| `router.adapter` | `{id, title, read(context)}` — another router's census and health. `read` resolves to an observation `{status, observedAt, model, firmware, routerMac, devices[], hardware[]}` or `null`; core validates and bounds it (`server/router-data.mjs`). Optional `staleAfterSeconds` | `GET /api/router`, the router tile and page |
+| `router.adapter` | `{id, title, read(context)}` — another router's census and health. `read` resolves to an observation `{status, observedAt, model, firmware, routerMac, clients[], hardware[]}` (`clients`: the network clients the router sees; `hardware`: its own gear, gateway, switches and access points) or `null`; core validates and bounds it (`server/router-data.mjs`). Optional `staleAfterSeconds` | `GET /api/router`, the router tile and page |
 | `git-lfs.providers` | `[provider]` — more kinds of git host for the Git LFS page (GitLab, a host with its own LFS store). The shape and the rules are in `docs/git-lfs.md` → Providers; a provider that is not valid, or reuses a built-in id, is left out and logged. Only a provider whose `capabilities.deleteObjects` (and `listObjects`) is true is ever asked to delete | The Git LFS page (`#git-lfs`, core module `git-lfs`) |
 | `devices.facets` | `(devices) => report \| [report]` (a promise is fine) — what this module knows about each device. `devices` are the overview's devices (`GET /api/home` → `devices`). A report: `{id, title, icon?, order?, page?, howTo?, off?, devices: {[deviceId]: entry}, fallback?: entry}`; an entry: `{state, summary?, summaryT?, details?: [{label, value, valueT?}], href?}`. `state` is `ok`, `warn`, `stale`, `error`, `off`, `not-configured` or `not-applicable`. A device the report does not name gets `fallback` (default: `not-configured` with `howTo`); `off: true` shows the whole facet as turned off. `only: true` shows the facet only on the devices it names. `how: {by, text}` says who does the work (`hub`: Home Hub alone; `source`: Home Hub reads something that must run on the device; `collector`: a scheduled script on the hub's host; `agent`: an agent writes it over MCP; `integration`) and how, in one sentence. `prompt` is a Czech source template for the person's own coding agent (`{id}`, `{name}`, `{hostname}` are filled per device; `promptParams` adds more, a list being translated text); the page offers it where the part is not set up or needs attention, so give an English translation in `strings`. `href` must be a `#hash` (default `#<page>`); `title`, `label` and a plain `summary` go through `strings`. Read-only: never open a connection here, read what your module already holds. Core provides `telemetry`, `backups`, `versions`, `protection`, `ssh-keys`, `inventory`, `runtimes` and `git-lfs` (`server/device-facet-sources.mjs`); the first report of an id wins | Integrations → Devices (`#integrations`, `#integrations/device/<id>`, `GET /api/admin/devices`; `server/device-facets.mjs`) |
 
@@ -524,13 +524,20 @@ For another router, a plugin provides the adapter and `site.json` names it:
 ```js
 provides: {'router.adapter': (state, hub) => ({id: 'mikrotik', title: 'MikroTik',
   read: async ({site, directory}) => ({status: 'ok', observedAt: new Date().toISOString(), model: 'hEX', firmware: '7.16',
-    devices: [{mac: 'aa:bb:cc:dd:ee:01', ip: '10.0.0.20', name: 'printer', connection: 'Ethernet', presence: 'reachable'}],
+    clients: [{mac: 'aa:bb:cc:dd:ee:01', ip: '10.0.0.20', name: 'printer', connection: 'Ethernet', presence: 'reachable'}],
     hardware: [{name: 'hEX', model: 'RB750', state: 'ONLINE', firmware: '7.16', ip: '10.0.0.1'}]})})},
 ```
 
 `connection` is `Ethernet`, `Wi-Fi` or `Wi-Fi · 2.4 GHz` / `5 GHz` / `6 GHz`; `presence` is `associated`, `reachable` or
 `lease-only`. Return `{status: 'unavailable', error: 'short-code'}` when a read fails, and `null` when nothing has
-been observed yet. A `read` must only read: an adapter never changes anything on the router.
+been observed yet. A `read` must only read: an adapter never changes anything on the router. Optional:
+`clientCounts: {wired, wireless, other}` when the router counts them itself, `softwareVersion`.
+
+What core makes of it (`GET /api/router`, `readRouter` and `readRouterFor` in `home-hub/plugin-api`) carries the
+list as `clients` and the counts as `health.clientCounts: {connected, wired, wireless, other, known}`; `mergeRouter`
+folds the clients into a device inventory. The census was `devices` in 1.x: an adapter that still returns `devices`
+reports no clients. Only the included file adapter still reads the 1.x names, because its file may come from a 1.x
+collector on another host (`docs/storage.md` → State written by 1.x).
 
 ### The browser side
 
@@ -614,7 +621,8 @@ Under the test runner, front-end modules can be imported in Node with the same U
 
 ## Upgrading a plugin from 1.x
 
-Home Hub 2.0 calls a device what 1.x called a machine, and an app token what 1.x called a device token. No old name
+Home Hub 2.0 calls a device what 1.x called a machine, an app token what 1.x called a device token, and the
+router's network clients `clients` where 1.x said `devices`, so that a device is only ever the household's. No old name
 is kept as an alias, so a plugin written for 1.x changes these before 2.0 starts with it. `CHANGELOG.md` → 2.0.0 has
 the HTTP routes, fields and error codes a plugin's page or script may call; this is the plugin contract.
 
@@ -639,9 +647,10 @@ the HTTP routes, fields and error codes a plugin's page or script may call; this
 | Links into core pages | `#integrations/machine/<id>` | `#integrations/device/<id>` (`#host-<id>` is unchanged) |
 | Commands and environment | `--machine`, `MACHINES_DIR`, `data/machines/` | `--device`, `DEVICES_DIR`, `data/devices/` |
 | Core's translatable texts (`tx` keys a plugin reuses from core) | the placeholder `{machine}` | `{device}` |
+| `router.adapter` observation | `devices[]` (the router's network clients) | `clients[]`; `hardware[]` is unchanged. A `devices[]` is not read |
+| `readRouter`, `readRouterFor`, `mergeRouter`, `GET /api/router` | `router.devices`, `router.health.clients` (the counts) | `router.clients`, `router.health.clientCounts`; `GET /api/router` is `schemaVersion: 2` |
 
-Unchanged: `home.snapshots`, `home.services` and `home.runtimes` (keyed by device id, as before), `router.adapter`
-(its `devices[]` are the router's network clients, a different thing and the reason for the rename),
+Unchanged: `home.snapshots`, `home.services` and `home.runtimes` (keyed by device id, as before),
 `git-lfs.providers`, the scopes, the Czech source strings, and `/views.js`, `/ui.js` and `/i18n.js`. What a plugin
 stores for itself (`hub.pluginData(id)`) is its own: core migrates only core's files (`docs/storage.md` → State
 written by 1.x), so a plugin that wrote `machine` into its files reads them forward itself and raises its

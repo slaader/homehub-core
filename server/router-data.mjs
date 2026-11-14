@@ -3,7 +3,7 @@
 // The contract is small on purpose. An adapter is {id, title, read(context) → observation | null}:
 //   observation = {status: "ok" | anything else, observedAt, attemptedAt, error,
 //                  model, firmware, routerMac,
-//                  devices: [{mac, ip, name, connection, presence}],          the census
+//                  clients: [{mac, ip, name, connection, presence}],          the census
 //                  hardware: [{name, model, state, firmware, ip}],            gateway, switches, access points
 //                  clientCounts: {wired, wireless, other}, softwareVersion}   optional
 // Core checks and bounds whatever an adapter returns (normalizeRouter), keeps only clients inside the
@@ -12,7 +12,8 @@
 //   unavailable      the last attempt failed (the previous census is kept)
 //   stale            older than three minutes        ok
 // Included adapter: "unifi", a file drop. scripts/collect-router-unifi.py reads a UniFi gateway
-// (read-only) and writes data/router-observations.json; this module only reads that file.
+// (read-only) and writes data/router-observations.json; this module only reads that file. A file of a 1.x
+// collector (`devices`, `unifiDevices`) is read forward on every read (forwardObservation, below).
 // Another router: a plugin provides "router.adapter" → {id, title, read} (docs/plugins.md), or writes
 // the same file from its own collector. site.json → router.adapter names the one in use.
 import {readFile} from 'node:fs/promises';
@@ -27,9 +28,22 @@ export const ROUTER_FILE='router-observations.json';
 export const ROUTER_CONNECTIONS=Object.freeze(['Wi-Fi · 2.4 GHz','Wi-Fi · 5 GHz','Wi-Fi · 6 GHz','Wi-Fi','Ethernet']);
 export const ROUTER_PRESENCE=Object.freeze(['associated','reachable','lease-only']);
 
-// The file adapter's read: the snapshot a collector left in the data directory, or null.
+/**
+ * The router observation (data/router-observations.json). 1.x called the router's network clients `devices` and
+ * the UniFi collector wrote the network gear as `unifiDevices`; 2.0 names them `clients` and `hardware`. The file
+ * is written by a collector that may run on another host and be copied here, so the hub never rewrites it: a file
+ * of a 1.x collector is read forward each time, and the 2.0 key wins when a file carries both.
+ */
+export const V1_ROUTER=Object.freeze({clients:'devices',hardware:'unifiDevices'});
+export function forwardObservation(raw){
+ if(!raw||typeof raw!=='object'||Array.isArray(raw)||!Object.values(V1_ROUTER).some(old=>Object.hasOwn(raw,old)))return raw;
+ const out={...raw};
+ for(const [now,old] of Object.entries(V1_ROUTER)){if(!Object.hasOwn(out,old))continue;if(!Object.hasOwn(out,now))out[now]=out[old];delete out[old];}
+ return out;
+}
+// The file adapter's read: the snapshot a collector left in the data directory (in the 2.0 names), or null.
 export async function readObservationFile(directory){
- try{const raw=JSON.parse(await readFile(path.join(directory,ROUTER_FILE),'utf8'));return raw&&typeof raw==='object'&&!Array.isArray(raw)?raw:null;}catch{return null;}
+ try{const raw=JSON.parse(await readFile(path.join(directory,ROUTER_FILE),'utf8'));return raw&&typeof raw==='object'&&!Array.isArray(raw)?forwardObservation(raw):null;}catch{return null;}
 }
 export const ROUTER_ADAPTERS=Object.freeze({
  unifi:Object.freeze({id:'unifi',title:'UniFi Network',collector:COLLECTORS.router.script,read:({directory})=>readObservationFile(directory)}),
@@ -40,21 +54,22 @@ const validAdapter=a=>a&&typeof a==='object'&&typeof a.id==='string'&&/^[a-z][a-
 // lanCidrs: only clients with a host address inside the site's networks are kept (none configured = any IPv4).
 export function normalizeRouter(raw,{lanCidrs=[],adapter=null,now=Date.now(),staleAfterSeconds=staleAfter(COLLECTORS.router)}={}){
  const who=adapter?{id:adapter.id,title:safe(adapter.title||adapter.id,60)}:null;
- if(!raw)return {status:'not-configured',state:adapter?'waiting':'not-configured',adapter:who,observedAt:null,attemptedAt:null,error:null,freshness:'unknown',staleAfterSeconds,model:'',firmware:'',routerMac:null,devices:[],health:null};
+ if(!raw)return {status:'not-configured',state:adapter?'waiting':'not-configured',adapter:who,observedAt:null,attemptedAt:null,error:null,freshness:'unknown',staleAfterSeconds,model:'',firmware:'',routerMac:null,clients:[],health:null};
  const age=now-Date.parse(raw.observedAt),freshness=!Number.isFinite(age)||age< -60000?'unknown':age>staleAfterSeconds*1000?'stale':'fresh';
- const devices=Array.isArray(raw.devices)?raw.devices.slice(0,500).filter(d=>d&&macPattern.test(d.mac)&&inCidrs(d.ip,lanCidrs)).map(d=>({mac:d.mac.toLowerCase(),id:d.mac.toLowerCase().replaceAll(':',''),ip:d.ip,name:safe(d.name),connection:ROUTER_CONNECTIONS.includes(d.connection)?d.connection:'Unknown',presence:ROUTER_PRESENCE.includes(d.presence)?d.presence:'cache-only'})):[];
+ const clients=Array.isArray(raw.clients)?raw.clients.slice(0,500).filter(d=>d&&macPattern.test(d.mac)&&inCidrs(d.ip,lanCidrs)).map(d=>({mac:d.mac.toLowerCase(),id:d.mac.toLowerCase().replaceAll(':',''),ip:d.ip,name:safe(d.name),connection:ROUTER_CONNECTIONS.includes(d.connection)?d.connection:'Unknown',presence:ROUTER_PRESENCE.includes(d.presence)?d.presence:'cache-only'})):[];
  const status=raw.status==='ok'?'ok':'unavailable';
- const hardware=(Array.isArray(raw.hardware)?raw.hardware:Array.isArray(raw.unifiDevices)?raw.unifiDevices:[]).slice(0,50).filter(h=>h&&typeof h==='object')
+ const hardware=(Array.isArray(raw.hardware)?raw.hardware:[]).slice(0,50).filter(h=>h&&typeof h==='object')
   .map(h=>({name:safe(h.name,80),model:safe(h.model,60),state:safe(h.state,32).toUpperCase()||'UNKNOWN',firmware:safe(h.firmware,64),ip:inCidrs(h.ip,lanCidrs)?h.ip:null}));
  const counts=raw.clientCounts&&typeof raw.clientCounts==='object'?raw.clientCounts:{};
- const wireless=devices.filter(d=>d.connection.startsWith('Wi-Fi')).length,wired=devices.filter(d=>d.connection==='Ethernet').length;
+ const wireless=clients.filter(d=>d.connection.startsWith('Wi-Fi')).length,wired=clients.filter(d=>d.connection==='Ethernet').length;
  const down=hardware.filter(h=>h.state!=='ONLINE'&&h.state!=='UNKNOWN').length;
  const state=status!=='ok'?'unavailable':freshness==='fresh'?'ok':'stale';
  return {status,state,adapter:who,freshness,staleAfterSeconds,observedAt:raw.observedAt||null,attemptedAt:raw.attemptedAt||null,error:status==='ok'?null:safe(raw.error,80)||'unavailable',
-  model:safe(raw.model),firmware:safe(raw.firmware),routerMac:macPattern.test(raw.routerMac)?raw.routerMac.toLowerCase():null,devices,
-  // Health: is the feed alive, is every piece of network hardware online, how many clients are connected.
+  model:safe(raw.model),firmware:safe(raw.firmware),routerMac:macPattern.test(raw.routerMac)?raw.routerMac.toLowerCase():null,clients,
+  // Health: is the feed alive, is every piece of network hardware online, how many clients are connected
+  // (clientCounts; the list itself is `clients` above).
   health:{status:state!=='ok'?'unknown':down?'degraded':'ok',softwareVersion:safe(raw.softwareVersion||raw.applicationVersion,40),source:safe(raw.source,60),backend:safe(raw.backend,40),
-   hardware,hardwareDown:down,clients:{connected:devices.length,wired:count(counts.wired)??wired,wireless:count(counts.wireless)??wireless,other:count(counts.other)??devices.length-wired-wireless,
+   hardware,hardwareDown:down,clientCounts:{connected:clients.length,wired:count(counts.wired)??wired,wireless:count(counts.wireless)??wireless,other:count(counts.other)??clients.length-wired-wireless,
     known:raw.knownClients&&typeof raw.knownClients==='object'?Math.min(Object.keys(raw.knownClients).length,5000):null}}};
 }
 
@@ -95,14 +110,16 @@ export function routerProvenance(router){
  if(router?.state==='disabled'){const id=router.configuredAdapter,builtin=ROUTER_ADAPTERS[id];
   return provenance([builtin||!id?{kind:'collector',id:id||'router',source:builtin?.collector||COLLECTORS.router.script,state:'disabled'}:{kind:'plugin',id,source:id,state:'disabled'}]);}
  const a=router?.adapter;if(!a)return provenance([]);
- const builtin=ROUTER_ADAPTERS[a.id],facts={state:router.state,lastAt:router.observedAt,count:router.devices?.length||0,unit:'clients',detail:a.title};
+ const builtin=ROUTER_ADAPTERS[a.id],facts={state:router.state,lastAt:router.observedAt,count:router.clients?.length||0,unit:'clients',detail:a.title};
  return provenance([builtin?{kind:'collector',id:a.id,source:builtin.collector,intervalSeconds:COLLECTORS.router.intervalSeconds,...facts}:{kind:'plugin',id:a.id,source:a.id,...facts}]);
 }
+// A device inventory ({devices}) with the router's census folded in: a client it does not know becomes an
+// unidentified device that needs review. router: what readRouter() returned (its `clients`).
 export function mergeRouter(inventory,router){
  const devices=inventory.devices.map(d=>({...d})),lookup=new Map(devices.map(d=>[d.id,d])),viaAlias=new Map();
  for(const d of devices)for(const m of d.routerMacs||[]){const id=m.replaceAll(':','');if(!lookup.has(id))viaAlias.set(id,d);}
- const primaryObserved=new Set(router.devices.map(r=>r.id));
- for(const r of router.devices){
+ const primaryObserved=new Set(router.clients.map(r=>r.id));
+ for(const r of router.clients){
   const alias=viaAlias.get(r.id);let d=lookup.get(r.id)||alias;
   if(!d){if(devices.length>=500)continue;d={id:r.id,mac:r.mac,ip:r.ip,name:r.name||'Unidentified device',model:'Not checked',role:'Unknown',confidence:'Needs review',identity:'Router-observed device; exact identity not verified',connection:'Unknown',connectionNote:'Not reported',firmware:'Not checked',software:'Not checked',support:'Not checked',observedAt:router.observedAt,observation:'Reported by router',notes:[],evidence:[]};devices.push(d);lookup.set(r.id,d);}
   // A secondary NIC keeps its evidence but cannot replace a simultaneously observed primary NIC.

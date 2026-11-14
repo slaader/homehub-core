@@ -17,6 +17,7 @@ import {createRequestHistory,fromImportLine} from '../server/runtime-history.mjs
 import {readSnapshot,SYSTEMS_SCHEMA} from '../server/systems-data.mjs';
 import {loadSecurity,forwardSecurity,SECURITY_SCHEMA,SECURITY_PROBES_SCHEMA} from '../server/security-data.mjs';
 import {devicesDirectory,forwardJsonl,forwardTrendLine} from '../server/state-forward.mjs';
+import {readRouter,forwardObservation,ROUTER_FILE} from '../server/router-data.mjs';
 import {collectSystems} from '../scripts/collect-systems.mjs';
 import {createKnowledgeEditor,entryHash} from '../scripts/knowledge-edit.mjs';
 import {load as loadInventory,validate} from '../scripts/check-knowledge.mjs';
@@ -287,6 +288,24 @@ test('knowledge.json of 1.0.0: schema 2, kind and field device, every other fiel
 });
 
 // ---- a key file on another host -----------------------------------------------------------------------------------
+test('router-observations.json of a 1.0.0 collector: read forward as clients and hardware on every read, never rewritten',async t=>{
+ const dir=await temp(t),file=path.join(dir,ROUTER_FILE);
+ // What scripts/collect-router-unifi.py of 1.0.0 wrote (the collector may run on another host and be copied here).
+ const v1={schemaVersion:1,attemptedAt:'2026-11-08T11:59:30+00:00',source:'UniFi Network API',status:'ok',observedAt:'2026-11-08T11:59:30+00:00',error:null,
+  devices:[{mac:'aa:bb:cc:dd:ee:01',ip:'10.0.0.151',name:'Desktop',connection:'Ethernet',presence:'reachable',connected:true,type:'WIRED',connectedAt:'',lastSeen:'2026-11-08T11:59:30+00:00',uplink:'Gateway'}],
+  clientCounts:{wired:1,wireless:0,other:0},model:'UniFi Dream Router 7 (UDR7)',firmware:'4.3.6',routerMac:'a8:9c:6c:0e:8d:15',routerIp:'10.0.0.1',
+  unifiDevices:[{name:'Gateway',model:'UDR7',mac:'a8:9c:6c:0e:8d:15',ip:'10.0.0.1',state:'ONLINE',firmware:'4.3.6'}],knownClients:{'aa:bb:cc:dd:ee:01':{ip:'10.0.0.151',name:'Desktop',type:'WIRED',lastSeen:'2026-11-08T11:59:30+00:00'}},
+  site:'Default',applicationVersion:'9.4.19',backend:'integration-api',routerBaseMac:'a8:9c:6c:0e:8d:15'};
+ const forward=forwardObservation(v1);
+ assert.deepEqual([forward.clients,forward.hardware],[v1.devices,v1.unifiDevices]);assert.ok(!('devices' in forward)&&!('unifiDevices' in forward));
+ assert.equal(forwardObservation(forward),forward,'a 2.0 observation is returned as it is');
+ await put(file,v1);const before=await mark(file);
+ const router=await readRouter(dir,{lanCidrs:['10.0.0.0/24'],now:Date.parse('2026-11-08T12:00:00Z')});
+ assert.equal(router.state,'ok');assert.deepEqual(router.clients.map(c=>c.name),['Desktop']);assert.equal(router.health.hardware[0].name,'Gateway');
+ assert.deepEqual(router.health.clientCounts,{connected:1,wired:1,wireless:0,other:0,known:1});
+ assert.equal(await mark(file),before,'the collector\'s file is not rewritten');
+});
+
 test('an agent key file downloaded from 1.0.0 is still an agent key file',()=>{
  const old=JSON.stringify({schema:1,agent:{id:'00112233aabbccdd',machine:'studio',name:'studio · 2026-10-01',prefix:TOKEN.slice(0,12),createdAt:'2026-10-01T08:00:00.000Z'},token:TOKEN});
  assert.deepEqual(readKeyFile(old),{token:TOKEN,agent:{id:'00112233aabbccdd',device:'studio',prefix:TOKEN.slice(0,12)}});

@@ -38,8 +38,8 @@ function banner(doc){
  return el('div',{class:'col-banner',role:'status'},badge(t('čerstvé'),'good'),el('span',{},el('b',{},doc.adapter?.title||''),' · ',seen));
 }
 function census(doc){
- if(!doc.devices.length)return el('p',{class:'col-empty'},t('Router teď nehlásí žádného klienta v nastavených sítích.'));
- const rows=[...doc.devices].sort((a,b)=>a.ip.localeCompare(b.ip,undefined,{numeric:true})).map(d=>{const [label,tone]=PRESENCE[d.presence]||[d.presence,''];
+ if(!doc.clients.length)return el('p',{class:'col-empty'},t('Router teď nehlásí žádného klienta v nastavených sítích.'));
+ const rows=[...doc.clients].sort((a,b)=>a.ip.localeCompare(b.ip,undefined,{numeric:true})).map(d=>{const [label,tone]=PRESENCE[d.presence]||[d.presence,''];
   return el('tr',{},cell(t('Název'),el('span',{class:'col-name'},d.name||t('bez názvu'))),cell('IP',el('span',{class:'col-mono'},d.ip)),cell('MAC',el('span',{class:'col-mono col-dim'},d.mac)),
    cell(t('Připojení'),CONNECTION[d.connection]?t(CONNECTION[d.connection]):d.connection),cell(t('Stav'),badge(t(label),tone)));});
  return el('div',{class:'col-scroll'},el('table',{class:'col-table col-pairs'},
@@ -57,10 +57,10 @@ function render(box,doc,reload){
  const title=el('h3',{class:'col-router-title'},t('Klienti a stav routeru'));
  if(doc.state==='disabled'){fill(box,title,disabledNotice(doc.disabled,{compact:true}));return;}
  if(doc.state==='not-configured'||doc.state==='waiting'){fill(box,title,setupState(doc));return;}
- const c=doc.health?.clients||{},down=doc.health?.hardwareDown||0;
+ const c=doc.health?.clientCounts||{},down=doc.health?.hardwareDown||0;
  fill(box,el('div',{class:'col-toolbar'},title,el('button',{type:'button',class:'ui-button small',onclick:reload},t('Obnovit'))),banner(doc),
   el('div',{class:'col-stats'},
-   stat(t('Klienti'),doc.devices.length,c.known!=null?t('{n} známých za 90 dní',{n:c.known}):t('právě připojení'),''),
+   stat(t('Klienti'),doc.clients.length,c.known!=null?t('{n} známých za 90 dní',{n:c.known}):t('právě připojení'),''),
    stat('Wi-Fi',c.wireless??'—',t('bezdrátově'),''),stat(t('Kabel'),c.wired??'—',t('po kabelu'),''),
    stat(t('Síťové prvky'),doc.health?.hardware?.length||0,down?t('{n} mimo provoz',{n:down}):t('všechny online'),down?'bad':''),
    stat(t('Software'),doc.health?.softwareVersion||'—',doc.firmware?t('firmware {version}',{version:doc.firmware}):'—','')),

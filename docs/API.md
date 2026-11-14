@@ -1010,7 +1010,7 @@ These screens show snapshots that read-only collectors write into the data direc
 | `node scripts/collect-systems.mjs` | `data/systems/snapshot.json`, `history.jsonl` | 6 h | `GET /api/systems` |
 | `node scripts/check-upstream.mjs` | `data/systems/upstream.json` | 12 h | `GET /api/systems` |
 | `node scripts/collect-security.mjs` | `data/security/ssh-keys.json`, `probes.json` | 24 h | `GET /api/security` |
-| `python3 scripts/collect-router-unifi.py` | `data/router-observations.json` | 1 min | `GET /api/router`, `GET /api/home` |
+| `python3 scripts/collect-router-unifi.py` | `data/router-observations.json` (`schemaVersion: 2`: `clients`, `hardware`; a 1.x file with `devices`, `unifiDevices` is still read) | 1 min | `GET /api/router`, `GET /api/home` |
 
 ### Collector state
 
@@ -1131,17 +1131,17 @@ An item:
 
 The client census and the router's health from the router adapter (`docs/plugins.md` → router adapter).
 
-→ `{"schemaVersion":1,"generatedAt","state","status","adapter":{"id","title"}|null,"freshness","staleAfterSeconds","observedAt","attemptedAt","error","model","firmware","routerMac","devices":[{"mac","id","ip","name","connection","presence"}],"health":{"status","softwareVersion","hardware":[{"name","model","state","firmware","ip"}],"hardwareDown","clients":{"connected","wired","wireless","other","known"}}|null,"configured":{"adapter","host","lanCidrs"},"siteDevice":{"id","name","ip"}|null,"provenance"}` (`collector` for the included adapter, `plugin` for one a plugin provides)
+→ `{"schemaVersion":2,"generatedAt","state","status","adapter":{"id","title"}|null,"freshness","staleAfterSeconds","observedAt","attemptedAt","error","model","firmware","routerMac","clients":[{"mac","id","ip","name","connection","presence"}],"health":{"status","softwareVersion","hardware":[{"name","model","state","firmware","ip"}],"hardwareDown","clientCounts":{"connected","wired","wireless","other","known"}}|null,"configured":{"adapter","host","lanCidrs"},"siteDevice":{"id","name","ip"}|null,"provenance"}` (`collector` for the included adapter, `plugin` for one a plugin provides)
 
 | `state` | Meaning |
 |---|---|
 | `not-configured` | No adapter: nothing in `site.json → router`, no plugin adapter, no observation file |
 | `waiting` | An adapter is configured but has not reported yet (`error: "unknown-adapter"` when `site.json` names one nothing provides) |
-| `unavailable` | The adapter's last attempt failed (`error`); `devices` is the last census it had, never an empty list presented as "no clients" |
+| `unavailable` | The adapter's last attempt failed (`error`); `clients` is the last census it had, never an empty list presented as "no clients" |
 | `stale` | The last observation is older than `staleAfterSeconds` (180 for the included adapter) |
 | `ok` | A fresh observation |
 
-`status` (`ok`, `unavailable`, `not-configured`) and `freshness` are the fields `GET /api/home → router` has always carried. `presence` is what was seen: `associated` (on Wi-Fi), `reachable`, `lease-only` (a DHCP lease is not proof of connectivity) or `cache-only`. Only clients with a host address inside `lanCidrs` are listed.
+`clients` are the network clients the router saw (not the household's devices); `health.hardware` is the router's own network gear (gateway, switches, access points), and `health.clientCounts` counts the clients (`known`: seen in the last 90 days, `null` when the adapter does not say). Until 2.0 the list was `devices` and the counts `health.clients` (`schemaVersion: 1`). `status` (`ok`, `unavailable`, `not-configured`) and `freshness` are the fields `GET /api/home → router` has always carried. `presence` is what was seen: `associated` (on Wi-Fi), `reachable`, `lease-only` (a DHCP lease is not proof of connectivity) or `cache-only`. Only clients with a host address inside `lanCidrs` are listed.
 
 ### MCP tools
 

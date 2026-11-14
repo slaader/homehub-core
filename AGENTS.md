@@ -56,11 +56,11 @@ Rules that keep the split honest:
 thing every time, always**: a subset is no substitute for it, however long it takes. It ends with a summary and exits non-zero on a failure:
 
 ```
-core     tests 895  pass 895  fail 0
-total    tests 895  pass 895  fail 0
+core     tests 897  pass 897  fail 0
+total    tests 897  pass 897  fail 0
 ```
 
-- **Core: 895 tests in 103 files (2026-11-14). None may fail and none is skipped, on any computer.** One of them,
+- **Core: 897 tests in 103 files (2026-11-14). None may fail and none is skipped, on any computer.** One of them,
   `public edition: no overlay in the tree…`, fails in a checkout that has `local/site.json` or `local/plugins/`:
   develop core without them.
 - **Plugins test themselves.** A plugin source runs its tests against this core with
@@ -71,7 +71,7 @@ total    tests 895  pass 895  fail 0
 ```bash
 npm test                                     # the core tests
 npm test -- tests/security.test.mjs          # one file, while iterating only (the runner sets the right site)
-python3 tests/router_unifi_test.py           # the UniFi collector (10 tests), separately
+python3 tests/router_unifi_test.py           # the UniFi collector (11 tests), separately
 LOCAL_PREVIEW=1 PORT=8891 AUTH_FILE=/abs/path/test-auth.json DATA_DIR=/abs/scratch/data node server/index.mjs
 ```
 

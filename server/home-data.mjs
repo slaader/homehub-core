@@ -439,7 +439,7 @@ export function buildHome({site,snapshots:computeLatest={},thermo,router=null,pr
    lastSeen=stamps.length?new Date(Math.max(...stamps)).toISOString():null;
   }
   const services=Array.isArray(nasServices)?nasServices.map(s=>({id:s.id,name:s.name,status:s.status==='auth-required'?'reachable':s.status,url:s.url,models:s.models||[]})):snapshot?.services||[];
-  let routerQuad=def.kind==='router'&&router&&router.status==='ok'?{clients:router.devices.length,wifi:router.devices.filter(d=>String(d.connection).startsWith('Wi-Fi')).length,power:null,temp:null}:null;
+  let routerQuad=def.kind==='router'&&router&&router.status==='ok'?{clients:router.clients.length,wifi:router.clients.filter(d=>String(d.connection).startsWith('Wi-Fi')).length,power:null,temp:null}:null;
   // No live router feed yet: show the freshly collected census, marked stale with its time.
   const census=def.kind==='router'&&Array.isArray(descriptors[def.id]?.clients)?descriptors[def.id].clients:null;
   if(def.kind==='router'&&!routerQuad&&census){routerQuad={clients:census.length,wifi:census.filter(c=>c.connection==='wifi'||c.connection==='wireless').length,power:null,temp:null};online='stale';lastSeen=collected?.collectedAt||null;}
@@ -467,7 +467,7 @@ export function buildHome({site,snapshots:computeLatest={},thermo,router=null,pr
    spark:def.thermo?sparkFor(thermo,def.thermo,nowSec,reported?.runtimes.length?'gpu':'cpu'):null,
    stack:mergeStack(def.id,[...services,...runtimeServices(reported).filter(r=>!services.some(s=>s.id===r.id))],publishedStack||collected?.stack||layouts[def.id]||null)};
  });
- const routerClients=router&&Array.isArray(router.devices)?router.devices.filter(d=>['associated','reachable','lease-only'].includes(d.presence)).length:null;
+ const routerClients=router&&Array.isArray(router.clients)?router.clients.filter(d=>['associated','reachable','lease-only'].includes(d.presence)).length:null;
  return {poll,schemaVersion:1,generatedAt:new Date(now).toISOString(),devices,
   telemetry:telemetryMeta(),
   router:router?{status:router.status,freshness:router.freshness,observedAt:router.observedAt,model:router.model,firmware:router.firmware,clients:routerClients}:null};

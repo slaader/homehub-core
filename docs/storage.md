@@ -43,7 +43,7 @@ code directory.
 | `state/updates.json` | The update check: the newest release it found, when, the ETags of GitHub's answers, a dismissed release (0600). Deleting it costs one full check | JSON |
 | `state/run.json` | Written at every start: `{version, commit, exact, dataEpoch, pid, startedAt, plugins}` (0600). Not state to back up: it says what is answering right now | JSON |
 | `state/runtimes-config.json`, `state/runtimes/<device>/` | The LLM runtime endpoints added through the API (`{schema: 2, endpoints}`), and the hub's own request history of the runtimes it reads, `requests-YYYY-MM.jsonl` per device | JSON / JSONL, monthly files |
-| `data/` | Inventory (`knowledge.json`, `{schema: 2, updated_at, entries}`), collector output (`systems/snapshot.json` and `security/ssh-keys.json`, both `schemaVersion: 2`, each with its trend or probe file), the collected device descriptors (`devices/<id>.json`; `DEVICES_DIR`) | JSON |
+| `data/` | Inventory (`knowledge.json`, `{schema: 2, updated_at, entries}`), collector output (`systems/snapshot.json` and `security/ssh-keys.json`, both `schemaVersion: 2`, each with its trend or probe file; `router-observations.json`, the UniFi collector's `{schemaVersion: 2, clients, hardware, …}`), the collected device descriptors (`devices/<id>.json`; `DEVICES_DIR`) | JSON |
 | `data/security/probes.json` | Written by `scripts/collect-security.mjs` beside `ssh-keys.json` (0600; `schemaVersion: 2`): each device's raw probe output with `probedAt` (fingerprints, paths, public `authorized_keys` lines, `ssh -G` routes, `sudo -l` rules; never a private key), Forgejo and the router entry, so the hub can join the push agents' records | JSON |
 | `data/plugins/<id>/` | A plugin's own files (`hub.pluginData(id)`) | the plugin's |
 | `private/` | `auth.json` (the owner's hash and `passwordAt`; written by `scripts/setup.mjs`), TLS key, tokens; `backup-jobs/<id>/` (0700): each backup job's ed25519 key pair (private key 0600), its generated `ssh_config` and `known_hosts` with the pinned host keys | JSON / PEM |
@@ -101,6 +101,17 @@ store from a literal 1.0.0 file.
 | `data/security/probes.json` | `schemaVersion: 1`, `extraMachines` | `schemaVersion: 2`, `extraDevices` | the same |
 | `data/machines/` | the descriptor directory | `data/devices/` | renamed at start, while `data/devices/` does not exist. A directory named by `DEVICES_DIR` is used as it is |
 | `data/knowledge.json` | `schema: 1`; kind `machine`, field `machine` | `schema: 2`; kind `device`, field `device` | when first read. A placed entry's hash changes with its field |
+
+The router's census moved too, so that a device is only ever the household's: the router observation calls the
+network clients `clients` and the UniFi collector writes the network gear (gateway, switches, access points) as
+`hardware`, the name the adapter contract always had. This file is not the hub's: the UniFi collector writes it and
+may run on another host, its file copied here, so the hub never rewrites it and reads both forms on every read.
+
+| File | 1.x | 2.0 | Read forward |
+|---|---|---|---|
+| `data/router-observations.json` | `schemaVersion: 1`; `devices` (the clients), `unifiDevices` (the gear) | `schemaVersion: 2`; `clients`, `hardware` | on every read, never rewritten (`forwardObservation` in `server/router-data.mjs`). A file with both keeps the 2.0 one. The 2.0 collector's first run writes the 2.0 names and drops the old ones, carrying the last census over when that run fails |
+
+A collector left on 1.x keeps working against a 2.0 hub; a 1.x hub reads a 2.0 collector's file as no clients.
 
 Not rewritten, and read in today's words: `state/agent-audit.jsonl` (a line's `machine` is shown as the device) and
 the agent-key lines of `state/access-audit.jsonl` (`machine <id>`, `machine-removed`). An audit file is only ever

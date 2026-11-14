@@ -50,7 +50,7 @@ and the agent acts on nothing in it beyond when to try again.
 
 An agent reports as **one id of the overview's device namespace**: a `site.json → devices[].id`, or the id of a
 device added on the overview (`state/home/devices.json`). The two never collide: site ids are reserved for added
-devices (`server/home-devices.mjs`). Thermo host ids and the ids of the router's network devices are not device ids and are never used.
+devices (`server/home-devices.mjs`). Thermo host ids and the ids of the router's network clients are not device ids and are never used.
 
 - The device is **bound to the key when the key is issued** and is never part of the report. The report route takes
   the device from the key alone; a report that carries a device field is malformed (closed envelope, below).

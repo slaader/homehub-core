@@ -94,10 +94,10 @@ test('a hub without a site configuration boots empty: no devices, no seeded proj
 
 test('the site drives core data: the router adapter keeps only LAN clients, devices come from the fixture',async t=>{
  const dir=await mkdtemp(path.join(os.tmpdir(),'site-router-'));t.after(()=>rm(dir,{recursive:true,force:true}));
- const devices=[{mac:'aa:bb:cc:dd:ee:01',ip:'10.0.0.5',name:'in'},{mac:'aa:bb:cc:dd:ee:02',ip:'10.0.0.255',name:'broadcast'},{mac:'aa:bb:cc:dd:ee:03',ip:'10.9.0.5',name:'elsewhere'},{mac:'nope',ip:'10.0.0.6'}];
- await writeFile(path.join(dir,'router-observations.json'),JSON.stringify({status:'ok',observedAt:new Date().toISOString(),devices}));
- assert.deepEqual((await readRouter(dir,{lanCidrs:SITE.lanCidrs})).devices.map(d=>d.name),['in']);
- assert.deepEqual((await readRouter(dir)).devices.map(d=>d.name),['in','broadcast','elsewhere'],'no LAN configured: every well-formed address');
+ const clients=[{mac:'aa:bb:cc:dd:ee:01',ip:'10.0.0.5',name:'in'},{mac:'aa:bb:cc:dd:ee:02',ip:'10.0.0.255',name:'broadcast'},{mac:'aa:bb:cc:dd:ee:03',ip:'10.9.0.5',name:'elsewhere'},{mac:'nope',ip:'10.0.0.6'}];
+ await writeFile(path.join(dir,'router-observations.json'),JSON.stringify({status:'ok',observedAt:new Date().toISOString(),clients}));
+ assert.deepEqual((await readRouter(dir,{lanCidrs:SITE.lanCidrs})).clients.map(d=>d.name),['in']);
+ assert.deepEqual((await readRouter(dir)).clients.map(d=>d.name),['in','broadcast','elsewhere'],'no LAN configured: every well-formed address');
  assert.deepEqual(systemDevices(SITE).map(m=>m.id),['mini','studio','mini_server','nas']);
  const index=await readFile(new URL('../public/index.html',import.meta.url),'utf8');assert.doesNotMatch(index,/Example|Europe\//,'no site name or zone baked into the page');
 });

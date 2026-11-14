@@ -215,8 +215,8 @@ test('SSH keys: an account card says the record came from the agent, and "no new
 test('router panel: not configured, waiting, fine with census and hardware, stale, failed',async()=>{
  const lanCidrs=['10.0.0.0/24'],extra={configured:{adapter:null,host:'10.0.0.1',lanCidrs},siteDevice:{id:'router',name:'Router',ip:'10.0.0.1'}};
  const obs=(over={})=>({status:'ok',observedAt:iso(30e3),model:'Gateway 7',firmware:'4.3.6',applicationVersion:'9.4',clientCounts:{wired:1,wireless:1,other:0},knownClients:{a:{},b:{},c:{}},
-  unifiDevices:[{name:'Gateway',model:'UDR7',state:'ONLINE',firmware:'4.3.6',ip:'10.0.0.1'},{name:'Switch',model:'USW',state:'OFFLINE',firmware:'7.1',ip:'10.0.0.2'}],
-  devices:[{mac:'aa:bb:cc:dd:ee:01',ip:'10.0.0.151',name:'Desktop',connection:'Ethernet',presence:'reachable'},{mac:'aa:bb:cc:dd:ee:02',ip:'10.0.0.77',name:'',connection:'Wi-Fi · 5 GHz',presence:'associated'}],...over});
+  hardware:[{name:'Gateway',model:'UDR7',state:'ONLINE',firmware:'4.3.6',ip:'10.0.0.1'},{name:'Switch',model:'USW',state:'OFFLINE',firmware:'7.1',ip:'10.0.0.2'}],
+  clients:[{mac:'aa:bb:cc:dd:ee:01',ip:'10.0.0.151',name:'Desktop',connection:'Ethernet',presence:'reachable'},{mac:'aa:bb:cc:dd:ee:02',ip:'10.0.0.77',name:'',connection:'Wi-Fi · 5 GHz',presence:'associated'}],...over});
  const page=raw=>({'/api/router':{status:200,body:{...normalizeRouter(raw,{lanCidrs,adapter:raw===null?null:ROUTER_ADAPTERS.unifi,now:NOW}),...extra}}});
  let text=clean(await mount(()=>routerPanel(),page(null)));
  assert.match(text,/The router is not configured/);for(const s of [/adapter "unifi"/,/router-private\/unifi-api-key/,/collect-router-unifi\.py --pin/,/collect-router-unifi\.py --check/,/GET requests only/])assert.match(text,s);
@@ -229,7 +229,7 @@ test('router panel: not configured, waiting, fine with census and hardware, stal
  text=clean(await mount(()=>routerPanel(),page(obs({observedAt:iso(20*60e3)}))));assert.match(text,/stale snapshot/);assert.match(text,/should report at least every 3 min/);
  text=clean(await mount(()=>routerPanel(),page(obs({status:'unavailable',error:'certificate-changed'}))));
  assert.match(text,/read failed/);assert.match(text,/failed \(certificate-changed\)/);assert.match(text,/Desktop/,'the last census stays visible');
- text=clean(await mount(()=>routerPanel(),page(obs({devices:[]}))));assert.match(text,/reports no client in the configured networks/);
+ text=clean(await mount(()=>routerPanel(),page(obs({clients:[]}))));assert.match(text,/reports no client in the configured networks/);
  text=clean(await mount(()=>routerPanel(),{}));assert.match(text,/The router state could not be loaded/);
 });
 

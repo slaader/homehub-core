@@ -5,6 +5,9 @@
 // exists) and from then on sees only the new one. The 1.x names live here and nowhere else in the code, so a search
 // for them finds this file: V1 maps a 2.0 key to the key 1.x used for it.
 //
+// One exception: the router observation's 1.x names (`devices`, `unifiDevices`) are in server/router-data.mjs
+// (forwardObservation), so that the plugin API, which a host agent carries, needs no more files than it did.
+//
 // None of this is an alias: a request, a site file or a command that still uses a 1.x name is refused. It is only
 // for files a 1.x hub (or its collectors and installers) wrote by itself.
 import {writeFileSync,renameSync,mkdirSync,existsSync} from 'node:fs';

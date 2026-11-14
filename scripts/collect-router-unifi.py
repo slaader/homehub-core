@@ -4,7 +4,8 @@
 Runs from a scheduled job on the computer that serves Home Hub (any unprivileged user that owns
 router-private/). It reads the UniFi Network local integration API on the gateway with an API key kept in
 router-private/unifi-api-key (0600) and writes data/router-observations.json, the observation file
-server/router-data.mjs reads (client census plus the state of the network hardware). GET requests only.
+server/router-data.mjs reads (`clients`, the client census, and `hardware`, the state of the gateway, switches and
+access points). GET requests only.
 The router's self-signed certificate is pinned by SHA-256 fingerprint (router-private/unifi-cert-sha256);
 the key is never sent before the pin matches, and nothing here prints or stores the key.
 
@@ -102,7 +103,7 @@ LEGACY = '/proxy/network/api/s/' + SITE
 USER_AGENT = 'home-hub-unifi-collector/1'
 LAN = LANS[0]
 MAC = re.compile(r'^(?:[0-9a-f]{2}:){5}[0-9a-f]{2}$')
-TIMEOUT, LIMIT, PAGE, MAX_PAGES, MAX_DEVICES, MAX_HARDWARE, KNOWN_DAYS = 10, 1024 * 1024, 200, 3, 500, 50, 90
+TIMEOUT, LIMIT, PAGE, MAX_PAGES, MAX_CLIENTS, MAX_HARDWARE, KNOWN_DAYS = 10, 1024 * 1024, 200, 3, 500, 50, 90
 BANDS = {'2.4': 'Wi-Fi · 2.4 GHz', '5': 'Wi-Fi · 5 GHz', '6': 'Wi-Fi · 6 GHz'}
 MODELS = {'UDR7': 'UniFi Dream Router 7'}
 
@@ -318,7 +319,7 @@ def epoch_iso(value):
         return ''
 
 
-def adapt_session(sta, devices, users):
+def adapt_session(sta, gear, users):
     """Reshape the session API tables into the integration-API-like records parse() understands."""
     clients = [{'macAddress': c.get('mac'), 'ipAddress': c.get('ip'), 'name': c.get('name') or c.get('hostname'),
                 'type': 'WIRED' if c.get('is_wired') else 'WIRELESS', 'radio': c.get('radio'),
@@ -326,7 +327,7 @@ def adapt_session(sta, devices, users):
                 'uplinkDeviceId': c.get('ap_mac') or c.get('sw_mac') or c.get('gw_mac')} for c in sta if isinstance(c, dict)]
     hardware = [{'id': d.get('mac'), 'name': d.get('name'), 'model': d.get('shortname') or d.get('model'), 'macAddress': d.get('mac'),
                  'ipAddress': d.get('lan_ip') or d.get('ip'), 'state': 'ONLINE' if d.get('state') == 1 else 'OFFLINE',
-                 'firmwareVersion': d.get('version')} for d in devices if isinstance(d, dict)]
+                 'firmwareVersion': d.get('version')} for d in gear if isinstance(d, dict)]
     known = {}
     for user in users:
         if not isinstance(user, dict):
@@ -356,7 +357,7 @@ def fetch_all(path, key, pin):
         offset += len(page)
         if not page or len(page) < PAGE or offset >= total:
             break
-    return items[:MAX_DEVICES]
+    return items[:MAX_CLIENTS]
 
 
 def pick(obj, *names, **options):
@@ -422,15 +423,16 @@ def parse_time(value):
         return None
 
 
-def parse(clients, devices, now, previous_known):
+def parse(clients, gear, now, previous_known):
+    """clients: the network clients; gear: UniFi's own devices (gateway, switches, access points)."""
     names, hardware = {}, []
-    for device in devices[:MAX_HARDWARE]:
-        mac = pick(device, 'macAddress', 'mac').lower()
-        entry = {'name': pick(device, 'name'), 'model': pick(device, 'model', max_len=40), 'mac': mac if MAC.fullmatch(mac) else '',
-                 'ip': lan_ip(pick(device, 'ipAddress', 'ip')), 'state': pick(device, 'state', max_len=32),
-                 'firmware': pick(device, 'firmwareVersion', 'firmware', max_len=64)}
+    for item in gear[:MAX_HARDWARE]:
+        mac = pick(item, 'macAddress', 'mac').lower()
+        entry = {'name': pick(item, 'name'), 'model': pick(item, 'model', max_len=40), 'mac': mac if MAC.fullmatch(mac) else '',
+                 'ip': lan_ip(pick(item, 'ipAddress', 'ip')), 'state': pick(item, 'state', max_len=32),
+                 'firmware': pick(item, 'firmwareVersion', 'firmware', max_len=64)}
         hardware.append(entry)
-        names[pick(device, 'id', max_len=64)] = entry['name']
+        names[pick(item, 'id', max_len=64)] = entry['name']
     gateway = (next((h for h in hardware if h['ip'] == HOST), None)
                or next((h for h in hardware if h['model'].upper().startswith(('UDR', 'UDM', 'UCG', 'UXG'))), None)
                or (hardware[0] if hardware else None))
@@ -463,12 +465,12 @@ def parse(clients, devices, now, previous_known):
             known[mac] = {'ip': lan_ip(entry.get('ip')), 'name': pick(entry, 'name'), 'type': pick(entry, 'type', max_len=16), 'lastSeen': str(entry.get('lastSeen'))[:40]}
     for mac, record in records.items():
         known[mac] = {'ip': record['ip'], 'name': record['name'], 'type': record['type'], 'lastSeen': now}
-    known = dict(sorted(known.items(), key=lambda item: item[1]['lastSeen'], reverse=True)[:MAX_DEVICES])
+    known = dict(sorted(known.items(), key=lambda item: item[1]['lastSeen'], reverse=True)[:MAX_CLIENTS])
     model = gateway['model'] if gateway else ''
-    return {'devices': list(records.values())[:MAX_DEVICES], 'clientCounts': counts,
+    return {'clients': list(records.values())[:MAX_CLIENTS], 'clientCounts': counts,
             'model': '%s (%s)' % (MODELS[model], model) if model in MODELS else model,
             'firmware': gateway['firmware'] if gateway else '', 'routerMac': gateway['mac'] if gateway else '',
-            'routerIp': HOST, 'unifiDevices': hardware, 'knownClients': known}
+            'routerIp': HOST, 'hardware': hardware, 'knownClients': known}
 
 
 def previous_known(previous):
@@ -483,12 +485,12 @@ def observe_key(now, previous, pin):
         raise CollectorError('no-site')
     site_id = pick(site, 'id', max_len=64)
     clients = fetch_all('%s/sites/%s/clients' % (BASE, site_id), key, pin)
-    devices = fetch_all('%s/sites/%s/devices' % (BASE, site_id), key, pin)
+    gear = fetch_all('%s/sites/%s/devices' % (BASE, site_id), key, pin)
     try:
         version = pick(fetch(BASE + '/info', key, pin), 'applicationVersion', max_len=40)
     except CollectorError:
         version = ''
-    result = parse(clients, devices, now, previous_known(previous))
+    result = parse(clients, gear, now, previous_known(previous))
     result.update(site=pick(site, 'name', 'internalReference') or site_id, applicationVersion=version, backend='integration-api')
     return result
 
@@ -498,10 +500,10 @@ def observe_session(now, previous, pin):
     token = load_session(username)
 
     def pull(token):
-        sta = session_get(LEGACY + '/stat/sta', token, pin)[:MAX_DEVICES * 2]
-        devices = session_get(LEGACY + '/stat/device', token, pin)[:MAX_HARDWARE]
+        sta = session_get(LEGACY + '/stat/sta', token, pin)[:MAX_CLIENTS * 2]
+        gear = session_get(LEGACY + '/stat/device', token, pin)[:MAX_HARDWARE]
         try:
-            users = session_get(LEGACY + '/rest/user', token, pin)[:MAX_DEVICES * 4]
+            users = session_get(LEGACY + '/rest/user', token, pin)[:MAX_CLIENTS * 4]
         except CollectorError as error:
             if str(error) in ('session-expired', 'forbidden', 'rate-limited'):
                 raise
@@ -511,19 +513,19 @@ def observe_session(now, previous, pin):
             version = pick(info[0], 'version', max_len=40) if info and isinstance(info[0], dict) else ''
         except CollectorError:
             version = ''
-        return sta, devices, users, version
+        return sta, gear, users, version
 
     try:
         if token is None:
             raise CollectorError('session-expired')
-        sta, devices, users, version = pull(token)
+        sta, gear, users, version = pull(token)
     except CollectorError as error:
         if str(error) != 'session-expired':
             raise
         token = session_login(username, password, pin)
         save_session(username, token)
-        sta, devices, users, version = pull(token)
-    clients, hardware, known = adapt_session(sta, devices, users)
+        sta, gear, users, version = pull(token)
+    clients, hardware, known = adapt_session(sta, gear, users)
     merged = dict(previous_known(previous))
     for mac, entry in known.items():
         if mac not in merged or str(merged[mac].get('lastSeen', '')) <= entry['lastSeen']:
@@ -556,15 +558,19 @@ def collect(write=True):
         if not isinstance(previous, dict):
             previous = {}
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        snapshot = dict(previous)
-        snapshot.update(schemaVersion=1, attemptedAt=now)
+        # 1.x wrote the census as `devices` and the gear as `unifiDevices`: carried forward, then dropped.
+        previous_clients = previous.get('clients', previous.get('devices', []))
+        snapshot = {k: v for k, v in previous.items() if k not in ('devices', 'unifiDevices')}
+        if 'hardware' not in snapshot and 'unifiDevices' in previous:
+            snapshot['hardware'] = previous['unifiDevices']
+        snapshot.update(schemaVersion=2, attemptedAt=now)
         try:
             snapshot.update(observe(now, previous))
             snapshot.update(source='UniFi Network API', status='ok', observedAt=now, error=None)
         except CollectorError as error:
-            snapshot.update(status='unavailable', error=str(error), observedAt=previous.get('observedAt'), devices=previous.get('devices', []))
+            snapshot.update(status='unavailable', error=str(error), observedAt=previous.get('observedAt'), clients=previous_clients)
         except (TypeError, KeyError, AttributeError, ValueError):
-            snapshot.update(status='unavailable', error='internal-error', observedAt=previous.get('observedAt'), devices=previous.get('devices', []))
+            snapshot.update(status='unavailable', error='internal-error', observedAt=previous.get('observedAt'), clients=previous_clients)
         if write:
             tmp = TARGET.with_suffix('.incoming')
             tmp.write_text(json.dumps(snapshot, separators=(',', ':')))
@@ -633,7 +639,7 @@ def main(argv):
             print(json.dumps({'status': 'busy'}))
             return 4
         summary = {k: snapshot.get(k) for k in ('status', 'error', 'source', 'backend', 'observedAt', 'applicationVersion', 'site', 'model', 'firmware', 'routerMac', 'clientCounts')}
-        summary.update(clients=len(snapshot.get('devices') or []), pinned=PIN_FILE.exists(), written='--dry-run' not in flags)
+        summary.update(clients=len(snapshot.get('clients') or []), pinned=PIN_FILE.exists(), written='--dry-run' not in flags)
         print(json.dumps(summary))
         if snapshot.get('status') != 'ok':
             return 3 if snapshot.get('error') == 'unauthorized' else 1

@@ -164,7 +164,7 @@ test('collector pages over HTTP: the collector with its state before a snapshot,
 });
 
 test('router: the included adapter is a collector, a plugin adapter is a plugin, no adapter is no data',async t=>{
- const now=Date.parse('2026-11-08T12:01:00Z'),raw={status:'ok',observedAt:'2026-11-08T12:00:00.000Z',devices:[{mac:'aa:bb:cc:dd:ee:01',ip:'10.0.0.20',name:'printer',connection:'Ethernet',presence:'reachable'}]};
+ const now=Date.parse('2026-11-08T12:01:00Z'),raw={status:'ok',observedAt:'2026-11-08T12:00:00.000Z',clients:[{mac:'aa:bb:cc:dd:ee:01',ip:'10.0.0.20',name:'printer',connection:'Ethernet',presence:'reachable'}]};
  const unifi=routerProvenance(normalizeRouter(raw,{adapter:ROUTER_ADAPTERS.unifi,now}));
  assert.deepEqual(unifi.kinds,[{kind:'collector',id:'unifi',source:'scripts/collect-router-unifi.py',detail:'UniFi Network',state:'ok',count:1,intervalSeconds:60,unit:'clients',lastAt:'2026-11-08T12:00:00.000Z'}]);
  const other=routerProvenance(normalizeRouter(raw,{adapter:{id:'mikrotik',title:'MikroTik'},now}));
