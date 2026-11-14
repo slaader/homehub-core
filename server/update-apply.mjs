@@ -29,6 +29,8 @@ import {spawnSync} from 'node:child_process';
 import {existsSync,readFileSync,writeFileSync,mkdirSync,renameSync,rmSync,readdirSync,statSync,appendFileSync,cpSync,symlinkSync,mkdtempSync,chmodSync,realpathSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import {createHash} from 'node:crypto';
+import {convertSite} from '../scripts/convert-site.mjs';
 import {repoRoot} from './edition.mjs';
 import {resolvePaths} from './paths.mjs';
 import {readInstance} from './plugins.mjs';
@@ -52,6 +54,83 @@ const short=commit=>commit?commit.slice(0,7):'?';
 const oneLine=(text,max=300)=>String(text??'').replace(/\s+/g,' ').trim().slice(0,max);
 const lastLines=(text,n)=>String(text??'').trimEnd().split('\n').slice(-n).join('\n');
 function writeAtomic(file,text){mkdirSync(path.dirname(file),{recursive:true});const tmp=`${file}.${process.pid}.tmp`;writeFileSync(tmp,text,{mode:0o600});renameSync(tmp,file);}
+const digest=text=>createHash('sha256').update(text).digest('hex');
+const siteBytes=file=>{try{return readFileSync(file);}catch(e){if(e.code==='ENOENT')return null;throw e;}};
+const hashOf=bytes=>bytes===null?null:digest(bytes);
+// Configuration is part of the update transaction. The staged check reads a copy, never a conversion of the live
+// file. The plan keeps the replacement in memory; the journal holds paths and hashes only, never site contents.
+function stageSite(inst,request,installed,target,staging){
+ const automatic=parse(installed.version).major===1&&parse(target.version).major===2;
+ if(!request.siteConfig&&!automatic)return null;
+ if(!inst.paths.siteConfig){if(request.siteConfig)throw new UpdateError('--site-config needs a live site path (HOME_HUB_SITE_CONFIG must not be "none").');return null;}
+ const given=path.resolve(inst.paths.siteConfig),file=existsSync(given)?realpathSync(given):given,original=siteBytes(file);
+ let text;
+ try{
+  if(automatic&&original!==null){
+   const raw=JSON.parse(original.toString('utf8'));
+   if(plain(raw)&&(Object.hasOwn(raw,'devices')||(Array.isArray(raw.runtimes)&&raw.runtimes.some(r=>plain(r)&&Object.hasOwn(r,'device')))))
+    throw new Error('the live 1.x site already has 2.0 keys; restore its working 1.x configuration before updating');
+  }
+  if(request.siteConfig)text=readFileSync(path.resolve(request.siteConfig),'utf8');
+  else{
+   if(original===null)return null;
+   const raw=JSON.parse(original.toString('utf8'));
+   // No renamed key means this configuration needs no conversion. --check still validates it with the target.
+   if(!plain(raw))throw new Error('the site file must be a JSON object');
+   if(!Object.hasOwn(raw,'machines')&&!(Array.isArray(raw.runtimes)&&raw.runtimes.some(r=>plain(r)&&Object.hasOwn(r,'machine'))))return null;
+   text=JSON.stringify(convertSite(raw).site,null,2)+'\n';
+  }
+  JSON.parse(text);
+ }catch(e){throw new UpdateError(`Cannot stage the site configuration: ${e.message}. The live file was not changed.`);}
+ if(original!==null&&original.equals(Buffer.from(text)))return null;
+ const staged=path.join(staging,'site-config.json');writeAtomic(staged,text);
+ return {file,baseHash:hashOf(original),mode:original===null?0o600:statSync(file).mode&0o777,text,staged};
+}
+function checkSiteUnchanged(site){
+ const bytes=siteBytes(site.file);
+ if(hashOf(bytes)!==site.baseHash)throw new UpdateError(`The ${site.label??'site'} configuration changed since preflight. Run the update again; no configuration was replaced.`);
+ return bytes;
+}
+function replaceSite(file,bytes,mode){
+ mkdirSync(path.dirname(file),{recursive:true});
+ const tmp=`${file}.${process.pid}.update.tmp`;
+ try{writeFileSync(tmp,bytes,{mode,flag:'wx'});chmodSync(tmp,mode);renameSync(tmp,file);}finally{rmSync(tmp,{force:true});}
+}
+function restoreSite(inst,journal,key='site'){
+ const site=journal[key];
+ if(!site||!['applying','applied'].includes(site.status))return;
+ if(site.baseHash===null)rmSync(site.file,{force:true});
+ else{
+  const bytes=siteBytes(site.backup);
+  if(bytes===null||hashOf(bytes)!==site.baseHash)throw new Error(`the original ${key} configuration is missing or changed: ${site.backup}`);
+  replaceSite(site.file,bytes,site.mode);
+ }
+ site.status='restored';writeJournal(inst,journal);
+}
+// An inactive checkout can be prepared ahead of time, but must not enter the live manifest until its matching
+// core/plugins are installed. This option only appends plugin sources: service, health and core paths stay fixed.
+function addedPluginSources(inst,request){
+ const names=request.addPluginSources??[];
+ if(!names.length)return {sources:[],change:null};
+ if(!inst.home)throw new UpdateError('--add-plugin-source needs HOME_HUB_HOME and its instance.json.');
+ if(inst.env.HOME_HUB_PLUGINS_DIR)throw new UpdateError('--add-plugin-source cannot be used while HOME_HUB_PLUGINS_DIR overrides instance.json.');
+ if(!Array.isArray(names)||names.some(n=>typeof n!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(n)))throw new UpdateError('--add-plugin-source takes a directory name inside the instance.');
+ const named=path.join(inst.home,'instance.json');
+ if(!existsSync(named))throw new UpdateError('--add-plugin-source needs an existing instance.json.');
+ const file=realpathSync(named),original=readFileSync(file),raw=JSON.parse(original.toString('utf8'));
+ const existing=readInstance(inst.home)?.sources.plugins;
+ if(!Array.isArray(existing))throw new UpdateError('--add-plugin-source needs an explicit sources.plugins list in instance.json (an empty list is allowed).');
+ const combined=[...existing,...names];
+ if(combined.length>16||new Set(combined).size!==combined.length)throw new UpdateError('--add-plugin-source would repeat a source or exceed the limit of 16.');
+ const sources=names.map(name=>{
+  if(['core','node_modules'].includes(name)||name===raw.sources.core||inst.sources.some(s=>s.id===name))throw new UpdateError(`--add-plugin-source ${name}: the source name is already in use or reserved.`);
+  if(typeof request.plugins?.[name]!=='string')throw new UpdateError(`--add-plugin-source ${name} also needs --plugins ${name}=<tag>, so its target is explicit.`);
+  const dir=path.join(inst.home,name);
+  if(!existsSync(path.join(dir,'plugins'))||!existsSync(path.join(dir,'package.json')))throw new UpdateError(`--add-plugin-source ${name}: prepare its checkout at ${dir} first; the inactive checkout must have package.json and plugins/.`);
+  return {id:name,kind:'plugins',dir,plugins:['plugins'],added:true};
+ });
+ return {sources,change:{file,baseHash:hashOf(original),mode:statSync(file).mode&0o777,label:'instance',text:JSON.stringify({...raw,sources:{...raw.sources,plugins:combined}},null,2)+'\n'}};
+}
 const TAG=/^[A-Za-z0-9][A-Za-z0-9._+-]{0,80}$/;
 // What a test run or a start-up check must not inherit from the shell that runs the update.
 const INSTANCE_ENV=/^(?:HOME_HUB_.*|DATA_DIR|STATE_DIR|AUTH_FILE|SOFTWARE_WATCH_FILE|INTEGRATION_SECRETS_FILE|LOCAL_PREVIEW|PORT|ORIGIN|ORIGIN_ALIASES|BIND_HOST)$/;
@@ -305,7 +384,7 @@ export function restoreArchive(inst,ctx,backup){
 function pruneArchives(inst,ctx,keepFile){
  try{
   const old=readdirSync(inst.backups).filter(n=>/^pre-.*\.tgz$/.test(n)).map(n=>({file:path.join(inst.backups,n),at:statSync(path.join(inst.backups,n)).mtimeMs})).sort((a,b)=>b.at-a.at).slice(inst.keep).filter(a=>a.file!==keepFile);
-  for(const a of old){rmSync(a.file,{force:true});ctx.log(`  removed the old archive ${a.file}`);}
+  for(const a of old){rmSync(a.file,{force:true});for(const key of ['site','instance'])rmSync(a.file+`.${key}.json`,{force:true});ctx.log(`  removed the old archive ${a.file}`);}
  }catch{}
 }
 
@@ -330,7 +409,8 @@ function runStep(ctx,title,command,args,options){
  */
 export async function preflight(inst,request,ctx,{forApply=false}={}){
  const say=line=>ctx.log(line);
- const live=inst.sources.map(s=>inspectSource(ctx,s)),core=live[0];
+ const addedSources=addedPluginSources(inst,request);
+ const live=[...inst.sources,...addedSources.sources].map(s=>inspectSource(ctx,s)),core=live[0];
  if(!core.git)throw new UpdateError(`${core.dir} is not a git checkout: there is nothing to switch. (A container image is rebuilt instead: docs/docker.md.)`);
  const installed=coreFacts(core.dir);
  if(!installed)throw new UpdateError(`${core.dir}/package.json has no version.`);
@@ -391,7 +471,7 @@ export async function preflight(inst,request,ctx,{forApply=false}={}){
   if(!commit)throw new UpdateError(`There is no tag ${tag} in ${s.dir}.`);
   const now=parse(readJson(path.join(s.dir,'package.json'))?.version),then=parse(readJsonText(git(ctx,s.dir,'show',`${commit}:package.json`))?.version);
   if(now&&then&&compare(then,now)<0)throw new UpdateError(`${s.id} ${tag} is ${then.text}, lower than what is installed (${now.text}).`);
-  if(commit!==s.commit)changes.push({id,dir:s.dir,from:s.commit,to:commit,tag,branch:s.branch});
+  if(commit!==s.commit||s.added)changes.push({id,dir:s.dir,from:s.commit,to:commit,tag,branch:s.branch,...(s.added?{added:true}:{})});
  }
  if(!changes.length)throw new UpdateError('Nothing to do: every source is already on what was asked for.');
  for(const c of changes){
@@ -420,8 +500,12 @@ export async function preflight(inst,request,ctx,{forApply=false}={}){
   // Paths inside the checkout follow it into the stage when the target tracks them (an overlay kept in git), and
   // stay the instance's own otherwise (data, state, secrets, a site file that is not in git).
   const at=dir=>{if(!inside(dir,core.dir))return dir;const there=path.join(stagedCore,path.relative(core.dir,dir));return existsSync(there)?there:dir;};
-  const siteFile=inst.paths.siteConfig?at(inst.paths.siteConfig):null;
+  const siteChange=stageSite(inst,request,installed,target,staging);
+  if(addedSources.change){const checked=mkdtempSync(path.join(staging,'.instance-'));writeAtomic(path.join(checked,'instance.json'),addedSources.change.text);readInstance(checked);}
+  const siteFile=siteChange?.staged??(inst.paths.siteConfig?at(inst.paths.siteConfig):null);
   const checkEnv={...inst.env,HOME_HUB_CONFIG_DIR:at(inst.paths.config),HOME_HUB_SITE_CONFIG:siteFile??'none',DATA_DIR:at(inst.paths.data),STATE_DIR:at(inst.paths.state),HOME_HUB_PRIVATE_DIR:at(inst.paths.private),AUTH_FILE:at(inst.paths.authFile)};
+  // A temporary site path must not move the implicit software watch list away from the live configuration.
+  if(siteChange)checkEnv.SOFTWARE_WATCH_FILE=resolvePaths(inst.env,inst.root).softwareWatch;
   // Plugins that live in the checkout without being tracked there (a site's own local/plugins) are copied in.
   let copied=false;
   for(const rel of core.plugins)if(!existsSync(path.join(stagedCore,rel))){cpSync(path.join(core.dir,rel),path.join(stagedCore,rel),{recursive:true,filter:from=>path.basename(from)!=='node_modules'});copied=true;}
@@ -447,8 +531,10 @@ export async function preflight(inst,request,ctx,{forApply=false}={}){
   const lower=after.find(p=>{const was=before.find(b=>b.id===p.id);return was&&was.dataEpoch!==null&&(p.dataEpoch??1)<was.dataEpoch;});
   if(lower)throw new UpdateError(`Plugin ${lower.id} would go to a lower data epoch; it could not read its own state.`);
   const epochRose=epochs.length>0;
+  if(siteChange)lines.push(`site configuration: staged for the target; the original will be saved before replacement and restored on rollback`);
+  if(addedSources.change)lines.push(`instance configuration: add plugin source(s) ${addedSources.sources.map(s=>s.id).join(', ')} only after stopping; rollback restores the original manifest`);
   lines.push(epochRose?`DATA EPOCH RISES (${epochs.join('; ')}): after this update the old code cannot read the state. Going back means restoring the archive made before the switch; whatever is written after the update is then lost.`
-   :`data epoch unchanged (${installed.dataEpoch}): going back is switching the code back, and nothing written since is lost`);
+   :`data epoch unchanged (${installed.dataEpoch}): going back keeps application data${siteChange?'; the original site configuration is restored':', and nothing written since is lost'}`);
   // 6. the target's own tests
   if(request.skipTests)lines.push('tests: SKIPPED (--skip-tests)');
   else{
@@ -475,7 +561,7 @@ export async function preflight(inst,request,ctx,{forApply=false}={}){
     expect:{version:installed.version,plugins:run?(Array.isArray(run.plugins)?run.plugins:[]).map(p=>({id:p.id,version:p.version??null})):null}},
    to:{label:label(target,targetCommit,after),core:{...target,commit:targetCommit,tag:coreTag??core.tag},plugins:after.map(({id,version,dataEpoch})=>({id,version,dataEpoch})),
     expect:{version:target.version,plugins:after.map(p=>({id:p.id,version:p.version}))}},
-   changes,epochRose,lines};
+   changes,epochRose,lines,siteChange:siteChange?Object.fromEntries(Object.entries(siteChange).filter(([k])=>k!=='staged')):null,instanceChange:addedSources.change};
  }finally{
   for(const s of added)ctx.exec('git',['-C',s.dir,'worktree','remove','--force',place(s)]);
   rmSync(staging,{recursive:true,force:true});
@@ -516,6 +602,8 @@ async function undo(inst,ctx,journal){
     ctx.log(`  restoring ${journal.backup.file} (the data epoch rose, and the new version has written its state)`);
     journal.failedState=restoreArchive(inst,ctx,journal.backup);journal.restored=true;writeJournal(inst,journal);
    }
+   // The site may have changed before the new code ever started; restore it independently of the data epoch.
+   for(const key of ['site','instance'])restoreSite(inst,journal,key);
    if(journal.quarantine&&journal.to.core.version!==journal.from.core.version){
     if(!setQuarantine(inst.files.updates,journal.to.core.version,{at:iso(ctx.now()),reason:journal.quarantine.reason}))ctx.log(`  (${inst.files.updates} belongs to newer code; the quarantine note was not written)`);
    }
@@ -556,6 +644,7 @@ export async function apply(inst,request,ctx){
   ctx.log('Preflight:');
   const plan=await preflight(inst,request,ctx,{forApply:true});
   for(const line of plan.lines)ctx.log(`  ${line}`);
+  for(const change of [plan.siteChange,plan.instanceChange])if(change)checkSiteUnchanged(change);
   ctx.checkpoint();
   const started=ctx.now(),run=readRun(inst);
   const journal={schemaVersion:JOURNAL_SCHEMA,id:`${stampOf(started)}-${process.pid}`,startedAt:iso(started),by:ctx.user??null,from:plan.from,to:plan.to,changes:plan.changes,epochRose:plan.epochRose,
@@ -577,6 +666,12 @@ export async function apply(inst,request,ctx){
    journal.step='backup';writeJournal(inst,journal);
    ctx.log('Archiving, with the hub stopped:');
    journal.backup=makeArchive(inst,ctx,`pre-${plan.from.core.version}-to-${plan.to.core.version}-${stampOf(started)}`);
+   for(const key of ['site','instance'])if(plan[`${key}Change`]){
+    const site=plan[`${key}Change`],original=checkSiteUnchanged(site),backup=journal.backup.file+`.${key}.json`;
+    if(original!==null)writeAtomic(backup,original);
+    journal[key]={file:site.file,backup:original===null?null:backup,baseHash:site.baseHash,mode:site.mode,status:'prepared'};
+    writeJournal(inst,journal);
+   }
    ctx.log(`  ${journal.backup.file} (${journal.backup.entries.map(e=>e.name).join(', ')}; ${journal.backup.files} entries, ${Math.ceil(journal.backup.bytes/1024)} KiB)`);
    ctx.checkpoint();
   }catch(e){await fail(e,false);}
@@ -584,6 +679,12 @@ export async function apply(inst,request,ctx){
    journal.step='switching';writeJournal(inst,journal);
    ctx.log('Switching:');
    for(const c of plan.changes){ctx.log(`  ${c.id}: ${short(c.from)} → ${c.tag} (${short(c.to)}), detached`);switchTo(ctx,c,c.to);}
+   for(const key of ['site','instance'])if(plan[`${key}Change`]){
+    checkSiteUnchanged(plan[`${key}Change`]);
+    journal[key].status='applying';writeJournal(inst,journal);
+    replaceSite(journal[key].file,plan[`${key}Change`].text,journal[key].mode);
+    journal[key].status='applied';writeJournal(inst,journal);
+   }
    journal.step='switched';writeJournal(inst,journal);
    setQuarantine(inst.files.updates,plan.to.core.version,null);
    ctx.checkpoint();

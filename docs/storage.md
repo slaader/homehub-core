@@ -199,6 +199,8 @@ first read (retried every ten minutes while no key can be made).
 - Older backups or snapshots of `state/` taken before sealing still hold these passwords in plain text: change
   those passwords, or delete those copies.
 - Not sealed (yet): the SSH private keys in `state/home/ssh/` and `private/backup-jobs/` (OpenSSH reads them as
-  files), `private/integrations.json` and `private/git-lfs-tokens.json`. They rely on the file permissions below.
+  files) and `private/git-lfs-tokens.json`. They rely on the file permissions below.
+
+`private/integrations.json` (write-only plugin integration settings) is also sealed with the same key sources, with its own authenticated purpose. Its decrypted document is schema 2; plaintext schema 1 is atomically sealed on readiness before requests or pollers run. Unlike telemetry logins, a locked, corrupt or newer integration store stops startup and is never reset automatically. Restore the original key/file before restarting. Backups of the encrypted file must retain the key separately; an archive containing both the ciphertext and `private/secret.key` must itself remain private.
 
 The files in `state/home/` use owner-only permissions: POSIX mode 0600 under a 0700 directory; on Windows, an explicit DACL permits only the Home Hub account and SYSTEM. New files are protected before the atomic rename, including `telemetry-hosts.json` passwords and tokens.

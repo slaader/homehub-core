@@ -8,7 +8,8 @@
 // so going back to 1.x means putting that copy back (docs/updating.md). The new file is written whole (a temporary
 // file, then a rename). Refused, and nothing written: a file that is already 2.0, one that is not a valid 1.x file,
 // and a directory that already holds the 1.x copy.
-// Run it from a checkout of 2.0 (it validates the result with 2.0's rules), before `scripts/update.mjs apply`.
+// Offline utility only. For a running installation use the 2.0 update driver with --root instead: it stages this
+// conversion, saves the original before replacing it, and restores it on rollback (docs/updating.md).
 import {readFileSync,writeFileSync,renameSync,copyFileSync,statSync,realpathSync,rmSync,existsSync,constants} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';

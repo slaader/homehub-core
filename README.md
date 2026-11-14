@@ -321,3 +321,7 @@ identity or a tag, and give the checkout a neutral identity ([AGENTS.md](AGENTS.
 git config core.hooksPath scripts/hooks
 git config user.name "Home Hub" && git config user.email dev@home-hub.invalid
 ```
+
+### Devices and services
+
+The **Inventory → Devices and services** catalog connects devices, services, software, model deployments and clients using their existing sources. Register an installed service using the [macOS, Linux or Windows setup scripts](docs/services.md); the scripts record its name, kind, binary and port through the authenticated inventory API.

@@ -30,7 +30,7 @@ test('cache entries expire and are bound to the same principal re-signing in onl
  assert.equal(cache.get('k',500),1);assert.equal(cache.get('k',1500),undefined);
 });
 test('router guards admin-only pages, not just the sidebar links',async()=>{
- for(const page of ['versions','hardening','security']){assert.ok(ADMIN_PAGES.includes(page));assert.equal(pageAllowed(page,viewer),false,page);assert.equal(pageAllowed(page,admin),true);}
+ for(const page of ['versions','hardening','security','device-catalog']){assert.ok(ADMIN_PAGES.includes(page));assert.equal(pageAllowed(page,viewer),false,page);assert.equal(pageAllowed(page,admin),true);}
  for(const page of ['access','settings',null])assert.equal(pageAllowed(page,viewer),true);
  assert.equal(pageAllowed('hardening',null),false);
  const app=await readFile(new URL('../public/app.js',import.meta.url),'utf8');

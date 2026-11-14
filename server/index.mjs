@@ -25,6 +25,7 @@ import {site as loadedSite,siteConfigPath} from './site-config.mjs';
 import {resolvePaths,privateFile,pluginDataDirectory} from './paths.mjs';
 import {defineModule,createRegistry,loadPlugins,ROUTE_METHODS} from './plugins.mjs';
 import {createIntegrationStore,createSecretStore} from './integrations.mjs';
+import {readRouterFor} from './router-data.mjs';
 import sessionModule from './core/session.mjs';
 import shellModule from './core/shell.mjs';
 import accessModule from './core/access.mjs';
@@ -37,6 +38,7 @@ import routerModule from './core/router.mjs';
 import integrationsModule from './core/integrations.mjs';
 import runtimesModule from './core/runtimes.mjs';
 import modelsModule from './core/models.mjs';
+import deviceCatalogModule from './core/device-catalog.mjs';
 import backupsModule from './core/backups.mjs';
 import gitLfsModule from './core/git-lfs.mjs';
 import updatesModule from './core/updates.mjs';
@@ -57,7 +59,7 @@ export const PAGE_CSP=`default-src 'self'; script-src 'self'; style-src 'self'${
 export const REQUEST_DEADLINE_MS=10_000,UPLOAD_TIMEOUT_MS=20*60_000;
 
 // Core modules, in set-up order (a later one may use the state of an earlier one).
-export const CORE_MODULES=Object.freeze([sessionModule,shellModule,accessModule,homeModule,runtimesModule,inventoryModule,trackerModule,reviewModule,securityModule,routerModule,integrationsModule,modelsModule,backupsModule,gitLfsModule,updatesModule,agentModule].map(m=>defineModule(m,{core:true})));
+export const CORE_MODULES=Object.freeze([sessionModule,shellModule,accessModule,homeModule,runtimesModule,inventoryModule,trackerModule,reviewModule,securityModule,routerModule,integrationsModule,modelsModule,deviceCatalogModule,backupsModule,gitLfsModule,updatesModule,agentModule].map(m=>defineModule(m,{core:true})));
 // Plugins found in the plugin directories when the process started (server/plugins.mjs → pluginsDirectories), each
 // checked against its plugin.json and the site's plugins.<id> settings.
 export const STARTUP_PLUGINS=Object.freeze(await loadPlugins(undefined,{site:loadedSite()}));
@@ -120,6 +122,8 @@ export function createHandler(options) {
    integrationDisabled:id=>{const info=integrationStore.disabledInfo(id);if(!info)return null;const i=registry.integration(id);return {id,title:i?.title??id,...(i?.titleKey?{titleKey:i.titleKey}:{}),by:info.by,at:info.at};},
    onIntegrationChange:listener=>integrationStore.onChange(listener),
    integrationSecret:(id,key)=>integrationSecrets.get(id,key),
+   // The same normalized observation as /api/router, including integration switches and freshness.
+   routerObservation:()=>readRouterFor(hub),
    // A plugin's own data directory, <data>/plugins/<id>/ (0700, made on first use; server/paths.mjs): never its code directory.
    pluginData:id=>{if(!registry.module(id))throw new Error(`pluginData: no module "${id}" is loaded`);return pluginDataDirectory(directory,id);},
    integrations:{store:integrationStore,secrets:integrationSecrets}};
@@ -144,6 +148,7 @@ export function createHandler(options) {
     const error=(status,code,message)=>json(status,{error:{code,message}});
     let c=null,route=null;
     try {
+      await integrationSecrets.ready();
       const url = new URL(req.url,origin),pathname=url.pathname;
       if(req.method==='GET'&&pathname==='/healthz') return json(200,{ok:true});
       // Native clients send an app token instead of the cookie; such requests need no Origin header (browsers never attach it on their own).
@@ -234,7 +239,8 @@ export function createHandler(options) {
   };
   handler.hub=hub;handler.registry=registry;handler.state=hub.state;handler.thermo=home.thermoPoller;
   // Every background reader the modules declared (Thermo pull, plugin pollers). A failure to start is logged, not fatal.
-  handler.start=()=>Promise.all(registry.pollers.map(p=>Promise.resolve().then(()=>p.start(states.get(p.module),hub)).catch(e=>console.error(`Poller ${p.module}/${p.id} failed to start:`,e.message))));
+  handler.ready=()=>integrationSecrets.ready();
+  handler.start=async()=>{await handler.ready();return Promise.all(registry.pollers.map(p=>Promise.resolve().then(()=>p.start(states.get(p.module),hub)).catch(e=>console.error(`Poller ${p.module}/${p.id} failed to start:`,e.message))));};
   handler.stop=()=>Promise.all(registry.pollers.filter(p=>p.stop).map(p=>Promise.resolve().then(()=>p.stop(states.get(p.module),hub)).catch(()=>{})));
   return handler;
 }
@@ -262,7 +268,7 @@ if(process.argv[1]===fileURLToPath(import.meta.url)){
   const origin=process.env.ORIGIN||(preview?`http://127.0.0.1:${port}`:loadedSite().publicOrigin);
   if(!origin)throw new Error('Set ORIGIN (or publicOrigin in site.json) to the URL browsers use, or run with LOCAL_PREVIEW=1.');
   const handler=createHandler({directory,credentials,authFile,origin,secure:!preview});
-  handler.start();
+  await handler.start();
   const server=(preview||process.env.HTTP_BEHIND_PROXY==='1')?http.createServer(handler):https.createServer({key:await readFile(process.env.TLS_KEY||privateFile('server.key')),cert:await readFile(process.env.TLS_CERT||privateFile('server.crt')),minVersion:'TLSv1.2'},handler);
   // The headers have ten seconds; the rest of a request has them too (createHandler → REQUEST_DEADLINE_MS), except
   // an upload, which gets what a large file needs on a slow line.

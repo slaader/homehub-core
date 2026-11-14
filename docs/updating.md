@@ -49,7 +49,8 @@ node scripts/update.mjs apply v1.3.0 \
 | What | `instance.json` | Flag | Default |
 |---|---|---|---|
 | The core checkout | `sources.core` (a directory of the instance) | `--root DIR` | the checkout this script is in |
-| Plugin sources | `sources.plugins` | (`HOME_HUB_PLUGINS_DIR`) | `local/plugins` in the checkout |
+| Plugin sources | `sources.plugins` | (`HOME_HUB_PLUGINS_DIR`); `--add-plugin-source NAME` stages an addition | `local/plugins` in the checkout |
+| Replacement site for the target | | `--site-config FILE` (preflight/apply) | the current site; 1.x core keys are converted in staging for 2.0 |
 | The service | `service` | `--service SPEC` | none: `apply`, `rollback` and `backup` refuse without it |
 | Where it answers | `health.url`, `health.seconds` | `--health URL`, `--health-seconds N` | none; 60 s |
 | Archives | `backups.keep` | `--backups DIR`, `--keep N` | `<home>/backups`, else `<checkout>/backups`; the newest 5 |
@@ -82,10 +83,10 @@ hub's own `/healthz` on its local port, not the reverse proxy in front of it.
 | 2 | Checks that the hub is running the installed version and that the health address answers. | stops |
 | 3 | `git fetch --tags`; resolves the target. Refuses a lower version, a tag whose `package.json` says another version, a checkout with changed tracked files, a release that was rolled back here before (`--force` tries again), and, when the installed checkout has `config/release-signers`, a tag without a good signature (`--allow-unsigned`). | stops |
 | 4 | Checks out the target in a scratch worktree (`<home>/staging/`, else the temp directory), with every plugin source beside it. From those files: each plugin's `core` range must include the target version, each `requires` must be met, the Node version must fit, and the data epoch is compared. | stops, naming the plugin |
-| 5 | In the scratch worktree: the target's `npm test`, the plugin sources' tests against the target core, then `node server/index.mjs --check` with **this instance's** site file, secrets and plugins. The worktree is removed. | stops; nothing was touched |
+| 5 | In the scratch worktree: the target's `npm test`, the plugin sources' tests against the target core, then `node server/index.mjs --check` with **this instance's** secrets and plugins, and its site file (a staged copy when configuration changes). The worktree is removed. | stops; nothing was touched |
 | 6 | Writes the journal, stops the service, waits for its process to exit. | starts it again |
-| 7 | Archives `config/` (an instance directory), `data/`, the state directory and `private/` into `pre-<from>-to-<to>-<time>.tgz` (0600) and lists it back. The hub is stopped, so the SQLite file is closed and consistent. A backup job's `staging/` mirror and `*.tgz` files are left out. | starts the old version |
-| 8 | `git checkout --detach <tag>` in each source that changes. | rolls back |
+| 7 | Archives `config/` (an instance directory), `data/`, the state directory and `private/` into `pre-<from>-to-<to>-<time>.tgz` (0600) and lists it back. The hub is stopped, so the SQLite file is closed and consistent. A backup job's `staging/` mirror and `*.tgz` files are left out. A site being replaced is also saved separately, even outside these directories. | starts the old version |
+| 8 | `git checkout --detach <tag>` in each source that changes. Atomically install any replacement site configuration checked in step 5. | rolls back |
 | 9 | Starts the service. Within `health.seconds` the health address must answer **and** `run.json` must show the target version, a live process started after the switch, and the expected plugins with their versions. | rolls back |
 | 10 | Marks the journal done, appends to `<state>/update-history.jsonl`, removes archives beyond `backups.keep`. | |
 
@@ -100,45 +101,76 @@ then says "tried on … and rolled back", and `apply` refuses it without `--forc
 stops, leaves the service **stopped**, exits 3 and prints the journal, the archive and the history file. It does not
 loop; `rollback` tries again once the cause is fixed.
 
-A rollback switches the code back, not your configuration. An older release refuses to start with a `site.json` that
-has a field it does not know, so before a `rollback` take out what you added for the newer release (the changelog's
-**Upgrade notes** of each version say what an older one refuses). Restoring `config/` from the update's archive
-helps only when the site file was changed after the update: the archive holds it as it was when the hub stopped.
-Otherwise the old version does not come up, and the rollback stops as above, with exit 3; fix the file and run
-`rollback` again, which goes on from where it stopped.
+When the update replaces the site configuration, it keeps the original bytes in a 0600 sidecar next to the
+archive (`<archive>.site.json`), including a site selected by `HOME_HUB_SITE_CONFIG` outside an instance directory.
+The journal records the path and hash before replacement. Rollback restores the original site before starting the
+old code, even if the new version never started. The original file permissions are preserved. A crash between the
+file rename and the next journal write is recoverable too. Later site edits are lost when this original is restored.
+
+For another configuration change needed by the target plugins, prepare a separate candidate file and pass
+`--site-config /path/to/candidate.json` to both `preflight` and `apply`. The candidate is checked with the target,
+while the live file stays unchanged until the service has stopped and its original state is archived. The candidate
+file is no longer needed for rollback. A site changed by another process during preflight makes the update refuse;
+refetch it and prepare the candidate again. The separate `--add-plugin-source` option stages additions to the instance source list (below). Other
+configuration changes need their own migration plan.
+
+To add a separate plugin repository during an upgrade, first prepare its inactive checkout at `<home>/<name>`.
+Do not add it to the live `instance.json` yourself: its plugins might require the new core and prevent the old
+service from restarting. Include both of these options in the same preflight/apply command:
+
+```sh
+--add-plugin-source public-plugins --plugins public-plugins=v1.0.0
+```
+
+`--add-plugin-source` is repeatable. It needs an existing instance with an explicit `sources.plugins` list, no
+`HOME_HUB_PLUGINS_DIR` override, and an explicit target tag for each added source. Preflight stages all existing and
+added sources together, checks their core ranges and dependencies, and runs their tests against target core. The
+source list is appended only after stop/archive. The original `instance.json` is saved as a 0600
+`<archive>.instance.json` sidecar and journalled before replacement, then restored before an old-code restart on
+failure or rollback. A changed manifest during preflight is refused. The inactive checkout remains on disk after
+rollback, but the old hub no longer loads it. This option does not change the core location, service commands,
+health settings, or remove existing sources.
 
 Exit codes: 0 done; 1 refused, or failed and put back; 2 usage; 3 the rollback failed.
 
 ### 1.x to 2.0 and back
 
-2.0 renamed keys of `site.json` (`machines` → `devices`, `runtimes[].machine` → `runtimes[].device`). 2.0 refuses the
-1.x file and 1.x refuses the 2.0 one, and step 5 runs 2.0's start-up check on the instance's file, so the file is
-converted before `apply`, by a command of 2.0 run from a scratch worktree of the tag:
+2.0 renames `site.json` keys (`machines` → `devices`, `runtimes[].machine` → `runtimes[].device`). Use the **2.0
+update driver from a separate verified checkout**, with `--root` naming the real deployment checkout. The 1.x
+updater cannot perform this transaction. Keep the driver checkout until the update and its rollback window are
+finished, and use that same driver for recovery. The hub service continues to run from the deployment checkout.
+
+With an instance directory (use the same environment as the service):
 
 ```sh
 git -C <core> fetch --tags
-git -C <core> worktree add --detach /tmp/hub-2.0.0 v2.0.0
-node /tmp/hub-2.0.0/scripts/convert-site.mjs <config>/site.json    # writes 2.0 in place, keeps <config>/site.v1.json
-git -C <core> worktree remove /tmp/hub-2.0.0
-node <core>/scripts/update.mjs apply v2.0.0
+# Verify the release tag against your trusted release signers before executing its code.
+git -C <core> worktree add --detach /tmp/hub-update-driver v2.0.0
+HOME_HUB_HOME=<home> node /tmp/hub-update-driver/scripts/update.mjs preflight v2.0.0 --root <core>
+HOME_HUB_HOME=<home> node /tmp/hub-update-driver/scripts/update.mjs apply v2.0.0 --root <core>
 ```
 
-Convert right before the update: the running 1.x hub keeps the file it read at start, but a 1.x collector, or the
-hub restarted, refuses the converted one. `convert-site.mjs` refuses, writing nothing, a file that is already 2.0,
-one that is not a valid 1.x file, and a directory that already holds `site.v1.json`; without a file it converts the
-one the hub reads (`HOME_HUB_SITE_CONFIG`, else `<config>/site.json`).
+For an installation without `HOME_HUB_HOME`, pass the service, health, data, state, secrets and site settings the
+service uses, as described above. Compatible plugin releases belong in the same command with
+`--plugins <source>=<tag>`. A new repository also needs `--add-plugin-source <source>`; its checkout must already
+exist under the instance directory. If their settings also changed, pass a separately prepared `--site-config` candidate;
+the automatic conversion only knows core's two renamed keys. Do not convert the live site before `apply`.
 
-Going back (an `apply` that rolls back by itself, or `rollback --yes` later) starts 1.x on the 2.0 file: the archive
-was made after the conversion, so restoring it does not bring the 1.x file back (and without an instance directory
-it holds no `config/` at all). 1.x refuses the file, and the rollback stops with exit 3, the service stopped. Put the 1.x file back and run the rollback again; it goes on from where it stopped (the archive is not
-restored twice):
+The driver converts the known 1.x keys in a staged copy and validates it with 2.0. A refused preflight leaves the
+running 1.x hub and its collectors' configuration intact. A failed start automatically restores old code, data when
+required, and the original site before restarting 1.x. To undo a successful update, or recover after the driver's
+process was interrupted:
 
 ```sh
-cp <config>/site.v1.json <config>/site.json
-node <core>/scripts/update.mjs rollback        # with the same flags as the update, if it had any
+HOME_HUB_HOME=<home> node /tmp/hub-update-driver/scripts/update.mjs rollback --yes --root <core>
 ```
 
-Site changes made under 2.0 are not in `site.v1.json`.
+Use the same path/settings flags as the update when there is no instance directory. `--yes` acknowledges restoring
+the pre-update data after an epoch rise. Once the update is accepted and recovery is no longer needed, remove the
+driver worktree with `git -C <core> worktree remove /tmp/hub-update-driver`.
+
+`convert-site.mjs` remains an offline file-conversion utility, with a `site.v1.json` copy for manual work. It is not
+the upgrade or rollback driver and must not be run against a live 1.x site's file before updating.
 
 ## The data epoch: when going back needs the archive
 

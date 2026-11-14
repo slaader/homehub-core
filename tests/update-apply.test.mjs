@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,writeFile,readFile,rm,realpath} from 'node:fs/promises';
-import {existsSync,readFileSync,readdirSync,writeFileSync,statSync} from 'node:fs';
+import {existsSync,readFileSync,readdirSync,writeFileSync,statSync,chmodSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
@@ -15,6 +15,7 @@ Object.assign(process.env,{GIT_CONFIG_GLOBAL:'/dev/null',GIT_CONFIG_SYSTEM:'/dev
 const {resolveInstance,preflight,apply,rollback,recover,backup,status,formatStatus,readJournal,setQuarantine,readQuarantine,archiveEntries,runMismatch,coreFacts,pluginFacts,realExec,UpdateError,RollbackFailed}=await import('../server/update-apply.mjs');
 const {parseService,parseHealth,parseBackups,UpdateConfigError}=await import('../server/update-config.mjs');
 const {readInstance}=await import('../server/plugins.mjs');
+const {satisfies}=await import('../server/semver.mjs');
 const {readUpdateState,updateView}=await import('../server/update-check.mjs');
 const {parseArgs,main}=await import('../scripts/update.mjs');
 
@@ -29,6 +30,7 @@ const INDEX=`// stands in for the server: only '--check'
 import {existsSync,readFileSync} from 'node:fs';import path from 'node:path';import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 if(existsSync(path.join(root,'FAIL_CHECK'))){console.error('plugin "p-one" needs site.json → plugins.p-one.socket');process.exit(1);}
+if(existsSync(path.join(root,'STRICT_SITE'))){const site=JSON.parse(readFileSync(process.env.HOME_HUB_SITE_CONFIG,'utf8'));if(!Array.isArray(site.devices)||'machines' in site){console.error('target needs devices, refuses machines');process.exit(1);}}
 console.info('check ok: Home Hub '+JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version+'; site '+process.env.HOME_HUB_SITE_CONFIG);
 `;
 const pkg=(version,epoch=1)=>JSON.stringify({name:'home-hub',version,type:'module',engines:{node:'>=22'},homeHub:{dataEpoch:epoch}})+'\n';
@@ -83,9 +85,13 @@ async function world(t,{layout='checkout',instance={}}={}){
  const svc={running:false,pid:1000,calls:[],refuseStop:false,onStart:null,execs:[]};
  const start=()=>{
   const version=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version;svc.calls.push(`start ${version}`);
+  if(svc.siteFile){const site=JSON.parse(readFileSync(svc.siteFile,'utf8')),old=version.startsWith('1.');
+   if(old?('devices' in site||!Array.isArray(site.machines)):('machines' in site||!Array.isArray(site.devices))){svc.running=false;return {status:0,stdout:'',stderr:'site schema refused'};}}
   if(existsSync(path.join(root,'CRASH_AT_START'))){svc.running=false;return {status:0,stdout:'',stderr:''};}
   svc.pid++;svc.running=true;
-  const loaded=home?pluginFacts(path.join(home,'household','plugins')).map(p=>({id:p.id,version:p.version})):[];
+  const configured=home&&env.HOME_HUB_PLUGINS_DIR!=='none'?(readInstance(home).sources.plugins??[]).flatMap(name=>pluginFacts(path.join(home,name,'plugins'))):[];
+  if(configured.some(p=>p.core&&!satisfies(version,p.core))){svc.running=false;return {status:0,stdout:'',stderr:'plugin core range refused'};}
+  const loaded=configured.map(p=>({id:p.id,version:p.version}));
   writeFileSync(path.join(state,'run.json'),JSON.stringify({version,commit:hub.git('rev-parse','HEAD').slice(0,7),exact:true,dataEpoch:1,pid:svc.pid,startedAt:new Date(clock).toISOString(),plugins:loaded}));
   svc.onStart?.(version);
   return {status:0,stdout:'',stderr:''};
@@ -413,4 +419,187 @@ test('the command line: arguments, status, and a rollback that remembers how the
  const back=await run('rollback','--root',w.root,'--state',w.state);
  assert.equal(back.code,0);assert.match(back.text,/Rolled back: 1\.0\.0 @ \w{7} is running \(rolled-back\)\./);
  assert.deepEqual(w.svc.calls,['stop','start 1.1.0','stop','start 1.0.0']);
+});
+
+// The updater being tested lives outside these tiny 1.x installations. No old checkout needs to load new
+// modules: the supported driver is the new update.mjs with --root pointing at the deployment checkout.
+async function siteWorld(t,{home=false}={}){
+ const w=await world(t,{layout:home?'home':'checkout'});
+ if(home){w.env.HOME_HUB_PLUGINS_DIR='none';const file=path.join(w.state,'run.json');writeFileSync(file,JSON.stringify({...JSON.parse(readFileSync(file,'utf8')),plugins:[]}));}
+ const file=home?path.join(w.home,'config','site.json'):path.join(w.dir,'external-config','site.json');
+ await mkdir(path.dirname(file),{recursive:true});
+ const original='{ "siteName": "Example", "machines": [{"id":"alpha"}], "runtimes": [] }\n';
+ await writeFile(file,original);chmodSync(file,0o640);
+ w.env.HOME_HUB_SITE_CONFIG=file;w.svc.siteFile=file;
+ const target=await w.upstream.commit('2.0.0',tree('2.0.0',2,{STRICT_SITE:''}),{tag:'v2.0.0'});
+ return {...w,file,original,target};
+}
+
+test('1.x to 2.0 preflight checks a converted copy and never changes the live site, including on refusal',async t=>{
+ const w=await siteWorld(t),inst=w.inst();
+ const before=statSync(w.file).ino;
+ const plan=await preflight(inst,{core:'v2.0.0'},w.ctx);
+ assert.equal(readFileSync(w.file,'utf8'),w.original);assert.equal(statSync(w.file).ino,before);
+ assert.deepEqual(w.svc.calls,[]);
+ assert.deepEqual(JSON.parse(plan.siteChange.text).devices,[{id:'alpha'}]);
+ const check=w.svc.execs.find(e=>e.args.includes('--check'));
+ assert.notEqual(check.env.HOME_HUB_SITE_CONFIG,w.file);
+ assert.equal(check.env.SOFTWARE_WATCH_FILE,path.join(path.dirname(w.file),'software-watch.json'));
+ assert.equal(existsSync(check.env.HOME_HUB_SITE_CONFIG),false,'the staging copy is removed');
+ await w.upstream.commit('bad target',tree('2.0.1',2,{FAIL_CHECK:''}),{tag:'v2.0.1'});
+ await refused(apply(inst,{core:'v2.0.1'},w.ctx),/start-up check.*failed/s);
+ assert.equal(readFileSync(w.file,'utf8'),w.original);assert.equal(statSync(w.file).ino,before);
+ assert.deepEqual(w.svc.calls,[]);assert.equal(readJournal(inst),null);
+ writeFileSync(w.file,plan.siteChange.text);
+ await refused(preflight(inst,{core:'v2.0.0'},w.ctx),/live 1\.x site already has 2\.0 keys/);
+ assert.deepEqual(w.svc.calls,[],'a configuration pre-converted outside the transaction is not accepted as a safe rollback baseline');
+});
+
+test('1.x to 2.0 saves original site bytes and restores them on later rollback, with and without an instance',async t=>{
+ for(const home of [false,true])await t.test(home?'instance configuration':'external site, no instance',async t=>{
+  const w=await siteWorld(t,{home}),inst=w.inst();
+  const {journal}=await apply(inst,{core:'v2.0.0'},w.ctx);
+  assert.equal(journal.site.status,'applied');assert.equal(readFileSync(journal.site.backup,'utf8'),w.original);
+  assert.equal(statSync(journal.site.backup).mode&0o777,0o600);
+  assert.equal(statSync(w.file).mode&0o777,0o640);
+  assert.deepEqual(JSON.parse(readFileSync(w.file,'utf8')).devices,[{id:'alpha'}]);
+  assert.deepEqual(w.svc.calls,['stop','start 2.0.0']);
+  if(home){const saved=execFileSync('tar',['-xOf',journal.backup.file,'config/site.json'],{encoding:'utf8'});assert.equal(saved,w.original,'the archive predates conversion');}
+  else assert.ok(!tarList(journal.backup.file).some(n=>n.endsWith('/site.json')),'the site sidecar covers paths outside the ordinary archive');
+  const {journal:back}=await rollback(inst,w.ctx,{yes:true});
+  assert.equal(back.site.status,'restored');assert.equal(w.svc.running,true);
+  assert.equal(readFileSync(w.file,'utf8'),w.original);assert.equal(statSync(w.file).mode&0o777,0o640);
+  assert.equal(w.hub.git('rev-parse','HEAD'),w.v100);
+ });
+});
+
+test('a failed 2.0 start automatically restores the original site before restarting 1.x',async t=>{
+ const w=await siteWorld(t),inst=w.inst();
+ await w.upstream.commit('2.0.1 crashes',tree('2.0.1',2,{STRICT_SITE:'',CRASH_AT_START:''}),{tag:'v2.0.1'});
+ await refused(apply(inst,{core:'v2.0.1'},w.ctx),/health check failed[\s\S]*It was rolled back/);
+ assert.deepEqual(w.svc.calls,['stop','start 2.0.1','stop','start 1.0.0']);
+ assert.equal(w.svc.running,true);assert.equal(readFileSync(w.file,'utf8'),w.original);
+ assert.equal(readJournal(inst).site.status,'restored');
+});
+
+test('interruption after the site replacement, before the target starts, restores configuration without restoring data',async t=>{
+ const w=await siteWorld(t),inst=w.inst();
+ const ctx={...w.ctx,checkpoint:()=>{if(readJournal(inst)?.step==='switched')throw Object.assign(new Error('interrupted (SIGINT)'),{interrupted:true});}};
+ await refused(apply(inst,{core:'v2.0.0'},ctx),/failed at "switched": interrupted[\s\S]*It was rolled back/);
+ const journal=readJournal(inst);
+ assert.equal(journal.started,false);assert.equal(journal.restored,undefined);assert.equal(journal.site.status,'restored');
+ assert.deepEqual(w.svc.calls,['stop','stop','start 1.0.0']);assert.equal(w.svc.running,true);
+ assert.equal(readFileSync(w.file,'utf8'),w.original);
+ // Also model an abrupt process death after rename but before 'applied' was journalled. Recovery must treat
+ // 'applying' as potentially changed, even though no new service has run.
+ writeFileSync(w.file,JSON.stringify({devices:[{id:'alpha'}]}));
+ w.hub.git('checkout','--quiet','--detach','v2.0.0');w.svc.running=false;
+ writeFileSync(inst.files.journal,JSON.stringify({...journal,step:'switching',undoFrom:undefined,finishedAt:undefined,site:{...journal.site,status:'applying'}}));
+ const recovered=await recover(inst,w.ctx);
+ assert.equal(recovered.site.status,'restored');assert.equal(w.svc.running,true);
+ assert.equal(readFileSync(w.file,'utf8'),w.original);assert.equal(w.hub.git('rev-parse','HEAD'),w.v100);
+});
+
+test('the separate driver CLI accepts a staged household site and rolls it back without needing the candidate file',async t=>{
+ const w=await siteWorld(t),candidate=path.join(w.dir,'candidate.json');
+ const replacement=JSON.stringify({siteName:'New site',devices:[{id:'alpha'}],plugins:{'device-table':{enabled:true}}})+'\n';
+ await writeFile(candidate,replacement);
+ const flags=['--root',w.root,'--state',w.state,'--service','command:{"stop":["svc","stop"],"start":["svc","start"]}','--health','http://127.0.0.1:9/healthz','--health-seconds','2'];
+ const out=[];
+ const done=await main(['apply','v2.0.0','--site-config',candidate,...flags],{env:w.env,ctx:w.ctx,out:l=>out.push(l)});
+ assert.equal(done,0);assert.equal(readFileSync(w.file,'utf8'),replacement);
+ await rm(candidate);
+ const back=await main(['rollback','--yes','--root',w.root,'--state',w.state],{env:w.env,ctx:w.ctx,out:l=>out.push(l)});
+ assert.equal(back,0);assert.equal(readFileSync(w.file,'utf8'),w.original);assert.equal(w.svc.running,true);
+ assert.throws(()=>parseArgs(['rollback','--site-config','x']),/only for preflight or apply/);
+});
+
+test('a site edited during preflight is refused before stopping the service',async t=>{
+ const w=await siteWorld(t),inst=w.inst();let changed=false;
+ const latest=w.original.replace('Example','Edited while checking');
+ const ctx={...w.ctx,exec:(command,args,options)=>{const r=w.ctx.exec(command,args,options);if(args.includes('--check')&&!changed){changed=true;writeFileSync(w.file,latest);}return r;}};
+ await refused(apply(inst,{core:'v2.0.0'},ctx),/site configuration changed since preflight/);
+ assert.equal(readFileSync(w.file,'utf8'),latest);assert.deepEqual(w.svc.calls,[]);assert.equal(readJournal(inst),null);
+});
+
+test('an explicit site replacement rolls back without a data-epoch rise, keeping later application data',async t=>{
+ const w=await world(t),file=path.join(w.dir,'site.json'),candidate=path.join(w.dir,'next-site.json');
+ await writeFile(file,'{"siteName":"Before"}\n');await writeFile(candidate,'{"siteName":"After"}\n');
+ w.env.HOME_HUB_SITE_CONFIG=file;
+ await w.upstream.commit('1.1.0',tree('1.1.0'),{tag:'v1.1.0'});
+ const inst=w.inst(),{journal}=await apply(inst,{core:'v1.1.0',siteConfig:candidate},w.ctx);
+ assert.equal(journal.epochRose,false);assert.equal(readFileSync(file,'utf8'),'{"siteName":"After"}\n');
+ await writeFile(path.join(w.state,'hub.db'),'later data\n');
+ await rollback(inst,w.ctx);
+ assert.equal(readFileSync(file,'utf8'),'{"siteName":"Before"}\n');
+ assert.equal(readFileSync(path.join(w.state,'hub.db'),'utf8'),'later data\n');assert.equal(w.svc.running,true);
+});
+
+async function sourceWorld(t){
+ const w=await world(t,{layout:'home'}),file=path.join(w.home,'instance.json'),original=readFileSync(file,'utf8');
+ await writeFile(path.join(w.home,'config','site.json'),'{"machines":[{"id":"alpha"}]}\n');
+ w.svc.siteFile=path.join(w.home,'config','site.json');
+ await w.upstream.commit('2.0.0',tree('2.0.0',2,{STRICT_SITE:''}),{tag:'v2.0.0'});
+ await w.pluginsUpstream.commit('2.0.0',{'package.json':JSON.stringify({name:'household',version:'2.0.0'})+'\n','plugins/p-one/plugin.json':manifest('p-one','2.0.0',{core:'>=2.0.0 <3.0.0'})},{tag:'v2.0.0'});
+ const publicUpstream=await init(path.join(w.dir,'public-upstream'));
+ await publicUpstream.commit('1.0.0',{'package.json':JSON.stringify({name:'public-plugins',version:'1.0.0'})+'\n',
+  'plugins/p-public/index.mjs':'export default {id:"p-public"};\n','plugins/p-public/plugin.json':manifest('p-public','1.0.0',{core:'>=2.0.0 <3.0.0'}),'plugins/p-public/tests/public.test.mjs':'// fixture\n'},{tag:'v1.0.0'});
+ const added=clone(publicUpstream.root,path.join(w.home,'public-plugins'));
+ return {...w,file,original,added,request:{core:'v2.0.0',plugins:{household:'v2.0.0','public-plugins':'v1.0.0'},addPluginSources:['public-plugins']}};
+}
+
+test('an inactive plugin source joins only at the update switch; preflight and rollback preserve the original manifest',async t=>{
+ const w=await sourceWorld(t),inst=w.inst();
+ const plan=await preflight(inst,w.request,w.ctx);
+ assert.equal(readFileSync(w.file,'utf8'),w.original);assert.deepEqual(w.svc.calls,[]);
+ assert.deepEqual(plan.to.expect.plugins.map(p=>p.id),['p-one','p-public']);
+ const tested=w.svc.execs.find(e=>e.args.includes('--plugins'));
+ assert.ok(tested.args.some(a=>a.endsWith('/household')));assert.ok(tested.args.some(a=>a.endsWith('/public-plugins')),'the sources are tested together against target core');
+ const {journal}=await apply(inst,w.request,w.ctx);
+ assert.equal(journal.instance.status,'applied');assert.equal(readFileSync(journal.instance.backup,'utf8'),w.original);
+ assert.equal(statSync(journal.instance.backup).mode&0o777,0o600);
+ assert.deepEqual(readInstance(w.home).sources.plugins,['household','public-plugins']);
+ assert.deepEqual(JSON.parse(readFileSync(inst.files.run,'utf8')).plugins.map(p=>p.id),['p-one','p-public']);
+ // Resolve anew as a separate CLI invocation does: it sees the new manifest, but recovery uses the old manifest
+ // held by the journal. The new source remains cloned on disk, inactive after rollback.
+ const {journal:back}=await rollback(w.inst(),w.ctx,{yes:true});
+ assert.equal(back.instance.status,'restored');assert.equal(readFileSync(w.file,'utf8'),w.original);
+ assert.deepEqual(readInstance(w.home).sources.plugins,['household']);assert.equal(w.svc.running,true);
+ assert.deepEqual(w.svc.calls,['stop','start 2.0.0','stop','start 1.0.0']);assert.ok(existsSync(w.added.root));
+});
+
+test('a failed start and an interrupted manifest replacement both recover without loading the new plugin on 1.x',async t=>{
+ const w=await sourceWorld(t),inst=w.inst();
+ await w.upstream.commit('2.0.1 crash',tree('2.0.1',2,{STRICT_SITE:'',CRASH_AT_START:''}),{tag:'v2.0.1'});
+ await refused(apply(inst,{...w.request,core:'v2.0.1'},w.ctx),/It was rolled back/);
+ assert.equal(readFileSync(w.file,'utf8'),w.original);assert.equal(w.svc.running,true);
+ assert.equal(readJournal(inst).instance.status,'restored');
+ // A fresh update interrupted before start recovers without an archive restoration, so this proves manifest
+ // restoration is independent of data restore (instance.json is not in the ordinary archive).
+ const ctx={...w.ctx,checkpoint:()=>{if(readJournal(inst)?.step==='switched')throw Object.assign(new Error('interrupted'),{interrupted:true});}};
+ await refused(apply(inst,w.request,ctx),/failed at "switched": interrupted/);
+ const journal=readJournal(inst);
+ assert.equal(journal.started,false);assert.equal(journal.restored,undefined);assert.equal(journal.instance.status,'restored');
+ assert.equal(readFileSync(w.file,'utf8'),w.original);assert.equal(w.svc.running,true);
+ // A hard crash after rename but before marking applied: the durable 'applying' state is sufficient.
+ writeFileSync(w.file,JSON.stringify({...JSON.parse(w.original),sources:{core:'core',plugins:['household','public-plugins']}}));
+ w.svc.running=false;
+ writeFileSync(inst.files.journal,JSON.stringify({...journal,step:'switching',undoFrom:undefined,finishedAt:undefined,instance:{...journal.instance,status:'applying'}}));
+ await recover(w.inst(),w.ctx);
+ assert.equal(readFileSync(w.file,'utf8'),w.original);assert.equal(w.svc.running,true);
+});
+
+test('adding plugin sources refuses ambiguous targets, overrides, and concurrent manifest edits before stopping',async t=>{
+ const w=await sourceWorld(t),inst=w.inst();
+ await refused(preflight(inst,{...w.request,plugins:{household:'v2.0.0'}},w.ctx),/also needs --plugins public-plugins=<tag>/);
+ await refused(preflight(inst,{...w.request,addPluginSources:['household']},w.ctx),/repeat a source/);
+ const override=resolveInstance({env:{...w.env,HOME_HUB_PLUGINS_DIR:'none'},root:w.root});
+ await refused(preflight(override,w.request,w.ctx),/HOME_HUB_PLUGINS_DIR overrides/);
+ let edited=false;
+ const changed=JSON.stringify({...JSON.parse(w.original),$comment:'changed by another writer'})+'\n';
+ const ctx={...w.ctx,exec:(command,args,options)=>{const result=w.ctx.exec(command,args,options);if(args.includes('--check')&&!edited){edited=true;writeFileSync(w.file,changed);}return result;}};
+ await refused(apply(inst,w.request,ctx),/instance configuration changed since preflight/);
+ assert.equal(readFileSync(w.file,'utf8'),changed);assert.deepEqual(w.svc.calls,[]);
+ assert.deepEqual(parseArgs(['apply','v2.0.0','--add-plugin-source','public-plugins','--plugins','public-plugins=v1.0.0']).addPluginSources,['public-plugins']);
+ assert.throws(()=>parseArgs(['rollback','--add-plugin-source','public-plugins']),/only for preflight or apply/);
 });

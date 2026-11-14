@@ -1,0 +1,6 @@
+.device-catalog section { margin-block: var(--space-6, 1.5rem); }
+.catalog-scroll { overflow-x: auto; }
+.catalog-table { border-collapse: collapse; width: 100%; }
+.catalog-table th, .catalog-table td { padding: var(--space-3, .75rem); border-bottom: 1px solid var(--color-border); text-align: left; vertical-align: top; }
+.catalog-table th { color: var(--color-text-dim); font-weight: 600; }
+.device-catalog select { padding: var(--space-2, .5rem); background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-border); border-radius: var(--radius-s); }

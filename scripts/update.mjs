@@ -10,6 +10,8 @@
 //
 // Without a tag: the newest release tag after a fetch. --to <tag> is the same as the bare tag.
 // --plugins [<source>=]<tag>   also (or only) switch a plugin source, a git checkout of its own, to its tag
+// --site-config FILE          stage this target configuration; replace the live site only inside apply's transaction
+// --add-plugin-source NAME    append an inactive <home>/NAME source at the switch; also needs --plugins NAME=<tag>
 //
 // Which installation: this checkout, or --root DIR (a release that has no update command yet is updated by running
 // this file from a newer checkout with --root). Where its data is: the same variables the server reads
@@ -27,23 +29,25 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {resolveInstance,preflight,apply,rollback,backup,recover,status,formatStatus,readJournal,unfinished,realContext,UpdateError,RollbackFailed} from '../server/update-apply.mjs';
 
-const VALUE=['--to','--plugins','--root','--home','--data','--state','--private','--service','--health','--health-seconds','--backups','--keep','--staging','--reason'];
+const VALUE=['--to','--plugins','--site-config','--add-plugin-source','--root','--home','--data','--state','--private','--service','--health','--health-seconds','--backups','--keep','--staging','--reason'];
 const FLAG=['--no-fetch','--skip-tests','--allow-unsigned','--force','--yes','--json','--help'];
 const COMMANDS=['status','preflight','apply','rollback','backup'];
 const USAGE=`Usage: node scripts/update.mjs status | preflight [<tag>] | apply [<tag>] | rollback [--yes] | backup
-  [--plugins [<source>=]<tag>]… [--root DIR] [--home DIR] [--data DIR] [--state DIR] [--private DIR]
+  [--plugins [<source>=]<tag>]… [--add-plugin-source NAME]… [--site-config FILE]
+  [--root DIR] [--home DIR] [--data DIR] [--state DIR] [--private DIR]
   [--service SPEC] [--health URL] [--health-seconds N] [--backups DIR] [--keep N] [--staging DIR]
   [--no-fetch] [--skip-tests] [--allow-unsigned] [--force] [--reason TEXT] [--json]
 docs/updating.md has the whole of it.`;
 
 class UsageError extends Error{}
 export function parseArgs(argv){
- const out={command:null,tag:null,plugins:{},flags:new Set(),values:{}};
+ const out={command:null,tag:null,plugins:{},addPluginSources:[],flags:new Set(),values:{}};
  for(let i=0;i<argv.length;i++){
   const a=argv[i];
   if(VALUE.includes(a)){
    const v=argv[++i];if(v===undefined||v.startsWith('--'))throw new UsageError(`${a} needs a value`);
    if(a==='--plugins'){const at=v.indexOf('=');const [source,tag]=at<0?['*',v]:[v.slice(0,at),v.slice(at+1)];if(!source||!tag||out.plugins[source])throw new UsageError('--plugins takes <tag>, or <source>=<tag> once per source');out.plugins[source]=tag;}
+   else if(a==='--add-plugin-source'){if(out.addPluginSources.includes(v))throw new UsageError('--add-plugin-source names each source once');out.addPluginSources.push(v);}
    else if(a==='--to'){if(out.tag)throw new UsageError('the target tag is given twice');out.tag=v;}
    else out.values[a.slice(2)]=v;
   }else if(FLAG.includes(a))out.flags.add(a.slice(2));
@@ -55,6 +59,8 @@ export function parseArgs(argv){
  if(out.flags.has('help'))return out;
  if(!COMMANDS.includes(out.command))throw new UsageError(out.command?`unknown command ${out.command}`:'which command?');
  if((out.tag||Object.keys(out.plugins).length)&&!['preflight','apply'].includes(out.command))throw new UsageError(`${out.command} takes no tag`);
+ if(out.values['site-config']&&!['preflight','apply'].includes(out.command))throw new UsageError('--site-config is only for preflight or apply');
+ if(out.addPluginSources.length&&!['preflight','apply'].includes(out.command))throw new UsageError('--add-plugin-source is only for preflight or apply');
  const whole=(name,min)=>{const v=out.values[name];if(v===undefined)return undefined;if(!/^\d{1,4}$/.test(v)||Number(v)<min)throw new UsageError(`--${name} takes a whole number`);return Number(v);};
  out.options={root:out.values.root,service:out.values.service,health:out.values.health,healthSeconds:whole('health-seconds',2),backups:out.values.backups,keep:whole('keep',1),staging:out.values.staging};
  return out;
@@ -82,7 +88,7 @@ export async function main(argv,{env=process.env,ctx=null,out=line=>console.log(
  const world=ctx??realContext({log:out,checkpoint:()=>{if(signal)throw Object.assign(new Error(`interrupted (${signal})`),{interrupted:true});}});
  try{
   const inst=instanceFor(args,env);
-  const request={core:args.tag,plugins:args.plugins,fetch:!args.flags.has('no-fetch'),skipTests:args.flags.has('skip-tests'),allowUnsigned:args.flags.has('allow-unsigned'),force:args.flags.has('force')};
+  const request={core:args.tag,plugins:args.plugins,addPluginSources:args.addPluginSources,siteConfig:args.values['site-config'],fetch:!args.flags.has('no-fetch'),skipTests:args.flags.has('skip-tests'),allowUnsigned:args.flags.has('allow-unsigned'),force:args.flags.has('force')};
   if(args.command==='status'){
    const s=status(inst,world);
    if(args.flags.has('json'))out(JSON.stringify(s,null,1));else for(const line of formatStatus(s))out(line);
@@ -106,7 +112,7 @@ export async function main(argv,{env=process.env,ctx=null,out=line=>console.log(
    const {journal,plan}=await apply(inst,request,world);
    out(`\nUpdated: ${plan.from.label} → ${plan.to.label} in ${Math.round((Date.parse(journal.finishedAt)-Date.parse(journal.startedAt))/1000)} s. The hub answers at ${inst.health.url}.`);
    out(`  archive  ${journal.backup.file}`);
-   out(plan.epochRose?'  The data epoch rose: "rollback --yes" restores that archive, and what is written from now on would be lost.':'  To go back: the same command with "rollback" (the data epoch did not change; nothing written since is lost).');
+   out(plan.epochRose?'  The data epoch rose: "rollback --yes" restores that archive, and what is written from now on would be lost.':`  To go back: the same command with "rollback" (the data epoch did not change; ${plan.siteChange?'application data is kept and the original site is restored':'nothing written since is lost'}).`);
    return 0;
   }
   if(args.command==='rollback'){

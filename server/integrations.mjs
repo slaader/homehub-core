@@ -12,6 +12,7 @@ import {mkdir,writeFile,rename} from 'node:fs/promises';
 import path from 'node:path';
 import {secretIn} from './home-devices.mjs';
 import {INTEGRATION_STATES,worstState} from './integration-states.mjs';
+import {createSecretBox,isSealed} from './secret-box.mjs';
 
 export const INTEGRATION_KINDS=Object.freeze(['telemetry','llm-runtimes','router','collector','upstream','storage','bridge','agent','other']);
 export {INTEGRATION_STATES};
@@ -172,22 +173,41 @@ export function createIntegrationStore(stateDirectory,{file=path.join(stateDirec
 }
 
 // --- write-only values ----------------------------------------------------------------------------
-// private/integrations.json = {schemaVersion: 1, values: {<id>: {<key>: "value"}}}, 0600. A value is
-// read only by the module that declared the field (hub.integrationSecret); the API says {set: true}.
-export function createSecretStore(file){
- let cache=null;
- const load=()=>{if(cache)return cache;try{const raw=JSON.parse(readFileSync(file,'utf8'));cache=plain(raw?.values)?raw.values:{};}catch{cache={};}return cache;};
- let queue=Promise.resolve();
- const save=next=>queue=queue.catch(()=>{}).then(async()=>{
+// private/integrations.json is an AES-256-GCM envelope (0600); its payload is schema 2 with values
+// keyed by integration id and setting. Legacy plaintext schema 1 is sealed before it becomes available.
+// The plugin reads values through hub.integrationSecret; the API says only {set: true}.
+export const INTEGRATION_SECRETS_SCHEMA=2;
+const SECRET_PURPOSE='home-hub:integration-settings';
+export function createSecretStore(file,{box=createSecretBox()}={}){
+ let cache=null,loading=null,queue=Promise.resolve();
+ const save=async next=>{
+  const sealed=await box.seal({schemaVersion:INTEGRATION_SECRETS_SCHEMA,values:next},SECRET_PURPOSE);
   await mkdir(path.dirname(file),{recursive:true,mode:0o700});
-  const tmp=`${file}.${process.pid}.tmp`;await writeFile(tmp,JSON.stringify({schemaVersion:1,values:next})+'\n',{mode:0o600});await rename(tmp,file);cache=next;
- });
+  const tmp=`${file}.${process.pid}.tmp`;
+  await writeFile(tmp,JSON.stringify(sealed)+'\n',{mode:0o600});await rename(tmp,file);cache=next;
+ };
+ // Readiness is awaited before requests and pollers. Keep the plugin's synchronous getter: it reads
+ // memory only, never a keychain. Locked, corrupt or newer files are refused and never overwritten.
+ const ready=()=>{
+  if(cache)return Promise.resolve();if(loading)return loading;
+  loading=(async()=>{
+   let raw;try{raw=JSON.parse(readFileSync(file,'utf8'));}catch(e){if(e.code==='ENOENT'){cache={};return;}throw new Error('Invalid integration secret store');}
+   const sealed=isSealed(raw),doc=sealed?await box.open(raw,SECRET_PURPOSE):raw;
+   if(!plain(doc)||![1,INTEGRATION_SECRETS_SCHEMA].includes(doc.schemaVersion)||!plain(doc.values))throw new Error('Invalid or newer integration secret store');
+   for(const [id,fields] of Object.entries(doc.values)){
+    if(!INTEGRATION_ID.test(id)||!plain(fields)||Object.values(fields).some(v=>typeof v!=='string'))throw new Error('Invalid integration secret store');
+   }
+   if(!sealed||doc.schemaVersion!==INTEGRATION_SECRETS_SCHEMA)await save(doc.values);else cache=doc.values;
+  })().finally(()=>{loading=null;});return loading;
+ };
+ const loaded=()=>{if(!cache)throw new Error('Integration secrets are not ready');return cache;};
+ const change=fn=>{const task=queue.catch(()=>{}).then(async()=>{await ready();return fn();});queue=task;return task;};
  return {
-  file,
-  get:(id,key)=>{const v=load()[id]?.[key];return typeof v==='string'&&v?v:null;},
-  has:(id,key)=>typeof load()[id]?.[key]==='string'&&load()[id][key]!=='',
-  async set(id,key,value){const all=structuredClone(load());all[id]={...(all[id]||{}),[key]:value};await save(all);},
-  async clear(id,key){const all=structuredClone(load());if(!all[id]||!Object.hasOwn(all[id],key))return false;delete all[id][key];if(!Object.keys(all[id]).length)delete all[id];await save(all);return true;},
+  file,ready,
+  get:(id,key)=>{const v=loaded()[id]?.[key];return typeof v==='string'&&v?v:null;},
+  has:(id,key)=>typeof loaded()[id]?.[key]==='string'&&loaded()[id][key]!=='',
+  set:(id,key,value)=>change(async()=>{if(!INTEGRATION_ID.test(id)||!SETTING_KEY.test(key)||typeof value!=='string')throw new Error('invalid');const all=structuredClone(loaded());all[id]={...(all[id]||{}),[key]:value};await save(all);}),
+  clear:(id,key)=>change(async()=>{const all=structuredClone(loaded());if(!all[id]||!Object.hasOwn(all[id],key))return false;delete all[id][key];if(!Object.keys(all[id]).length)delete all[id];await save(all);return true;}),
  };
 }
 

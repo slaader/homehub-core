@@ -1,5 +1,6 @@
 // English dictionary: Czech source text → English. One file per area so they can be edited apart;
 // a key defined twice must have the same translation (tests/i18n.test.mjs checks it).
+import catalog from './i18n-en-catalog.js';
 import shell from './i18n-en-shell.js';
 import home from './i18n-en-home.js';
 import security from './i18n-en-security.js';
@@ -15,5 +16,5 @@ import backups from './i18n-en-backups.js';
 import gitLfs from './i18n-en-git-lfs.js';
 import devices from './i18n-en-devices.js';
 import updates from './i18n-en-updates.js';
-export const PARTS=Object.freeze({shell,home,security,systems,access,inventory,server,tracker,review,integrations,models,backups,gitLfs,devices,updates});
+export const PARTS=Object.freeze({catalog,shell,home,security,systems,access,inventory,server,tracker,review,integrations,models,backups,gitLfs,devices,updates});
 export default Object.freeze(Object.assign({},...Object.values(PARTS)));

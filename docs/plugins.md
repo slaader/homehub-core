@@ -291,7 +291,7 @@ A handler gets one context object:
 | `canWrite`, `canAdmin`, `signedIn`, `appToken` | Shortcuts. `appToken` is the id of the app token the request came with, `null` for every other credential |
 | `json(status, data)`, `error(status, code, message)` | Replies |
 | `state` | What this module's `setup` returned |
-| `hub` | The hub: `site`, `directory` (data), `stateDirectory`, `db`, `auth`, `accessStore`, `registry`, `options`, `state(id)`, `collect(name)`, `provided(name)`, `integrationEnabled(id)`, `integrationDisabled(id)`, `onIntegrationChange(fn)`, `integrationSecret(id, key)` (see Integrations), `pluginData(id)`: the plugin's own data directory, `<data>/plugins/<id>/` (0700, made on first use; `docs/storage.md` → Where everything is). Keep files there, never in the plugin's code directory |
+| `hub` | The hub: `site`, `directory` (data), `stateDirectory`, `db`, `auth`, `accessStore`, `registry`, `options`, `state(id)`, `collect(name)`, `provided(name)`, `integrationEnabled(id)`, `integrationDisabled(id)`, `onIntegrationChange(fn)`, `integrationSecret(id, key)` (see Integrations), `routerObservation()` (the selected normalized router feed, including disabled/freshness state), `pluginData(id)`: the plugin's own data directory, `<data>/plugins/<id>/` (0700, made on first use; `docs/storage.md` → Where everything is). Keep files there, never in the plugin's code directory |
 | `subject` | Set it to what a write touched; it goes into the API write log |
 
 The pipeline does the common checks before your handler runs, in this order: the credential, admin-only path
@@ -491,9 +491,9 @@ integration is off:
   `ui.js` instead of old data. A provenance source with `state: 'disabled'` makes the pill say so.
 
 **Settings** are for non-secret values: `write` gets the plain ones, validated against the schema. A field with
-`secret: true` is write-only: core stores it in `private/integrations.json` (0600, `INTEGRATION_SECRETS_FILE`
-overrides the path), the API answers `{set: true}` and never the value, and an administrator clears it with an
-explicit action. The module reads it with `hub.integrationSecret(id, key)`. A plain text field that looks like a
+`secret: true` is write-only: core seals it with AES-256-GCM in `private/integrations.json` (0600, `INTEGRATION_SECRETS_FILE`
+overrides the path; the key sources are described in `docs/storage.md` → Secrets at rest), the API answers `{set: true}` and never the value, and an administrator clears it with an
+explicit action. The module reads it synchronously with `hub.integrationSecret(id, key)` from a route, status callback or poller, after core has opened the encrypted store. Do not read secrets during synchronous module `setup`; capture a callback instead. Legacy plaintext settings are sealed before serving requests. A corrupt, locked or newer store is refused without overwriting it. A plain text field that looks like a
 secret is refused.
 
 Every toggle, test and settings change is a line in the access audit (`integration-enabled`,
@@ -534,7 +534,7 @@ provides: {'router.adapter': (state, hub) => ({id: 'mikrotik', title: 'MikroTik'
 been observed yet. A `read` must only read: an adapter never changes anything on the router. Optional:
 `clientCounts: {wired, wireless, other}` when the router counts them itself, `softwareVersion`.
 
-What core makes of it (`GET /api/router`, `readRouter` and `readRouterFor` in `home-hub/plugin-api`) carries the
+What core makes of it (`GET /api/router`, `readRouter` and `hub.routerObservation()`) carries the
 list as `clients` and the counts as `health.clientCounts: {connected, wired, wireless, other, known}`; `mergeRouter(inventory, router)`
 folds the clients into the plugin's own network-device list, `inventory.devices` (each `{id, mac, ip, name, …}`,
 keyed by the MAC address without colons, with `routerMacs` for a device's other interfaces): a client it does not know

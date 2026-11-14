@@ -42,7 +42,25 @@ export const STORE_PREFIXES = ['keychain:', 'file:', 'app-env:', 'shell-env:', '
 export const BUILTIN_STORES = ['passwords-app', 'remembered', 'unknown'];
 export const CONFIDENCE = ['verified', 'inferred'];
 // Every field an entry may carry through the API (the file itself may hold more; they are left alone).
-export const ENTRY_FIELDS = ['id', 'kind', 'device', 'name', 'type', 'category', 'address', 'version', 'config', 'data', 'managed_by', 'login', 'notes', 'secrets', 'depends_on', 'models', 'skills', 'verified_at', 'verified_by', 'confidence'];
+export const ENTRY_FIELDS = ['id', 'kind', 'device', 'name', 'type', 'category', 'address', 'version', 'config', 'data', 'managed_by', 'login', 'notes', 'secrets', 'depends_on', 'models', 'skills', 'service', 'verified_at', 'verified_by', 'confidence'];
+// A runtime inventory entry is a service registration. These are descriptors, never commands to execute.
+export const SERVICE_KINDS = Object.freeze(['generic', 'llama-swap', 'ollama', 'lmstudio', 'llama-cpp', 'vllm', 'sglang', 'omlx', 'mlx-serve', 'openai', 'mflux']);
+export const SERVICE_PLATFORMS = Object.freeze(['macos', 'linux', 'windows']);
+export function serviceProblems(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return ['service must be an object'];
+  const problems = [];
+  const extra = Object.keys(value).filter(k => !['kind', 'binary', 'port', 'platform', 'mode', 'endpointId', 'watchId'].includes(k));
+  if (extra.length) problems.push(`unknown service fields: ${extra.join(', ')}`);
+  if (!SERVICE_KINDS.includes(value.kind)) problems.push(`service.kind must be one of ${SERVICE_KINDS.join(', ')}`);
+  if (!SERVICE_PLATFORMS.includes(value.platform)) problems.push('service.platform must be macos, linux or windows');
+  const binary = value.binary;
+  if (typeof binary !== 'string' || binary.length > 500 || /[\u0000-\u001f\u007f]/.test(binary) || !(/^(?:\/|~\/)[^\0]+$/.test(binary) || /^[A-Za-z]:[\\/]/.test(binary)) || /(?:^|[\\/])\.\.(?:[\\/]|$)/.test(binary)) problems.push('service.binary must be an absolute path or start with ~/; no parent traversal');
+  if (!['server', 'on-demand'].includes(value.mode)) problems.push('service.mode must be server or on-demand');
+  if (value.mode === 'server' ? !Number.isInteger(value.port) || value.port < 1 || value.port > 65535 : value.port !== null) problems.push('service.port must be 1..65535 for a server, or null for on-demand');
+  if (value.endpointId !== undefined && (typeof value.endpointId !== 'string' || !/^[a-z][a-z0-9-]{1,47}$/.test(value.endpointId))) problems.push('service.endpointId must be a runtime endpoint id');
+  if (value.watchId !== undefined && (typeof value.watchId !== 'string' || !/^[a-z0-9][a-z0-9._-]{0,39}$/.test(value.watchId))) problems.push('service.watchId must be a software watch id');
+  return problems;
+}
 // The text fields the entry form edits (POST /api/inventory/entry → fields).
 export const EDITABLE = ['name', 'type', 'category', 'address', 'version', 'config', 'data', 'managed_by', 'login', 'notes'];
 export const SECRET_FIELDS = ['what', 'store', 'ref', 'check'];
@@ -114,6 +132,10 @@ export function check(doc, {secretStores = []} = {}) {
     else if (byId.has(e.id)) error('id', 'id-duplicate', 'duplicate id');
     else byId.set(e.id, e);
     if (!KINDS.includes(e.kind)) error('kind', 'kind', `kind must be one of ${KINDS.join(', ')}`);
+    if (e.service !== undefined) {
+      if (e.kind !== 'runtime') error('service', 'service-kind', 'service is only allowed on runtime entries');
+      for (const message of serviceProblems(e.service)) error('service', 'service-shape', message);
+    }
     if (!e.name) error('name', 'name-required', 'name is required');
     // null is tolerated as "not recorded" (files written by hand carry it); anything else must be text.
     for (const f of TEXT_FIELDS) if (e[f] != null && typeof e[f] !== 'string') error(f, 'text', `${f} must be text`, {name: f});
@@ -272,6 +294,7 @@ export function describe({places = [], secretStores = []} = {}, entries = []) {
       {name: 'secrets', type: 'array', description: 'Where each credential is kept, never its value: [{what, store, ref, check}]. what and store are required.'},
       {name: 'depends_on', type: 'array', description: 'What it needs: [{id, kind, label}]. id is another entry, kind is a link kind, label is optional free text. Do not list the device it runs on: that link is implied by "device".'},
       {name: 'models', type: 'array', description: 'For a model store or a model server: model names (strings).'},
+      {name: 'service', type: 'object', description: 'Optional typed runtime registration: {kind, binary, platform, mode: server|on-demand, port: integer|null, endpointId?, watchId?}. endpointId links an existing runtime endpoint; watchId links an existing software watch rule. Binary paths are metadata and are never executed.', kinds: SERVICE_KINDS, platforms: SERVICE_PLATFORMS},
       {name: 'skills', type: 'array', description: 'For a skill store: skill names (strings).'},
       text('confidence', 'verified (you checked it; the default) or inferred (deduced, not checked).', {enum: CONFIDENCE}),
       text('verified_at', 'YYYY-MM-DD. Set by the hub on every write.', {setByHub: true}),

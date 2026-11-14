@@ -1435,3 +1435,11 @@ curl -s -H "Authorization: Bearer $TOKEN" "$H/api/home" | jq '.devices[] | {id, 
 curl -s -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"project":"my-app","title":"Filed from curl"}' "$H/api/tickets"
 ```
+
+## Device catalog and service registration
+
+`GET /api/device-catalog` (scope `security:read`) and MCP `device_catalog` join the overview, inventory, runtime observations and software watch. The response contains `schemaVersion:1`, `devices`, `services`, `software`, `models`, `clients`, `uses`, `warnings`, `kinds` and `platforms`. Configured detection rules are not evidence that software is installed; missing model/client relationships stay unknown.
+
+`POST /api/service-registrations` (scope `inventory:write`) and MCP `service_register` create or update an inventory runtime's typed service descriptor. Required fields are `id`, `device`, `name`, `kind`, `binary`, `platform`, `port`. Optional fields are `mode` (`server` or `on-demand`), `address`, `endpointId`, `watchId`, and `base`. Existing entries require the current inventory hash as `base`; a conflict returns 409 without writing. Invalid references or descriptors return 422. A successful response is `{ok:true, entry, hash, published}`. The existing inventory writer performs validation and publication; no binary is executed or service installed.
+
+See [the type model, schemas and per-OS setup](services.md) for stable IDs, registration examples, supported kinds and extension instructions.

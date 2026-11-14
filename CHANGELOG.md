@@ -12,6 +12,12 @@ A major release: names on the public surface change, with no alias for the old o
 
 ### Added
 
+- Devices and services catalog (`#device-catalog`, `GET /api/device-catalog`, MCP `device_catalog`) joins existing device, inventory, runtime, model and software sources with explicit client/service relationships and unknown observations.
+- Typed installed-service registration through `POST /api/service-registrations`, MCP `service_register`, and `scripts/setup-service.mjs` with macOS/Linux/Windows wrappers. Registration uses inventory validation and optimistic hashes; it does not install or execute binaries. `docs/services.md` documents supported kinds and extensions.
+
+- Updates accept `--add-plugin-source NAME` with an explicit plugin tag to add a prepared source only inside the transaction, restoring the original instance manifest on rollback.
+- Updates accept `--site-config FILE` to validate and install a target configuration in the same transaction as code. The 2.0 updater can run from a separate checkout with `--root`; it stages the core 1.x site rename automatically, preserves original live bytes through preflight, and restores them before rollback restart.
+
 - `node scripts/convert-site.mjs [<site.json>]` converts a 1.x site file to 2.0 in place (written whole: a
   temporary file, then a rename) and keeps the 1.x file beside it as `site.v1.json`. It prints what it renamed, and
   refuses, writing nothing, a file that is already 2.0, one that is not a valid 1.x file, and a directory that
@@ -20,7 +26,7 @@ A major release: names on the public surface change, with no alias for the old o
 ### Changed
 
 - **Breaking: device tokens are now app tokens.** The long-lived `hh_…` token of a native app keeps working, and
-  everything that named it changes. A native app must be updated together with the hub:
+  everything that named it changes. Native clients implementing enrollment or token management must use the new routes; existing bearer credentials remain valid:
   - Routes: `GET` and `POST /api/app-tokens` and `POST /api/app-tokens/revoke` replace `/api/devices/tokens` and
     `/api/devices/tokens/revoke`, which now answer `404`.
   - Answers: issuing returns `{token, app}` (was `{token, device}`); the list and the revoke answer carry `tokens`
@@ -95,6 +101,9 @@ A major release: names on the public surface change, with no alias for the old o
 
 ### Plugin contract
 
+- `hub.routerObservation()` gives plugins the selected, normalized router feed including integration disable and freshness state. Consumers should use it instead of reading a legacy collector file directly.
+- Integration secrets are ready before routes and pollers run. Read `hub.integrationSecret(id, key)` in those callbacks, not synchronous module setup.
+
 - **Breaking:** a plugin's MCP tool whose `inputSchema` says `additionalProperties: false` gets only the arguments
   its `properties` list: a call with any other is refused before `run`, as for the core tools (it reached `run`).
 - A route may declare `people: "write"`: a person or a native app then needs only write permission, not the
@@ -116,13 +125,16 @@ A major release: names on the public surface change, with no alias for the old o
 
 ### Data
 
+- Inventory runtime entries may carry a validated `service` descriptor linking their device, binary, platform and port to an existing runtime endpoint and software watch item. No duplicate catalog store is created; this additive format is included in the unreleased epoch 2.
+
+- Integration settings in `private/integrations.json` move from plaintext schema 1 to an AES-256-GCM envelope containing schema 2. Existing values are preserved; locked, corrupt or newer files are refused without replacement. Keep the encryption key with protected recovery material. This is part of epoch 2; rollback needs the original archive.
+
 - **The data epoch is 2.** Going back to 1.x after 2.0 has started needs the backup made before the update
-  (`node scripts/update.mjs apply` makes one), not only the older code, and the 1.x site file put back: the archive
-  holds the site file as it was when the hub stopped, converted (Upgrade notes).
+  (`node scripts/update.mjs apply` makes one), not only the older code. The 2.0 driver preserves and restores the original site configuration in the same transaction (Upgrade notes).
 - **Nothing has to be run on the state.** Every file 1.x wrote is read in its old form the first time 2.0 opens it
   and written in the new one in its place, once and whole (a temporary file, then a rename). Ids and dates are
   unchanged, and so are the hashes of tokens and keys; the inventory's entry hashes change as above.
-  `docs/storage.md` → State written by 1.x has the table. Only the site file is converted, by a command.
+  `docs/storage.md` → State written by 1.x has the table. The update driver stages the site conversion before replacing it inside the update transaction.
 - `state/device-tokens.json` (`{schemaVersion: 1, devices}`) becomes `state/app-tokens.json`
   (`{schemaVersion: 2, tokens}`) and `state/device-tokens-audit.jsonl` becomes `state/app-tokens-audit.jsonl`. Both
   are moved once, at the first start; ids and hashes are unchanged, so every issued token keeps working. A 1.x hub
@@ -155,33 +167,9 @@ A major release: names on the public surface change, with no alias for the old o
 
 ### Upgrade notes
 
-- **Convert the site file, then apply.** 2.0 refuses a 1.x `site.json` and 1.x refuses a 2.0 one, and the update's
-  start-up check runs 2.0 on the instance's file, so the file is converted first. The command is in 2.0, not in the
-  installed 1.x checkout: run it from a scratch worktree of the tag, right before the update (a 1.x collector or a
-  1.x hub that restarts in between refuses the converted file).
-
-  ```sh
-  git -C <core> fetch --tags
-  git -C <core> worktree add --detach /tmp/hub-2.0.0 v2.0.0
-  node /tmp/hub-2.0.0/scripts/convert-site.mjs <config>/site.json    # keeps the 1.x file as <config>/site.v1.json
-  git -C <core> worktree remove /tmp/hub-2.0.0
-  node <core>/scripts/update.mjs apply v2.0.0
-  ```
-
-  `<config>` is the instance's `config/` (or `HOME_HUB_CONFIG_DIR`, or `local/` of the checkout; a
-  `HOME_HUB_SITE_CONFIG` names the file itself). A hub without a site file has nothing to convert.
-- **Going back to 1.x** (an `apply` that rolls back by itself, or `node scripts/update.mjs rollback --yes` later):
-  the rollback restores the archive and starts 1.x, which refuses the converted site file, so the rollback stops
-  with exit 3 and leaves the service stopped. Put the 1.x file back and run the rollback again; it goes on from
-  where it stopped and does not restore the archive a second time:
-
-  ```sh
-  cp <config>/site.v1.json <config>/site.json
-  node <core>/scripts/update.mjs rollback        # with the same --service, --health … as the update, if any
-  ```
-
-  Restoring `config/` from the archive does not help: the archive was made after the conversion. Changes made to
-  the site file under 2.0 are not in `site.v1.json`; make them again in the 1.x form.
+- **Run the 2.0 update driver from a separate checkout.** Do not convert the live 1.x site before updating. The driver accepts `--root <installed-core>`, stages renamed core fields for target validation, and leaves the running installation's configuration intact through preflight. For household/plugin configuration changes, pass `--site-config <candidate-site.json>`. See `docs/updating.md` for the full command and new plugin-source staging.
+- **Rollback restores configuration automatically.** After stopping and archiving, the driver records the original site bytes and permissions separately, then switches code and configuration. On failure or a later rollback it restores original configuration before starting old code, including external site paths and interruptions before the new service started. Retain the separate driver checkout and use the same `--root`, service and health options for recovery. An epoch rollback also restores application data, so writes since the upgrade are lost.
+- `scripts/convert-site.mjs` remains available for preparing offline configuration copies. Its in-place operation is not the live upgrade procedure.
 - **Update the collectors with the hub.** `scripts/collect-systems.mjs` and `scripts/collect-security.mjs` run from a
   checkout of their own schedule; one left on 1.x does not read a 2.0 `site.json`.
   The UniFi collector (`scripts/collect-router-unifi.py`) may be updated later: the hub reads its 1.x file, and a
