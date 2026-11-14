@@ -25,7 +25,7 @@ export function createTicketSearchService(directory,{tickets,ticketFiles,env=pro
  const settings={...ticketSearchSettings(env),...options},embed=options.embed??(settings.url?createTicketEmbedder(settings):undefined);
  const maxDocuments=bound(options.maxDocuments,200000,1,1000000),maxCacheBytes=bound(options.maxExtractionBytes,16*1024*1024,0,256*1024*1024),maxCacheEntries=bound(options.maxExtractionEntries,4096,0,100000);
  const retryMs=bound(options.buildRetryMs,250,1,60000),maxRetries=bound(options.maxBuildRetries,2,0,5),recoveryMs=bound(options.buildRecoveryMs,60000,1,3600000);
- const index=indexFactory(path.join(directory,'search'),{...settings,embed,maxDocuments});
+ const index=indexFactory(path.join(directory,'search'),{...settings,embed,maxDocuments,autoStart:false});
  let closed=false,started=false,dirty=true,running=null,timer=null,recoveryTimer=null,contentTimer=null,unsubscribe=null,indexedRevision=null,error=null,attempts=0,nextDelay=0,closePromise=null;
  let resolveClosed;const closedSignal=new Promise(resolve=>{resolveClosed=resolve;});
  let extraction=blankCoverage(),entries=new Map(),cachedBytes=0,lastIndexStatus=null;

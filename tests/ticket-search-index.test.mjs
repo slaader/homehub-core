@@ -92,3 +92,16 @@ test('a rolled-back vector batch cannot appear successfully cached in memory',as
  assert.equal(index.status().embedded,0);assert.equal(db.prepare('SELECT count(*) n FROM vectors').get().n,0);assert.equal(index.status().failed,2);
  db.exec('DROP TRIGGER fail_batch');db.close();index.retryFailed();await index.whenIdle();assert.equal(index.status().embedded,2);
 });
+
+test('a deferred cache does not send persisted text before canonical reconciliation',async t=>{
+ const {dir,index}=await setup(t,{embed:async texts=>texts.map(()=>[1,0]),modelFingerprint:'old'});index.sync([doc('APP-1','previously cached text','example-app')]);await index.whenIdle();await index.close();
+ let calls=0;const deferred=createTicketSearchIndex(dir,{autoStart:false,modelFingerprint:'new',embed:async texts=>{calls++;return texts.map(()=>[1,0]);}});t.after(()=>deferred.close());
+ await deferred.whenIdle();assert.equal(calls,0);deferred.sync([]);await deferred.whenIdle();assert.equal(calls,0);assert.equal(deferred.status().chunks,0);
+});
+
+test('an exhausted provider failure recovers automatically after its cooldown',async t=>{
+ let failing=true,calls=0;const {index}=await setup(t,{maxRetries:0,recoveryMs:15,embed:async texts=>{calls++;if(failing)throw new Error('offline');return texts.map(()=>[1,0]);}});
+ index.sync([doc('APP-1','evidence','example-app')]);await index.whenIdle();assert.equal(index.status().state,'degraded');failing=false;
+ const deadline=Date.now()+1000;while(index.status().state!=='ready'&&Date.now()<deadline)await new Promise(r=>setTimeout(r,5));
+ assert.equal(index.status().state,'ready');assert.equal(calls,2);
+});

@@ -9,6 +9,7 @@ import {createTicketSearchService,textChunks,ticketSearchSettings} from '../serv
 import {hub} from './hub-helper.mjs';
 import {openDb} from '../server/db.mjs';
 import {createHash} from 'node:crypto';
+import {createTicketSearchIndex} from '../server/ticket-search-index.mjs';
 
 async function fixture(t,options={}){
  const dir=await mkdtemp(path.join(os.tmpdir(),'ticket-search-regression-')),db=openDb(path.join(dir,'hub.db'));
@@ -157,4 +158,13 @@ test('populated 2.0.1 SQLite ticket state is read without rewriting canonical ro
  t.after(async()=>{await service.close();db.close();await rm(dir,{recursive:true,force:true});});service.start();await service.whenIdle();
  assert.equal((await service.search({query:'legacycontentneedle',mode:'text'})).results[0].attachment,old.attachments[0].id);
  assert.equal(db.db.prepare("SELECT doc FROM docs WHERE kind='tickets' AND coll='tickets' AND id=?").get(old.id).doc,JSON.stringify(old));assert.equal(db.db.prepare('PRAGMA user_version').get().user_version,1);
+});
+
+test('startup reconciles stale cached sources before sending them to a changed provider',async t=>{
+ const dir=await mkdtemp(path.join(os.tmpdir(),'ticket-search-startup-')),index=createTicketSearchIndex(path.join(dir,'search'),{modelFingerprint:'old',embed:async texts=>texts.map(()=>[1,0])});
+ index.sync([{id:'APP-1',ticket:'APP-1',project:'sample',source:'ticket',text:'removed cached source',fields:{status:'open'}}]);await index.whenIdle();await index.close();
+ let entered,release,calls=0;const started=new Promise(r=>{entered=r;}),gate=new Promise(r=>{release=r;});
+ const tickets={searchSnapshot:async()=>{entered();await gate;return {revision:0,tickets:[]};},searchRevision:()=>0,onSearchChange:()=>()=>{}};
+ const service=createTicketSearchService(dir,{tickets,ticketFiles:{},env:{},modelFingerprint:'new',embed:async texts=>{calls++;return texts.map(()=>[1,0]);}});t.after(async()=>{await service.close();await rm(dir,{recursive:true,force:true});});
+ service.start();const idle=service.whenIdle();await started;assert.equal(calls,0);release();await idle;assert.equal(calls,0);assert.equal(service.status().chunks,0);
 });

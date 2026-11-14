@@ -160,6 +160,7 @@ export function createTicketSearchIndex(directory,options={}) {
  async function whenIdle(){assertOpen();while(timer||running){await new Promise(resolve=>setTimeout(resolve,5));assertOpen();}return status();}
  async function close(){if(closed)return;closed=true;generation++;clearTimeout(timer);clearTimeout(recoveryTimer);timer=null;controller?.abort();for(const ctl of queryControllers)ctl.abort();/* Providers must honor signal; late continuations are guarded. */db.close();}
  prune();
- if(embed)schedule();
+ // A service may require canonical reconciliation before any persisted text leaves the cache.
+ if(embed&&options.autoStart!==false)schedule();
  return {sync,search,status,close,whenIdle,retryFailed};
 }
