@@ -56,11 +56,11 @@ Rules that keep the split honest:
 thing every time, always**: a subset is no substitute for it, however long it takes. It ends with a summary and exits non-zero on a failure:
 
 ```
-core     tests 880  pass 880  fail 0
-total    tests 880  pass 880  fail 0
+core     tests 895  pass 895  fail 0
+total    tests 895  pass 895  fail 0
 ```
 
-- **Core: 880 tests in 102 files (2026-11-14). None may fail and none is skipped, on any computer.** One of them,
+- **Core: 895 tests in 103 files (2026-11-14). None may fail and none is skipped, on any computer.** One of them,
   `public edition: no overlay in the tree…`, fails in a checkout that has `local/site.json` or `local/plugins/`:
   develop core without them.
 - **Plugins test themselves.** A plugin source runs its tests against this core with
@@ -118,7 +118,9 @@ Rules:
 - Every change that touches the public surface adds a line to the top section of `CHANGELOG.md` in the same commit.
 - A breaking change needs a deprecation in an earlier MINOR and the owner's agreement. Prefer adding.
 - Migrations are forward-only. Older code refuses newer state (`server/db.mjs`, `server/update-check.mjs`); it
-  never "tries anyway".
+  never "tries anyway". A store reads the form an earlier release wrote, writes its own in
+  its place once (a whole file, then a rename), and has a test that starts from a literal file of that release
+  (`server/state-forward.mjs`, `tests/state-forward.test.mjs`: what 1.x wrote).
 - The update check (`server/update-check.mjs`, core module `updates`) only tells. Nothing in the hub applies
   an update: no route, no button, no MCP tool. Where releases are published is one line,
   `package.json → homeHub.updates.repo`; nothing else in core names that repository.

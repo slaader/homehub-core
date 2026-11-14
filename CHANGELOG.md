@@ -56,7 +56,10 @@ A major release: names on the public surface change, with no alias for the old o
     `device_remove`; the argument `machine` is `device` there and in `runtime_publish`, `inventory_search` and
     `runtime_endpoint_upsert`.
   - Inventory: the entry kind `machine` is `device` and the entry field `machine` is `device`. An entry's hash covers
-    its fields, so every placed entry has a new hash: a client that kept one reads the entry again.
+    its fields, so every placed entry has a new hash: a client that kept one reads the entry again. The document is
+    `schema: 2` (`GET /api/inventory`, the export, `inventory_describe`); a document with `schema: 1` is refused by
+    the checker (`schema must be 2`). The import on the inventory page still takes a file exported by 1.x.
+  - `GET /api/systems` and `GET /api/security` answer `schemaVersion: 2` (their `machines` are `devices`).
   - Push agent: an agent key is bound to `device` (`GET /api/admin/agents`, the key file's `agent.device`); a key is
     revoked by the hub as `device-removed` or `device-changed`.
   - Commands: `--device` replaces `--machine` (`scripts/manage-access.mjs create-agent-key`,
@@ -70,15 +73,48 @@ A major release: names on the public surface change, with no alias for the old o
   `devices`. `hub.site.machines` is `hub.site.devices`; a page's context carries `device` (was `machine`).
 - **Breaking:** `home-hub/testing` exports `deviceKind` and `systemDevices` (were `machineKind`, `systemMachines`).
 - **Breaking:** a host agent's `config` module gets `{site, device}` (was `{site, machine}`).
+- **Breaking:** `createKnowledgeEditor` and `validateKnowledge` work on the `schema: 2` inventory document (kind and
+  field `device`). The editor reads a `schema: 1` file forward; `validateKnowledge` refuses a `schema: 1` document.
 
 ### Data
 
 - **The data epoch is 2.** Going back to 1.x after 2.0 has started needs the backup made before the update
   (`node scripts/update.mjs apply` makes one), not only the older code.
+- **Nothing has to be run.** Every file 1.x wrote is read in its old form the first time 2.0 opens it and written
+  in the new one in its place, once and whole (a temporary file, then a rename). Ids, hashes and dates are unchanged.
+  `docs/storage.md` → State written by 1.x has the table.
 - `state/device-tokens.json` (`{schemaVersion: 1, devices}`) becomes `state/app-tokens.json`
   (`{schemaVersion: 2, tokens}`) and `state/device-tokens-audit.jsonl` becomes `state/app-tokens-audit.jsonl`. Both
   are moved once, at the first start; ids and hashes are unchanged, so every issued token keeps working. A 1.x hub
   started on the migrated state finds no token file: every app token is refused until the backup is restored.
+- Push agent: `state/agents.json` is `schemaVersion: 2` (`agents[].device`, `deviceCreatedAt`, and `revokedBy`
+  `device-removed` or `device-changed`), and each `state/agent/<id>.json` is `schemaVersion: 2` (`device`). Every
+  agent key keeps working. A 1.x hub refuses both files.
+- Collector output: `data/systems/snapshot.json` (`devices`), `data/security/ssh-keys.json` (`devices`, and `device`
+  in every copy, access target, route, other key, unknown authorized key and stored finding template) and
+  `data/security/probes.json` (`extraDevices`) are `schemaVersion: 2`. The hub writes a 1.x file forward when it
+  first reads it and keeps the file's time; where it may not write the collectors' directory it reads the file
+  forward each time, until the 2.0 collector runs. The trend files (`data/systems/history.jsonl`,
+  `state/agent/history.jsonl`) hold `devices` in each line.
+- LLM runtimes: `state/runtimes-config.json` is `schema: 2` (`endpoints[].device`), and the request history
+  (`state/runtimes/<id>/requests-YYYY-MM.jsonl`) holds `device` and `clientDevice` in each line.
+  `scripts/import-runtime-history.mjs` still takes a history file of a 1.x store.
+- Inventory: `data/knowledge.json` is `schema: 2`, with the kind and the field `device`.
+- The descriptor directory `data/machines/` is renamed to `data/devices/` at the first start, while no
+  `data/devices/` exists. A directory named by `DEVICES_DIR` is used as it is.
+- The audit files are not rewritten. Lines 1.x wrote about agents and agent keys are shown with the new words.
+- A 1.x hub started on this state refuses the agent files and the inventory, shows no SSH key inventory, and reads
+  the snapshot, the runtime endpoints and the request history without their devices.
+
+### Upgrade notes
+
+- **Update the collectors with the hub.** `scripts/collect-systems.mjs` and `scripts/collect-security.mjs` run from a
+  checkout of their own schedule; one left on 1.x does not read a 2.0 `site.json`.
+- **The push agents keep reporting**: the report format and the keys are unchanged. A key file downloaded from 1.x
+  (`agent.machine`) is still accepted by the 2.0 installers; the hub now writes `agent.device`.
+- **Plugins** must name the core range they support (`plugin.json → core`) and move to the new names before the hub
+  starts with them.
+- A browser keeps its inventory map layout: one saved by 1.x loads with its column and card order.
 
 ## 1.0.0
 

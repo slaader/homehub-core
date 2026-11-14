@@ -83,9 +83,17 @@ const clip=(t,n)=>t&&t.length>n?`${t.slice(0,n-1)}…`:t||'';
 // spacing, lines and depth choices; those layouts stored card positions, which the map no longer uses.
 const LAYOUT_KEY='home-hub.inventory.map.v3',OLDER_KEYS=['home-hub.inventory.map.v2','home-hub.inventory.map.v1'];
 export const ZOOM={min:0.4,max:1.6,step:0.1};
+// A layout Home Hub 1.x saved under the same key named the device columns with its own word, as the value of
+// columns and as the key of that mode's order. Read forward here; the next change saves today's names.
+const V1_COLUMNS='machine';
+export function layoutForward(v){
+  const {[V1_COLUMNS]:old,...modes}=v.modes&&typeof v.modes==='object'?v.modes:{};
+  if(v.columns!==V1_COLUMNS&&old===undefined)return v;
+  return {...v,columns:v.columns===V1_COLUMNS?'device':v.columns,modes:{...modes,...(old!==undefined&&modes.device===undefined?{device:old}:{})}};
+}
 function layoutRead(){
   const read=k=>{try{const v=JSON.parse(localStorage.getItem(k)||'null');return v&&typeof v==='object'&&!Array.isArray(v)?v:null;}catch{return null;}};
-  const v=read(LAYOUT_KEY);if(v)return v;
+  const v=read(LAYOUT_KEY);if(v)return layoutForward(v);
   for(const k of OLDER_KEYS){const old=read(k);if(old)return {spacing:old.spacing,lines:old.lines,depth:old.depth};}
   return {};
 }

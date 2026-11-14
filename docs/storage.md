@@ -33,7 +33,7 @@ code directory.
 | `state/hub.db` (+ `-wal`, `-shm`) | Tickets (projects, releases, tickets with comments and history), the review index (sets → rounds → items → feedback, blob metadata), browser sign-in sessions, the full-text search index | SQLite, `node:sqlite` built into Node, no npm package |
 | `state/review/blobs/` | Review files (mockups, images, `.glb`), content-addressed by sha256 | files |
 | `state/access.json`, `state/app-tokens.json` | Users and their roles, custom roles, service accounts, API keys, per-account preferences, app tokens (hashes only; `{schemaVersion: 2, tokens}`). A `device-tokens.json` and `device-tokens-audit.jsonl` written by 1.0 are moved to `app-tokens.json` and `app-tokens-audit.jsonl` once, at the first start of 2.0 | JSON |
-| `state/agents.json`, `state/agent/` | Push agent keys (hashes only, each bound to one device), and per device (`agent/<device>.json`) the latest copy of each part its agent reported, with the hub's receive time (0600, directory 0700); `agent/history.jsonl`, the agents' trend (one line per device at most every six hours, at most 3000 lines) | JSON / JSONL |
+| `state/agents.json`, `state/agent/` | Push agent keys (hashes only, each bound to one device; `schemaVersion: 2`), and per device (`agent/<device>.json`, `schemaVersion: 2`) the latest copy of each part its agent reported, with the hub's receive time (0600, directory 0700); `agent/history.jsonl`, the agents' trend (one line per device at most every six hours, at most 3000 lines) | JSON / JSONL |
 | `state/compute/`, `state/thermo/`, `state/windows/`, `state/linux/` | Telemetry history, one line per sample (`windows/`: Windows over SSH or WinRM; `linux/`: Node Exporter, Prometheus or SSH; a device that switches within a family keeps its history) | JSONL, monthly files |
 | `state/home/` | Devices added on the overview (`devices.json`), their telemetry logins (`thermo-hosts.json`), Windows SSH connections (`windows-hosts.json`) and the other agent-less connections (`telemetry-hosts.json`: WinRM, Node Exporter, Prometheus, Linux SSH; holds the WinRM password, a Node Exporter's Basic password and a Prometheus password or bearer token; **this file and `thermo-hosts.json` are sealed**, see Secrets at rest), and which devices of the site configuration are read through one of them (`site-telemetry.json`: id, provider, platform, who and when; no secrets; their connections are in the two files above under the same id; `site.json` is never written), and the owner's display edits of those devices over the site's values (`site-overrides.json`: name, hostname, ip, hardware, picture, who and when; their uploaded picture in `images/`), all 0600 | JSON |
 | `state/home/ssh/` | **Private SSH keys** of the hub's Windows and Linux SSH connections, each connection's verified host key, an empty ssh configuration (directories 0700, files 0600; on Windows an ACL for the hub's account and SYSTEM only) | PEM / OpenSSH text |
@@ -42,8 +42,9 @@ code directory.
 | `state/integrations.json` | Which integrations an administrator turned off | JSON |
 | `state/updates.json` | The update check: the newest release it found, when, the ETags of GitHub's answers, a dismissed release (0600). Deleting it costs one full check | JSON |
 | `state/run.json` | Written at every start: `{version, commit, exact, dataEpoch, pid, startedAt, plugins}` (0600). Not state to back up: it says what is answering right now | JSON |
-| `data/` | Inventory (`knowledge.json`), collector output | JSON |
-| `data/security/probes.json` | Written by `scripts/collect-security.mjs` beside `ssh-keys.json` (0600): each device's raw probe output with `probedAt` (fingerprints, paths, public `authorized_keys` lines, `ssh -G` routes, `sudo -l` rules; never a private key), Forgejo and the router entry, so the hub can join the push agents' records | JSON |
+| `state/runtimes-config.json`, `state/runtimes/<device>/` | The LLM runtime endpoints added through the API (`{schema: 2, endpoints}`), and the hub's own request history of the runtimes it reads, `requests-YYYY-MM.jsonl` per device | JSON / JSONL, monthly files |
+| `data/` | Inventory (`knowledge.json`, `{schema: 2, updated_at, entries}`), collector output (`systems/snapshot.json` and `security/ssh-keys.json`, both `schemaVersion: 2`, each with its trend or probe file), the collected device descriptors (`devices/<id>.json`; `DEVICES_DIR`) | JSON |
+| `data/security/probes.json` | Written by `scripts/collect-security.mjs` beside `ssh-keys.json` (0600; `schemaVersion: 2`): each device's raw probe output with `probedAt` (fingerprints, paths, public `authorized_keys` lines, `ssh -G` routes, `sudo -l` rules; never a private key), Forgejo and the router entry, so the hub can join the push agents' records | JSON |
 | `data/plugins/<id>/` | A plugin's own files (`hub.pluginData(id)`) | the plugin's |
 | `private/` | `auth.json` (the owner's hash and `passwordAt`; written by `scripts/setup.mjs`), TLS key, tokens; `backup-jobs/<id>/` (0700): each backup job's ed25519 key pair (private key 0600), its generated `ssh_config` and `known_hosts` with the pinned host keys | JSON / PEM |
 
@@ -78,6 +79,45 @@ On first use each store imports its old file once, `state/tickets/tickets.json` 
 then renames it to `*.migrated`. A file that does not parse or has the wrong shape is refused and left untouched,
 and the store does not start with an empty tracker. To roll back to code from before hub.db: stop Home Hub, rename the
 `*.migrated` files back (any change made since lives only in hub.db) and deploy the older commit.
+
+## State written by 1.x
+
+In 2.0 a machine became a device, in what is stored as everywhere else (data epoch 2). Nothing has to be run: each
+file below is read in its 1.x form the first time 2.0 opens it, written in the 2.0 form in its place (a whole file
+under a temporary name, then a rename) and read as that from then on. Ids, hashes, stamps and everything a person
+wrote stay as they were. `server/state-forward.mjs` holds the 1.x names; `tests/state-forward.test.mjs` starts each
+store from a literal 1.0.0 file.
+
+| File | 1.x | 2.0 | Moved forward |
+|---|---|---|---|
+| `state/device-tokens.json`, `state/device-tokens-audit.jsonl` | `{schemaVersion: 1, devices}` | `state/app-tokens.json` `{schemaVersion: 2, tokens}`, `state/app-tokens-audit.jsonl` | at start |
+| `state/agents.json` | `schemaVersion: 1`; `agents[].machine`, `.machineCreatedAt`; `revokedBy` `machine-removed`, `machine-changed` | `schemaVersion: 2`; `device`, `deviceCreatedAt`; `device-removed`, `device-changed` | at start. Every key keeps working |
+| `state/agent/<id>.json` | `schemaVersion: 1`, `machine` | `schemaVersion: 2`, `device` | at start |
+| `state/agent/history.jsonl`, `data/systems/history.jsonl` | lines `{at, machines}` | lines `{at, devices}` | at start; the collector's at its next run |
+| `state/runtimes-config.json` | `schema: 1`, `endpoints[].machine` | `schema: 2`, `endpoints[].device` | when the endpoints are first read |
+| `state/runtimes/<id>/requests-YYYY-MM.jsonl` | lines with `machine`, `clientMachine` | `device`, `clientDevice` | when a device's history is first read |
+| `data/systems/snapshot.json` | `schemaVersion: 1`, `machines` | `schemaVersion: 2`, `devices` | when first read, keeping the file's time; else by the collector's next run |
+| `data/security/ssh-keys.json` | `schemaVersion: 1`; `machines` and `machine` in every copy, access target, route, other key and unknown authorized key; `{machine}` in the findings' stored templates | `schemaVersion: 2`; `devices`, `device`, `{device}` | the same |
+| `data/security/probes.json` | `schemaVersion: 1`, `extraMachines` | `schemaVersion: 2`, `extraDevices` | the same |
+| `data/machines/` | the descriptor directory | `data/devices/` | renamed at start, while `data/devices/` does not exist. A directory named by `DEVICES_DIR` is used as it is |
+| `data/knowledge.json` | `schema: 1`; kind `machine`, field `machine` | `schema: 2`; kind `device`, field `device` | when first read. A placed entry's hash changes with its field |
+
+Not rewritten, and read in today's words: `state/agent-audit.jsonl` (a line's `machine` is shown as the device) and
+the agent-key lines of `state/access-audit.jsonl` (`machine <id>`, `machine-removed`). An audit file is only ever
+appended to.
+
+- **The hub may not write the collectors' directory** (`data/systems/`, `data/security/` owned by another account):
+  the snapshot and the key inventory are then read forward on every read and left as they are, until the collector
+  of 2.0 writes them. Update the checkout the collectors run from together with the hub: a 1.x collector writes
+  schema 1 again (the hub keeps reading it), and a 1.x collector does not read a 2.0 `site.json`.
+- **Older code refuses newer state.** A 1.x hub started on these files refuses the key store and the device reports,
+  shows no key inventory and no inventory (`schema must be 1`), and reads the snapshot, the endpoints and the request
+  history without their devices. Going back to 1.x means restoring the archive made before the update
+  (`docs/updating.md` → The data epoch).
+- **On other computers.** An agent key file downloaded from 1.x (`agent.machine`) is still accepted by the 2.0
+  installers; a new one says `agent.device`. An install's `.agent-install.json` is written again by the next install
+  and never read for its device. A map layout a browser saved under 1.x (`localStorage`) loads with its column and
+  card order and is saved with the new names at the next change.
 
 ## Backups
 

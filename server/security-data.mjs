@@ -14,14 +14,19 @@ import {pickSource,collectorTime} from './systems-data.mjs';
 import {loadDeviceDescriptors} from './home-data.mjs';
 import {siteDeviceIds} from './site-config.mjs';
 import {fingerprintOf,parseAuthorizedLine,parseKeygenLine} from './ssh-lines.mjs';
+import {forwardKeys,forwardTemplate,writeJson,devicesDirectory} from './state-forward.mjs';
 // The line parsers live in server/ssh-lines.mjs (a leaf module the push agent shares); re-exported here.
 export {fingerprintOf,parseAuthorizedLine,parseKeygenLine};
 
-export const SECURITY_SCHEMA=1;
+// The schema of GET /api/security and of data/security/ssh-keys.json (what buildSecurity returns). Schema 1 is the
+// document as the 1.x collector wrote it, with its own word for a device in the keys and in the stored text
+// templates of the findings (forwardSecurity, below).
+export const SECURITY_SCHEMA=2;
 // probes.json beside ssh-keys.json (scripts/collect-security.mjs): the collector's raw probe output per device, so the
 // hub can rebuild the inventory with the push agents' sshkeys parts (docs/agent.md §3 → Who wins over the collectors).
-//   {schemaVersion: 1, collectedAt, collectedFrom, probes: {id: {text, probedAt} | {error}}, forgejo, extraDevices}
-export const SECURITY_PROBES_SCHEMA=1;
+//   {schemaVersion: 2, collectedAt, collectedFrom, probes: {id: {text, probedAt} | {error}}, forgejo, extraDevices}
+// Schema 1 had the last key under 1.x's name.
+export const SECURITY_PROBES_SCHEMA=2;
 const clean=(v,n=400)=>typeof v==='string'?v.replace(/[\u0000-\u001f\u007f]/g,' ').trim().slice(0,n):'';
 
 // sudo -l rule lines → one verdict. "(ALL) ALL, NOPASSWD: ALL" means password-less root.
@@ -338,9 +343,29 @@ export const probesFileOf=file=>path.join(path.dirname(file),'probes.json');
 async function readProbes(file){
  let doc,time;
  try{[doc,time]=await Promise.all([readFile(file,'utf8').then(JSON.parse),stat(file).then(s=>s.mtimeMs)]);}catch(e){return {doc:null,why:e.code==='ENOENT'?'probes-missing':'probes-unreadable'};}
+ const next=forwardProbes(doc);
+ if(next!==doc){doc=next;await writeJson(file,doc,{pretty:1,keepTimes:true}).catch(()=>{});}
  if(!plain(doc)||doc.schemaVersion!==SECURITY_PROBES_SCHEMA||!plain(doc.probes))return {doc:null,why:'probes-unreadable'};
  return {doc,time};
 }
+// --- what the 1.x collector wrote (server/state-forward.mjs) ---------------------------------------------------------
+const each=(list,f)=>Array.isArray(list)?list.map(x=>plain(x)?f(x):x):list;
+// A copy of o with f applied to each key of `fields` it has.
+const over=(o,fields)=>{const out={...o};for(const [k,f] of Object.entries(fields))if(Object.hasOwn(out,k))out[k]=f(out[k]);return out;};
+const forwardOne=o=>forwardKeys(o,'device');
+const forwardTarget=o=>over(forwardOne(o),{target:t=>plain(t)?forwardOne(t):t});
+// The stored templates of a finding (titleT, detailT: [{key, params}]): the placeholder and its parameter.
+const forwardTexts=o=>Object.fromEntries(Object.entries(o).map(([k,v])=>[k,k.endsWith('T')?each(v,p=>over(p,{key:forwardTemplate,params:x=>forwardKeys(x,'device')})):v]));
+/** probes.json as 1.x wrote it → this schema; anything else as it is. */
+export const forwardProbes=doc=>plain(doc)&&doc.schemaVersion===1?{...forwardKeys(doc,'extraDevices'),schemaVersion:SECURITY_PROBES_SCHEMA}:doc;
+/**
+ * ssh-keys.json as 1.x wrote it → this schema; anything else as it is. Every key that named a device is renamed
+ * (the list itself, each copy, access target and route of a key, the other keys, the unknown authorized keys), and
+ * so are the findings' templates, which the pages look up in today's dictionary.
+ */
+export const forwardSecurity=doc=>!plain(doc)||doc.schemaVersion!==1?doc:over({...forwardKeys(doc,'devices'),schemaVersion:SECURITY_SCHEMA},{
+ keys:list=>each(list,k=>over(k,{copies:l=>each(l,forwardOne),access:l=>each(l,forwardTarget),routes:l=>each(l,forwardTarget)})),
+ otherKeys:l=>each(l,forwardOne),unknownAuthorized:l=>each(l,forwardOne),findings:l=>each(l,forwardTexts)});
 /**
  * The SSH key inventory: ssh-keys.json as the collector wrote it, or null without one. agents: [{id, name, record}],
  * the push agents' stored reports of devices that exist now. When one of them has an sshkeys part, the inventory is
@@ -351,9 +376,12 @@ async function readProbes(file){
  * ssh-keys.json (an older collector wrote only the inventory) leaves ssh-keys.json as it is, with agents.joined false
  * and why. Without an agent's sshkeys part the file is returned exactly as it was.
  */
-export async function loadSecurity(directory,file=process.env.SECURITY_FILE||path.join(directory,'security','ssh-keys.json'),{agents=[],site=loadedSite(),now=Date.now(),devicesDir=process.env.DEVICES_DIR||path.join(directory,'devices')}={}){
+export async function loadSecurity(directory,file=process.env.SECURITY_FILE||path.join(directory,'security','ssh-keys.json'),{agents=[],site=loadedSite(),now=Date.now(),devicesDir=devicesDirectory(directory)}={}){
  let doc=null;
  try{doc=JSON.parse(await readFile(file,'utf8'));}catch(e){if(e.code!=='ENOENT')throw new Error('invalid');}
+ // A file the 1.x collector wrote is written forward in place, once, keeping its time; where the hub may not write
+ // the collector's directory it is read forward each time, until the collector's next run.
+ const forward=forwardSecurity(doc);if(forward!==doc){doc=forward;await writeJson(file,doc,{pretty:1,keepTimes:true}).catch(()=>{});}
  if(doc&&(doc?.schemaVersion!==SECURITY_SCHEMA||!Array.isArray(doc.devices)||!Array.isArray(doc.keys)))throw new Error('invalid');
  if(doc===null&&!(Array.isArray(agents)&&agents.length))return null;
  const reporting=(Array.isArray(agents)?agents:[]).map(e=>({id:e?.id,name:e?.name,probe:agentKeysProbe(e?.record,{now})})).filter(x=>typeof x.id==='string'&&x.probe).sort((a,b)=>a.id.localeCompare(b.id));

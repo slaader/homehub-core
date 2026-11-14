@@ -2,8 +2,30 @@
 //   server  scripts/check-knowledge.mjs re-exports it (the checker agents and the hub run);
 //           scripts/knowledge-edit.mjs applies edits with it
 //   browser the entry form runs the same check() while you type, so its messages are the server's
-// A document is {schema: 1, updated_at: 'YYYY-MM-DD', entries: [...]}. Nothing here knows a household:
+// A document is {schema: 2, updated_at: 'YYYY-MM-DD', entries: [...]}. Nothing here knows a household:
 // the names of a site's own secret stores are passed in (site.json → inventory.secretStores).
+// Schema 1 is the document Home Hub 1.x wrote: the kind "device" and the field "device" had another name there
+// (forwardInventory, below). It is read forward once and never written again.
+export const INVENTORY_SCHEMA = 2;
+// What 1.x called a device, as a kind and as a field.
+const V1 = {word: 'machine'};
+/**
+ * A schema 1 document → schema 2: each entry's kind and field renamed, in place in the key order, everything else
+ * as it was. Anything else is returned as it is. An entry's hash covers its fields, so a placed entry's hash changes.
+ */
+export function forwardInventory(doc) {
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc) || doc.schema !== 1 || !Array.isArray(doc.entries)) return doc;
+  const entry = e => {
+    if (!e || typeof e !== 'object' || Array.isArray(e)) return e;
+    const out = {};
+    for (const [k, v] of Object.entries(e)) {
+      if (k === V1.word) { if (!Object.hasOwn(e, 'device')) out.device = v; }
+      else out[k] = k === 'kind' && v === V1.word ? 'device' : v;
+    }
+    return out;
+  };
+  return {...doc, schema: INVENTORY_SCHEMA, entries: doc.entries.map(entry)};
+}
 
 export const KINDS = ['network', 'device', 'runtime', 'tool', 'model-store', 'secret-store', 'skill-store', 'external'];
 // Kinds that live on a device: their "device" must name a device entry.
@@ -80,7 +102,7 @@ export function check(doc, {secretStores = []} = {}) {
   const done = () => ({errors: issues.filter(i => i.level === 'error').map(i => i.message), warnings: issues.filter(i => i.level === 'warning').map(i => i.message), issues});
   const top = (code, text) => issues.push({level: 'error', id: null, index: null, field: null, code, message: text, text});
   if (!plain(doc) || !Array.isArray(doc.entries)) { top('doc-shape', 'top level must be an object with an "entries" array'); return done(); }
-  if (doc.schema !== 1) top('doc-schema', 'schema must be 1');
+  if (doc.schema !== INVENTORY_SCHEMA) top('doc-schema', `schema must be ${INVENTORY_SCHEMA}`);
   if (!DATE.test(doc.updated_at || '')) top('doc-updated', 'updated_at must be YYYY-MM-DD');
   const byId = new Map();
   for (const [i, e] of doc.entries.entries()) {
@@ -230,9 +252,9 @@ const PREFIX_HELP = {'keychain:': ['keychain:<device id>', 'the Keychain or keyr
 export function describe({places = [], secretStores = []} = {}, entries = []) {
   const text = (name, description, extra = {}) => ({name, type: 'string', description, ...extra});
   return {
-    schema: 1,
+    schema: INVENTORY_SCHEMA,
     file: 'data/knowledge.json',
-    document: {schema: 'always 1', updated_at: 'YYYY-MM-DD, set by the hub on every write', entries: 'the entries, each as described under entry'},
+    document: {schema: `always ${INVENTORY_SCHEMA}`, updated_at: 'YYYY-MM-DD, set by the hub on every write', entries: 'the entries, each as described under entry'},
     entry: {fields: [
       text('id', 'Lowercase letters, digits and hyphens, starting with a letter; at most 64 characters. Never changes. Convention: <device>-<service>.', {required: true, pattern: ENTRY_ID.source}),
       text('kind', 'What it is; see kinds.', {required: true, enum: KINDS}),

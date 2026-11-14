@@ -16,6 +16,7 @@ import net from 'node:net';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {buildSecurity,probesFileOf,SECURITY_PROBES_SCHEMA} from '../server/security-data.mjs';
+import {devicesDirectory} from '../server/state-forward.mjs';
 import {loadDeviceDescriptors} from '../server/home-data.mjs';
 import {site as loadedSite,sshHosts,siteDeviceIds} from '../server/site-config.mjs';
 import {collectorRun} from '../server/collector-run.mjs';
@@ -65,7 +66,7 @@ export async function forgejoKeys(git,exec=run){
  */
 // clock: () => ms, when each probe came back (the tests pass one).
 export async function collectSecurity({site=loadedSite(),hosts=sshHosts(site,m=>m.ssh.keys),out,exec=run,forgejo=true,portOpen=tcpOpen,collectedFrom=null,now=Date.now(),
- devicesDir=process.env.DEVICES_DIR||path.join(resolvePaths().data,'devices'),probeFile=path.join(root,'scripts','security','ssh-probe.sh'),warn=()=>{},started=null,clock=Date.now}){
+ devicesDir=devicesDirectory(resolvePaths().data),probeFile=path.join(root,'scripts','security','ssh-probe.sh'),warn=()=>{},started=null,clock=Date.now}){
  const router=site.devices.find(m=>m.role==='router'&&m.ip)||null,git=site.security;
  const script=await readFile(probeFile,'utf8');
  const [probeResults,forgejoDoc,routerSsh]=await Promise.all([

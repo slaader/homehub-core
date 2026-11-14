@@ -19,7 +19,7 @@ const {setIdentity}=await import('../public/access.js');
 const views=await import('../public/views.js');
 const {t}=await import('../public/i18n.js');
 
-const DOC=()=>({schema:1,updated_at:'2026-11-08',entries:[
+const DOC=()=>({schema:2,updated_at:'2026-11-08',entries:[
  {id:'mini',kind:'device',name:'Mac mini',address:'10.0.0.25',verified_at:'2026-11-01'},
  {id:'mini-gateway',kind:'runtime',name:'Gateway',device:'mini',address:'http://mini.example.lan:8790',version:'2.1',verified_at:'2026-11-08',depends_on:[{id:'mini-certs',kind:'cert'}],secrets:[{what:'Voice token',store:'unknown'}]},
  {id:'mini-certs',kind:'tool',name:'Cert sync',device:'mini',verified_at:'2026-11-03',confidence:'inferred',notes:'renews the gateway certificate'},
@@ -68,13 +68,13 @@ test('an empty hub shows what the map is for, the agent prompt, the MCP snippet 
   assert.equal(posts.length,1);assert.equal(posts[0][0],'/api/inventory/bulk');
   assert.deepEqual(posts[0][1].entries.map(c=>c.entry.id),['example-router','example-server','example-hub','example-proxy','example-backup','example-dns']);
   assert.ok(posts[0][1].entries.every(c=>!('base'in c))&&!('keepVerified'in posts[0][1]));
-  assert.deepEqual(check({schema:1,updated_at:'2026-11-08',entries:posts[0][1].entries.map(c=>({...c.entry,verified_at:'2026-11-08'}))}).errors,[],'what it sends passes the checker');
+  assert.deepEqual(check({schema:2,updated_at:'2026-11-08',entries:posts[0][1].entries.map(c=>({...c.entry,verified_at:'2026-11-08'}))}).errors,[],'what it sends passes the checker');
   assert.deepEqual(events,['inventoryupdated']);
   // A read-only account gets the explanation without the buttons.
   await mount(inventoryView);
   assert.equal(one('.ui-actions'),null);assert.match(one('.inv-empty-note').textContent,/read-only/);
   // A file with no entries is the same empty inventory.
-  reply=()=>({status:200,body:{doc:{schema:1,updated_at:'2026-11-08',entries:[]},gaps:[],hashes:{}}});
+  reply=()=>({status:200,body:{doc:{schema:2,updated_at:'2026-11-08',entries:[]},gaps:[],hashes:{}}});
   await mount(inventoryView);assert.ok(one('.ui-empty'));
  }finally{reply=was;}
 });
@@ -117,6 +117,31 @@ test('the map: lanes with counts, a legend, zoom, and a search box that lights t
  fire(zoom()[0],'click');await tick(1);assert.equal(zoom()[1].textContent,'90 %');assert.equal(size()[0],Math.round(size()[1]*0.9));assert.equal(layoutLoad().zoom,0.9);
  fire(zoom()[3],'click');await tick(1);assert.ok(one('.inv-map-wrap').classList.contains('fit'));assert.equal(layoutLoad().fit,true);
  fire(zoom()[1],'click');await tick(1);assert.equal(zoom()[1].textContent,'100 %');assert.equal(one('.inv-map-wrap').classList.contains('fit'),false);
+});
+
+test('a layout Home Hub 1.0.0 saved loads with its column and card order, and the next change saves today\'s names',async()=>{
+ // The literal 1.0.0 wrote under the same key: the device columns under its own word, as a value and as a key.
+ const v1={spacing:'compact',lines:'all',depth:'direct',columns:'machine',together:false,focus:false,secretItems:false,hiddenCats:['saas'],soloPrev:null,
+  modes:{machine:{cols:['nas · Linux NAS','mini · M4'],order:{'mini · M4':['mini','mini-old','mini-gateway','mini-certs']}},category:{cols:null,order:{}}}};
+ const KEY='home-hub.inventory.map.v3';
+ localStorage.clear();localStorage.setItem(KEY,JSON.stringify(v1));
+ const loaded=layoutLoad();
+ assert.equal(loaded.columns,'device');assert.deepEqual(loaded.modes,{device:v1.modes.machine,category:{cols:null,order:{}}});
+ assert.deepEqual([loaded.spacing,loaded.lines,loaded.depth,loaded.hiddenCats],['compact','all','direct',['saas']],'every other choice reads back as it was');
+ assert.equal(localStorage.getItem(KEY),JSON.stringify(v1),'reading writes nothing');
+ await mount();
+ assert.deepEqual(text('.inv-lane-label'),['NAS · LINUX NAS','MINI · M4'],'the saved column order');
+ assert.deepEqual(names(),['NAS','Photos','Mac mini','Old proxy','Gateway','Cert sync'],'the saved card order');
+ // A layout that chose the category columns keeps that choice, and its device order is carried along.
+ localStorage.setItem(KEY,JSON.stringify({...v1,columns:'category'}));
+ assert.equal(layoutLoad().columns,'category');assert.deepEqual(layoutLoad().modes.device,v1.modes.machine);
+ // The first change saves the layout whole, without the old word.
+ localStorage.setItem(KEY,JSON.stringify(v1));await mount();
+ fire(all('.inv-zoom-btn')[0],'click');await tick(1);
+ const saved=JSON.parse(localStorage.getItem(KEY));
+ assert.equal(saved.columns,'device');assert.deepEqual(Object.keys(saved.modes).sort(),['category','device']);assert.deepEqual(saved.modes.device,v1.modes.machine);
+ assert.doesNotMatch(JSON.stringify(saved),/machine/);
+ assert.deepEqual(layoutLoad(),{...loaded,zoom:saved.zoom},'and loads as it did');
 });
 
 test('what the browser saved before still loads: v3 orders are kept, new keys are optional, v1 is not thrown away',async()=>{
@@ -287,7 +312,7 @@ test('the entry form sends only what changed, makes ids from names and reads exp
    [JSON.stringify(Array.from({length:LIMITS.bulkEntries+1},(_,i)=>({id:`e${i}`}))),/more entries than one import can take \(500\)/]]){
   const r=parseImport(bad);assert.equal(r.entries,undefined);assert.match(t(r.error,r.vars),why);}
  // The checker's issues, said in the reader's language, with the reason translated too.
- const issues=check({schema:1,updated_at:'2026-11-08',entries:[{id:'gw',kind:'runtime',device:'nowhere',name:'',login:'token=abcdef123456',verified_at:'2026-11-08',secrets:[{what:'T',store:'drawer',check:'printenv T'}],depends_on:[{id:'ghost',kind:'call'}]}]}).issues;
+ const issues=check({schema:2,updated_at:'2026-11-08',entries:[{id:'gw',kind:'runtime',device:'nowhere',name:'',login:'token=abcdef123456',verified_at:'2026-11-08',secrets:[{what:'T',store:'drawer',check:'printenv T'}],depends_on:[{id:'ghost',kind:'call'}]}]}).issues;
  const said=Object.fromEntries(issues.map(i=>[i.code,issueText(i)]));
  assert.equal(said['name-required'],'A name is required.');assert.equal(said['device-required'],'Choose the device it runs on.');
  assert.equal(said['secret-value'],'This looks like a secret value (an assignment of a secret). Record where it is stored, not the value.');

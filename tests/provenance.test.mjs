@@ -136,15 +136,15 @@ test('collector pages over HTTP: the collector with its state before a snapshot,
  const noKeys=await get(h,'/api/security');assert.equal(noKeys.status,404);assert.equal(noKeys.body.provenance.kinds[0].state,'waiting');assert.equal(noKeys.body.provenance.kinds[0].source,'scripts/collect-security.mjs');
  const at=new Date(Date.now()-3600e3).toISOString();
  await mkdir(path.join(h.dir,'systems'),{recursive:true});await mkdir(path.join(h.dir,'security'),{recursive:true});
- await writeFile(path.join(h.dir,'systems','snapshot.json'),JSON.stringify({schemaVersion:1,collectedAt:at,collectedFrom:'studio',run:{trigger:'scheduled',scheduler:'launchd',label:'local.home-hub.systems-collect'},devices:{}}));
- await writeFile(path.join(h.dir,'security','ssh-keys.json'),JSON.stringify({schemaVersion:1,collectedAt:at,collectedFrom:'studio',run:{trigger:'manual'},devices:[{id:'mini',reachable:true},{id:'nas',reachable:false}],keys:[],otherKeys:[],unknownAuthorized:[],forgejo:null,findings:[]}));
+ await writeFile(path.join(h.dir,'systems','snapshot.json'),JSON.stringify({schemaVersion:2,collectedAt:at,collectedFrom:'studio',run:{trigger:'scheduled',scheduler:'launchd',label:'local.home-hub.systems-collect'},devices:{}}));
+ await writeFile(path.join(h.dir,'security','ssh-keys.json'),JSON.stringify({schemaVersion:2,collectedAt:at,collectedFrom:'studio',run:{trigger:'manual'},devices:[{id:'mini',reachable:true},{id:'nas',reachable:false}],keys:[],otherKeys:[],unknownAuthorized:[],forgejo:null,findings:[]}));
  const systems=(await get(h,'/api/systems')).body;
  assert.deepEqual(systems.provenance.kinds,[{kind:'collector',id:'systems',source:'scripts/collect-systems.mjs',host:'studio',state:'ok',count:0,intervalSeconds:21600,unit:'devices',lastAt:at,schedule:{trigger:'scheduled',scheduler:'launchd',label:'local.home-hub.systems-collect'}}]);
  assert.equal(systems.provenance.kind,'collector');assert.equal(systems.provenance.lastAt,at);
  const keys=(await get(h,'/api/security')).body.provenance.kinds[0];
  assert.deepEqual([keys.kind,keys.state,keys.count,keys.unit,keys.host,keys.schedule],['collector','ok',1,'devices','studio',{trigger:'manual'}]);
  // A snapshot from before the stamp existed says nothing about how it was started.
- await writeFile(path.join(h.dir,'systems','snapshot.json'),JSON.stringify({schemaVersion:1,collectedAt:at,devices:{}}));
+ await writeFile(path.join(h.dir,'systems','snapshot.json'),JSON.stringify({schemaVersion:2,collectedAt:at,devices:{}}));
  assert.equal('schedule' in (await get(h,'/api/systems')).body.provenance.kinds[0],false);
 
  // With a watch list: the release check and the list file are sources of their own, each with an id.
@@ -153,7 +153,7 @@ test('collector pages over HTTP: the collector with its state before a snapshot,
  await writeFile(file,JSON.stringify({schemaVersion:1,categories:{infra:'Infra'},items:[{id:'node',name:'Node.js',category:'infra',upstream:{type:'node'},detect:{mini:{kind:'brew',formula:'node'}}}]}));
  const w=await hub(t,{softwareWatchFile:file});
  await mkdir(path.join(w.dir,'systems'),{recursive:true});
- await writeFile(path.join(w.dir,'systems','snapshot.json'),JSON.stringify({schemaVersion:1,collectedAt:at,devices:{}}));
+ await writeFile(path.join(w.dir,'systems','snapshot.json'),JSON.stringify({schemaVersion:2,collectedAt:at,devices:{}}));
  await writeFile(path.join(w.dir,'systems','upstream.json'),JSON.stringify({schemaVersion:2,checkedAt:at,run:{trigger:'manual'},results:{'node:':{ok:true,version:'24.0.0',checkedAt:at}}}));
  const watched=(await get(w,'/api/systems')).body.provenance;
  assert.equal(watched.kind,'mixed');assert.deepEqual(watched.kinds.map(k=>[k.kind,k.id]),[['collector','systems'],['collector','upstream'],['config','watch']]);

@@ -8,7 +8,7 @@ import {check,validate,validStore,storeNames,describe,placesOf,templateEntries,w
 import * as checker from '../scripts/check-knowledge.mjs';
 import {SITE} from './hub-helper.mjs';
 
-const doc=()=>({schema:1,updated_at:'2026-11-01',entries:[
+const doc=()=>({schema:2,updated_at:'2026-11-01',entries:[
  {id:'mini',kind:'device',name:'Mac mini',verified_at:'2026-11-01'},
  {id:'gw',kind:'runtime',device:'mini',name:'Gateway',address:':8790',verified_at:'2026-11-01',secrets:[{what:'Voice token',store:'keychain:mini',ref:'gateway.voice-token',check:'security find-generic-password -s gateway.voice-token'}],depends_on:[{id:'sync',kind:'cert'}]},
  {id:'sync',kind:'tool',device:'mini',name:'Cert sync',verified_at:'2026-11-01'}]});
@@ -51,7 +51,7 @@ test('messages keep their exact text and every one comes with a field and a code
 test('the document itself, and values of the wrong type, are reported instead of throwing',()=>{
  assert.deepEqual(check(null).errors,['top level must be an object with an "entries" array']);
  assert.deepEqual(check([]).errors,['top level must be an object with an "entries" array']);
- assert.deepEqual(check({schema:2,updated_at:'x',entries:[]}).errors,['schema must be 1','updated_at must be YYYY-MM-DD']);
+ assert.deepEqual(check({schema:1,updated_at:'x',entries:[]}).errors,['schema must be 2','updated_at must be YYYY-MM-DD']);
  const d=doc();
  Object.assign(d.entries[1],{address:8790,notes:['a'],secrets:'keychain',depends_on:{id:'sync'},models:[1]});
  Object.assign(d.entries[2],{secrets:['x'],depends_on:['sync',{kind:'call'}]});
@@ -103,7 +103,7 @@ test('describe() is complete enough to fill the inventory without reading code',
 
 test('the template is a valid little inventory: generic, linked, with one gap to show what a gap is',()=>{
  const entries=templateEntries().map(e=>({...e,verified_at:'2026-11-01'}));
- const {errors,warnings}=check({schema:1,updated_at:'2026-11-01',entries});
+ const {errors,warnings}=check({schema:2,updated_at:'2026-11-01',entries});
  assert.deepEqual(errors,[]);assert.deepEqual(warnings,['entry "example-dns": where "Account password" is kept is not recorded']);
  assert.ok(entries.every(e=>e.id.startsWith(TEMPLATE_PREFIX)&&/example/i.test(e.name)&&/delete/.test(e.notes)));
  assert.deepEqual([...new Set(entries.map(e=>e.kind))].sort(),['device','external','network','runtime','tool']);

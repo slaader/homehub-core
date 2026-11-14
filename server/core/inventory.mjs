@@ -8,7 +8,7 @@
 // built-ins of the rules module (public/inventory-rules.js); nothing here names a household.
 import path from 'node:path';
 import {readFile} from 'node:fs/promises';
-import {check,describe} from '../../scripts/check-knowledge.mjs';
+import {check,describe,forwardInventory} from '../../scripts/check-knowledge.mjs';
 import {createKnowledgeEditor,editInput,entryInput,deleteInput,bulkInput,entryHash,emptyDoc,LIMITS} from '../../scripts/knowledge-edit.mjs';
 import {toolError} from '../mcp.mjs';
 import {inventoryProvenance} from '../provenance.mjs';
@@ -146,6 +146,8 @@ export default {
   const load=async()=>{
    let text;try{text=await readFile(file,'utf8');}catch(e){return e.code==='ENOENT'?{missing:true}:{unreadable:true};}
    let doc;try{doc=JSON.parse(text);}catch{return {unreadable:true};}
+   // A file Home Hub 1.x wrote: read forward, and written forward once (when this hub may write it).
+   const forward=forwardInventory(doc);if(forward!==doc){doc=forward;await local.forward().catch(()=>{});}
    const {errors,warnings}=check(doc,{secretStores});return {doc,errors,warnings};
   };
   return {file,load,

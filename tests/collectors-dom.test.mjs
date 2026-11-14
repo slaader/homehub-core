@@ -164,7 +164,7 @@ test('SSH keys: states, the key matrix with type, age and where each key is auth
 // string an agent supplies (records, the device's clock, withheld notes) drawn as text.
 const MARKUP='<img src=x onerror=alert(1)>';
 const agentRecord=(lines,{receivedAt,interval=21600,withheld=[]})=>{const part=(records,w=[])=>({schema:1,collectedAt:receivedAt,receivedAt,interval,digest:'0'.repeat(64),withheld:w,records});
- return {schemaVersion:1,device:'mini',agentId:'0123456789abcdef',agentVersion:'1.6.0',platform:'macos',lastSeenAt:receivedAt,lastSentAt:receivedAt,parts:{os:part(lines,withheld),updates:part([]),packages:part([])}};};
+ return {schemaVersion:2,device:'mini',agentId:'0123456789abcdef',agentVersion:'1.6.0',platform:'macos',lastSeenAt:receivedAt,lastSentAt:receivedAt,parts:{os:part(lines,withheld),updates:part([]),packages:part([])}};};
 test('systems: an agent\'s record says it came from the agent; gone quiet it is "no news", never unreachable; markup stays text',async()=>{
  const lines=macProbe(iso(30*HOUR)).replace(rec('LISTEN','Python','alice','127.0.0.1:8000'),rec('LISTEN',MARKUP,'alice','*:8080')).split('\n');
  const withheld=[{tag:MARKUP,field:3,reason:'secret',count:2}];

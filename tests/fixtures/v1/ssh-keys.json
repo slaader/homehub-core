@@ -1,0 +1,297 @@
+{
+ "schemaVersion": 1,
+ "collectedAt": "2026-11-08T12:00:00.000Z",
+ "collectedFrom": "studio",
+ "machines": [
+  {
+   "id": "studio",
+   "name": "Mac Studio",
+   "ips": [
+    "10.0.0.151"
+   ],
+   "hostname": "studio.example.lan",
+   "reachable": true,
+   "os": "Darwin",
+   "probedAs": "alice",
+   "complete": true,
+   "collectedAt": "2026-11-08T12:00:00Z",
+   "ssh": {
+    "listening": true,
+    "passwordAuth": true,
+    "kbdInteractive": false,
+    "rootLogin": null,
+    "allowUsers": [
+     "alice@10.0.0.25"
+    ],
+    "accessGroup": null
+   },
+   "accounts": [
+    {
+     "user": "alice",
+     "uid": 501,
+     "home": "/Users/alice",
+     "shell": "/bin/zsh",
+     "sudo": {
+      "level": "nopasswd",
+      "commands": [],
+      "expired": []
+     },
+     "authorizedKeys": []
+    }
+   ]
+  },
+  {
+   "id": "mini",
+   "name": "Mac mini",
+   "ips": [
+    "10.0.0.25"
+   ],
+   "hostname": "mini.example.lan",
+   "reachable": false,
+   "error": "ssh: connect timed out",
+   "accounts": [],
+   "ssh": null
+  },
+  {
+   "id": "nas",
+   "name": "NAS",
+   "ips": [
+    "10.0.0.74"
+   ],
+   "hostname": "nas.example.lan",
+   "reachable": true,
+   "os": "Linux",
+   "probedAs": "admin",
+   "complete": true,
+   "collectedAt": "2026-11-08T12:00:00Z",
+   "ssh": {
+    "listening": true,
+    "passwordAuth": false,
+    "kbdInteractive": false,
+    "rootLogin": null,
+    "allowUsers": [],
+    "accessGroup": null
+   },
+   "accounts": [
+    {
+     "user": "admin",
+     "uid": 3003,
+     "home": "/mnt/home/admin",
+     "shell": "/usr/bin/zsh",
+     "sudo": {
+      "level": "nopasswd",
+      "commands": [],
+      "expired": []
+     },
+     "authorizedKeys": [
+      {
+       "fingerprint": "SHA256:hw9LTx1XLrOYQQmR5CvKNvxy8zEUy+t8ZjYo44mM6zg",
+       "type": "ssh-ed25519",
+       "comment": "studio->nas",
+       "from": [
+        "10.0.0.151"
+       ],
+       "command": null,
+       "restricted": false,
+       "noForwarding": false,
+       "permitOpen": [],
+       "flags": [],
+       "file": "/mnt/home/admin/.ssh/authorized_keys",
+       "known": true
+      },
+      {
+       "fingerprint": "SHA256:8bX+tphjMek330TUGqiYcVLJAp/KUNNHcg7EImOoLBM",
+       "type": "ssh-ed25519",
+       "comment": "phone",
+       "from": [],
+       "command": null,
+       "restricted": false,
+       "noForwarding": false,
+       "permitOpen": [],
+       "flags": [],
+       "file": "/mnt/home/admin/.ssh/authorized_keys",
+       "known": false
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "router",
+   "name": "Router",
+   "ips": [
+    "10.0.0.1"
+   ],
+   "hostname": "10.0.0.1",
+   "reachable": false,
+   "sshOpen": false,
+   "note": "SSH off",
+   "accounts": [],
+   "ssh": null
+  }
+ ],
+ "keys": [
+  {
+   "id": "SHA256:hw9LTx1XLrOYQQmR5CvKNvxy8zEUy+t8ZjYo44mM6zg",
+   "fingerprint": "SHA256:hw9LTx1XLrOYQQmR5CvKNvxy8zEUy+t8ZjYo44mM6zg",
+   "type": "ED25519",
+   "bits": 256,
+   "name": "id_a",
+   "comment": "studio->nas",
+   "copies": [
+    {
+     "machine": "studio",
+     "owner": "alice",
+     "path": "/Users/alice/.ssh/id_a",
+     "mode": "600",
+     "mtime": "2026-10-31T20:59:21.000Z",
+     "encrypted": false,
+     "backup": false
+    }
+   ],
+   "access": [
+    {
+     "target": {
+      "kind": "host",
+      "machine": "nas",
+      "user": "admin",
+      "ips": [
+       "10.0.0.74"
+      ]
+     },
+     "entryComment": "studio->nas",
+     "from": [
+      "10.0.0.151"
+     ],
+     "command": null,
+     "restricted": false,
+     "noForwarding": false,
+     "permitOpen": [],
+     "sudo": "nopasswd",
+     "via": "authorized_keys"
+    }
+   ],
+   "routes": [
+    {
+     "machine": "studio",
+     "user": "alice",
+     "alias": "nas",
+     "hostname": "10.0.0.74",
+     "port": 22,
+     "remoteUser": "admin",
+     "proxyJump": null,
+     "target": {
+      "kind": "host",
+      "machine": "nas"
+     },
+     "accepted": true,
+     "alsoGit": false,
+     "keyPath": "/Users/alice/.ssh/id_a"
+    }
+   ]
+  }
+ ],
+ "otherKeys": [],
+ "unknownAuthorized": [
+  {
+   "machine": "nas",
+   "user": "admin",
+   "fingerprint": "SHA256:8bX+tphjMek330TUGqiYcVLJAp/KUNNHcg7EImOoLBM",
+   "type": "ssh-ed25519",
+   "comment": "phone",
+   "from": [],
+   "command": null,
+   "restricted": false,
+   "noForwarding": false,
+   "permitOpen": [],
+   "flags": [],
+   "file": "/mnt/home/admin/.ssh/authorized_keys",
+   "known": false
+  }
+ ],
+ "forgejo": null,
+ "findings": [
+  {
+   "level": "warn",
+   "title": "1 klíčů bez passphrase otevírá účet se sudo bez hesla, tedy root",
+   "detail": "Kdo získá soubor klíče, je root na cílovém stroji. Jde o záměr pro agenty, ochranu dělají jen from= a AllowUsers. id_a (studio->nas) (Mac Studio) → NAS (admin)",
+   "titleT": [
+    {
+     "key": "Klíče bez passphrase, které otevírají účet se sudo bez hesla, tedy root: {n}",
+     "params": {
+      "n": 1
+     }
+    }
+   ],
+   "detailT": [
+    {
+     "key": "Kdo získá soubor klíče, je root na cílovém stroji. Jde o záměr pro agenty, ochranu dělají jen from= a AllowUsers. {keys}",
+     "params": {
+      "keys": "id_a (studio->nas) (Mac Studio) → NAS (admin)"
+     }
+    }
+   ]
+  },
+  {
+   "level": "warn",
+   "title": "Na NAS (admin) je povolený cizí klíč „phone“",
+   "detail": "Jeho privátní část není na žádném z prověřených strojů (jiné zařízení nebo zapomenutý klíč). Bez omezení adresy.",
+   "titleT": [
+    {
+     "key": "Na {machine} ({user}) je povolený cizí klíč „{key}“",
+     "params": {
+      "machine": "NAS",
+      "user": "admin",
+      "key": "phone"
+     }
+    }
+   ],
+   "detailT": [
+    {
+     "key": "Jeho privátní část není na žádném z prověřených strojů (jiné zařízení nebo zapomenutý klíč).",
+     "params": {}
+    },
+    {
+     "key": "Bez omezení adresy.",
+     "params": {}
+    }
+   ]
+  },
+  {
+   "level": "warn",
+   "title": "Mac Studio: SSH přijímá i heslo",
+   "detail": "Omezeno přes AllowUsers na alice@10.0.0.25.",
+   "titleT": [
+    {
+     "key": "{machine}: SSH přijímá i heslo",
+     "params": {
+      "machine": "Mac Studio"
+     }
+    }
+   ],
+   "detailT": [
+    {
+     "key": "Omezeno přes AllowUsers na {users}.",
+     "params": {
+      "users": "alice@10.0.0.25"
+     }
+    }
+   ]
+  },
+  {
+   "level": "warn",
+   "title": "NAS (admin): klíč „phone“ bez omezení adresy",
+   "detail": "Účet má sudo bez hesla a ani from= ani AllowUsers neomezují, odkud se klíč smí použít.",
+   "titleT": [
+    {
+     "key": "{machine} ({user}): klíč „{key}“ bez omezení adresy",
+     "params": {
+      "machine": "NAS",
+      "user": "admin",
+      "key": "phone"
+     }
+    }
+   ]
+  }
+ ]
+}

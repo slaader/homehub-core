@@ -503,7 +503,7 @@ const probeLines=name=>readFileSync(path.join(root,'tests','fixtures','probes',n
 // A stored agent record (server/agent-store.mjs) whose os, updates and packages parts hold one run of a systems probe.
 function agentRecord(lines,{platform='macos',receivedAt='2026-11-13T11:45:00.000Z',interval=21600,collectedAt='2026-11-13T11:44:00Z',withheld=[]}={}){
  const split=splitSystemsRecords(lines),part=records=>({schema:1,collectedAt,receivedAt,interval,digest:'0'.repeat(64),withheld,records});
- return {schemaVersion:1,device:'x',agentId:'0123456789abcdef',agentVersion:'1.6.0',platform,lastSeenAt:receivedAt,lastSentAt:receivedAt,
+ return {schemaVersion:2,device:'x',agentId:'0123456789abcdef',agentVersion:'1.6.0',platform,lastSeenAt:receivedAt,lastSentAt:receivedAt,
   parts:{os:part(split.os),updates:part(split.updates),packages:part(split.packages)}};
 }
 const macAgent=(root,priv,time='2026-11-13T11:44:00Z')=>[rec('HOST','mini','Darwin','alice',root,time),rec('OS','macOS','26.7.1','25G241','25.6.0','arm64'),...priv,

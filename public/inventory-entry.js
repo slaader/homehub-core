@@ -9,7 +9,7 @@ import {t} from './i18n.js';
 import {el} from './views.js';
 import {pill,statusPill,when} from './systems-view.js';
 import {versionRows,deviceOs,versionSummary,systemDeviceOf} from './inventory-versions.js';
-import {check,dependents,withFields,templateEntries,KINDS,PLACED_KINDS,LINK_KINDS,ENTRY_FIELDS,LIMITS} from './inventory-rules.js';
+import {check,dependents,withFields,templateEntries,forwardInventory,INVENTORY_SCHEMA,KINDS,PLACED_KINDS,LINK_KINDS,ENTRY_FIELDS,LIMITS} from './inventory-rules.js';
 import {GROUPS,DEPS,CATS,CAT_LABEL,DEFAULT_CAT,OTHER,catOf,kindName,typeTag,place,placeName,store,storeSuggestions,siteStores,index,isExample,
  cached,hashOf,invalidate,load,systemsDoc,saveFields,removeEntry,bulkUpsert,announce} from './inventory-data.js';
 
@@ -46,7 +46,7 @@ function dialogEl(){
 }
 const dialogHead=(eyebrow,close)=>el('header',{class:'inv-dialog-head'},el('span',{class:'eyebrow'},eyebrow),el('button',{type:'button',class:'inv-btn quiet',onclick:()=>dialogEl().close(),'aria-label':close},t('Zavřít ×')));
 function open(...children){const d=dialogEl();d.replaceChildren(...children);if(!d.open)d.showModal?.();d.scrollTop=0;return d;}
-const docNow=()=>cached()?.doc||{schema:1,updated_at:null,entries:[]};
+const docNow=()=>cached()?.doc||{schema:INVENTORY_SCHEMA,updated_at:null,entries:[]};
 
 // --- detail ----------------------------------------------------------------------------------
 function detail(doc,e,pick){
@@ -218,7 +218,7 @@ export function showEditor(entry,{isNew=false,prefill=null,theirs=null,note=''}=
  // Runs the checker on the document with the draft in place and shows what concerns this entry.
  function validate(){
   const {values,rows}=read(),d=draft(values),entries=isNew?[...doc.entries,d.entry]:doc.entries.map(e=>e.id===entry.id?d.entry:e),at=isNew?entries.length-1:entries.findIndex(e=>e.id===entry.id);
-  const issues=check({schema:1,updated_at:today(),entries},{secretStores:siteStores()}).issues.filter(i=>i.index===at);
+  const issues=check({schema:INVENTORY_SCHEMA,updated_at:today(),entries},{secretStores:siteStores()}).issues.filter(i=>i.index===at);
   clearMarks();const {loose,first}=mark(issues,rows);
   summary.replaceChildren(...loose.map(i=>el('small',{},issueText(i))));
   return {values,rows,...d,failed:issues.some(i=>i.level==='error'),first};
@@ -320,9 +320,10 @@ export async function removeExamples(){
  }
 }
 
-// Reads an exported file: a whole document {entries: [...]} or a bare list of entries.
+// Reads an exported file: a whole document {entries: [...]} or a bare list of entries. A document Home Hub 1.x
+// exported (schema 1) is read forward, like the hub's own file.
 export function parseImport(text){
- let json;try{json=JSON.parse(text);}catch{return {error:'Tohle není platný JSON.'};}
+ let json;try{json=forwardInventory(JSON.parse(text));}catch{return {error:'Tohle není platný JSON.'};}
  const entries=Array.isArray(json)?json:json&&Array.isArray(json.entries)?json.entries:null;
  if(!entries)return {error:'Soubor neobsahuje seznam záznamů (entries).'};
  if(!entries.length)return {error:'Soubor neobsahuje žádné záznamy.'};

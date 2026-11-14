@@ -7,6 +7,7 @@
 //   home.services   (state, hub) => Promise<{deviceId: services[]}>       service probes for agent-less devices
 //   home.runtimes   (state, hub) => {deviceId: {source, observedAt, runtimes[]}}   local LLM runtimes on a device
 //                   (core's own direct adapters, server/core/runtimes.mjs, are one provider; mergeRuntimeReports joins them)
+import {devicesDirectory} from '../state-forward.mjs';
 import path from 'node:path';
 import {readFile} from 'node:fs/promises';
 import {existsSync} from 'node:fs';
@@ -426,7 +427,7 @@ export default {
   const agentNow=()=>{const clock=agentState()?.clock;return typeof clock==='function'?clock():null;};
   const payload=async()=>{const added=await homeDevices.list(),bindings=await homeDevices.siteBindings();return {...buildHome({site,added,siteTelemetry:bindings,siteOverrides:await homeDevices.siteOverrides(),
    agents:await agents(),agentNow:agentNow(),hubVersion:hub.version?.version??null,
-   reachability:hub.integrationEnabled(REACH_INTEGRATION)?reachability.status():{},published:await homeDevices.stacks(),sitePictures,descriptors:await loadDeviceDescriptors(process.env.DEVICES_DIR||path.join(directory,'devices'),ids),
+   reachability:hub.integrationEnabled(REACH_INTEGRATION)?reachability.status():{},published:await homeDevices.stacks(),sitePictures,descriptors:await loadDeviceDescriptors(devicesDirectory(directory),ids),
    snapshots:await merged('home.snapshots'),runtimes:mergeRuntimeReports(await settled('home.runtimes')),thermo:telemetry(added,bindings),router:await readRouterFor(hub),probed:await merged('home.services')}),
    integrations:{disabled:disabledIntegrations()}};};
   // Thermo off: close the sessions and stop pulling; on again: pull right away. Neither waits for the network.

@@ -307,7 +307,7 @@ test('a device record written by a newer hub: 500 UNAVAILABLE, never overwritten
  const h=await hub(t,{thermoPoller:quiet});
  const {mkdir}=await import('node:fs/promises');
  await mkdir(path.join(h.dir,'agent'),{recursive:true});
- const newer=JSON.stringify({schemaVersion:2,device:'studio',parts:{}});
+ const newer=JSON.stringify({schemaVersion:3,device:'studio',parts:{}});
  await writeFile(path.join(h.dir,'agent','studio.json'),newer);
  // A second handler over the same state loads the store as a restarted hub would.
  const {createHandler}=await import('../server/index.mjs');

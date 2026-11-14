@@ -15,11 +15,30 @@ import {collectorState,staleAfter,COLLECTORS} from './collector-state.mjs';
 import {freshUntil,SYSTEMS_PARTS} from './agent-report.mjs';
 import {privilegedIds} from './agent-privileged.mjs';
 import {tx,sentences,textOf,field} from './text.mjs';
+import {forwardKeys,writeJson} from './state-forward.mjs';
 import {provenance,collectorSource} from './provenance.mjs';
 import {readRun} from './collector-run.mjs';
 export {parseVersion,compareVersions,extractVersion};
 
-export const SYSTEMS_SCHEMA=1;
+// The schema of GET /api/systems and of data/systems/snapshot.json: {schemaVersion, collectedAt, collectedFrom,
+// devices: {<id>: record}, run?}. Schema 1 is the snapshot as the 1.x collector wrote it, with its own key for the
+// devices (server/state-forward.mjs).
+export const SYSTEMS_SCHEMA=2;
+/** A snapshot as 1.x wrote it → this schema; anything else as it is. */
+export const forwardSnapshot=doc=>doc&&typeof doc==='object'&&!Array.isArray(doc)&&doc.schemaVersion===1?{...forwardKeys(doc,'devices'),schemaVersion:SYSTEMS_SCHEMA}:doc;
+/**
+ * snapshot.json, parsed. A 1.x file is written forward in place, once (keeping its time: the hub reads the
+ * snapshot's age from it); when it cannot be written (the hub may not write the collector's directory) it is still
+ * read forward, and the collector's next run writes this schema. Rejects as readFile and JSON.parse do, and with
+ * code NEWER for a snapshot a newer collector wrote: older code refuses newer state.
+ */
+export async function readSnapshot(file){
+ const doc=JSON.parse(await readFile(file,'utf8'));
+ if(Number.isInteger(doc?.schemaVersion)&&doc.schemaVersion>SYSTEMS_SCHEMA)throw Object.assign(new Error(`${path.basename(file)} has schema ${doc.schemaVersion}; this Home Hub reads up to ${SYSTEMS_SCHEMA}`),{code:'NEWER'});
+ const next=forwardSnapshot(doc);
+ if(next!==doc)await writeJson(file,next,{pretty:1,keepTimes:true}).catch(()=>{});
+ return next;
+}
 // The devices the collector probes: every site device with ssh.probe (mac or nas), in site order.
 export const systemDevices=s=>s.devices.filter(m=>m.ssh?.probe).map(m=>({id:m.id,name:m.name,kind:m.ssh.probe}));
 const clean=(v,n=300)=>typeof v==='string'?v.replace(/[\u0000-\u001f\u007f]/g,' ').trim().slice(0,n):'';
@@ -523,7 +542,7 @@ export async function loadSystems(directory,{registryFile=watchPath(),site=loade
  const dir=systemsDirectory(directory),file=path.join(dir,'snapshot.json');
  const reporting=(Array.isArray(agents)?agents:[]).filter(e=>e?.record?.parts?.os);
  // Only a snapshot that is not there yet leaves the agents' devices alone; one that cannot be read is null, as before.
- let snapshot=null;try{snapshot=JSON.parse(await readFile(file,'utf8'));}catch(e){if(e.code!=='ENOENT'||!reporting.length)return null;}
+ let snapshot=null;try{snapshot=await readSnapshot(file);}catch(e){if(e.code!=='ENOENT'||!reporting.length)return null;}
  const snapshotTime=reporting.length&&snapshot?(await stat(file).catch(()=>null))?.mtimeMs??null:null;
  const upstream=withUpstream?await readFile(path.join(dir,'upstream.json'),'utf8').then(JSON.parse).catch(()=>null):null;
  const watch=await readWatch({file:registryFile});

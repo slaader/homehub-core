@@ -5,7 +5,7 @@
 import {t} from './i18n.js';
 import {onSessionReset,currentPrincipal,authGuard} from './session-cache.js';
 import {site} from './site.js';
-import {placesOf,DEFAULT_CATEGORY,TEMPLATE_PREFIX} from './inventory-rules.js';
+import {placesOf,DEFAULT_CATEGORY,TEMPLATE_PREFIX,INVENTORY_SCHEMA} from './inventory-rules.js';
 
 // Labels are Czech source text: pass them through t() when drawing.
 export const KIND={network:'Síť',device:'Stroj',runtime:'Služba',tool:'Nástroj','model-store':'Úložiště modelů','skill-store':'Úložiště skillů','secret-store':'Úložiště tajemství',external:'Vnější služba','secret-item':'Položka tajemství'};
@@ -75,7 +75,7 @@ export function matcher(query,fields=searchable){
  return e=>{const text=fields(e).filter(v=>typeof v==='string').join('\n').toLowerCase();return words.every(w=>text.includes(w));};
 }
 
-const EMPTY=()=>({doc:{schema:1,updated_at:null,entries:[]},gaps:[],hashes:{},missing:true});
+const EMPTY=()=>({doc:{schema:INVENTORY_SCHEMA,updated_at:null,entries:[]},gaps:[],hashes:{},missing:true});
 let cache=null,fetchedAt=0,pending=null,systems=null;
 // Another account must not see this one's inventory or versions (session-cache.js).
 onSessionReset(()=>{cache=null;fetchedAt=0;pending=null;systems=null;current=null;});

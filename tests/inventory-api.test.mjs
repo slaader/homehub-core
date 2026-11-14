@@ -27,7 +27,7 @@ test('an entry hash is sha256 of the stored JSON and survives writes to its neig
  assert.equal(entryHash(odd),'8c3cc423b358c923b9bd6a19bc09b0f989f7de00929c4fe5c7e7bae92c449ae1');
  const h=await hub(t);
  // The old shape: a top-level field the hub does not know, null where text is "not recorded", keys in the author's order.
- const old={schema:1,updated_at:'2026-11-01',about:'written by hand',entries:[{id:'mini',kind:'device',name:'Mac mini',verified_at:'2026-11-01'},gw,{id:'sync',kind:'tool',device:'mini',name:'Cert sync',verified_at:'2026-11-01'},odd]};
+ const old={schema:2,updated_at:'2026-11-01',about:'written by hand',entries:[{id:'mini',kind:'device',name:'Mac mini',verified_at:'2026-11-01'},gw,{id:'sync',kind:'tool',device:'mini',name:'Cert sync',verified_at:'2026-11-01'},odd]};
  await writeFile(path.join(h.dir,'knowledge.json'),JSON.stringify(old));
  const before=await get(h,'/api/inventory',h.admin);
  assert.equal(before.status,200,'the old shape loads unchanged');assert.deepEqual(Object.keys(before.body),['doc','gaps','hashes','provenance'],'the read API keeps its fields (provenance is an addition)');
@@ -197,7 +197,7 @@ test('a hub with no inventory file is an empty inventory that the first write cr
  const first=await call(h,agent.headers,'inventory_update',{entry:{id:'server',kind:'device',name:'Server'}});
  assert.equal(first.isError,false,first.content[0].text);
  const doc=await onDisk(h);
- assert.equal(doc.schema,1);assert.equal(doc.updated_at,today());assert.deepEqual(doc.entries.map(e=>e.id),['server']);
+ assert.equal(doc.schema,2);assert.equal(doc.updated_at,today());assert.deepEqual(doc.entries.map(e=>e.id),['server']);
  assert.equal((await get(h,'/api/inventory',h.admin)).status,200);
  // A file that is not JSON is never treated as empty, and never overwritten.
  await writeFile(file,'{ not json');

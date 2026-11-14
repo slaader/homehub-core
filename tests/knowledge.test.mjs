@@ -4,7 +4,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {validate,walk,find,load,validStore} from '../scripts/check-knowledge.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const base=()=>({schema:1,updated_at:'2026-11-01',entries:[
+const base=()=>({schema:2,updated_at:'2026-11-01',entries:[
  {id:'mini',kind:'device',name:'Mac mini',verified_at:'2026-11-01'},
  {id:'gw',kind:'runtime',device:'mini',name:'Gateway',address:':8790',verified_at:'2026-11-01',secrets:[{what:'Voice token',store:'keychain:mini',ref:'local-ai.gateway.voice-token',check:'security find-generic-password -s local-ai.gateway.voice-token'}],depends_on:[{id:'sync',kind:'cert'}]},
  {id:'sync',kind:'tool',device:'mini',name:'Cert sync',verified_at:'2026-11-01'},

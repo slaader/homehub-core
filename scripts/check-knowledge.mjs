@@ -15,7 +15,7 @@ import {resolvePaths} from '../server/paths.mjs';
 // and the entry form in the browser all run, so they can never disagree. Here they meet the site: the
 // names of its own secret stores (a password manager vault, …) come from site.json → inventory.secretStores.
 import * as rules from '../public/inventory-rules.js';
-export {KINDS, PLACED_KINDS, LINK_KINDS, DEP_KINDS, CATEGORIES, categoryOf, STORE_PREFIXES, BUILTIN_STORES, LIMITS, links, walk, find, dependents, placesOf, templateEntries, TEMPLATE_PREFIX} from '../public/inventory-rules.js';
+export {INVENTORY_SCHEMA, forwardInventory, KINDS, PLACED_KINDS, LINK_KINDS, DEP_KINDS, CATEGORIES, categoryOf, STORE_PREFIXES, BUILTIN_STORES, LIMITS, links, walk, find, dependents, placesOf, templateEntries, TEMPLATE_PREFIX} from '../public/inventory-rules.js';
 
 const siteStores = () => loadedSite().inventory.secretStores;
 // Options for one particular site: {secretStores}; the default is the site this process loaded.
@@ -29,8 +29,9 @@ export const check = (doc, options) => rules.check(doc, forSite(options));
 // The schema as data (inventory_describe, GET /api/inventory/schema).
 export const describe = (inventory = loadedSite().inventory, entries = []) => rules.describe(inventory, entries);
 
+// A file Home Hub 1.x wrote (schema 1) is read forward; this reader never writes.
 export async function load(file) {
-  return JSON.parse(await readFile(file, 'utf8'));
+  return rules.forwardInventory(JSON.parse(await readFile(file, 'utf8')));
 }
 
 function line(e) {

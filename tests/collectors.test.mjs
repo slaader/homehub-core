@@ -254,7 +254,7 @@ test('/api/systems and /api/security: the answer says where the collector stands
  // clients knew is still there, and the new ones are additions.
  await mkdir(path.join(h.dir,'systems'),{recursive:true});
  const fresh=new Date(Date.now()-3600e3).toISOString();
- await writeFile(path.join(h.dir,'systems','snapshot.json'),JSON.stringify({schemaVersion:1,collectedAt:fresh,collectedFrom:'studio',devices:{mini:{...parseSystemsProbe(macProbe),alias:'mini',stale:false,lastError:null},nas:{...parseSystemsProbe(nasProbe),nft:{inputPolicies:[{policy:'none',chains:1}],rules:0,tables:[]}}}}));
+ await writeFile(path.join(h.dir,'systems','snapshot.json'),JSON.stringify({schemaVersion:2,collectedAt:fresh,collectedFrom:'studio',devices:{mini:{...parseSystemsProbe(macProbe),alias:'mini',stale:false,lastError:null},nas:{...parseSystemsProbe(nasProbe),nft:{inputPolicies:[{policy:'none',chains:1}],rules:0,tables:[]}}}}));
  const doc=await (await fetch(h.origin+'/api/systems',{headers:h.admin})).json();
  for(const key of ['schemaVersion','generatedAt','collectedAt','oldestCollectedAt','collectedFrom','upstreamCheckedAt','upstreamFailed','categories','devices','software'])assert.ok(key in doc,key);
  assert.equal(doc.collector.state,'ok');assert.equal(doc.collector.upstream.state,'not-configured');assert.equal(doc.collectedAt,fresh);
@@ -269,11 +269,11 @@ test('/api/systems and /api/security: the answer says where the collector stands
  assert.equal(nas.checks.find(c=>c.id==='ftp').detail,'Port 21 na všech rozhraních, jen místní účty.');
  // Stale: the same snapshot nine hours later.
  const old=new Date(Date.now()-9*3600e3).toISOString();
- await writeFile(path.join(h.dir,'systems','snapshot.json'),JSON.stringify({schemaVersion:1,collectedAt:old,devices:{mini:parseSystemsProbe(macProbe)}}));
+ await writeFile(path.join(h.dir,'systems','snapshot.json'),JSON.stringify({schemaVersion:2,collectedAt:old,devices:{mini:parseSystemsProbe(macProbe)}}));
  assert.equal((await (await fetch(h.origin+'/api/systems',{headers:h.admin})).json()).collector.state,'stale');
  // The key inventory: a document without the newer fields is served as it is, plus its collector state.
  await mkdir(path.join(h.dir,'security'),{recursive:true});
- const legacy={schemaVersion:1,collectedAt:'2026-01-01T00:00:00.000Z',collectedFrom:'studio',devices:[],keys:[],otherKeys:[],unknownAuthorized:[],forgejo:null,findings:[{level:'info',title:'x: nikam nevede',detail:'y'}]};
+ const legacy={schemaVersion:2,collectedAt:'2026-01-01T00:00:00.000Z',collectedFrom:'studio',devices:[],keys:[],otherKeys:[],unknownAuthorized:[],forgejo:null,findings:[{level:'info',title:'x: nikam nevede',detail:'y'}]};
  await writeFile(path.join(h.dir,'security','ssh-keys.json'),JSON.stringify(legacy));
  const keys=await (await fetch(h.origin+'/api/security',{headers:h.admin})).json();
  assert.deepEqual({...keys,collector:undefined,provenance:undefined},{...legacy,collector:undefined,provenance:undefined});assert.equal(keys.collector.state,'stale');assert.equal(keys.collector.intervalSeconds,86400);

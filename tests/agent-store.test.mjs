@@ -64,7 +64,7 @@ test('limits: two keys per device, 100 that are not revoked; a newer agents.json
  for(let i=0;i<AGENT_LIMITS.active-2;i++)await store.issue(device(`m${String(i).padStart(3,'0')}`));
  await assert.rejects(store.issue(device('another')),/limit/,'the 101st active key');
  await assert.rejects(store.issue(device('x1'),{name:'bad\nname'}),/invalid/);
- await writeFile(path.join(dir,'agents.json'),JSON.stringify({schemaVersion:2,agents:[]}));
+ await writeFile(path.join(dir,'agents.json'),JSON.stringify({schemaVersion:3,agents:[]}));
  assert.throws(()=>createAgentStore(dir),/Invalid agent key store/,'older code refuses newer state');
 });
 

@@ -273,7 +273,7 @@ test('getting started on a brand-new hub: every read answers 200, and the steps 
  assert.deepEqual([step(fresh,'collectors').detail.systems,step(fresh,'collectors').detail.security],[false,false]);
 
  // An inventory entry and a key snapshot arrive: the same quiet reads see them.
- await writeFile(path.join(h.dir,'knowledge.json'),JSON.stringify({schema:1,updated_at:'2026-11-08',entries:[{id:'studio',kind:'device',name:'Mac Studio',verified_at:'2026-11-08'}]}));
+ await writeFile(path.join(h.dir,'knowledge.json'),JSON.stringify({schema:2,updated_at:'2026-11-08',entries:[{id:'studio',kind:'device',name:'Mac Studio',verified_at:'2026-11-08'}]}));
  await mkdir(path.join(h.dir,'security'),{recursive:true});
  await writeFile(path.join(h.dir,'security','ssh-keys.json'),JSON.stringify({schemaVersion:SECURITY_SCHEMA,collectedAt:new Date().toISOString(),devices:[],keys:[]}));
  seen.length=0;

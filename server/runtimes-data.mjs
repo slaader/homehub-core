@@ -11,6 +11,12 @@ import {readFile,writeFile,rename,mkdir,chmod} from 'node:fs/promises';
 import path from 'node:path';
 import {runtimeEndpoint,RUNTIME_ENDPOINT_LIMIT} from './site-config.mjs';
 import {createReader,readRuntime,errorCode,KIND_NAMES} from './runtime-adapters.mjs';
+import {forwardKeys} from './state-forward.mjs';
+
+// <state>/runtimes-config.json: {schema: 2, endpoints: [{id, device, kind, url, name, addedAt, addedBy, updatedAt,
+// updatedBy, source}]}. Schema 1 is the same list as 1.x wrote it, each endpoint naming its device with 1.x's key
+// (server/state-forward.mjs); it is read once and written in this schema.
+export const RUNTIMES_CONFIG_SCHEMA=2;
 
 const invalid=detail=>Object.assign(new Error('invalid'),{detail});
 async function readJson(file){try{return JSON.parse(await readFile(file,'utf8'));}catch(e){if(e.code==='ENOENT')return null;throw e;}}
@@ -25,16 +31,26 @@ const serial=()=>{let last=Promise.resolve();return fn=>{const next=last.then(fn
 // The endpoints added at run time. Each carries who added it and how (source: ui | agent).
 export function createEndpointStore(file){
  const queue=serial();
- const read=async()=>{const raw=await readJson(file).catch(()=>null);return Array.isArray(raw?.endpoints)?raw.endpoints:[];};
+ // A file a newer hub wrote lists nothing here and is never written over: older code refuses newer state.
+ const newer=raw=>Number.isInteger(raw?.schema)&&raw.schema>RUNTIMES_CONFIG_SCHEMA;
+ const parse=raw=>newer(raw)?{endpoints:[],newer:true}:!Array.isArray(raw?.endpoints)?{endpoints:[]}
+  :raw.schema===1?{endpoints:raw.endpoints.map(e=>forwardKeys(e,'device')),old:true}:{endpoints:raw.endpoints};
+ const current=async()=>parse(await readJson(file).catch(()=>null));
+ // For a change: the list as it is now, never a newer hub's.
+ const mine=async()=>{const now=await current();if(now.newer)throw new Error('newer-state');return now.endpoints;};
+ // The first read of a 1.x file writes it forward (in the queue, so it never crosses a change).
+ const read=async()=>{const now=await current();
+  if(now.old)await queue(async()=>{const again=await current();if(again.old)await writeJson(file,{schema:RUNTIMES_CONFIG_SCHEMA,endpoints:again.endpoints});}).catch(()=>{});
+  return now.endpoints;};
  return {
   file,list:read,
   // endpoint: already validated (runtimeEndpoint). Replaces the entry with the same id.
   upsert:endpoint=>queue(async()=>{
-   const all=await read(),at=new Date().toISOString(),before=all.find(e=>e.id===endpoint.id);
+   const all=await mine(),at=new Date().toISOString(),before=all.find(e=>e.id===endpoint.id);
    const entry={...endpoint,addedAt:before?.addedAt||at,addedBy:before?.addedBy||endpoint.by,updatedAt:at,updatedBy:endpoint.by,source:endpoint.source};delete entry.by;
    const next=before?all.map(e=>e.id===endpoint.id?entry:e):[...all,entry];
-   await writeJson(file,{schema:1,endpoints:next});return {entry,created:!before,changed:JSON.stringify(stripMeta(before))!==JSON.stringify(stripMeta(entry))};}),
-  remove:id=>queue(async()=>{const all=await read();if(!all.some(e=>e.id===id))throw new Error('not-found');await writeJson(file,{schema:1,endpoints:all.filter(e=>e.id!==id)});return true;}),
+   await writeJson(file,{schema:RUNTIMES_CONFIG_SCHEMA,endpoints:next});return {entry,created:!before,changed:JSON.stringify(stripMeta(before))!==JSON.stringify(stripMeta(entry))};}),
+  remove:id=>queue(async()=>{const all=await mine();if(!all.some(e=>e.id===id))throw new Error('not-found');await writeJson(file,{schema:RUNTIMES_CONFIG_SCHEMA,endpoints:all.filter(e=>e.id!==id)});return true;}),
  };
 }
 const stripMeta=e=>e?{id:e.id,device:e.device,kind:e.kind,url:e.url,name:e.name}:null;

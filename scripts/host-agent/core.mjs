@@ -145,9 +145,14 @@ export function parseCoreArgs(argv){
 }
 
 // --- the plan ----------------------------------------------------------------------------------------------------------
-/** A key file as create-agent-key --output writes it → {token, agent: {id, device, prefix}}. */
+const KEY_FILE_V1='machine';
+/**
+ * A key file as create-agent-key --output writes it → {token, agent: {id, device, prefix}}. A file a 1.x hub wrote
+ * names the device under 1.x's key (KEY_FILE_V1): the key in it still works, so the file is read as it is.
+ */
 export function readKeyFile(text){
  let raw;try{raw=JSON.parse(text);}catch{refuse('--key-file is not the JSON file create-agent-key --output wrote');}
+ if(raw?.agent&&typeof raw.agent==='object'&&raw.agent.device===undefined&&typeof raw.agent[KEY_FILE_V1]==='string')raw={...raw,agent:{...raw.agent,device:raw.agent[KEY_FILE_V1]}};
  const token=parseToken(raw?.token);
  if(raw?.schema!==1||!token||!raw.agent||typeof raw.agent.device!=='string')refuse('--key-file is not an agent key file (schema 1, an hha_ token)');
  const id=typeof raw.agent.id==='string'?raw.agent.id.slice(0,64):null;

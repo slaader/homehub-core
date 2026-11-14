@@ -79,7 +79,7 @@ not an app token and not a role, and it holds **no scope**: not `read`, not anyt
 | | |
 |---|---|
 | Token | `hha_` + 64 lowercase hex (32 random bytes). `hh_` is an app token, `hhk_` an API key; neither parser (`bearerOf`, `apiBearerOf`) matches `hha_` |
-| Stored | `<state>/agents.json` (0600, its own file; `access.json` is not touched): `{schemaVersion: 1, agents: [{id, device, deviceCreatedAt, name, prefix, hash, createdAt, createdBy, revokedAt, revokedBy}]}`. `hash` is the SHA-256 of the token, `prefix` its first 12 characters. Module `server/agent-store.mjs`, constant `AGENTS_SCHEMA = 1` |
+| Stored | `<state>/agents.json` (0600, its own file; `access.json` is not touched): `{schemaVersion: 2, agents: [{id, device, deviceCreatedAt, name, prefix, hash, createdAt, createdBy, revokedAt, revokedBy}]}`. `hash` is the SHA-256 of the token, `prefix` its first 12 characters. Module `server/agent-store.mjs`, constant `AGENTS_SCHEMA = 2` (schema 1 is the file 1.x wrote; it is read once and written as schema 2 with the same keys, `docs/storage.md` → State written by 1.x) |
 | Limits | 100 keys that are not revoked; at most two per device, so a key can be rotated (issue, install, revoke the old one) |
 | Last seen | Never in `agents.json`. Kept in the report store (below), so a report never rewrites the credential file |
 | Admin API | Password sign-in, `/api/admin/` rules. `GET /api/admin/agents` → `{agents: [{id, device, name, prefix, createdAt, createdBy, revokedAt, revokedBy, lastReportAt, agentVersion, platform}]}`. `POST /api/admin/agents {device, name?}` → `201 {token, agent}` (the token once); `400 AGENT_INVALID` (unknown device, router, NAS), `409 AGENT_LIMIT`. `POST /api/admin/agents/revoke {id}` → `200 {agent}`, `404 NOT_FOUND` |
@@ -111,8 +111,8 @@ area is `legacy: false`; enqueueing for a device is an administrator action, nev
 
 **The data epoch stays at 1.** Nothing an earlier release reads changes format; the new files (`agents.json`,
 `state/agent/`, `data/security/probes.json`) are ignored by older code. Steps 1 and 2 put `AGENTS_SCHEMA`,
-`AGENT_REPORTS_SCHEMA` and `SECURITY_PROBES_SCHEMA` (all 1) into the table of `tests/data-epoch.test.mjs` and write
-them under `### Data`, with one caveat: a restore of an archive (because some other change raised the epoch) brings
+`AGENT_REPORTS_SCHEMA` and `SECURITY_PROBES_SCHEMA` (all 1 then; 2 since Home Hub 2.0, which raised the epoch to 2) into the table of
+`tests/data-epoch.test.mjs` and write them under `### Data`, with one caveat: a restore of an archive (because some other change raised the epoch) brings
 back `agents.json` as it was, keys revoked since included. Revoke them again after a restore.
 
 ## 3. The report
@@ -262,7 +262,7 @@ the other key's parts, and while two keys alternate in a rotation a part can be 
 never more than once per key per 20 s. The agent
 sends every part that falls due within 20 s of another in **one** report, so the floor never splits a batch.
 
-**Storage.** One file per device, `<state>/agent/<device>.json` (0600, directory 0700; `AGENT_REPORTS_SCHEMA = 1`):
+**Storage.** One file per device, `<state>/agent/<device>.json` (0600, directory 0700; `AGENT_REPORTS_SCHEMA = 2`):
 `{schemaVersion, device, agentId, agentVersion, platform, lastSeenAt, lastSentAt, parts: {<part>: {schema, collectedAt,
 receivedAt, interval, digest, withheld, records | data}}}` (`lastSentAt`: the last envelope's `sentAt`, the device's
 clock, kept to show skew), the latest copy of each part only, so bounded by the caps. A changed `digest` (SHA-256 of the payload) is written at once; a report that changes only times is flushed at
@@ -325,8 +325,8 @@ The page shows which source won for each device (`source: "collector" | "agent"`
   per device at most every six hours); `history.jsonl` stays the collector's.
 - **SSH keys.** The inventory is joined across devices, so it is rebuilt, not patched. `collect-security.mjs` also
   writes `probes.json` beside its `--out` file (default `data/security/`; `loadSecurity` looks beside `SECURITY_FILE`
-  when set): `{schemaVersion: 1, collectedAt, collectedFrom, probes: {id: {text, probedAt} | {error}}, forgejo,
-  extraDevices}` (`SECURITY_PROBES_SCHEMA = 1`). `loadSecurity` loads the descriptors itself
+  when set): `{schemaVersion: 2, collectedAt, collectedFrom, probes: {id: {text, probedAt} | {error}}, forgejo,
+  extraDevices}` (`SECURITY_PROBES_SCHEMA = 2`). `loadSecurity` loads the descriptors itself
   (`loadDeviceDescriptors`) and runs `buildSecurity` over those probes, each winning agent `sshkeys` text in place
   of a device's; forgejo and the router entry stay the collector's. A `probes.json` older than `ssh-keys.json` was
   left by an older collector: the page then shows `ssh-keys.json` as today, noting that agents are not joined. For

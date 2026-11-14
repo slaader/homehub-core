@@ -1,12 +1,12 @@
 // The push agent's credential and what agents report (docs/agent.md §1–§3).
 //
-// <state>/agents.json, 0600, its own file (access.json is never touched), schemaVersion 1:
-//   {schemaVersion: 1, agents: [{id, device, deviceCreatedAt, name, prefix, hash, createdAt, createdBy, revokedAt, revokedBy}]}
+// <state>/agents.json, 0600, its own file (access.json is never touched), schemaVersion 2 (AGENTS_SCHEMA):
+//   {schemaVersion: 2, agents: [{id, device, deviceCreatedAt, name, prefix, hash, createdAt, createdBy, revokedAt, revokedBy}]}
 //   hash = SHA-256 of the token (hha_ + 64 lowercase hex), prefix = its first 12 characters. A key is bound to one
 //   device of the overview's namespace and to that device's createdAt (an added device's; null for a site device), and works
 //   only while that device exists with that stamp. Last seen is never written
 //   here: a report never rewrites the credential file.
-// <state>/agent/<device>.json, 0600 in a 0700 directory, schemaVersion 1 (AGENT_REPORTS_SCHEMA): the latest copy of
+// <state>/agent/<device>.json, 0600 in a 0700 directory, schemaVersion 2 (AGENT_REPORTS_SCHEMA): the latest copy of
 //   each part one device's agent reported: {schemaVersion, device, agentId, agentVersion, platform, lastSeenAt,
 //   lastSentAt, parts: {<part>: {schema, collectedAt, receivedAt, interval, digest, withheld, records | data}}}.
 //   lastSentAt is the device's clock (the envelope's sentAt), kept to show clock skew; every other time is the hub's.
@@ -14,14 +14,17 @@
 //   key's first report; a report after no news; a changed agentVersion or platform, each of these three at most
 //   once per key and event per ten minutes). Never a body or a token.
 // Issuing and revoking a key go to access-audit.jsonl, beside the other credentials.
+// Schema 1 of both files is what 1.x wrote, with its own word for a device in the keys and in revokedBy
+// (server/state-forward.mjs). Each file is read once in that form and written in this one, at start.
 import {readFileSync,readdirSync,statSync} from 'node:fs';
 import {mkdir,writeFile,rename,appendFile} from 'node:fs/promises';
 import {randomBytes,createHash,timingSafeEqual} from 'node:crypto';
 import path from 'node:path';
 import {digestOf,freshUntil} from './agent-report.mjs';
+import {V1,forwardKeys,forwardWord,writeJsonSync} from './state-forward.mjs';
 
-export const AGENTS_SCHEMA=1;
-export const AGENT_REPORTS_SCHEMA=1;
+export const AGENTS_SCHEMA=2;
+export const AGENT_REPORTS_SCHEMA=2;
 export const AGENT_LIMITS=Object.freeze({active:100,perDevice:2});
 export const AGENT_TOKEN=/^hha_[a-f0-9]{64}$/;
 // The agent key from an Authorization header, or null. Neither bearerOf (hh_) nor apiBearerOf (hhk_) matches it.
@@ -54,10 +57,16 @@ export const boundTo=(key,m)=>Boolean(m)&&m.id===key.device&&(m.createdAt??null)
 // --- the credential store ---------------------------------------------------------------------------------------------
 function loadAgents(file){
  let doc;try{doc=JSON.parse(readFileSync(file,'utf8'));}catch(e){if(e.code==='ENOENT')return {schemaVersion:AGENTS_SCHEMA,agents:[]};throw e;}
+ if(plain(doc)&&doc.schemaVersion===1&&Array.isArray(doc.agents)){const next=forwardAgents(doc);writeJsonSync(file,next);return next;}
  // Older code refuses newer state; it never "tries anyway".
  if(!plain(doc)||doc.schemaVersion!==AGENTS_SCHEMA||!Array.isArray(doc.agents))throw new Error('Invalid agent key store (agents.json)');
  return doc;
 }
+// agents.json as 1.x wrote it → schema 2: the same keys with the same ids, hashes and stamps, so every key keeps working.
+export const forwardAgents=doc=>({...doc,schemaVersion:AGENTS_SCHEMA,agents:doc.agents.map(a=>{
+ if(!plain(a))return a;const next=forwardKeys(a,'device','deviceCreatedAt');return typeof next.revokedBy==='string'&&forwardWord(next.revokedBy)!==next.revokedBy?{...next,revokedBy:forwardWord(next.revokedBy)}:next;})});
+// One device's report file as 1.x wrote it → schema 2, or null when it is not one.
+export const forwardReport=doc=>plain(doc)&&doc.schemaVersion===1&&typeof doc[V1.device]==='string'?{...forwardKeys(doc,'device'),schemaVersion:AGENT_REPORTS_SCHEMA}:null;
 const view=a=>({id:a.id,device:a.device,name:a.name,prefix:a.prefix,createdAt:a.createdAt,createdBy:a.createdBy??null,revokedAt:a.revokedAt??null,revokedBy:a.revokedBy??null});
 const usable=a=>plain(a)&&AGENT_ID.test(a.id)&&/^[a-f0-9]{64}$/.test(a.hash)&&DEVICE_ID.test(a.device)&&!a.revokedAt;
 
@@ -119,10 +128,12 @@ export const deviceFresh=(record,at)=>Boolean(record)&&Object.values(record.part
 export function createReportStore(directory,{now=Date.now,log=console}={}){
  const dir=path.join(directory,'agent');
  const records=new Map(),flushedAt=new Map(),dirty=new Set(),newer=new Set();
- // What is on disk is loaded once. A file written by a newer hub is left as it is and never overwritten here.
+ // What is on disk is loaded once. A file written by a newer hub is left as it is and never overwritten here; one
+ // written by 1.x is written again in this schema before anything else reads it.
  let names=[];try{names=readdirSync(dir).filter(f=>f.endsWith('.json')&&DEVICE_ID.test(f.slice(0,-5)));}catch(e){if(e.code!=='ENOENT')throw e;}
  for(const f of names){const device=f.slice(0,-5);
-  try{const doc=JSON.parse(readFileSync(path.join(dir,f),'utf8'));
+  try{let doc=JSON.parse(readFileSync(path.join(dir,f),'utf8'));
+   const forward=forwardReport(doc);if(forward){doc=forward;writeJsonSync(path.join(dir,f),doc);}
    if(!plain(doc)||doc.schemaVersion!==AGENT_REPORTS_SCHEMA){newer.add(device);log.warn?.(`agent: ${f} has another schema; reports for ${device} are refused until it is moved`);continue;}
    if(doc.device===device&&plain(doc.parts))records.set(device,doc);}catch{log.warn?.(`agent: ${f} cannot be read; it is replaced by the next report`);}}
  let queue=Promise.resolve();

@@ -32,7 +32,7 @@ test('all write families reject viewer sessions and read keys; only admin sessio
  // alive. Hence also the retries.
  t.after(async()=>{try{if(server){server.closeAllConnections();await new Promise(r=>server.close(r));}}
   finally{await rm(dir,{recursive:true,force:true,maxRetries:10,retryDelay:25});}});
- await writeFile(path.join(dir,'knowledge.json'),JSON.stringify({schema:1,updated_at:'2026-11-05',entries:[]}));
+ await writeFile(path.join(dir,'knowledge.json'),JSON.stringify({schema:2,updated_at:'2026-11-05',entries:[]}));
  server=http.createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin=`http://127.0.0.1:${server.address().port}`;let calls=0;
  server.on('request',createHandler({directory:dir,stateDirectory:dir,credentials,origin,secure:false,bridgeRequest:async()=>{calls++;return {};}}));
  const post=(url,body,headers={})=>fetch(origin+url,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',...headers},body:JSON.stringify(body)});
@@ -56,7 +56,7 @@ test('all write families reject viewer sessions and read keys; only admin sessio
 });
 test('inventory creation and complete updates are checked and require an exact current base hash',async t=>{
  const dir=await mkdtemp(path.join(os.tmpdir(),'hub-create-'));t.after(()=>rm(dir,{recursive:true,force:true}));const file=path.join(dir,'knowledge.json');let published=0;
- await writeFile(file,JSON.stringify({schema:1,updated_at:'2026-11-05',entries:[{id:'mini',kind:'device',name:'mini',verified_at:'2026-11-05'}]}));
+ await writeFile(file,JSON.stringify({schema:2,updated_at:'2026-11-05',entries:[{id:'mini',kind:'device',name:'mini',verified_at:'2026-11-05'}]}));
  const editor=createKnowledgeEditor({file,publish:async()=>{published++;}});const entry={id:'new-service',kind:'runtime',device:'mini',name:'New service',address:'127.0.0.1:12345'};
  const created=await editor.put({entry});assert(created.ok);assert(created.published);assert.equal(published,1);
  await assert.rejects(editor.put({entry}),/conflict/);

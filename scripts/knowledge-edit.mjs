@@ -15,7 +15,7 @@ import {promisify} from 'node:util';
 import path from 'node:path';
 import {check} from './check-knowledge.mjs';
 import {resolvePaths} from '../server/paths.mjs';
-import {EDITABLE,ENTRY_FIELDS,SECRET_FIELDS,ENTRY_ID,LIMITS,withFields,dependents} from '../public/inventory-rules.js';
+import {EDITABLE,ENTRY_FIELDS,SECRET_FIELDS,ENTRY_ID,LIMITS,INVENTORY_SCHEMA,forwardInventory,withFields,dependents} from '../public/inventory-rules.js';
 export {EDITABLE,LIMITS};
 const run=promisify(execFile);
 const HASH=/^[a-f0-9]{64}$/,DATE=/^\d{4}-\d{2}-\d{2}$/;
@@ -27,7 +27,7 @@ export const entryHash=e=>createHash('sha256').update(JSON.stringify(e)).digest(
 // The same content whatever the key order: lets a bulk upsert see that an entry it was sent is the one on disk.
 const canonical=v=>Array.isArray(v)?v.map(canonical):plain(v)?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;
 const same=(a,b)=>JSON.stringify(canonical(a))===JSON.stringify(canonical(b));
-export const emptyDoc=(today=todayUtc())=>({schema:1,updated_at:today,entries:[]});
+export const emptyDoc=(today=todayUtc())=>({schema:INVENTORY_SCHEMA,updated_at:today,entries:[]});
 
 // --- who wrote it ----------------------------------------------------------------------------
 // by: a service-account name → "Home Hub API · <account>"; user: true → a person in the web UI.
@@ -147,7 +147,8 @@ export const bulkSummary=results=>({create:results.filter(r=>r.action==='create'
  */
 export function createKnowledgeEditor({file=path.join(resolvePaths().data,'knowledge.json'),secretStores,publish=process.env.KNOWLEDGE_PUBLISH?()=>run(path.resolve(process.env.KNOWLEDGE_PUBLISH),[],{timeout:30000}):async()=>{}}={}){
  let busy=false;
- const read=async()=>{let text;try{text=await readFile(file,'utf8');}catch(e){if(e.code==='ENOENT')return emptyDoc();throw e;}return JSON.parse(text);};
+ // A file Home Hub 1.x wrote (schema 1) is read forward; the next save writes schema 2.
+ const read=async()=>{let text;try{text=await readFile(file,'utf8');}catch(e){if(e.code==='ENOENT')return emptyDoc();throw e;}return forwardInventory(JSON.parse(text));};
  const write=async doc=>{await mkdir(path.dirname(file),{recursive:true});const tmp=`${file}.edit-${process.pid}`;await writeFile(tmp,JSON.stringify(doc,null,2)+'\n',{mode:0o600});await rename(tmp,file);};
  // apply(doc) → {doc, …extra} to check and save, or {stop: result} to answer without writing.
  const save=async(apply,{dryRun=false}={})=>{
@@ -173,5 +174,14 @@ export function createKnowledgeEditor({file=path.join(resolvePaths().data,'knowl
   return save(doc=>{const r=applyBulk(doc,change,{by,user});
    if(r.conflicts.length)return {stop:{ok:false,...(change.dryRun?{dryRun:true}:{}),conflicts:r.conflicts}};
    return {doc:r.doc,results:r.results,summary:bulkSummary(r.results),changed:r.changed};},{dryRun:change.dryRun});};
+ // Writes a schema 1 file forward, once, under the same lock as every other write → whether it wrote. Nothing is
+ // checked or restamped: the entries are the ones 1.x held, under today's names.
+ editor.forward=async()=>{
+  if(busy)return false;busy=true;
+  try{let doc;try{doc=JSON.parse(await readFile(file,'utf8'));}catch{return false;}
+   const next=forwardInventory(doc);if(next===doc)return false;
+   await write(next);return true;
+  }finally{busy=false;}
+ };
  return editor;
 }

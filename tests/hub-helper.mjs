@@ -11,7 +11,7 @@ import {fileURLToPath} from 'node:url';
 // The generic site the core tests run on (scripts/run-tests.mjs points HOME_HUB_SITE_CONFIG at the same file).
 export const SITE=loadSite({file:fileURLToPath(new URL('./fixtures/site.json',import.meta.url))});
 export const credentials={username:'admin',...hashPassword('administrator-test-password')};
-export const knowledge=()=>({schema:1,updated_at:'2026-11-08',entries:[
+export const knowledge=()=>({schema:2,updated_at:'2026-11-08',entries:[
  {id:'studio',kind:'device',name:'Mac Studio',verified_at:'2026-11-08'},
  {id:'studio-llama-swap',kind:'runtime',device:'studio',name:'llama-swap',address:'127.0.0.1:8081',verified_at:'2026-11-08'}]});
 

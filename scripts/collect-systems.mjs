@@ -17,7 +17,8 @@ import {spawn} from 'node:child_process';
 import {readFile,writeFile,rename,mkdir,appendFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {parseSystemsProbe,buildSystems,systemsSpecs,systemDevices,historyEntry} from '../server/systems-data.mjs';
+import {parseSystemsProbe,buildSystems,systemsSpecs,systemDevices,historyEntry,forwardSnapshot,SYSTEMS_SCHEMA} from '../server/systems-data.mjs';
+import {forwardJsonl,forwardTrendLine} from '../server/state-forward.mjs';
 import {site as loadedSite,sshHosts} from '../server/site-config.mjs';
 import {readWatch,checkWatch} from '../server/software-watch.mjs';
 import {collectorRun} from '../server/collector-run.mjs';
@@ -61,7 +62,10 @@ export async function collectSystems({site=loadedSite(),hosts=sshHosts(site,m=>m
  collectedFrom=null,probesDir=path.join(root,'scripts','systems'),started=null}){
  const deviceList=systemDevices(site);
  const [macProbe,nasProbe]=await Promise.all(['mac-probe.sh','nas-probe.sh'].map(f=>readFile(path.join(probesDir,f),'utf8')));
- const previous=await readFile(path.join(outDir,'snapshot.json'),'utf8').then(JSON.parse).catch(()=>null);
+ // The last snapshot, whose records are carried over for the devices that do not answer now. One a 1.x collector
+ // wrote is read forward (this run writes today's schema); one from a newer collector is never written over.
+ const previous=forwardSnapshot(await readFile(path.join(outDir,'snapshot.json'),'utf8').then(JSON.parse).catch(()=>null));
+ if(Number.isInteger(previous?.schemaVersion)&&previous.schemaVersion>SYSTEMS_SCHEMA)throw new Error(`snapshot.json has schema ${previous.schemaVersion}; this collector writes ${SYSTEMS_SCHEMA}. Update Home Hub on this computer.`);
  const results=await Promise.all([...hosts].map(async([id,alias])=>{
   const kind=deviceList.find(m=>m.id===id)?.kind||'mac';
   const script=kind==='nas'?nasProbe:`SPECS='${systemsSpecs(registry,id)}'\n${macProbe}`;
@@ -74,7 +78,7 @@ export async function collectSystems({site=loadedSite(),hosts=sshHosts(site,m=>m
   else if(devices[id])devices[id]={...devices[id],stale:true,lastError:res.error,lastAttemptAt:now()};
   else devices[id]=emptyRecord(id,alias,res.error,now());
  }
- const snapshot={schemaVersion:1,collectedAt:now(),collectedFrom:collectedFrom??(await exec('hostname',['-s'])).stdout.trim(),
+ const snapshot={schemaVersion:SYSTEMS_SCHEMA,collectedAt:now(),collectedFrom:collectedFrom??(await exec('hostname',['-s'])).stdout.trim(),
   // How this run was started (a scheduled job or a terminal), when that is knowable: server/collector-run.mjs.
   ...(started?{run:started}:{}),devices};
  await mkdir(outDir,{recursive:true,mode:0o700});
@@ -86,6 +90,8 @@ export async function collectSystems({site=loadedSite(),hosts=sshHosts(site,m=>m
  const doc=buildSystems({snapshot,upstream,registry,devices:deviceList});
  const line={at:snapshot.collectedAt,devices:Object.fromEntries(doc.devices.filter(m=>m.summary).map(m=>[m.id,historyEntry(m)]))};
  const histFile=path.join(outDir,'history.jsonl');
+ // Lines a 1.x collector wrote are written forward first, once.
+ await forwardJsonl(histFile,forwardTrendLine);
  const hist=(await readFile(histFile,'utf8').catch(()=>'')).split('\n').filter(Boolean);
  if(hist.length>=3000){const keep=hist.slice(-2999);await writeFile(histFile,keep.join('\n')+'\n'+JSON.stringify(line)+'\n',{mode:0o600});}
  else await appendFile(histFile,JSON.stringify(line)+'\n',{mode:0o600});

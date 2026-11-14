@@ -22,6 +22,7 @@
 // /api/security and home.runtimes answer as on a hub without agents; the keys and what was stored stay as they are.
 //
 // hub.options.agentClock (a () => ms function) stands in for the clock in the tests.
+import {forwardJsonl,forwardTrendLine} from '../state-forward.mjs';
 import {stat,readFile,writeFile,appendFile,mkdir,rename} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
@@ -251,7 +252,9 @@ function setupAgent(hub){
  // The trend: one line {at, devices:{<id>: {os, software, apps, warn, crit, stale}}} per device at most every six
  // hours, the shape of the collector's history.jsonl, capped at 3000 lines.
  const historyFile=path.join(hub.stateDirectory,'agent','history.jsonl'),historyAt=new Map();let historyRead=null;
- const readHistory=()=>historyRead??=readFile(historyFile,'utf8').then(text=>{for(const line of text.split('\n'))try{const x=JSON.parse(line),t=Date.parse(x.at);
+ // A file 1.x wrote is written forward at start, once (server/state-forward.mjs), before anything reads or adds a line.
+ const historyForwarded=forwardJsonl(historyFile,forwardTrendLine).catch(()=>0);
+ const readHistory=()=>historyRead??=historyForwarded.then(()=>readFile(historyFile,'utf8')).then(text=>{for(const line of text.split('\n'))try{const x=forwardTrendLine(JSON.parse(line)),t=Date.parse(x.at);
   for(const id of Object.keys(x.devices||{}))if(Number.isFinite(t)&&!(historyAt.get(id)>t))historyAt.set(id,t);}catch{}}).catch(()=>{});
  let historyQueue=Promise.resolve();
  function noteHistory(device,at){

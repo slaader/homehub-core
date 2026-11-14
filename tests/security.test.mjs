@@ -165,7 +165,7 @@ import {readerHub,READERS_DIR} from './support/readers.mjs';
 import {envelope,reportTo,issueAgent,quiet} from './support/agent.mjs';
 
 // A stored agent record with one sshkeys part.
-const keysRecord=(lines,{receivedAt='2026-11-13T11:45:00.000Z',interval=21600}={})=>({schemaVersion:1,device:'x',agentId:'0123456789abcdef',agentVersion:'1.6.0',platform:'macos',
+const keysRecord=(lines,{receivedAt='2026-11-13T11:45:00.000Z',interval=21600}={})=>({schemaVersion:2,device:'x',agentId:'0123456789abcdef',agentVersion:'1.6.0',platform:'macos',
  lastSeenAt:receivedAt,lastSentAt:receivedAt,parts:{sshkeys:{schema:1,collectedAt:'2026-11-13T11:44:00Z',receivedAt,interval,digest:'0'.repeat(64),withheld:[],records:lines}}});
 const withRoot=(text,root)=>text.replace(/^(HOST\t[^\t]*\t[^\t]*\t[^\t]*\t)[01]/m,`$1${root}`);
 
@@ -246,7 +246,7 @@ test('over HTTP: /api/security joins an agent\'s sshkeys part with the receive t
  const h=await readerHub(t,{thermoPoller:quiet,agentClock:()=>clock});
  // The fixture inventory with the probes.json its collector run wrote (texts from tests/fixtures/readers).
  const texts=Object.fromEntries(await Promise.all(['studio','nas'].map(async id=>[id,(await readText(path.join(READERS_DIR,`ssh-probe-${id}.txt`),'utf8')).trimEnd()]))),inv=JSON.parse(await readText(path.join(h.dir,'security','ssh-keys.json'),'utf8'));
- await writeFile(path.join(h.dir,'security','probes.json'),JSON.stringify({schemaVersion:1,collectedAt:inv.collectedAt,collectedFrom:'studio',
+ await writeFile(path.join(h.dir,'security','probes.json'),JSON.stringify({schemaVersion:2,collectedAt:inv.collectedAt,collectedFrom:'studio',
   probes:{studio:{text:texts.studio,probedAt:inv.collectedAt},nas:{text:texts.nas,probedAt:inv.collectedAt},mini:{error:'ssh: connect timed out'}},forgejo:null,extraDevices:[{id:'router',sshOpen:false,note:'SSH off'}]}));
  const key=await issueAgent(h,'mini');
  const lines=[rec('HOST','mini','Darwin','alice','0','2027-11-13T10:00:00Z'),rec('NET','10.0.0.74'),rec('LISTEN','on'),rec('USER','alice','501','/Users/alice','/bin/zsh','1'),

@@ -12,6 +12,7 @@
 //   accounts[] {id, name, description, scopes[], disabled, createdAt}; scopes ["*"] = full access
 //   roles[]    {id, name, description, scopes[], createdAt, updatedAt}: custom roles only
 //   prefs      {<user id>: {homeOrder[], timeZone}}
+import {forwardKeys,forwardWord} from './state-forward.mjs';
 import {readFileSync} from 'node:fs';
 import {mkdir,writeFile,rename,appendFile,readFile} from 'node:fs/promises';
 import {randomBytes,createHash,timingSafeEqual,scrypt} from 'node:crypto';
@@ -305,11 +306,14 @@ export async function readAccessAudit(directory,{accessStore,appTokens,agentStor
  const apps=new Map((appTokens?.list()||[]).map(a=>[a.id,a.name])),agentKeys=new Map((agentStore?.list()||[]).map(a=>[a.id,a.name]));
  const nameOf=e=>(e.event?.startsWith('key-')?keys:e.event?.startsWith('agent-key-')?agentKeys:e.event?.startsWith('account-')?accounts:e.event?.startsWith('role-')?roles:users).get(e.id)||(typeof e.name==='string'?e.name:null);
  const want=k=>!kind||kind===k;
- const access=want('access')?(await lines('access-audit.jsonl')).map(e=>({at:e.at,kind:'access',event:e.event,id:e.id||null,subject:nameOf(e),...(e.detail?{detail:e.detail}:{}),...(e.by?{by:e.by}:{})})):[];
+ // The audit files are never rewritten. A line 1.x wrote about an agent key is shown in today's words: detail
+ // "device <id>", by "device-removed", and the agent audit's device (server/state-forward.mjs).
+ const access=want('access')?(await lines('access-audit.jsonl')).map(e=>{const old=e.event?.startsWith('agent-key-'),detail=old?forwardWord(e.detail):e.detail,by=old?forwardWord(e.by):e.by;
+  return {at:e.at,kind:'access',event:e.event,id:e.id||null,subject:nameOf(e),...(detail?{detail}:{}),...(by?{by}:{})};}):[];
  const api=want('api')?(await lines('api-audit.jsonl')).map(e=>({at:e.at,kind:'api',event:e.event,id:e.key||null,subject:e.name||null,detail:[e.tool||e.route,e.subject].filter(Boolean).join(' · '),status:e.status})):[];
  // The file holds the bare event (issued, revoked), from 1.0.0 on; the server/app-tokens.mjs migration carries the older file over.
  const app=want('app')?(await lines('app-tokens-audit.jsonl')).map(e=>({at:e.at,kind:'app',event:`app-token-${e.event}`,id:e.id||null,subject:e.name||apps.get(e.id)||null})):[];
- const agent=want('agent')?(await lines('agent-audit.jsonl')).map(e=>({at:e.at,kind:'agent',event:e.event,id:e.agent||null,subject:typeof e.device==='string'?e.device:null,detail:[e.code,e.detail].filter(Boolean).join(' · ')})):[];
+ const agent=want('agent')?(await lines('agent-audit.jsonl')).map(e=>forwardKeys(e,'device')).map(e=>({at:e.at,kind:'agent',event:e.event,id:e.agent||null,subject:typeof e.device==='string'?e.device:null,detail:[e.code,e.detail].filter(Boolean).join(' · ')})):[];
  const needle=String(q||'').trim().toLowerCase();
  const hit=e=>!needle||[e.event,e.subject,e.detail,e.by,e.id,e.status].some(v=>v!=null&&String(v).toLowerCase().includes(needle));
  return [...access,...app,...api,...agent].filter(e=>typeof e.at==='string'&&hit(e)).sort((a,b)=>b.at.localeCompare(a.at)).slice(0,limit);

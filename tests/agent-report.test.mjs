@@ -293,7 +293,7 @@ test('a report is stored at the hub\'s receive time; the device\'s clock is info
  const doc=JSON.parse(await readFile(file,'utf8'));
  assert.equal((await stat(file)).mode&0o777,0o600);assert.equal((await stat(path.dirname(file))).mode&0o777,0o700);
  assert.deepEqual(Object.keys(doc),['schemaVersion','device','agentId','agentVersion','platform','lastSeenAt','lastSentAt','parts']);
- assert.deepEqual([doc.schemaVersion,doc.device,doc.agentId,doc.agentVersion,doc.platform,doc.lastSeenAt,doc.lastSentAt],[1,'studio',agent.id,'1.6.0','macos','2026-11-13T10:00:00.000Z',ahead]);
+ assert.deepEqual([doc.schemaVersion,doc.device,doc.agentId,doc.agentVersion,doc.platform,doc.lastSeenAt,doc.lastSentAt],[2,'studio',agent.id,'1.6.0','macos','2026-11-13T10:00:00.000Z',ahead]);
  assert.deepEqual(Object.keys(doc.parts.os),['schema','collectedAt','receivedAt','interval','digest','withheld','records']);
  assert.equal(doc.parts.os.receivedAt,'2026-11-13T10:00:00.000Z');assert.equal(doc.parts.os.collectedAt,ahead,'kept, as the device said it');
  assert.match(doc.parts.os.digest,/^[a-f0-9]{64}$/);assert.equal(doc.parts.heartbeat.digest,null);

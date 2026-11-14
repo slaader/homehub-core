@@ -18,9 +18,11 @@ import {UPSTREAM_CACHE_VERSION} from '../server/systems-upstream.mjs';
 import {UPDATES_SCHEMA} from '../server/update-check.mjs';
 import {AGENTS_SCHEMA,AGENT_REPORTS_SCHEMA} from '../server/agent-store.mjs';
 import {APP_TOKENS_SCHEMA} from '../server/app-tokens.mjs';
+import {RUNTIMES_CONFIG_SCHEMA} from '../server/runtimes-data.mjs';
+import {INVENTORY_SCHEMA} from '../public/inventory-rules.js';
 
-const TABLE={epoch:2,schemas:{db:1,integrations:1,watch:1,systems:1,security:1,upstreamCache:2,updates:1,agents:1,agentReports:1,securityProbes:1,appTokens:2}};
-const NOW={db:DB_SCHEMA,integrations:INTEGRATIONS_SCHEMA,watch:WATCH_SCHEMA,systems:SYSTEMS_SCHEMA,security:SECURITY_SCHEMA,upstreamCache:UPSTREAM_CACHE_VERSION,updates:UPDATES_SCHEMA,agents:AGENTS_SCHEMA,agentReports:AGENT_REPORTS_SCHEMA,securityProbes:SECURITY_PROBES_SCHEMA,appTokens:APP_TOKENS_SCHEMA};
+const TABLE={epoch:2,schemas:{db:1,integrations:1,watch:1,systems:2,security:2,upstreamCache:2,updates:1,agents:2,agentReports:2,securityProbes:2,appTokens:2,runtimesConfig:2,inventory:2}};
+const NOW={db:DB_SCHEMA,integrations:INTEGRATIONS_SCHEMA,watch:WATCH_SCHEMA,systems:SYSTEMS_SCHEMA,security:SECURITY_SCHEMA,upstreamCache:UPSTREAM_CACHE_VERSION,updates:UPDATES_SCHEMA,agents:AGENTS_SCHEMA,agentReports:AGENT_REPORTS_SCHEMA,securityProbes:SECURITY_PROBES_SCHEMA,appTokens:APP_TOKENS_SCHEMA,runtimesConfig:RUNTIMES_CONFIG_SCHEMA,inventory:INVENTORY_SCHEMA};
 
 test('a changed on-disk format raises the data epoch',()=>{
  const epoch=readPackage().dataEpoch;

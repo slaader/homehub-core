@@ -39,7 +39,7 @@ const REPORTS=readdirSync(FIX).filter(f=>/^report-.*\.json$/.test(f)).sort();
 const vectors=json('vectors.json');
 const specsBytes=readFileSync(path.join(FIX,'specs.txt'));
 // What the hub keeps for a device after it accepted a report (server/agent-store.mjs), for the readers.
-const stored=(report,receivedAt='2026-11-13T10:01:13.000Z')=>({schemaVersion:1,device:'winbox',agentId:'0123456789abcdef',agentVersion:report.agentVersion,platform:report.platform,
+const stored=(report,receivedAt='2026-11-13T10:01:13.000Z')=>({schemaVersion:2,device:'winbox',agentId:'0123456789abcdef',agentVersion:report.agentVersion,platform:report.platform,
  lastSeenAt:receivedAt,lastSentAt:report.sentAt,parts:Object.fromEntries(Object.entries(report.parts).map(([n,p])=>[n,{...p,receivedAt,digest:'0'.repeat(64),withheld:p.withheld||[]}]))});
 // The watch list the fixtures were made for: a winreg rule per item of specs.txt.
 const registry={categories:{tools:'Tools'},items:[
@@ -435,7 +435,7 @@ test('the key is never a parameter: Module Logging (event 4103) records every pa
   /^if \(\$null -eq \$script:Token\) \{ return (@\{ status = 0; retryAfter = \$null; ack = \$null; error = 'key-missing' \}|\(& \$no 'key-invalid' 'the key file does not hold an agent key'\)) \}$/,
   /^\$req\.Headers\.Add\('Authorization', 'Bearer ' \+ \$script:Token\)$/,
   /^\$token = \$null(; \$agentId = \$null; \$device = \$null)?$/,/^\$token = \$found\[0\]\.Value$/,/^\$masked = \$keyText\.Replace\(\$token, \$placeholder\); \$keyText = \$null; \$found = \$null$/,
-  /^if \(\(Get-Prop \$k 'schema'\) -ne 1 -or \(Get-Prop \$k 'token'\) -cne \$placeholder -or -not \(\(Get-Prop \$agentInfo 'device'\) -is \[string\]\)\) \{ \$token = \$null; Stop-Install '[^']*' \}$/,
+  /^if \(\(Get-Prop \$k 'schema'\) -ne 1 -or \(Get-Prop \$k 'token'\) -cne \$placeholder -or -not \(\$keyDevice -is \[string\]\)\) \{ \$token = \$null; Stop-Install '[^']*' \}$/,
   /^if \(\$token\) \{ Say \('  key        ' \+ \$token\.Substring\(0, 12\) \+ '\.\.\. for device ' \+ \$device \+ ' -> ' \+ \(Join-Path \$Dirs\.private 'agent\.key'\)\) \}$/,
   /^\$keyBytes = \$Utf8\.GetBytes\(\$token \+ "`n"\)$/];
  for(const f of PS_FILES){
