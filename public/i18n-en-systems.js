@@ -45,7 +45,7 @@ export default {
  '{n} zdroj neověřen|{n} zdroje neověřeny|{n} zdrojů neověřeno':'{n} source unverified|{n} sources unverified',
  'ručně: {commands}':'manually: {commands}',
  'starý snímek':'stale snapshot',
- 'nedostupný':'unreachable',
+ 'nedostupné':'unavailable',
  'Filtr zařízení':'Device filter',
  'Všechna zařízení':'All devices',
  'Graf se nepodařilo vykreslit.':'The chart could not be drawn.',

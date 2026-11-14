@@ -240,6 +240,7 @@ export default {
   ],
 
   // MCP tools, listed for keys that hold the scope. Throw toolError('…') (from 'home-hub/plugin-api') for a refusal.
+  // With additionalProperties: false in inputSchema, a call with an argument not in properties is refused before run.
   mcpTools: [{name: 'notes_list', scope: 'read', title: 'Notes', description: 'All notes.',
               inputSchema: {type: 'object', properties: {}, additionalProperties: false},
               run: (args, {state, principal, hub}) => ({notes: state.notes})}],
@@ -534,8 +535,11 @@ been observed yet. A `read` must only read: an adapter never changes anything on
 `clientCounts: {wired, wireless, other}` when the router counts them itself, `softwareVersion`.
 
 What core makes of it (`GET /api/router`, `readRouter` and `readRouterFor` in `home-hub/plugin-api`) carries the
-list as `clients` and the counts as `health.clientCounts: {connected, wired, wireless, other, known}`; `mergeRouter`
-folds the clients into a device inventory. The census was `devices` in 1.x: an adapter that still returns `devices`
+list as `clients` and the counts as `health.clientCounts: {connected, wired, wireless, other, known}`; `mergeRouter(inventory, router)`
+folds the clients into the plugin's own network-device list, `inventory.devices` (each `{id, mac, ip, name, …}`,
+keyed by the MAC address without colons, with `routerMacs` for a device's other interfaces): a client it does not know
+is added as an unidentified entry to review. That list is the plugin's, not the hub's devices (`site.json → devices`
+and the overview's added devices). The census was `devices` in 1.x: an adapter that still returns `devices`
 reports no clients. Only the included file adapter still reads the 1.x names, because its file may come from a 1.x
 collector on another host (`docs/storage.md` → State written by 1.x).
 
@@ -640,18 +644,20 @@ the HTTP routes, fields and error codes a plugin's page or script may call; this
 | Page context (`(context) => Node`) | `context.machine` | `context.device` |
 | A host agent's `config` module | `({site, machine}) => object` | `({site, device}) => object` |
 | `home-hub/testing` | `machineKind`, `systemMachines`; `buildSystems({machines})`, `buildGraph(live, list, requests, {machines})`, `liveState(merged, machines)` | `deviceKind`, `systemDevices`; `buildSystems({devices})`, `buildGraph(live, list, requests, {devices})`, `liveState(merged, devices)`. What they return says `device` and `devices` too (`cleanRequest`: `device`, `clientDevice`), and `knowledge()` is a `schema: 2` document |
-| The inventory document (`createKnowledgeEditor`, `validateKnowledge`, `walkKnowledge`, `findKnowledge`, an `inventory.writer`) | `schema: 1`; entry kind `machine`, entry field `machine` | `schema: 2`; kind `device`, field `device`. `validateKnowledge` refuses `schema: 1`; the editor and `loadKnowledge` read a 1.x file forward. `entryHash` covers the fields, so a placed entry's hash is new |
+| The inventory document (`createKnowledgeEditor`, `validateKnowledge`, `walkKnowledge`, `findKnowledge`, an `inventory.writer`) | `schema: 1`; entry kind `machine`, entry field `machine` | `schema: 2`; kind `device`, field `device`. `validateKnowledge` refuses `schema: 1`; the editor and `loadKnowledge` read a 1.x file forward. `entryHash` covers the fields, so an entry of kind `device` and every entry placed on one has a new hash |
 | MCP tools named in `mcpInstructions`, prompts and docs | `machine_list`, `machine_upsert`, `machine_remove`; the argument `machine` | `device_list`, `device_upsert`, `device_remove`; the argument `device` (also in `runtime_publish`, `inventory_search`, `runtime_endpoint_upsert`) |
 | Routes a plugin's page or script calls | `/api/home/machines`, `/api/home/machines/remove`, `/api/admin/machines`, `/api/devices/tokens` | `/api/home/devices`, `/api/home/devices/remove`, `/api/admin/devices`, `/api/app-tokens`; the answers say `devices` and `device` |
 | Error codes | `MACHINE_…`, `AGENT_MACHINE_GONE`, `DEVICE_LIMIT` (tokens) | `DEVICE_…`, `AGENT_DEVICE_GONE`, `APP_TOKEN_LIMIT` (`DEVICE_LIMIT` now means the overview's 20 added devices) |
 | Links into core pages | `#integrations/machine/<id>` | `#integrations/device/<id>` (`#host-<id>` is unchanged) |
 | Commands and environment | `--machine`, `MACHINES_DIR`, `data/machines/` | `--device`, `DEVICES_DIR`, `data/devices/` |
 | Core's translatable texts (`tx` keys a plugin reuses from core) | the placeholder `{machine}` | `{device}` |
+| Core's Czech source strings (the dictionary keys a plugin's `strings` translates or reuses) | `stroj` and the words that agree with it (`Upravit stroj`, `Stroje`) | `zařízení` (`Upravit zařízení`, `Seznam zařízení`): about 380 keys changed, so a translation of an old key no longer applies |
 | `router.adapter` observation | `devices[]` (the router's network clients) | `clients[]`; `hardware[]` is unchanged. A `devices[]` is not read |
 | `readRouter`, `readRouterFor`, `mergeRouter`, `GET /api/router` | `router.devices`, `router.health.clients` (the counts) | `router.clients`, `router.health.clientCounts`; `GET /api/router` is `schemaVersion: 2` |
 
 Unchanged: `home.snapshots`, `home.services` and `home.runtimes` (keyed by device id, as before),
-`git-lfs.providers`, the scopes, the Czech source strings, and `/views.js`, `/ui.js` and `/i18n.js`. What a plugin
+`git-lfs.providers`, the scopes, the Czech source strings that do not name a device, and `/views.js`, `/ui.js` and
+`/i18n.js`. What a plugin
 stores for itself (`hub.pluginData(id)`) is its own: core migrates only core's files (`docs/storage.md` → State
 written by 1.x), so a plugin that wrote `machine` into its files reads them forward itself and raises its
 `dataEpoch`.

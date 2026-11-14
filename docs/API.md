@@ -420,7 +420,7 @@ Every JSON error has this shape:
 | 400 | `INVALID_INPUT` | Body is not JSON |
 | 401 | `AUTH_REQUIRED` | No valid cookie or token (expired, revoked, missing) |
 | 403 | `ORIGIN_REJECTED` | Wrong or missing `Origin` (cookie POSTs) or `Content-Type` |
-| 404 | `NOT_FOUND` | Unknown route or id |
+| 404 | `NOT_FOUND` | Unknown route or id; to an API key too, for a path that no route has by any method |
 | 405 | `METHOD_NOT_ALLOWED` | Only GET and POST exist |
 | 409 | `APP_TOKEN_LIMIT` | 20 app tokens already exist |
 | 413 | `TOO_LARGE` | Body over 16 KB |

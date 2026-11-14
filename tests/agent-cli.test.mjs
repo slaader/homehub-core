@@ -66,6 +66,14 @@ test('create-agent-key refuses what the admin API refuses: unknown, the router, 
   assert.notEqual(r.code,0,device);assert.match(r.err,message,device);
   await assert.rejects(stat(output),{code:'ENOENT'},`${device}: no file written`);
  }
+ // The 1.x flag is refused by name, with no stack trace and no file; so is it by the other commands that took it.
+ for(const args of [['--machine','pi-hole'],['--machine=pi-hole']]){
+  const r=await cli('create-agent-key',...args,'--output',path.join(dir,'old.json'));
+  assert.equal(r.code,2);assert.equal(r.err.trim(),'manage-access: --machine was renamed to --device in 2.0');
+  await assert.rejects(stat(path.join(dir,'old.json')),{code:'ENOENT'});
+ }
+ const installer=await run(process.execPath,[fileURLToPath(new URL('../scripts/install-host-agent.mjs',import.meta.url)),'--plugin','x','--machine','pi-hole','--dry-run']).catch(e=>e);
+ assert.equal(installer.code,2);assert.equal(installer.stderr.trim(),'install-host-agent: --machine was renamed to --device in 2.0');
  // An added device takes a key, bound to its createdAt.
  const ok=await cli('create-agent-key','--device','pi-hole','--output',path.join(dir,'pi.json'));assert.equal(ok.code,0,ok.err);
  assert.equal(JSON.parse(await readFile(path.join(state,'agents.json'),'utf8')).agents[0].deviceCreatedAt,'2026-11-01T00:00:00.000Z');

@@ -108,8 +108,10 @@ test('MCP: ticket_search is a read tool with the list filters; descriptions carr
  const all=await call('ticket_search',{query:'backup'});assert.equal(all.isError,false);assert.deepEqual(all.structuredContent.tickets.map(x=>x.id).sort(),['GAME-1','HH-1']);
  assert.deepEqual((await call('ticket_search',{query:'backup',status:'active',label:'ops'})).structuredContent.tickets.map(x=>x.id),['HH-1']);
  assert.deepEqual((await call('ticket_search',{query:'backup',project:'sample-game',limit:1})).structuredContent.tickets.map(x=>x.id),['GAME-1']);
- for(const bad of [{},{query:''},{query:'x',limit:500},{query:'x',limit:'2'},{query:'x',q:'y'},{query:'x',status:'nope'}]){
+ for(const bad of [{},{query:''},{query:'x',limit:500},{query:'x',limit:'2'},{query:'x',status:'nope'}]){
   const out=await call('ticket_search',bad);assert.equal(out.isError,true,JSON.stringify(bad));assert.match(out.content[0].text,/^Invalid ticket search/);}
+ // An argument the schema does not list is refused before the tool runs, by name.
+ const extra=await call('ticket_search',{query:'x',q:'y'});assert.equal(extra.isError,true);assert.match(extra.content[0].text,/^ticket_search does not take the argument "q"\./);
  const audit=await (await fetch(h.origin+'/api/admin/audit',{headers:h.admin})).json();
  assert.ok(!audit.events.some(e=>e.event==='mcp-call'),'reading is not logged');
  // Tool texts are for any hub: no ticket ids, project names or people of one household.

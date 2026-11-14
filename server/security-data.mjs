@@ -4,7 +4,6 @@
 // it opens (authorized_keys entries, Forgejo account and deploy keys, ssh config routes).
 // No private key material ever reaches this module: the probe sends fingerprints, paths and
 // public authorized_keys lines only.
-import {readFile,stat} from 'node:fs/promises';
 import path from 'node:path';
 import {site as loadedSite} from './site-config.mjs';
 import {tx,sentences,textOf} from './text.mjs';
@@ -14,7 +13,7 @@ import {pickSource,collectorTime} from './systems-data.mjs';
 import {loadDeviceDescriptors} from './home-data.mjs';
 import {siteDeviceIds} from './site-config.mjs';
 import {fingerprintOf,parseAuthorizedLine,parseKeygenLine} from './ssh-lines.mjs';
-import {forwardKeys,forwardTemplate,forwardText,writeJson,devicesDirectory} from './state-forward.mjs';
+import {forwardKeys,forwardTemplate,forwardText,writeJson,readJsonSeen,devicesDirectory} from './state-forward.mjs';
 // The line parsers live in server/ssh-lines.mjs (a leaf module the push agent shares); re-exported here.
 export {fingerprintOf,parseAuthorizedLine,parseKeygenLine};
 
@@ -341,10 +340,10 @@ const newest=list=>list.filter(v=>Number.isFinite(Date.parse(v))).sort((a,b)=>Da
 // probes.json lies beside the inventory file (SECURITY_FILE, else data/security/ssh-keys.json).
 export const probesFileOf=file=>path.join(path.dirname(file),'probes.json');
 async function readProbes(file){
- let doc,time;
- try{[doc,time]=await Promise.all([readFile(file,'utf8').then(JSON.parse),stat(file).then(s=>s.mtimeMs)]);}catch(e){return {doc:null,why:e.code==='ENOENT'?'probes-missing':'probes-unreadable'};}
+ let doc,time,seen;
+ try{({doc,seen}=await readJsonSeen(file));time=seen.mtimeMs;}catch(e){return {doc:null,why:e.code==='ENOENT'?'probes-missing':'probes-unreadable'};}
  const next=forwardProbes(doc);
- if(next!==doc){doc=next;await writeJson(file,doc,{pretty:1,keepTimes:true}).catch(()=>{});}
+ if(next!==doc){doc=next;await writeJson(file,doc,{pretty:1,keepTimes:true,seen}).catch(()=>{});}
  if(!plain(doc)||doc.schemaVersion!==SECURITY_PROBES_SCHEMA||!plain(doc.probes))return {doc:null,why:'probes-unreadable'};
  return {doc,time};
 }
@@ -378,11 +377,12 @@ export const forwardSecurity=doc=>!plain(doc)||doc.schemaVersion!==1?doc:over({.
  * and why. Without an agent's sshkeys part the file is returned exactly as it was.
  */
 export async function loadSecurity(directory,file=process.env.SECURITY_FILE||path.join(directory,'security','ssh-keys.json'),{agents=[],site=loadedSite(),now=Date.now(),devicesDir=devicesDirectory(directory)}={}){
- let doc=null;
- try{doc=JSON.parse(await readFile(file,'utf8'));}catch(e){if(e.code!=='ENOENT')throw new Error('invalid');}
+ let doc=null,seen=null;
+ try{({doc,seen}=await readJsonSeen(file));}catch(e){if(e.code!=='ENOENT')throw new Error('invalid');}
  // A file the 1.x collector wrote is written forward in place, once, keeping its time; where the hub may not write
- // the collector's directory it is read forward each time, until the collector's next run.
- const forward=forwardSecurity(doc);if(forward!==doc){doc=forward;await writeJson(file,doc,{pretty:1,keepTimes:true}).catch(()=>{});}
+ // the collector's directory it is read forward each time, until the collector's next run. Never over a file the
+ // collector wrote since it was read (seen).
+ const forward=forwardSecurity(doc);if(forward!==doc){doc=forward;await writeJson(file,doc,{pretty:1,keepTimes:true,seen}).catch(()=>{});}
  if(doc&&(doc?.schemaVersion!==SECURITY_SCHEMA||!Array.isArray(doc.devices)||!Array.isArray(doc.keys)))throw new Error('invalid');
  if(doc===null&&!(Array.isArray(agents)&&agents.length))return null;
  const reporting=(Array.isArray(agents)?agents:[]).map(e=>({id:e?.id,name:e?.name,probe:agentKeysProbe(e?.record,{now})})).filter(x=>typeof x.id==='string'&&x.probe).sort((a,b)=>a.id.localeCompare(b.id));

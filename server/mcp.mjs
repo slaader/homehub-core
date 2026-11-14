@@ -11,6 +11,7 @@ import {TICKET_ID,TICKET_TYPES,TICKET_STATUSES,TICKET_PRIORITIES,RELEASE_STATUSE
 import {readFile} from 'node:fs/promises';
 import {REVIEW_ID,REVIEW_KINDS,LIMITS as REVIEW_LIMITS} from './review-store.mjs';
 import {SCOPES} from './scopes.mjs';
+import {renamedKey} from './state-forward.mjs';
 
 export const MCP_PROTOCOLS=Object.freeze(['2025-11-25','2025-06-18','2025-03-26']);
 const ID=/^[a-z][a-z0-9-]{0,63}$/;
@@ -126,6 +127,18 @@ export const toolCatalog=(extraTools=[])=>[...MCP_TOOLS.map(t=>({...t,module:'co
  .map(t=>({name:t.name,title:typeof t.title==='string'&&t.title?t.title:t.name,scope:t.scope,write:!SCOPES[t.scope]?.readOnly,description:t.description,module:t.module}));
 
 class ToolError extends Error{}
+/**
+ * A tool whose schema says additionalProperties:false takes only the arguments it lists; anything else is refused.
+ * An argument 1.x named otherwise (server/state-forward.mjs) is told its new name instead of being ignored.
+ */
+function unknownArguments(tool,args){
+ const schema=tool.inputSchema;
+ if(!schema||schema.additionalProperties!==false)return null;
+ const known=Object.keys(schema.properties||{}),extra=Object.keys(args).filter(k=>!Object.hasOwn(schema.properties||{},k));
+ if(!extra.length)return null;
+ const said=extra.slice(0,5).map(k=>{const name=JSON.stringify(text(k,40));const now=renamedKey(k);return now&&known.includes(now)?`${name} (renamed to "${now}" in 2.0)`:name;});
+ return `${tool.name} does not take the argument${extra.length>1?'s':''} ${said.join(', ')}${extra.length>5?', …':''}. It takes: ${known.join(', ')||'no arguments'}.`;
+}
 // Ticket subjects come from successful store results, never rejected argument text.
 const subjectOf=(tool,args,data)=>tool==='inventory_update'?(typeof args.entry?.id==='string'&&ID.test(args.entry.id)?args.entry.id:undefined):data?.id||data?.project;
 
@@ -256,6 +269,7 @@ export function createMcp({version='2',ctx,tools:extraTools=[],instructions=[]})
     return {content:[{type:'text',text:`This service account lacks the "${tool.scope}" scope needed for ${tool.name}.`}],isError:true};
    }
    try{
+    const unknown=unknownArguments(tool,args);if(unknown)throw new ToolError(unknown);
     const data=await run[tool.name](args,principal);
     if(write)await ctx.log({key:principal.id,account:principal.accountId,name:principal.username,tool:tool.name,status:'ok',subject:subjectOf(tool.name,args,data)}).catch(()=>{});
     if(data?.mcpContent)return {content:data.mcpContent,structuredContent:data.meta,isError:false};

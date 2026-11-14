@@ -41,8 +41,8 @@ test('llama-swap (recorded, v268 flavour): models with state and context, TTL fr
  assert.equal(r.models[0].contextTokens,262144);
  assert.equal(r.models[0].ttlRemainingSeconds,1200,'ttl 1800 s, last request ended 10 minutes ago');
  assert.ok(r.models.slice(1).every(m=>m.state==='unloaded'&&m.ttlRemainingSeconds===null));
- assert.deepEqual(r.stats.map(s=>s.label),['tokeny/s','požadavky','tokeny ven','paměť zařízení']);
- assert.equal(statOf(r,'tokeny/s'),'113.7');assert.equal(statOf(r,'požadavky'),'941');assert.equal(statOf(r,'tokeny ven'),'759k');assert.equal(statOf(r,'paměť zařízení'),'70.9 / 256 GB');
+ assert.deepEqual(r.stats.map(s=>s.label),['tokeny/s','požadavky','tokeny ven','paměť systému']);
+ assert.equal(statOf(r,'tokeny/s'),'113.7');assert.equal(statOf(r,'požadavky'),'941');assert.equal(statOf(r,'tokeny ven'),'759k');assert.equal(statOf(r,'paměť systému'),'70.9 / 256 GB');
 });
 test('llama-swap (older flavour): /api/metrics as a list gives the speed; no version',async()=>{
  const {get,log}=fakeRuntime(fixture('llama-swap-legacy'));

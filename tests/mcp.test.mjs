@@ -39,6 +39,14 @@ test('MCP tools follow scopes; inventory_update is hash-checked, secret-proof an
 
  const found=await call(h,reader.headers,'inventory_search',{query:'8081'});
  assert.equal(found.isError,false);assert.deepEqual(found.structuredContent.entries.map(e=>e.id),['studio-llama-swap']);
+ // An argument the schema does not list is refused, not ignored; the 1.x name says what it is now.
+ assert.equal((await call(h,reader.headers,'inventory_search',{query:'8081',device:'studio'})).structuredContent.count,1);
+ assert.equal((await call(h,reader.headers,'inventory_search',{query:'8081',device:'nas'})).structuredContent.count,0);
+ const old=await call(h,reader.headers,'inventory_search',{query:'8081',machine:'nas'});
+ assert.equal(old.isError,true);assert.match(old.content[0].text,/inventory_search does not take the argument "machine" \(renamed to "device" in 2\.0\)/);
+ const typo=await call(h,reader.headers,'inventory_search',{query:'8081',limt:3});
+ assert.equal(typo.isError,true);assert.match(typo.content[0].text,/"limt"\. It takes: query, kind, device, limit\./);
+ assert.match((await call(h,agent.headers,'device_list',{machines:true})).content[0].text,/"machines"\. It takes: runtime/,'a 1.x name with no 2.0 counterpart in that tool is only unknown');
  const got=await call(h,reader.headers,'inventory_get',{id:'studio'});
  assert.deepEqual(got.structuredContent.dependents,[{id:'studio-llama-swap',via:'runs-on'}]);
  const entry=(await call(h,agent.headers,'inventory_get',{id:'studio-llama-swap'})).structuredContent;

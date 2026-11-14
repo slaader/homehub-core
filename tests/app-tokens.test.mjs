@@ -114,13 +114,20 @@ test('state from 1.0.0: device-tokens.json and its audit file move to the app-to
 test('the migration never writes over newer state, finishes an interrupted move, and newer state is refused',async t=>{
  const scratch=async()=>{const dir=await mkdtemp(path.join(os.tmpdir(),'hub-tokens-'));t.after(()=>rm(dir,{recursive:true,force:true}));return dir;};
  // Interrupted after the token file moved: the audit file follows at the next start.
- const half=await scratch();await stateOf100(half);createAppTokens(half);
+ const warned=[],warn=m=>warned.push(m);
+ const half=await scratch();await stateOf100(half);createAppTokens(half,{warn});
  await writeFile(path.join(half,'device-tokens-audit.jsonl'),JSON.stringify(oldAudit[0])+'\n');await rm(path.join(half,'app-tokens-audit.jsonl'));
- assert.equal(createAppTokens(half).verify(OLD_TOKEN),OLD_ID);
+ assert.equal(createAppTokens(half,{warn}).verify(OLD_TOKEN),OLD_ID);
+ assert.deepEqual(warned,[],'a move, whole or finished later, warns of nothing');
  assert.deepEqual((await readAccessAudit(half,{kind:'app'})).map(e=>e.event),['app-token-issued']);
  // Both generations present (a 1.0.0 file put back beside 2.0 state): the new file wins and is not touched.
- const both=await scratch();const store=createAppTokens(both);const {token,app}=await store.issue('Current');const before=await readFile(path.join(both,'app-tokens.json'),'utf8');
- await stateOf100(both);const reopened=createAppTokens(both);
+ const both=await scratch();const store=createAppTokens(both,{warn});const {token,app}=await store.issue('Current');const before=await readFile(path.join(both,'app-tokens.json'),'utf8');
+ await stateOf100(both);const reopened=createAppTokens(both,{warn});
+ // Not merged, and not silent: the start-up log names both files, the token file and the audit file.
+ assert.equal(warned.length,2);
+ assert.match(warned[0],/both .*device-tokens\.json and .*app-tokens\.json exist/);assert.match(warned[0],/refused/);
+ assert.match(warned[1],/both .*device-tokens-audit\.jsonl and .*app-tokens-audit\.jsonl exist/);
+ assert.ok((await readdir(both)).includes('device-tokens.json'),'the 1.x file is left as it is');
  assert.equal(reopened.verify(token),app.id);assert.equal(reopened.verify(OLD_TOKEN),null);assert.equal(JSON.parse(await readFile(path.join(both,'app-tokens.json'),'utf8')).tokens.length,1);
  assert.equal(JSON.parse(before).tokens[0].id,app.id);assert.match(await readFile(path.join(both,'app-tokens-audit.jsonl'),'utf8'),/"Current"/,'the newer audit file is kept');
  // Nothing to migrate: no file is created by reading.

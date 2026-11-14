@@ -10,6 +10,13 @@ until the release gives it its number: a change to the public surface adds its l
 
 A major release: names on the public surface change, with no alias for the old ones.
 
+### Added
+
+- `node scripts/convert-site.mjs [<site.json>]` converts a 1.x site file to 2.0 in place (written whole: a
+  temporary file, then a rename) and keeps the 1.x file beside it as `site.v1.json`. It prints what it renamed, and
+  refuses, writing nothing, a file that is already 2.0, one that is not a valid 1.x file, and a directory that
+  already holds `site.v1.json`. Without a file it converts the one the hub reads.
+
 ### Changed
 
 - **Breaking: device tokens are now app tokens.** The long-lived `hh_…` token of a native app keeps working, and
@@ -27,7 +34,9 @@ A major release: names on the public surface change, with no alias for the old o
     id keeps working.
 - **Breaking: the overview's routes are laid out again**, so that one path means one thing:
   - `GET /api/home/devices` is the list and `POST /api/home/devices` the hash-checked upsert (scope `home:write`).
-    They replace `GET` and `POST /api/home/machines`, which now answer `404`.
+    They replace `GET` and `POST /api/home/machines`, which now answer `404`, to an API key too: a path that no
+    route has, by any method, is `404 NOT_FOUND` for a key as for a person (1.x refused a key's `POST` to such a path
+    with `403 SCOPE_REQUIRED`). A path with a route that keys may not use is still refused with `403`.
   - `POST /api/home/devices/add` is the overview's **Add device** form (a person or an app, never an API key). It was
     `POST /api/home/devices`; a client that still posts the form there gets `400` from the upsert.
   - `POST /api/home/devices/remove` `{id, base?}` is the one removal and answers `{ok: true, id, removed: true}`
@@ -40,7 +49,8 @@ A major release: names on the public surface change, with no alias for the old o
   device** is one from `site.json` and an **added device** one added on the overview or written by an agent.
   - `site.json`: the key `machines` is `devices`, and `runtimes[].machine` is `runtimes[].device`. A file that still
     has `machines` is refused at start with a message that names the new key. Host agents are placed under
-    `plugins.<id>.agents.<agent>.<device id>`, as before.
+    `plugins.<id>.agents.<agent>.<device id>`, as before. 1.x refuses the 2.0 file in turn, so the file is converted
+    with a command that keeps the 1.x file beside it (Added, and Upgrade notes).
   - HTTP fields and parameters: `machine` → `device` and `machines` → `devices` in every answer and body, among them
     `GET /api/home` (`devices`), `GET` and `POST /api/home/devices` (`{devices}`, `{device, base?}`),
     `POST /api/home/devices/site`, `POST /api/home/runtime`, `GET /api/home/history?device=`, `GET /api/systems`,
@@ -53,16 +63,24 @@ A major release: names on the public surface change, with no alias for the old o
     `DEVICE_LIMIT` now means "the overview holds its 20 added devices"; the app-token limit is `APP_TOKEN_LIMIT`.
   - MCP: the tools `machine_list`, `machine_upsert` and `machine_remove` are `device_list`, `device_upsert` and
     `device_remove`; the argument `machine` is `device` there and in `runtime_publish`, `inventory_search` and
-    `runtime_endpoint_upsert`.
+    `runtime_endpoint_upsert`. A tool whose schema says `additionalProperties: false` (every core tool) now refuses
+    an argument it does not list, where 1.x ignored it: an `inventory_search` with `machine` was a search on every
+    device, and is now an error that says `machine` was renamed to `device`.
   - Inventory: the entry kind `machine` is `device` and the entry field `machine` is `device`. An entry's hash covers
-    its fields, so every placed entry has a new hash: a client that kept one reads the entry again. The document is
+    its fields, so every entry of kind `device` and every entry placed on one has a new hash (only an entry that
+    named no machine, such as a `network` or an `external` one, keeps its hash): a client that kept one reads the
+    entry again. The document is
     `schema: 2` (`GET /api/inventory`, the export, `inventory_describe`); a document with `schema: 1` is refused by
     the checker (`schema must be 2`). The import on the inventory page still takes a file exported by 1.x.
-  - `GET /api/systems` and `GET /api/security` answer `schemaVersion: 2` (their `machines` are `devices`).
+  - `GET /api/systems` and `GET /api/security` answer `schemaVersion: 2` (their `machines` are `devices`), also when
+    their integration is turned off. The other answers whose fields were renamed (`GET /api/home`,
+    `GET /api/admin/devices`, `GET /api/models`, `GET /api/collectors`, `GET /api/software-watch`) keep the
+    `schemaVersion` they had in 1.x: tell 1.x from 2.0 by the hub's version (`GET /api/ui/manifest`, `hub_version`).
   - Push agent: an agent key is bound to `device` (`GET /api/admin/agents`, the key file's `agent.device`); a key is
     revoked by the hub as `device-removed` or `device-changed`.
   - Commands: `--device` replaces `--machine` (`scripts/manage-access.mjs create-agent-key`,
-    `scripts/import-runtime-history.mjs`, `scripts/install-host-agent.mjs`), and the environment variable
+    `scripts/import-runtime-history.mjs`, `scripts/install-host-agent.mjs`; given `--machine`, each says that it was
+    renamed and stops), and the environment variable
     `DEVICES_DIR` replaces `MACHINES_DIR`.
 - **Breaking: the router's census is `clients`**, so that a device is only ever the household's. `GET /api/router`
   answers `schemaVersion: 2` with the network clients the router saw as `clients` (was `devices`) and their counts as
@@ -77,6 +95,8 @@ A major release: names on the public surface change, with no alias for the old o
 
 ### Plugin contract
 
+- **Breaking:** a plugin's MCP tool whose `inputSchema` says `additionalProperties: false` gets only the arguments
+  its `properties` list: a call with any other is refused before `run`, as for the core tools (it reached `run`).
 - A route may declare `people: "write"`: a person or a native app then needs only write permission, not the
   route's `scope`; an API key still needs the scope (docs/plugins.md → Route fields).
 - **Breaking:** `principal.authKind` is `app` for a native app's token (was `device`), and a route handler's context
@@ -97,21 +117,25 @@ A major release: names on the public surface change, with no alias for the old o
 ### Data
 
 - **The data epoch is 2.** Going back to 1.x after 2.0 has started needs the backup made before the update
-  (`node scripts/update.mjs apply` makes one), not only the older code.
-- **Nothing has to be run.** Every file 1.x wrote is read in its old form the first time 2.0 opens it and written
-  in the new one in its place, once and whole (a temporary file, then a rename). Ids, hashes and dates are unchanged.
-  `docs/storage.md` → State written by 1.x has the table.
+  (`node scripts/update.mjs apply` makes one), not only the older code, and the 1.x site file put back: the archive
+  holds the site file as it was when the hub stopped, converted (Upgrade notes).
+- **Nothing has to be run on the state.** Every file 1.x wrote is read in its old form the first time 2.0 opens it
+  and written in the new one in its place, once and whole (a temporary file, then a rename). Ids and dates are
+  unchanged, and so are the hashes of tokens and keys; the inventory's entry hashes change as above.
+  `docs/storage.md` → State written by 1.x has the table. Only the site file is converted, by a command.
 - `state/device-tokens.json` (`{schemaVersion: 1, devices}`) becomes `state/app-tokens.json`
   (`{schemaVersion: 2, tokens}`) and `state/device-tokens-audit.jsonl` becomes `state/app-tokens-audit.jsonl`. Both
   are moved once, at the first start; ids and hashes are unchanged, so every issued token keeps working. A 1.x hub
   started on the migrated state finds no token file: every app token is refused until the backup is restored.
 - Push agent: `state/agents.json` is `schemaVersion: 2` (`agents[].device`, `deviceCreatedAt`, and `revokedBy`
   `device-removed` or `device-changed`), and each `state/agent/<id>.json` is `schemaVersion: 2` (`device`). Every
-  agent key keeps working. A 1.x hub refuses both files.
+  agent key keeps working. A 1.x hub does not start at all while `state/agents.json` exists (any key issued by 1.x or
+  2.0 leaves one); without it, a 1.x hub starts and refuses the reports of every device whose `state/agent/<id>.json`
+  2.0 wrote.
 - Collector output: `data/systems/snapshot.json` (`devices`), `data/security/ssh-keys.json` (`devices`, and `device`
   in every copy, access target, route, other key, unknown authorized key and stored finding template) and
   `data/security/probes.json` (`extraDevices`) are `schemaVersion: 2`. The hub writes a 1.x file forward when it
-  first reads it and keeps the file's time; where it may not write the collectors' directory it reads the file
+  first reads it and keeps the file's time, never over a file the collector wrote since it was read; where it may not write the collectors' directory it reads the file
   forward each time, until the 2.0 collector runs. The trend files (`data/systems/history.jsonl`,
   `state/agent/history.jsonl`) hold `devices` in each line.
 - LLM runtimes: `state/runtimes-config.json` is `schema: 2` (`endpoints[].device`), and the request history
@@ -125,11 +149,39 @@ A major release: names on the public surface change, with no alias for the old o
 - The descriptor directory `data/machines/` is renamed to `data/devices/` at the first start, while no
   `data/devices/` exists. A directory named by `DEVICES_DIR` is used as it is.
 - The audit files are not rewritten. Lines 1.x wrote about agents and agent keys are shown with the new words.
-- A 1.x hub started on this state refuses the agent files and the inventory, shows no SSH key inventory, and reads
-  the snapshot, the runtime endpoints and the request history without their devices.
+- A 1.x hub on this state does not start while `state/agents.json` exists (above). Without that file it starts,
+  refuses the agent reports and the inventory, shows no SSH key inventory, and reads the snapshot, the runtime
+  endpoints and the request history without their devices.
 
 ### Upgrade notes
 
+- **Convert the site file, then apply.** 2.0 refuses a 1.x `site.json` and 1.x refuses a 2.0 one, and the update's
+  start-up check runs 2.0 on the instance's file, so the file is converted first. The command is in 2.0, not in the
+  installed 1.x checkout: run it from a scratch worktree of the tag, right before the update (a 1.x collector or a
+  1.x hub that restarts in between refuses the converted file).
+
+  ```sh
+  git -C <core> fetch --tags
+  git -C <core> worktree add --detach /tmp/hub-2.0.0 v2.0.0
+  node /tmp/hub-2.0.0/scripts/convert-site.mjs <config>/site.json    # keeps the 1.x file as <config>/site.v1.json
+  git -C <core> worktree remove /tmp/hub-2.0.0
+  node <core>/scripts/update.mjs apply v2.0.0
+  ```
+
+  `<config>` is the instance's `config/` (or `HOME_HUB_CONFIG_DIR`, or `local/` of the checkout; a
+  `HOME_HUB_SITE_CONFIG` names the file itself). A hub without a site file has nothing to convert.
+- **Going back to 1.x** (an `apply` that rolls back by itself, or `node scripts/update.mjs rollback --yes` later):
+  the rollback restores the archive and starts 1.x, which refuses the converted site file, so the rollback stops
+  with exit 3 and leaves the service stopped. Put the 1.x file back and run the rollback again; it goes on from
+  where it stopped and does not restore the archive a second time:
+
+  ```sh
+  cp <config>/site.v1.json <config>/site.json
+  node <core>/scripts/update.mjs rollback        # with the same --service, --health … as the update, if any
+  ```
+
+  Restoring `config/` from the archive does not help: the archive was made after the conversion. Changes made to
+  the site file under 2.0 are not in `site.v1.json`; make them again in the 1.x form.
 - **Update the collectors with the hub.** `scripts/collect-systems.mjs` and `scripts/collect-security.mjs` run from a
   checkout of their own schedule; one left on 1.x does not read a 2.0 `site.json`.
   The UniFi collector (`scripts/collect-router-unifi.py`) may be updated later: the hub reads its 1.x file, and a

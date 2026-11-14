@@ -10,6 +10,8 @@ import {hub} from './hub-helper.mjs';
 import {defineModule,createRegistry} from '../server/plugins.mjs';
 import {createIntegrationStore,normalizeStatus,worstState,settingsInput,runStatus} from '../server/integrations.mjs';
 import {createThermoPoller} from '../server/thermo-client.mjs';
+import {SYSTEMS_SCHEMA} from '../server/systems-data.mjs';
+import {SECURITY_SCHEMA} from '../server/security-data.mjs';
 
 const tmp=async t=>{const dir=await mkdtemp(path.join(os.tmpdir(),'hub-int-'));t.after(()=>rm(dir,{recursive:true,force:true}));return dir;};
 const rpc=(h,headers,method,params)=>fetch(h.origin+'/mcp',{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json, text/event-stream',...headers},body:JSON.stringify({jsonrpc:'2.0',id:1,method,...(params?{params}:{})})});
@@ -169,7 +171,8 @@ test('a generic hub: honest not-configured cards, and pages of a turned-off inte
  assert.equal(router.state,'disabled');assert.equal(router.disabled.by,'admin');assert.equal(router.provenance.kinds[0].state,'disabled');
  const systems=await fetch(h.origin+'/api/systems',{headers:h.admin});assert.equal(systems.status,200);
  const sdoc=await systems.json();assert.equal(sdoc.disabled.id,'security.systems');assert.deepEqual(sdoc.devices,[]);assert.equal(sdoc.provenance.kinds[0].state,'disabled');
- const keys=await (await fetch(h.origin+'/api/security',{headers:h.admin})).json();assert.equal(keys.disabled.id,'security.keys');
+ assert.equal(sdoc.schemaVersion,SYSTEMS_SCHEMA,'turned off, the answer has the schema of the normal one');
+ const keys=await (await fetch(h.origin+'/api/security',{headers:h.admin})).json();assert.equal(keys.disabled.id,'security.keys');assert.equal(keys.schemaVersion,SECURITY_SCHEMA);assert.equal(SECURITY_SCHEMA,2);
  const collectors=await (await fetch(h.origin+'/api/collectors',{headers:h.admin})).json();
  assert.equal(collectors.collectors.systems.state,'disabled');assert.equal(collectors.collectors.security.state,'disabled');
  const history=await (await fetch(h.origin+'/api/home/history?device=mini&range=30m',{headers:h.admin})).json();

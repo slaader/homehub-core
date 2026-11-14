@@ -7,8 +7,8 @@
 // The watch list (server/software-watch.mjs) is the one thing here that is written: by an administrator
 // in the browser or by a key holding software:write, over HTTP or the MCP tools below.
 import path from 'node:path';
-import {loadSecurity,securitySetup} from '../security-data.mjs';
-import {loadSystems,systemsSetup} from '../systems-data.mjs';
+import {loadSecurity,securitySetup,SECURITY_SCHEMA} from '../security-data.mjs';
+import {loadSystems,systemsSetup,SYSTEMS_SCHEMA} from '../systems-data.mjs';
 import {createWatchStore,describeWatch,isWatchError,watchPath,DETECT_KINDS,UPSTREAM_TYPES,CMD_ARGS,VERSION_SCHEMES} from '../software-watch.mjs';
 import {toolError} from '../mcp.mjs';
 import {readRouterFor} from '../router-data.mjs';
@@ -79,7 +79,7 @@ export default {
  routes:[
   {method:'GET',path:'/api/security',scope:'security:read',async handler(c){
     if(adminOnly(c,'Only an administrator can see the security inventory.'))return;
-    if(!c.hub.integrationEnabled(KEYS_INTEGRATION))return c.json(200,{schemaVersion:1,disabled:c.hub.integrationDisabled(KEYS_INTEGRATION),devices:[],keys:[],
+    if(!c.hub.integrationEnabled(KEYS_INTEGRATION))return c.json(200,{schemaVersion:SECURITY_SCHEMA,disabled:c.hub.integrationDisabled(KEYS_INTEGRATION),devices:[],keys:[],
      collector:offCollector(securitySetup(c.hub.site)),provenance:offSource('security',COLLECTORS.security.script)});
     const doc=await loadSecurity(c.hub.directory,undefined,{agents:await agentRecords(c.hub,['sshkeys']),site:c.hub.site,now:readerNow(c.hub)});
     // provenance (server/provenance.mjs): the collector, when it last ran, from where and who started it.
@@ -90,7 +90,7 @@ export default {
      joined?{kind:'telemetry',id:'agents',source:'push agent',count:fromAgents.length,unit:'devices',lastAt:fromAgents.map(m=>m.collectedAt).filter(Boolean).sort().at(-1)||null}:null])});}},
   {method:'GET',path:'/api/systems',scope:'security:read',async handler(c){
     if(adminOnly(c,'Only an administrator can see device versions and protection.'))return;
-    if(!c.hub.integrationEnabled(SYSTEMS_INTEGRATION))return c.json(200,{schemaVersion:1,disabled:c.hub.integrationDisabled(SYSTEMS_INTEGRATION),devices:[],
+    if(!c.hub.integrationEnabled(SYSTEMS_INTEGRATION))return c.json(200,{schemaVersion:SYSTEMS_SCHEMA,disabled:c.hub.integrationDisabled(SYSTEMS_INTEGRATION),devices:[],
      collector:offCollector(systemsSetup(c.hub.site)),provenance:offSource('systems',COLLECTORS.systems.script)});
     // The release check turned off: versions without "newest", and the answer says why.
     const upstream=c.hub.integrationEnabled(UPSTREAM_INTEGRATION);

@@ -102,10 +102,43 @@ loop; `rollback` tries again once the cause is fixed.
 
 A rollback switches the code back, not your configuration. An older release refuses to start with a `site.json` that
 has a field it does not know, so before a `rollback` take out what you added for the newer release (the changelog's
-**Upgrade notes** of each version say what an older one refuses), or restore `config/` from the update's archive.
-Otherwise the old version does not come up, and the rollback stops as above, with exit 3.
+**Upgrade notes** of each version say what an older one refuses). Restoring `config/` from the update's archive
+helps only when the site file was changed after the update: the archive holds it as it was when the hub stopped.
+Otherwise the old version does not come up, and the rollback stops as above, with exit 3; fix the file and run
+`rollback` again, which goes on from where it stopped.
 
 Exit codes: 0 done; 1 refused, or failed and put back; 2 usage; 3 the rollback failed.
+
+### 1.x to 2.0 and back
+
+2.0 renamed keys of `site.json` (`machines` → `devices`, `runtimes[].machine` → `runtimes[].device`). 2.0 refuses the
+1.x file and 1.x refuses the 2.0 one, and step 5 runs 2.0's start-up check on the instance's file, so the file is
+converted before `apply`, by a command of 2.0 run from a scratch worktree of the tag:
+
+```sh
+git -C <core> fetch --tags
+git -C <core> worktree add --detach /tmp/hub-2.0.0 v2.0.0
+node /tmp/hub-2.0.0/scripts/convert-site.mjs <config>/site.json    # writes 2.0 in place, keeps <config>/site.v1.json
+git -C <core> worktree remove /tmp/hub-2.0.0
+node <core>/scripts/update.mjs apply v2.0.0
+```
+
+Convert right before the update: the running 1.x hub keeps the file it read at start, but a 1.x collector, or the
+hub restarted, refuses the converted one. `convert-site.mjs` refuses, writing nothing, a file that is already 2.0,
+one that is not a valid 1.x file, and a directory that already holds `site.v1.json`; without a file it converts the
+one the hub reads (`HOME_HUB_SITE_CONFIG`, else `<config>/site.json`).
+
+Going back (an `apply` that rolls back by itself, or `rollback --yes` later) starts 1.x on the 2.0 file: the archive
+was made after the conversion, so restoring it does not bring the 1.x file back (and without an instance directory
+it holds no `config/` at all). 1.x refuses the file, and the rollback stops with exit 3, the service stopped. Put the 1.x file back and run the rollback again; it goes on from where it stopped (the archive is not
+restored twice):
+
+```sh
+cp <config>/site.v1.json <config>/site.json
+node <core>/scripts/update.mjs rollback        # with the same flags as the update, if it had any
+```
+
+Site changes made under 2.0 are not in `site.v1.json`.
 
 ## The data epoch: when going back needs the archive
 

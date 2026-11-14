@@ -54,6 +54,7 @@ import {pluginsDirectories,readPluginManifest,pluginSource} from '../server/plug
 import {loadSite,siteConfigPath} from '../server/site-config.mjs';
 import {readPackage} from '../server/version.mjs';
 import {runCoreInstall} from './host-agent/core.mjs';
+import {renamedFlag} from '../server/state-forward.mjs';
 
 export const coreRoot=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const TEMPLATES=path.join(coreRoot,'scripts','host-agent');
@@ -327,6 +328,7 @@ if(process.argv[1]===fileURLToPath(import.meta.url)&&process.argv.includes('--co
 }
 else if(process.argv[1]===fileURLToPath(import.meta.url)){
  const args=process.argv.slice(2),flag=name=>args.includes(name),value=name=>{const i=args.indexOf(name);return i>=0?args[i+1]:null;};
+ const renamed=renamedFlag(args);if(renamed){console.error(`install-host-agent: ${renamed}`);process.exit(2);}
  const known=['--plugin','--agent','--device','--target','--label','--state-home','--backups','--wait','--expect-like'],flags=['--dry-run','--no-service','--allow-dirty','--help'];
  const unknown=args.filter((a,i)=>a.startsWith('--')&&!known.includes(a)&&!flags.includes(a)||!a.startsWith('--')&&!known.includes(args[i-1]));
  if(flag('--help')||unknown.length){console.log(`${unknown.length?`Unknown: ${unknown.join(' ')}\n\n`:''}${readFileSync(fileURLToPath(import.meta.url),'utf8').split('\n').slice(1,23).map(l=>l.replace(/^\/\/ ?/,'')).join('\n')}`);process.exit(unknown.length?2:0);}

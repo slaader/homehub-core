@@ -40,35 +40,35 @@ export function countsLine(c={}){
 const hostLine=m=>[m.hostname,m.ip&&m.ip!==m.hostname?m.ip:null].filter(Boolean).join(' · ');
 
 function deviceCard(m){
- return el('a',{class:'mc-card','data-state':m.state,href:deviceHref(m.id)},
-  el('div',{class:'mc-card-head'},el('div',{class:'mc-card-title'},el('h3',{},m.name),el('p',{class:'mc-host'},hostLine(m)||m.id)),devicePill(m)),
-  el('ul',{class:'mc-strip','aria-label':t('Části')},m.facets.filter(f=>f.state!=='not-applicable').map(f=>
-   el('li',{class:`mc-dot ${facetTone(f.state)}`.trim(),'data-state':f.state,title:`${t(f.title)}: ${facetLabel(f.state)}`},icon(f.icon),el('span',{class:'ui-sr'},`${t(f.title)}: ${facetLabel(f.state)}`)))),
-  el('p',{class:'mc-counts'},countsLine(m.counts)));
+ return el('a',{class:'dv-card','data-state':m.state,href:deviceHref(m.id)},
+  el('div',{class:'dv-card-head'},el('div',{class:'dv-card-title'},el('h3',{},m.name),el('p',{class:'dv-host'},hostLine(m)||m.id)),devicePill(m)),
+  el('ul',{class:'dv-strip','aria-label':t('Části')},m.facets.filter(f=>f.state!=='not-applicable').map(f=>
+   el('li',{class:`dv-dot ${facetTone(f.state)}`.trim(),'data-state':f.state,title:`${t(f.title)}: ${facetLabel(f.state)}`},icon(f.icon),el('span',{class:'ui-sr'},`${t(f.title)}: ${facetLabel(f.state)}`)))),
+  el('p',{class:'dv-counts'},countsLine(m.counts)));
 }
 
 // onAdd: opens the add-device dialog (null when this person may not add one).
 export function devicesSection(doc,{onAdd}={}){
  const list=doc?.devices||[];
- return el('section',{class:'ig-group mc-section','aria-labelledby':'mc-title'},
-  el('div',{class:'mc-section-head'},el('h2',{id:'mc-title'},icon('monitor'),t('Seznam zařízení')),
+ return el('section',{class:'ig-group dv-section','aria-labelledby':'dv-title'},
+  el('div',{class:'dv-section-head'},el('h2',{id:'dv-title'},icon('monitor'),t('Seznam zařízení')),
    onAdd?el('button',{type:'button',class:'ui-button small primary',onclick:onAdd},t('⊕ Přidat zařízení')):null),
   el('p',{class:'ig-lead'},t('Každé zařízení jednou: co je u něj nastavené (telemetrie, zálohy, verze, SSH klíče, inventář, LLM runtimy, Git LFS) a co ne. Nastavuje se na původních stránkách; tady je odkaz.')),
-  list.length?el('div',{class:'mc-grid'},list.map(deviceCard))
+  list.length?el('div',{class:'dv-grid'},list.map(deviceCard))
    :emptyState({compact:true,icon:'monitor',title:t('Žádné zařízení'),body:t('Zařízení jsou v local/site.json, nebo je přidáš tady či v Přehledu (⊕ Přidat zařízení).')}));
 }
 
 function facetRow(f){
  const setup=f.state==='not-configured';
- return el('li',{class:'mc-facet','data-state':f.state},
+ return el('li',{class:'dv-facet','data-state':f.state},
   el('span',{class:'ig-mark','aria-hidden':'true'},icon(f.icon)),
-  el('div',{class:'mc-facet-body'},
-   el('div',{class:'mc-facet-head'},el('h3',{},t(f.title)),statusPill(facetLabel(f.state),facetTone(f.state))),
-   f.summary?el('p',{class:'mc-facet-summary'},say(f.summary,f.summaryT)):null,
-   f.details?.length?el('dl',{class:'mc-facet-details'},f.details.flatMap(d=>[el('dt',{},t(d.label)),el('dd',{},say(d.value,d.valueT))])):null,
-   f.how?el('p',{class:'mc-how'},el('span',{class:'mc-by','data-by':f.how.by,title:t((BY[f.how.by]||BY.integration)[1])},byLabel(f.how.by)),' ',f.how.text?say(f.how.text,f.how.textT):null):null,
+  el('div',{class:'dv-facet-body'},
+   el('div',{class:'dv-facet-head'},el('h3',{},t(f.title)),statusPill(facetLabel(f.state),facetTone(f.state))),
+   f.summary?el('p',{class:'dv-facet-summary'},say(f.summary,f.summaryT)):null,
+   f.details?.length?el('dl',{class:'dv-facet-details'},f.details.flatMap(d=>[el('dt',{},t(d.label)),el('dd',{},say(d.value,d.valueT))])):null,
+   f.how?el('p',{class:'dv-how'},el('span',{class:'dv-by','data-by':f.how.by,title:t((BY[f.how.by]||BY.integration)[1])},byLabel(f.how.by)),' ',f.how.text?say(f.how.text,f.how.textT):null):null,
    // Where something is missing: what to hand to one's own coding agent, with this device filled in.
-   f.prompt?el('details',{class:'mc-prompt',...(setup?{open:''}:{})},el('summary',{},icon('bolt'),t('Zadání pro agenta')),
+   f.prompt?el('details',{class:'dv-prompt',...(setup?{open:''}:{})},el('summary',{},icon('bolt'),t('Zadání pro agenta')),
     copyBlock(t('Zadání pro agenta'),say(f.prompt,f.promptT),{note:t('Agent se k hubu připojí klíčem servisního účtu (Uživatelé a API → Servisní účty) tam, kde zapisuje přes MCP. Co se dělá na zařízení, dělá tvůj agent tvým přístupem; Home Hub na cizí zařízení nic neinstaluje.')})):null),
   f.href&&f.state!=='not-applicable'?el('a',{class:`ui-button small${setup?' primary':''}`,href:f.href},setup?t('Nastavit'):t('Otevřít')):el('span',{}));
 }
@@ -81,13 +81,13 @@ export function devicePage(doc,id){
   emptyState({icon:'monitor',title:t('Neznámé zařízení'),body:t('Zařízení s tímhle id v Přehledu není. Mohlo být odebráno.'),actions:[{label:t('← Integrace'),href:'#integrations',primary:true}]}));
  const order={error:0,warn:1,stale:1,'not-configured':2,off:3,ok:4,'not-applicable':5};
  const facets=[...m.facets].sort((a,b)=>(order[a.state]??9)-(order[b.state]??9));
- return el('div',{class:'ig-page mc-page'},
+ return el('div',{class:'ig-page dv-page'},
   pageHeader({back:{href:'#integrations',label:t('Integrace')},eyebrow:t('Správa · Zařízení'),title:m.name,lead:hostLine(m)||null,
    actions:[{label:t('Otevřít v Přehledu'),href:`#host-${m.id}`}]}),
-  el('div',{class:'mc-badges'},onlinePill(m),devicePill(m),
-   el('span',{class:'ui-pill'},m.source==='site'?t('z local/site.json'):t('přidaný v hubu')),
-   el('span',{class:'mc-counts'},countsLine(m.counts))),
-  el('ul',{class:'mc-facets'},facets.map(facetRow)),
-  el('section',{class:'mc-legend','aria-label':t('Kdo co dělá')},el('h2',{},t('Kdo co dělá')),
-   el('dl',{},Object.entries(BY).flatMap(([by,[label,text]])=>[el('dt',{},el('span',{class:'mc-by','data-by':by},t(label))),el('dd',{},t(text))]))));
+  el('div',{class:'dv-badges'},onlinePill(m),devicePill(m),
+   el('span',{class:'ui-pill'},m.source==='site'?t('z local/site.json'):t('přidané v hubu')),
+   el('span',{class:'dv-counts'},countsLine(m.counts))),
+  el('ul',{class:'dv-facets'},facets.map(facetRow)),
+  el('section',{class:'dv-legend','aria-label':t('Kdo co dělá')},el('h2',{},t('Kdo co dělá')),
+   el('dl',{},Object.entries(BY).flatMap(([by,[label,text]])=>[el('dt',{},el('span',{class:'dv-by','data-by':by},t(label))),el('dd',{},t(text))]))));
 }

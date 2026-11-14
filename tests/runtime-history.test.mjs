@@ -265,7 +265,8 @@ test('import: v1 history JSONL from a local file, de-duplicated, attributed copi
  assert.deepEqual(r.map(x=>[x.metricId,x.client,x.path]),[[7,'OB-like','chat'],[8,'','chat']]);
  assert.equal(fromImportLine({device:'mini',at:NOW,metricId:1},{device:'studio'}),null,'another device\'s line is left out');
  assert.equal(fromImportLine({device:'studio',runtime:'llama-swap',at:NOW,metricId:1,path:'/v1/chat/completions'},{device:'studio'}).metricId,1,'the store\'s own format');
- assert.throws(()=>parseArgs(['x.jsonl']),/--device/);assert.throws(()=>parseArgs(['--device','studio']),/file/);
+ assert.throws(()=>parseArgs(['x.jsonl']),/--device/);
+ assert.throws(()=>parseArgs(['--machine','studio','x.jsonl']),/^Error: --machine was renamed to --device in 2\.0$/);assert.throws(()=>parseArgs(['--device','studio']),/file/);
  assert.throws(()=>parseArgs(['--device','studio','https://example.lan/h.jsonl']),/not a URL/);
  assert.deepEqual(parseArgs(['--device','studio','--dry-run','a.jsonl']),{device:'studio',dryRun:true,files:['a.jsonl']});
  assert.ok(!(await readFile(path.join(root,'scripts','import-runtime-history.mjs'),'utf8')).includes('fetch('),'the importer fetches nothing');

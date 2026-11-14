@@ -20,8 +20,9 @@ export {provenance,authoredProvenance,collectorSource} from './provenance.mjs';
 export {toolError} from './tool-error.mjs';
 // A Range header against a file size, for routes that stream media.
 export {byteRange} from './http-range.mjs';
-// The router census: readRouter → {clients, health: {hardware, clientCounts}, …}; mergeRouter folds the clients
-// into a device inventory (docs/plugins.md → The router adapter).
+// The router census: readRouter → {clients, health: {hardware, clientCounts}, …}; mergeRouter(inventory, router)
+// folds the clients into the plugin's own network-device list, inventory.devices keyed by MAC address, not into the
+// hub's devices (docs/plugins.md → The router adapter).
 export {readRouter,mergeRouter} from './router-data.mjs';
 // The inventory file (data/knowledge.json): an editor with the hub's own validation and optimistic hashes.
 export {createKnowledgeEditor,entryHash} from '../scripts/knowledge-edit.mjs';

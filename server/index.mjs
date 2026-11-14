@@ -23,7 +23,7 @@ import {readVersion} from './version.mjs';
 import {repoRoot,readEdition} from './edition.mjs';
 import {site as loadedSite,siteConfigPath} from './site-config.mjs';
 import {resolvePaths,privateFile,pluginDataDirectory} from './paths.mjs';
-import {defineModule,createRegistry,loadPlugins} from './plugins.mjs';
+import {defineModule,createRegistry,loadPlugins,ROUTE_METHODS} from './plugins.mjs';
 import {createIntegrationStore,createSecretStore} from './integrations.mjs';
 import sessionModule from './core/session.mjs';
 import shellModule from './core/shell.mjs';
@@ -185,6 +185,9 @@ export function createHandler(options) {
       // API keys only reach what their scopes allow (legacy read/write keys map to the same scopes as before).
       if(principal?.authKind==='api-key'&&pathname.startsWith('/api/')){const need=scopeFor(req.method,pathname,registry.match);
         if(!need&&sessionOnly(pathname))return error(403,'SESSION_REQUIRED','Tohle jde jen po přihlášení heslem.');
+        // A path that no route has, by any method, is not found for a key as for a person: there is nothing to refuse,
+        // and a key learns no more than a GET already tells it. A path with a route keys may not use is refused as before.
+        if(!need&&!ROUTE_METHODS.some(m=>registry.match(m,pathname)))return error(404,'NOT_FOUND','Not found.');
         if(!need||!principal.scopes.includes(need))return error(403,'SCOPE_REQUIRED',need?`This API key lacks the "${need}" scope.`:'API keys cannot use this endpoint.');}
       // Raw uploads (PUT): one file or chunk per request, streamed by the route itself.
       if(req.method==='PUT'&&route?.raw){

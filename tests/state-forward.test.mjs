@@ -16,7 +16,7 @@ import {createEndpointStore,RUNTIMES_CONFIG_SCHEMA} from '../server/runtimes-dat
 import {createRequestHistory,fromImportLine} from '../server/runtime-history.mjs';
 import {readSnapshot,SYSTEMS_SCHEMA} from '../server/systems-data.mjs';
 import {loadSecurity,forwardSecurity,SECURITY_SCHEMA,SECURITY_PROBES_SCHEMA} from '../server/security-data.mjs';
-import {devicesDirectory,forwardJsonl,forwardTrendLine} from '../server/state-forward.mjs';
+import {devicesDirectory,forwardJsonl,forwardTrendLine,readJsonSeen,writeJson} from '../server/state-forward.mjs';
 import {readRouter,forwardObservation,ROUTER_FILE} from '../server/router-data.mjs';
 import {collectSystems} from '../scripts/collect-systems.mjs';
 import {createKnowledgeEditor,entryHash} from '../scripts/knowledge-edit.mjs';
@@ -380,4 +380,34 @@ test('a hub started on the state of 1.0.0 serves it, forwards it once, and a res
  check(await answers(second));
  assert.deepEqual(await Promise.all(stable.map(f=>mark(path.join(dir,f)))),before);
  assert.equal((await json(path.join(dir,'agent','studio.json'))).device,'studio');
+});
+
+test('a 1.x collector file is written forward only while it is still the file that was read',async t=>{
+ const dir=await mkdtemp(path.join(os.tmpdir(),'hub-forward-seen-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const file=path.join(dir,'snapshot.json'),v1=JSON.stringify({schemaVersion:1,machines:{}});
+ // Unchanged since it was read: written, and the time is kept.
+ await writeFile(file,v1);const old=new Date('2026-10-01T08:00:00Z');await utimes(file,old,old);
+ const first=await readJsonSeen(file);
+ assert.deepEqual(first.doc,{schemaVersion:1,machines:{}});
+ assert.equal(await writeJson(file,{schemaVersion:2,devices:{}},{keepTimes:true,seen:first.seen}),true);
+ assert.deepEqual(JSON.parse(await readFile(file,'utf8')),{schemaVersion:2,devices:{}});assert.equal((await stat(file)).mtimeMs,old.getTime());
+ // The collector replaced it meanwhile (a new file renamed into place): the hub's older copy is not written over it.
+ await writeFile(file,v1);await utimes(file,old,old);
+ const read=await readJsonSeen(file);
+ const fresh=JSON.stringify({schemaVersion:2,devices:{alpha:{}}});await writeFile(`${file}.collector`,fresh);
+ const {rename}=await import('node:fs/promises');await rename(`${file}.collector`,file);
+ assert.equal(await writeJson(file,{schemaVersion:2,devices:{}},{keepTimes:true,seen:read.seen}),false);
+ assert.equal(await readFile(file,'utf8'),fresh);
+ // Changed in place (same inode, another size or time): not written either; no temporary file is left.
+ const again=await readJsonSeen(file);await writeFile(file,v1);
+ assert.equal(await writeJson(file,{schemaVersion:2,devices:{}},{seen:again.seen}),false);
+ assert.equal(await readFile(file,'utf8'),v1);
+ // Removed meanwhile: not written back.
+ const gone=await readJsonSeen(file);await rm(file);
+ assert.equal(await writeJson(file,{schemaVersion:2,devices:{}},{seen:gone.seen}),false);
+ assert.deepEqual(await readdir(dir),[]);
+ // The readers that write a collector's file forward pass what they read, so a 1.x snapshot is still moved once.
+ await writeFile(file,v1);
+ assert.equal((await readSnapshot(file)).schemaVersion,SYSTEMS_SCHEMA);
+ assert.equal(JSON.parse(await readFile(file,'utf8')).schemaVersion,SYSTEMS_SCHEMA);
 });

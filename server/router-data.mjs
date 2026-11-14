@@ -113,8 +113,8 @@ export function routerProvenance(router){
  const builtin=ROUTER_ADAPTERS[a.id],facts={state:router.state,lastAt:router.observedAt,count:router.clients?.length||0,unit:'clients',detail:a.title};
  return provenance([builtin?{kind:'collector',id:a.id,source:builtin.collector,intervalSeconds:COLLECTORS.router.intervalSeconds,...facts}:{kind:'plugin',id:a.id,source:a.id,...facts}]);
 }
-// A device inventory ({devices}) with the router's census folded in: a client it does not know becomes an
-// unidentified device that needs review. router: what readRouter() returned (its `clients`).
+// A plugin's own network-device list ({devices}, each keyed by its MAC address without colons; not the hub's
+// devices) with the router's census folded in: a client it does not know becomes an unidentified entry to review. router: what readRouter() returned (its `clients`).
 export function mergeRouter(inventory,router){
  const devices=inventory.devices.map(d=>({...d})),lookup=new Map(devices.map(d=>[d.id,d])),viaAlias=new Map();
  for(const d of devices)for(const m of d.routerMacs||[]){const id=m.replaceAll(':','');if(!lookup.has(id))viaAlias.set(id,d);}

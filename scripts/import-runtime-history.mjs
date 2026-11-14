@@ -16,9 +16,11 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createRequestHistory,fromImportLine} from '../server/runtime-history.mjs';
 import {resolvePaths} from '../server/paths.mjs';
+import {renamedFlag} from '../server/state-forward.mjs';
 
 export function stateDirectory(env=process.env){return resolvePaths(env).state;}
 export function parseArgs(argv){
+ const renamed=renamedFlag(argv);if(renamed)throw new Error(renamed);
  const out={device:null,dryRun:false,files:[]};
  for(let i=0;i<argv.length;i++){
   const a=argv[i];

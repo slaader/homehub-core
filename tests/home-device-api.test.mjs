@@ -263,6 +263,15 @@ test('device API over HTTP: home:write for keys, a write session for people, sit
   const r=await h.post('/api/home/devices',{device:pi},headers);assert.equal(r.status,403);assert.equal((await r.json()).error.code,'SCOPE_REQUIRED');
   assert.equal((await h.post('/api/home/devices/remove',{id:'pi-hole',base:'0'.repeat(64)},headers)).status,403);
   assert.equal((await h.post('/api/home/runtime',{device:'mini',stack:STACK},headers)).status,403);}
+ // The 1.x routes are gone: not found, for a key as for a person, whatever the key's scopes; a path with a route that
+ // keys may not use is still refused.
+ for(const headers of [writer.headers,reader.headers,legacy])for(const url of ['/api/home/machines','/api/home/machines/remove']){
+  const r=await h.post(url,{machine:pi},headers);assert.equal(r.status,404,url);assert.equal((await r.json()).error.code,'NOT_FOUND');}
+ assert.equal((await get('/api/home/machines',writer.headers)).status,404);
+ assert.equal((await h.post('/api/home/machines',{machine:pi},h.admin)).status,404);
+ const admin=await h.post('/api/admin/machines',{},writer.headers);assert.equal(admin.status,403);assert.equal((await admin.json()).error.code,'ADMIN_REQUIRED','under /api/admin/ a key is refused first, as a person who is not the administrator');
+ const session=await h.post('/api/session',{},writer.headers);assert.equal(session.status,403);assert.equal((await session.json()).error.code,'SCOPE_REQUIRED');
+ assert.equal((await h.post('/api/home/devices/add',{name:'X',kind:'other'},writer.headers)).status,403,'a session-only route is refused, not hidden');
  // An agent creates, repeats and replaces.
  const created=await h.post('/api/home/devices',{device:pi},writer.headers);assert.equal(created.status,201);
  const made=await created.json();assert.deepEqual([made.ok,made.id,made.created,made.changed,made.by],[true,'pi-hole',true,true,'agent-home']);

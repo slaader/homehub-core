@@ -23,7 +23,9 @@ export const CORE_VERSION=readPackage().version;
 const SCOPE_ID=/^[a-z][a-z0-9-]{0,31}(:[a-z][a-z0-9-]{0,31})?$/;
 const HASH=/^[a-z][a-z0-9-]{0,39}$/;
 const TOOL=/^[a-z][a-z0-9_]{1,63}$/;
-const METHODS=['GET','POST','PUT'];
+// The methods a route may have (index.mjs asks each of them whether a path has a route at all).
+export const ROUTE_METHODS=Object.freeze(['GET','POST','PUT']);
+const METHODS=ROUTE_METHODS;
 const ASSET_TYPES={'.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.json':'application/json','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.webp':'image/webp','.html':'text/html','.webmanifest':'application/manifest+json','.mp3':'audio/mpeg'};
 const plain=v=>v&&typeof v==='object'&&!Array.isArray(v);
 const fn=v=>typeof v==='function';

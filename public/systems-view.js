@@ -94,7 +94,7 @@ const NO_NEWS='Agent se odmlčel: ukazuje se jeho poslední zpráva. Neznamená 
 export function stateBadge(m){
  if(!m)return null;
  if(m.stale)return m.source==='agent'?badge(t('žádné zprávy'),'warn',t(NO_NEWS)):badge(t('starý snímek'),'warn',t(m.error||''));
- return !m.reachable?badge(t('nedostupný'),'bad',t(m.error||'')):null;
+ return !m.reachable?badge(t('nedostupné'),'bad',t(m.error||'')):null;
 }
 export function sourceBadge(m){
  if(m?.source!=='agent'&&m?.source!=='collector')return null;

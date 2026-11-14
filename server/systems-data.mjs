@@ -15,7 +15,7 @@ import {collectorState,staleAfter,COLLECTORS} from './collector-state.mjs';
 import {freshUntil,SYSTEMS_PARTS} from './agent-report.mjs';
 import {privilegedIds} from './agent-privileged.mjs';
 import {tx,sentences,textOf,field} from './text.mjs';
-import {forwardKeys,writeJson} from './state-forward.mjs';
+import {forwardKeys,writeJson,readJsonSeen} from './state-forward.mjs';
 import {provenance,collectorSource} from './provenance.mjs';
 import {readRun} from './collector-run.mjs';
 export {parseVersion,compareVersions,extractVersion};
@@ -33,10 +33,11 @@ export const forwardSnapshot=doc=>doc&&typeof doc==='object'&&!Array.isArray(doc
  * code NEWER for a snapshot a newer collector wrote: older code refuses newer state.
  */
 export async function readSnapshot(file){
- const doc=JSON.parse(await readFile(file,'utf8'));
+ const {doc,seen}=await readJsonSeen(file);
  if(Number.isInteger(doc?.schemaVersion)&&doc.schemaVersion>SYSTEMS_SCHEMA)throw Object.assign(new Error(`${path.basename(file)} has schema ${doc.schemaVersion}; this Home Hub reads up to ${SYSTEMS_SCHEMA}`),{code:'NEWER'});
  const next=forwardSnapshot(doc);
- if(next!==doc)await writeJson(file,next,{pretty:1,keepTimes:true}).catch(()=>{});
+ // Not over a snapshot the collector wrote since it was read (seen).
+ if(next!==doc)await writeJson(file,next,{pretty:1,keepTimes:true,seen}).catch(()=>{});
  return next;
 }
 // The devices the collector probes: every site device with ssh.probe (mac or nas), in site order.
