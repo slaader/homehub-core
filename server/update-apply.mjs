@@ -132,8 +132,6 @@ function addedPluginSources(inst,request){
  return {sources,change:{file,baseHash:hashOf(original),mode:statSync(file).mode&0o777,label:'instance',text:JSON.stringify({...raw,sources:{...raw.sources,plugins:combined}},null,2)+'\n'}};
 }
 const TAG=/^[A-Za-z0-9][A-Za-z0-9._+-]{0,80}$/;
-// What a test run or a start-up check must not inherit from the shell that runs the update.
-const INSTANCE_ENV=/^(?:HOME_HUB_.*|DATA_DIR|STATE_DIR|AUTH_FILE|SOFTWARE_WATCH_FILE|INTEGRATION_SECRETS_FILE|LOCAL_PREVIEW|PORT|ORIGIN|ORIGIN_ALIASES|BIND_HOST)$/;
 
 // --- the world, as the real command sees it ----------------------------------------------------------
 /** exec(command, args, {cwd, env, timeoutMs}) → {status, stdout, stderr}; never throws. 127: not found, 124: timed out. */
@@ -389,7 +387,13 @@ function pruneArchives(inst,ctx,keepFile){
 }
 
 // --- preflight -----------------------------------------------------------------------------------------
-const cleanEnv=env=>Object.fromEntries(Object.entries(env).filter(([k])=>!INSTANCE_ENV.test(k)));
+// Fixture tests need the operating system and toolchain, never the live service's sockets, credentials or Node
+// injection settings. An allowlist also covers plugin variables core cannot know. Preserve the spelling of Windows
+// environment keys (Path/SystemRoot, for example). The final --check still gets the full instance environment.
+const TEST_ENV=new Set(['PATH','HOME','USER','LOGNAME','TMPDIR','TMP','TEMP','TZ','LANG','LANGUAGE',
+ 'LC_ALL','LC_CTYPE','LC_COLLATE','LC_MESSAGES','LC_MONETARY','LC_NUMERIC','LC_TIME','LC_PAPER','LC_NAME','LC_ADDRESS','LC_TELEPHONE','LC_MEASUREMENT','LC_IDENTIFICATION',
+ 'SYSTEMROOT','SYSTEMDRIVE','WINDIR','COMSPEC','PATHEXT','USERPROFILE','HOMEDRIVE','HOMEPATH','APPDATA','LOCALAPPDATA','PROGRAMDATA']);
+const testEnv=env=>Object.fromEntries(Object.entries(env).filter(([k])=>TEST_ENV.has(k.toUpperCase())));
 function hasTests(source,staged){
  const has=dir=>existsSync(dir)&&readdirSync(dir).some(f=>/\.test\.mjs$/.test(f));
  const plugins=path.join(staged,'plugins');
@@ -538,7 +542,7 @@ export async function preflight(inst,request,ctx,{forApply=false}={}){
   // 6. the target's own tests
   if(request.skipTests)lines.push('tests: SKIPPED (--skip-tests)');
   else{
-   const env=cleanEnv(inst.env),runner=path.join(stagedCore,'scripts','run-tests.mjs');
+   const env=testEnv(inst.env),runner=path.join(stagedCore,'scripts','run-tests.mjs');
    say(`Testing ${target.version} in ${staging}:`);
    const summary=r=>lastLines(r.stdout,8).split('\n').filter(l=>/^\S+\s+tests \d+/.test(l)).map(l=>l.replace(/\s+/g,' ')).join('; ');
    lines.push(`tests (core): ${summary(runStep(ctx,'npm test of the target',ctx.node,[runner,...(copied&&inst.paths.siteConfig&&existsSync(inst.paths.siteConfig)?['--site',inst.paths.siteConfig]:[])],{cwd:stagedCore,env}))||'passed'}`);

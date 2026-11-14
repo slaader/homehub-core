@@ -6,6 +6,12 @@ Home Hub core, newest first. One section per release; the section is the text of
 number promises is in `AGENTS.md` → Versioning. The top section is the release being prepared, `## Unreleased`
 until the release gives it its number: a change to the public surface adds its line there in the same commit.
 
+## 2.0.1
+
+### Fixed
+
+- Update preflight runs core and plugin fixture tests with only operating-system and toolchain environment settings, so live service sockets, credentials and Node injection settings cannot leak into tests. The final startup check still uses the full instance environment with its staged configuration and plugins.
+
 ## 2.0.0
 
 A major release: names on the public surface change, with no alias for the old ones.

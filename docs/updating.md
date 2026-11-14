@@ -240,7 +240,10 @@ Delete the tag right away: while it is there, a bare `apply` would take it for t
 
 ## Limits
 
-- The tests of step 5 run in a fresh worktree. Plugin tests that need files which are not in git (a household's
+- The tests of step 5 run in a fresh worktree with only operating-system and toolchain environment settings (paths,
+  home and temporary directories, locale, and Windows process/profile settings). Live service and plugin settings,
+  credentials, sockets and Node injection settings are excluded. The final `--check` retains the full instance
+  environment with its staged configuration and plugins. Plugin tests that need files which are not in git (a household's
   data, generated media) fail there; `--skip-tests` skips step 5's test runs (not the `--check`) when you have run
   them where those files are.
 - The Node that runs the command is the one whose version is checked and that runs the tests; start the command with

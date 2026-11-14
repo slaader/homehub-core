@@ -401,6 +401,26 @@ test('an instance directory: core and a plugin source update in one transaction,
  assert.deepEqual({calls:w.svc.calls,name:/^manual-1\.1\.0-\d{8}-\d{6}\.tgz$/.test(path.basename(made.file)),entries:made.entries.map(e=>e.name)},{calls:['stop','start 1.1.0'],name:true,entries:['config','data','private']});
 });
 
+test('preflight fixture tests inherit only OS settings; startup checks retain the live plugin environment',async t=>{
+ const w=await world(t,{layout:'home'});
+ const kept={PATH:process.env.PATH,HOME:w.dir,TMPDIR:w.dir,LANG:'C',LC_ALL:'C',TZ:'UTC',SystemRoot:w.dir,ComSpec:path.join(w.dir,'cmd.exe'),PATHEXT:'.EXE;.CMD'};
+ const live={EXAMPLE_PLUGIN_SOCKET:path.join(w.home,'private','plugin.sock'),EXAMPLE_PLUGIN_KEY:'fixture-credential',
+  NODE_OPTIONS:'--no-warnings',NODE_PATH:path.join(w.home,'modules'),HTTPS_PROXY:'http://127.0.0.1:9',SSH_AUTH_SOCK:path.join(w.dir,'ssh.sock')};
+ Object.assign(w.env,kept,live);
+ const checkKept=`for(const [key,value] of Object.entries(${JSON.stringify(kept)}))assert.equal(process.env[key],value,key);\n`;
+ const fixture=`import assert from 'node:assert/strict';\n${checkKept}for(const key of ${JSON.stringify(Object.keys(live))})assert.equal(process.env[key],undefined,key+' leaked into fixture tests');\n${RUNNER}`;
+ const startup=`import assert from 'node:assert/strict';\n${checkKept}for(const [key,value] of Object.entries(${JSON.stringify(live)}))assert.equal(process.env[key],value,key+' missing from startup check');\n${INDEX}`;
+ await w.upstream.commit('1.1.0',tree('1.1.0',1,{'scripts/run-tests.mjs':fixture,'server/index.mjs':startup}),{tag:'v1.1.0'});
+ await preflight(w.inst(),{core:'v1.1.0'},w.ctx);
+ const tests=w.svc.execs.filter(e=>e.args.some(a=>a.endsWith('run-tests.mjs')));
+ assert.equal(tests.length,2,'core and plugin fixture subprocesses both ran');
+ for(const call of tests)assert.deepEqual(call.env,kept);
+ const check=w.svc.execs.find(e=>e.args.includes('--check'));
+ assert.equal(check.env.HOME_HUB_HOME,w.home);assert.equal(check.env.HOME_HUB_SITE_CONFIG,path.join(w.home,'config','site.json'));
+ for(const [key,value] of Object.entries(live))assert.equal(check.env[key],value);
+ assert.deepEqual(w.svc.calls,[],'preflight never stops or starts the service');
+});
+
 test('the command line: arguments, status, and a rollback that remembers how the update was run',async t=>{
  assert.deepEqual((({command,tag,plugins,options})=>({command,tag,plugins,keep:options.keep}))(parseArgs(['apply','v1.2.0','--plugins','household=v1.1.0','--keep','3'])),{command:'apply',tag:'v1.2.0',plugins:{household:'v1.1.0'},keep:3});
  assert.deepEqual(parseArgs(['preflight','--to','v1.2.0','--plugins','v2']).plugins,{'*':'v2'});
