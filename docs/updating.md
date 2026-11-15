@@ -415,3 +415,21 @@ case-fold collisions, links, special files, `.git`, reserved receipt paths, unsu
 truncation and unlisted files are refused. Signed declarations cannot raise local limits. Packages contain core only,
 no household files, runtime, npm dependencies, bundled executable tools or installation hooks. Review the assets and
 attach them to the release separately; nothing in packaging uploads them.
+
+
+## Update notifications and network requests
+ About twice a day (first 2 to 5 minutes after start, then every
+12 hours) the hub asks GitHub whether a newer release exists: two requests,
+`GET https://api.github.com/repos/<repository>/releases?per_page=20` and `…/releases/latest`, where the repository is
+the one named in `package.json → homeHub.updates.repo`. The requests carry the constant `User-Agent`
+`home-hub-update-check` and nothing else: no version, no instance id, no site name, nothing about your devices.
+Nothing is sent to the project; GitHub sees an address and a time, as for any `git fetch`. A token is not needed (if
+you already keep one in `GITHUB_TOKEN` or `private/github-token` for the versions collector, it is used, for
+`api.github.com` only). The result is on **Administration → Integrations** (card "Home Hub update check", with the
+release notes) and, for an administrator, in the footer as `→ newer release`. When a check fails the card says so and says
+what it last knew; it never claims you are up to date.
+
+To turn it off: the switch on that card, or `HOME_HUB_UPDATE_CHECK=off` in the environment, which also removes the
+switch. While it is off the hub makes no request about updates at all. `local/site.json → updates` follows another
+repository (`repo`, for a fork), takes pre-releases (`channel: "prerelease"`) or changes how often it asks
+(`intervalHours`, 6 to 168).

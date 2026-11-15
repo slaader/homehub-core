@@ -320,3 +320,139 @@ Home Hub is meant for a home network. It is not hardened for the open internet: 
 - **The browser side is locked down**: a strict Content-Security-Policy (no inline script or style), a
   same-origin check on every POST, and DOM built from text nodes only.
 - **Collectors are read-only** on the devices they probe.
+
+
+## Setup and operational reference
+
+
+Agents use **service accounts**: a named identity with its own keys and scopes. In **Users and API → Service
+accounts**, create one (for example `agent-laptop`) from a preset or with the scopes you pick (`read`, plus
+`inventory:write`, `home:write` and so on), issue a key (`hhk_…`, shown once, stored as a hash) and give it to the agent:
+
+```sh
+# Claude Code
+claude mcp add --transport http home-hub http://127.0.0.1:8799/mcp --header "Authorization: Bearer hhk_…"
+```
+
+```toml
+# Codex: ~/.codex/config.toml
+[mcp_servers.home-hub]
+url = "http://127.0.0.1:8799/mcp"
+http_headers = { Authorization = "Bearer hhk_…" }
+```
+
+The hub shows these snippets with your own address, plus the JSON for other MCP clients, on Getting started and
+wherever a page is still empty. The agent sees only the tools its scopes allow (`home_status`, `device_upsert`,
+`inventory_update`, `ticket_create`, `review_publish` and more), and a short orientation when it connects.
+**Users and API → Connect and API** lists every tool with its scope; the same key works on the HTTP API
+([docs/API.md](API.md)).
+
+## Review
+
+An agent working on your product puts its alternatives in Review: a character, a logo, a UI, a 3D model, music or
+a video. You compare them side by side, take one, comment on a variant or ask for a redo; the agent reads that
+back and submits the next round to the same review. With five or six alternatives this beats scrolling back and
+forth through an agent chat. An item holds up to six variants: images, self-contained HTML mockups, `.glb`
+models, video and audio.
+
+1. The agent submits: `review_publish` (or `POST /api/review/publish`), with a service account that has `read`
+   and `review:write`, into a project in the tracker.
+2. You decide in the hub: take a variant, leave comments, or **None of these — redo**.
+3. The agent reads it (`review_list` with `feedbackPending: true`, then `review_get`) and publishes the next round.
+
+[docs/review.md](review.md) covers pinned comments, comparison modes and uploads.
+
+## What works out of the box
+
+| Feature | Without anything else | Needs |
+|---|---|---|
+| Sign-in, roles, service accounts, API keys, access audit; getting-started checklist | Works | Nothing |
+| Overview: a tile per device | Empty, and says how to fill it | `local/site.json`, **Add device**, or an agent (`device_upsert`) |
+| Runtime stack on a device page | Says how to publish one | An agent (`runtime_publish`) or `stack` in `site.json` |
+| Live CPU, GPU, power, temperature, memory | Static facts, "telemetry not installed" | The telemetry agent, or agent-less Windows / Linux reads |
+| Local LLM runtimes, what the GPU is generating | Not shown | A runtime the hub can reach, or a plugin |
+| Inventory map, table and services catalog | Empty, with a template and an agent prompt | An agent (`inventory_update`) or you in the form |
+| Versions, host protection, SSH keys, router census | Says what to configure and run | SSH access and a collector |
+| Project tracker, review, full-text search | Works | Nothing |
+| MCP endpoint and HTTP API | Works | A service-account key |
+| Light and dark theme, English and Czech | Works | Nothing |
+| Your own pages, routes and MCP tools | — | A plugin ([docs/plugins.md](plugins.md)) |
+
+Nothing in the list needs an npm package or a cloud service.
+
+
+
+**Telemetry (optional).** Live load, power draw and temperature come from a small telemetry agent on the device
+(Thermo), read over a pinned TLS connection. Its address is a placeholder until it has a public home:
+`https://example.com/home-hub/telemetry-agent`. Other systems need no agent:
+
+- **Windows:** in **Add device**, choose Windows and Telemetry → Windows (SSH), let the hub create its own key and
+  run the one PowerShell step it shows. WinRM over HTTPS works too.
+- **Linux:** Node Exporter (the hub reads `/metrics` on port 9100; no Prometheus server needed), a Prometheus you
+  already run (one node_exporter target through `/api/v1/query`), or SSH with a fixed script that only reads
+  `/proc`, `/sys` and `df`.
+- Every device says where its telemetry stands (not installed, unreachable, stale or fine); a failed read is never
+  shown as "off", and without telemetry a tile shows the facts from your configuration.
+
+**LLM runtimes.** The hub reads reachable runtimes itself every 30 seconds, read-only, and never loads, unloads or
+prompts a model: llama-swap, Ollama, LM Studio, llama.cpp server, vLLM, SGLang, oMLX, mlx-serve and anything
+OpenAI-compatible.
+
+```json
+"runtimes": [{"device": "studio", "kind": "ollama", "url": "http://127.0.0.1:11434"}]
+```
+
+A device page then shows each runtime with its models, which of them are generating or queued, and the processes
+with the most GPU time. A runtime the hub cannot reach can come from a plugin or a small bridge on that device.
+
+The **LLM & Diffusion** page charts requests, tokens and tokens per second, and which clients sent them. For a
+llama-swap the hub keeps that history itself: it reads the request log without emptying it, names each client from
+the User-Agent in the access log (`claude-cli` is Claude Code, `codex` Codex), and stores request fields only,
+never a prompt or a body, for 13 months.
+[docs/features.md](features.md#live-telemetry-optional) has the details of both.
+
+## Collectors and plugins
+
+Collectors are scripts you schedule. They read your devices over SSH, never install or change anything there, and
+write files under `data/` that the hub serves:
+
+```sh
+node scripts/collect-systems.mjs        # OS and software versions, update candidates, host protection
+node scripts/check-upstream.mjs         # newest upstream releases of the software you watch
+node scripts/collect-security.mjs       # where SSH keys live and what they open
+python3 scripts/collect-router-unifi.py # client census from a UniFi gateway
+```
+
+`scripts/systems/install-launchd.sh` schedules them on macOS; `examples/systemd/` has the same for Linux.
+
+What only your home has goes into a **plugin**: `<id>/index.mjs` in a plugin directory of your own
+(`HOME_HUB_PLUGINS_DIR`, an instance's plugin sources, or `local/plugins/` during the 1.0 line) registers routes, scopes, MCP
+tools, pages and sidebar entries through the same registry the core uses, and draws with the same UI pieces. The contract
+is in [docs/plugins.md](plugins.md); `tests/fixtures/plugins/demo/` is a complete small example.
+
+## Security model
+
+Home Hub is meant for a home network, not the open internet: keep it on your LAN or VPN.
+
+- People sign in with a password and hold a role (Owner, Admin, Editor, Viewer or a custom set of scopes).
+  Passwords are scrypt hashes; session cookies are HttpOnly and SameSite=Strict.
+- Agents use service-account keys with scopes, and a plugin adds its own to the same table.
+
+  | Scope | Allows |
+  |---|---|
+  | `read` | Every read endpoint except security (always included) |
+  | `inventory:write` | Create and change inventory and service entries |
+  | `home:write` | Devices on the overview, their runtime stacks, LLM runtime endpoints |
+  | `home:settings` | The telemetry read interval |
+  | `tickets:write` | Tickets, comments, releases, projects |
+  | `review:write` | Publish review sets and store decisions |
+  | `software:write` | The software watch list |
+  | `security:read` | SSH key inventory, versions, host protection |
+
+- **API keys never reach administration.** Users, roles, keys, service accounts and app tokens can be
+  managed only from a browser signed in with a password; no scope opens those routes.
+- Every write is checked by role or scope, and by revision or hash where it is stored. A stale write is refused.
+- The inventory records where a secret is kept, never its value. Tokens and request bodies are never logged.
+- A strict Content-Security-Policy, a same-origin check on every POST, and DOM built from text only.
+
+More in [docs/features.md](features.md#security-model).
