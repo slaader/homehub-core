@@ -224,7 +224,7 @@ the hub keeps that history itself:
   record id together with its time, so a restarted llama-swap (whose ids start at 1 again) neither loses nor
   repeats a request.
 - `node scripts/import-runtime-history.mjs --device <id> <file.jsonl>` adds older history from a file on
-  this computer (the store's own format, or a v1 hub's `history-YYYY-MM.jsonl`). Running it twice adds nothing.
+  this computer (the store's own format, or a legacy hub's `history-YYYY-MM.jsonl`). Running it twice adds nothing.
 - Turning **LLM runtimes** off on the integrations page stops the reads and closes the stream. Each
   llama-swap endpoint's line there shows when a record was last added and how many came in today.
 

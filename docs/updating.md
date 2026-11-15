@@ -2,17 +2,18 @@
 
 Home Hub never updates itself. It tells you that a newer release exists (the card "Home Hub update check" on
 Administration → Integrations, and the footer for an administrator); **a command applies it**, run on the server by
-whoever may restart the service:
+whoever may restart the service. In the examples, set `TARGET_TAG` to an existing published release tag
+and `PLUGIN_TAG` to the desired tag in the plugin source; 1.0.0 is the first public core release:
 
 ```sh
 node scripts/update.mjs status              # what is installed and running, the newest tag, the last update
-node scripts/update.mjs preflight v1.3.0    # every check that needs no change to the instance
-node scripts/update.mjs apply v1.3.0        # preflight, stop, archive, switch, start, health check; back on any failure
+node scripts/update.mjs preflight "$TARGET_TAG"    # every check that needs no change to the instance
+node scripts/update.mjs apply "$TARGET_TAG"        # preflight, stop, archive, switch, start, health check; back on any failure
 node scripts/update.mjs rollback            # undo the last update
 node scripts/update.mjs backup              # only the archive (stop, archive, start)
 ```
 
-Without a tag, `preflight` and `apply` take the newest release tag after a fetch. `--to v1.3.0` is the same as the
+Without a tag, `preflight` and `apply` take the newest release tag after a fetch. `--to "$TARGET_TAG"` is the same as the
 bare tag. There is no button and no MCP tool for any of this, on purpose: the hub holds SSH keys and tokens for other
 devices, and a web request that can replace its code would turn a stolen session into code execution with them.
 
@@ -41,7 +42,7 @@ HOME_HUB_HOME=/srv/home-hub node /srv/home-hub/core/scripts/update.mjs apply
 **With everything in the checkout** (the default layout) they are flags, the same on every call:
 
 ```sh
-node scripts/update.mjs apply v1.3.0 \
+node scripts/update.mjs apply "$TARGET_TAG" \
   --service launchd:system/com.example.home-hub \
   --health http://127.0.0.1:8781/healthz
 ```
@@ -85,7 +86,7 @@ hub's own `/healthz` on its local port, not the reverse proxy in front of it.
 | 4 | Checks out the target in a scratch worktree (`<home>/staging/`, else the temp directory), with every plugin source beside it. From those files: each plugin's `core` range must include the target version, each `requires` must be met, the Node version must fit, and the data epoch is compared. | stops, naming the plugin |
 | 5 | In the scratch worktree: the target's `npm test`, each plugin source's tests separately with its own fixture site against the target core, then `node server/index.mjs --check` with **this instance's** secrets and plugins, and its site file (a staged copy when configuration changes). The worktree is removed. | stops; nothing was touched |
 | 6 | Writes the journal, stops the service, waits for its process to exit. | starts it again |
-| 7 | Archives `config/` (an instance directory), `data/`, the state directory and `private/` into `pre-<from>-to-<to>-<time>.tgz` (0600) and lists it back. The hub is stopped, so the SQLite file is closed and consistent. A backup job's `staging/` mirror and `*.tgz` files are left out. A site being replaced is also saved separately, even outside these directories. | starts the old version |
+| 7 | Archives configuration, data, state, private files and configured external roots into `pre-<from>-to-<to>-<time>.tgz` (0600), then verifies a staged restore against its inventory. The hub is stopped, so SQLite is closed and consistent. Nested staging mirrors and `*.tgz` files are included; archive limits still apply. A site being replaced is also saved separately. | starts the old version |
 | 8 | `git checkout --detach <tag>` in each source that changes. Atomically install any replacement site configuration checked in step 5. | rolls back |
 | 9 | Starts the service. Within `health.seconds` readiness must begin, then pass ten consecutive seconds with the exact process, build and plugin identity. | rolls back |
 | 10 | Marks the journal done, appends to `<state>/update-history.jsonl`, removes archives beyond `backups.keep`. | |
@@ -161,8 +162,8 @@ A plugin source that is a git checkout of its own (an instance's `sources.plugin
 transaction, by its own tag: one preflight, one archive, one restart, one rollback.
 
 ```sh
-node scripts/update.mjs apply v1.3.0 --plugins v1.1.0            # core and the only plugin source
-node scripts/update.mjs apply --plugins household=v1.1.0         # only that source; core stays
+node scripts/update.mjs apply "$TARGET_TAG" --plugins "$PLUGIN_TAG"            # core and the only plugin source
+node scripts/update.mjs apply --plugins household="$PLUGIN_TAG"         # only that source; core stays
 ```
 
 The core range check holds in every combination: a plugin that does not support the target core stops the preflight
@@ -182,26 +183,29 @@ start meanwhile (`update.lock`, retained after a crash until explicit manual mai
 Worth doing once per installation: it proves that the service commands, the health address and the paths are right
 before a real release depends on them. Make a local tag that passes its tests and exits when started, apply it, watch
 it come back, delete the tag. Nothing is pushed. The tag carries a version that will never be released (here
-`1.2.999`: a plain version, because a pre-release such as `1.2.1-rc.1` is outside every plugin's core range and would
-fail the tests instead of the start).
+`1.0.999`: a plain version, because prereleases usually fall outside plugins' declared core ranges and can
+fail compatibility checks instead of testing the start). This example starts from the first public release,
+`v1.0.0`, and uses legacy Git verification without independently configured trust. With operator trust configured,
+an unsigned rehearsal tag is refused: use the disposable transaction tests in `tests/update-apply.test.mjs` instead;
+do not remove or weaken trust to run this example.
 
 ```sh
 cd /srv/home-hub
-git worktree add --detach /tmp/hub-rehearsal v1.2.0 && cd /tmp/hub-rehearsal      # the release that is installed
-sed -i.bak 's/"version":"1.2.0"/"version":"1.2.999"/' package.json && rm package.json.bak
-awk '!d&&/^## /{print "## 1.2.999\n\nA rehearsal: this build exits when it is started.\n";d=1}1' CHANGELOG.md > c && mv c CHANGELOG.md
+git worktree add --detach /tmp/hub-rehearsal v1.0.0 && cd /tmp/hub-rehearsal      # the release that is installed
+sed -i.bak 's/"version":"1.0.0"/"version":"1.0.999"/' package.json && rm package.json.bak
+awk '!d&&/^## /{print "## 1.0.999\n\nA rehearsal: this build exits when it is started.\n";d=1}1' CHANGELOG.md > c && mv c CHANGELOG.md
 printf '\nif(process.argv[1]===fileURLToPath(import.meta.url))setTimeout(()=>{console.error("rehearsal build: exiting");process.exit(1);},300);\n' >> server/index.mjs
 git -c user.name=rehearsal -c user.email=rehearsal@example.invalid commit -qam 'rehearsal: exits at start'
-git tag v1.2.999 && cd /srv/home-hub && git worktree remove --force /tmp/hub-rehearsal
+git tag v1.0.999 && cd /srv/home-hub && git worktree remove --force /tmp/hub-rehearsal
 
-node scripts/update.mjs apply v1.2.999 --no-fetch --health-seconds 20 --service … --health …
+node scripts/update.mjs apply v1.0.999 --no-fetch --health-seconds 20 --service … --health …
 #   → "failed at "starting": health check failed … It was rolled back", exit 1, and the old version answers
 node scripts/update.mjs status --service … --health …
-git tag -d v1.2.999
+git tag -d v1.0.999
 ```
 
 Delete the tag right away: while it is there, a bare `apply` would take it for the newest release. The note
-`quarantined → 1.2.999` stays in `updates.json`; it names a version that will never be released, so nothing shows it. The archive it made counts toward `backups.keep`.
+`quarantined → 1.0.999` stays in `updates.json`; it names a version that will never be released, so nothing shows it. The archive it made counts toward `backups.keep`.
 
 ## Limits
 

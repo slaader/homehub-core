@@ -26,7 +26,7 @@ LOCAL_PREVIEW=1 PORT=8799 node server/index.mjs
 
 - `scripts/setup.mjs` creates the administrator sign-in. Only a hash of the password is stored, in
   `private/auth.json`. `private/` and `data/` are ignored by git; keep them out of any repository.
-- The server prints one line when it is ready: `Home Hub (public edition, 0 plugin(s)) listening on 8799`.
+- The server prints one line when it is ready: `Home Hub 1.0.0 (public edition, 0 plugin(s)) listening on 8799` (with `+dev` and a commit id for a development checkout).
 - Open http://127.0.0.1:8799 and sign in as `admin`.
 
 `LOCAL_PREVIEW=1` means plain HTTP, reachable from this computer only. That is the right way to try it. Step 7
