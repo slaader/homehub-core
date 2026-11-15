@@ -16,7 +16,7 @@ Without a tag, `preflight` and `apply` take the newest release tag after a fetch
 bare tag. There is no button and no MCP tool for any of this, on purpose: the hub holds SSH keys and tokens for other
 devices, and a web request that can replace its code would turn a stolen session into code execution with them.
 
-This page is for a hub that runs from a git checkout. A container is rebuilt instead: [docker.md](docker.md).
+The original commands below operate on a Git checkout; signed packages are described later in this page. A container is rebuilt instead: [docker.md](docker.md).
 
 ## Tell it about your installation
 
@@ -79,7 +79,7 @@ hub's own `/healthz` on its local port, not the reverse proxy in front of it.
 
 | # | Step | If it fails |
 |---|---|---|
-| 1 | Takes the lock. Refuses while an earlier update is unfinished. | stops |
+| 1 | Takes exclusive locks. Reconciles an unfinished transaction before doing anything new. | stops |
 | 2 | Checks that the hub is running the installed version and that the health address answers. | stops |
 | 3 | `git fetch --tags`; resolves the target. Refuses a lower version, a tag whose `package.json` says another version, a checkout with changed tracked files, a release that was rolled back here before (`--force` tries again), and, when the installed checkout has `config/release-signers`, a tag without a good signature (`--allow-unsigned`). | stops |
 | 4 | Checks out the target in a scratch worktree (`<home>/staging/`, else the temp directory), with every plugin source beside it. From those files: each plugin's `core` range must include the target version, each `requires` must be met, the Node version must fit, and the data epoch is compared. | stops, naming the plugin |
@@ -87,7 +87,7 @@ hub's own `/healthz` on its local port, not the reverse proxy in front of it.
 | 6 | Writes the journal, stops the service, waits for its process to exit. | starts it again |
 | 7 | Archives `config/` (an instance directory), `data/`, the state directory and `private/` into `pre-<from>-to-<to>-<time>.tgz` (0600) and lists it back. The hub is stopped, so the SQLite file is closed and consistent. A backup job's `staging/` mirror and `*.tgz` files are left out. A site being replaced is also saved separately, even outside these directories. | starts the old version |
 | 8 | `git checkout --detach <tag>` in each source that changes. Atomically install any replacement site configuration checked in step 5. | rolls back |
-| 9 | Starts the service. Within `health.seconds` the health address must answer **and** `run.json` must show the target version, a live process started after the switch, and the expected plugins with their versions. | rolls back |
+| 9 | Starts the service. Within `health.seconds` readiness must begin, then pass ten consecutive seconds with the exact process, build and plugin identity. | rolls back |
 | 10 | Marks the journal done, appends to `<state>/update-history.jsonl`, removes archives beyond `backups.keep`. | |
 
 After an update the checkout is on a detached tag, not on a branch: `git pull` no longer applies, the next update is
@@ -182,7 +182,7 @@ changelog says so under **Data**. The preflight states which case this is:
 | From → to | Going back |
 |---|---|
 | Same epoch (every patch, most minors) | The code switches back. Nothing written since is lost. |
-| The epoch rose | The code switches back **and the pre-update archive is restored**. Everything written after the update is lost. The directories it replaces are moved to `<backups>/failed-<time>/`, never deleted. |
+| The epoch rose | The code switches back **and the pre-update archive is restored**. Everything written after the update is lost. Replaced roots remain in unique adjacent `.failed-*` paths, indexed under `<backups>/failed-<time>/roots.json`. |
 
 An automatic rollback restores without asking (the new version ran for seconds). A later `rollback` after a rise
 needs `--yes`, and refuses when the archive is gone.
@@ -210,7 +210,7 @@ the checks.
 The journal (`<home>/update-journal.json`; without an instance directory `<checkout>/backups/update-journal.json`)
 is written before every step. If the command dies, `status` says `UNFINISHED`, and the next `apply` or `rollback`
 first puts the previous version back from the journal: nothing new is applied in that run. A second update cannot
-start meanwhile (`update.lock`, replaced when its process is gone).
+start meanwhile (`update.lock`, retained after a crash until explicit manual maintenance; see Recovery guarantees and limits).
 
 ## Rehearsing the rollback
 
@@ -251,3 +251,150 @@ Delete the tag right away: while it is there, a bare `apply` would take it for t
 - A relative `DATA_DIR`, `STATE_DIR` or `AUTH_FILE` is resolved against the directory the command is run in.
 - The command does not install or update host agents on other devices (`scripts/install-host-agent.mjs` does, on
   the device in question).
+
+## Operator trust and signed packages (transition release)
+
+This is an additive MINOR transition, with data epoch 5. Existing Git commands keep their earlier semantics:
+without independently configured trust they display `legacy-unverified` or legacy-policy warnings. An installed
+`config/release-signers` is still used by the legacy path, and its existing `--allow-unsigned` override remains.
+These updates are **not authenticated by the new operator trust policy**. Bare `apply` still selects the highest
+stable local tag after fetching. `--latest-published` instead uses the UI's repository, channel and published
+release selector (drafts excluded; prereleases only in the prerelease channel).
+
+A policy selected with `--trust FILE`, or present at `<home>/update/trust.json`, is mandatory for that operation.
+Invalid, missing, revoked or unauthorized keys and bad signatures refuse the operation; `--allow-unsigned`,
+`--force` and `--skip-tests` never bypass it. Every package operation requires signature verification. Making trust
+mandatory for old Git commands remains a separately agreed breaking change; historical tags are not rewritten.
+
+Trust schema 1 has `publishers`, keyed by `owner/repository`. Each publisher has `gitSigners` and `packageKeys`
+arrays; every record has `id`, `publicKey`, `fingerprint`, `role` (`git` or `package`), `status` (`active`, `retired`,
+`revoked`), optional `minimumVersion`/`maximumVersion` and public `provenance`. Package keys are Ed25519 SPKI PEM;
+the ID and expected fingerprint are the lowercase SHA-256 of SPKI DER. Git signers are SSH Ed25519 public keys;
+the ID is the lowercase SHA-256 of the SSH key blob, and the fingerprint is the usual `SHA256:…` OpenSSH form.
+No trust is obtained from a release, hosting badge, package, downloaded key, or restored backup. Core authorization
+does not authorize a plugin publisher; plugin source package.json uses `homeHub.publisher` for its own repository.
+
+Obtain each public key and expected fingerprint through an independently authenticated channel, then import it
+locally. The import prints the exact repository, role and fingerprint being authorized and refuses to reactivate
+an existing revoked/retired record. No private key is accepted or generated:
+
+```sh
+node scripts/update.mjs trust-import --home /srv/home-hub \
+  --repository example/core --role package --public-key /secure/publisher-public.pem --fingerprint EXPECTED_HEX
+node scripts/update.mjs trust-import --home /srv/home-hub \
+  --repository example/core --role git --public-key /secure/publisher.pub --fingerprint SHA256:EXPECTED
+```
+
+Without an instance, supply `--trust /secure/trust.json`. The file must be owner-controlled, regular, not writable
+by other accounts, with protected parent directories, and outside code and every backed-up/restored root.
+Selecting trust in an instance also writes `<home>/update/trust-required.json` (schema 1), outside restored roots. Subsequent operations retain that selection: removing the policy file or all authorized keys refuses the operation instead of reviving legacy behavior. Preflight may persist this trust selection as well as fetching/staging Git metadata.
+
+`config/release-signers` is only an import candidate after independent review and fingerprint comparison.
+Rotation/revocation is an explicit local administrative edit: preserve revoked records, narrow version bounds,
+and never replace the policy with an older copy. There is no automatic rotation protocol in package format 1.
+The updater never restores trust from its application archives.
+
+Run an **already trusted driver**, independently verified and retained through the rollback window. Downloading
+an updater and running it to verify its own package does not establish trust. Package transactions retain a copy
+of this driver under `<home>/update/drivers/<transaction>/`; its journal names that driver and the old core.
+Its target tests and `--check` run authenticated code under the updater account: they are **not a sandbox**.
+Tests use a sanitized environment; `--check` may read the instance configuration and plugin settings.
+
+```sh
+node /trusted/driver/scripts/update.mjs download v2.2.0 --home /srv/home-hub --output /secure/downloads
+# Copy the verified manifest digest printed by download into every following command.
+node /trusted/driver/scripts/update.mjs verify-package --home /srv/home-hub \
+  --package /secure/downloads/home-hub-v2.2.0-node-source.tar.gz --manifest-sha256 MANIFEST_HEX
+node /trusted/driver/scripts/update.mjs preflight --home /srv/home-hub \
+  --package /secure/downloads/home-hub-v2.2.0-node-source.tar.gz --manifest-sha256 MANIFEST_HEX --migrate-from-git
+node /trusted/driver/scripts/update.mjs apply --home /srv/home-hub \
+  --package /secure/downloads/home-hub-v2.2.0-node-source.tar.gz --manifest-sha256 MANIFEST_HEX --migrate-from-git
+```
+
+`verify-package` is offline and executes no package code. `download` authenticates metadata before fetching the
+payload and verifies the whole result without tests. Sidecars are deterministic siblings:
+`home-hub-vX.Y.Z.manifest.json` and `.manifest.sig.json`. A replaced asset under an existing tag fails the pinned
+digest or signature check. Download uses HTTPS with bounded time/bytes, restricted CDN redirects, and no API token
+on asset requests. A disabled update integration or `HOME_HUB_UPDATE_CHECK=off` makes no update discovery requests.
+
+Package activation initially supports **macOS/Linux, arm64/x64, local filesystems**, an existing configured service
+and a replaceable independent core directory in `HOME_HUB_HOME`. Configuration, data, state, auth/private files,
+instance.json and household plugins must be external. Code-root symlinks, mount-point swaps and linked Git
+worktrees are refused with relocation guidance. Git migration requires `--migrate-from-git` and retains the complete
+old checkout including `.git`; no history is deleted. Package updates keep external plugin sources fixed; their
+existing Git updates remain available separately. `install --package FILE` is an alias for this existing-instance
+activation, with the same migration/verification requirements. Fresh service, owner and privilege setup is outside
+this command. Containers continue to use image replacement. Windows has no advertised managed activation support.
+
+The browser displays cached releases, discovery time, package links, manifest digest when hosting provides one,
+explicit `not-checked` signatures and `unknown` compatibility, and local commands. The hosting digest is discovery
+evidence: the CLI signature check is still mandatory. Complete compatibility is known only after local preflight.
+No browser or MCP route installs, uploads executable packages, restarts services or edits trust.
+
+## Recovery guarantees and limits
+
+The instance lock is an atomically created **directory at the existing `update.lock` pathname**. Canonical source
+locks are held in a private per-account `/tmp/home-hub-updater-<uid>` registry on macOS/Linux (independent of `TMPDIR`) in deterministic order, including Git common-dir
+locks. They also cover standalone preflight fetch/worktree mutation. A lock is removed only by its ownership token
+and original filesystem identity. PID existence alone is never enough to break a lock. Local filesystems are required;
+network filesystem locking semantics are unsupported.
+
+After an interrupted process, establish that **no updater or child operation remains active**, preserve the journal
+and lock metadata, and manually move each reported stale lock aside to a unique evidence path. This includes old
+file-format PID locks, missing owner files and ambiguous ownership. Do not automatically remove a lock based on a
+PID check. Then run the retained driver's `rollback` with the original instance settings. Apply first reconciles an
+unfinished transaction and exits without beginning a new update. Corrupt or future journals block mutation and are
+preserved; schema-1 journals are read explicitly, with the strongest available legacy recovery checks.
+
+Schema-2 journals record source switches and per-root restore progress before and after mutations, flushing files
+and directories where supported. A multi-root change is **recoverable, not globally atomic**. Package activation
+moves core to a unique sibling and then moves verified staging into its stable pathname. Restore prepares and
+validates **every root** before the first replacement, on each destination filesystem, then reconciles partial
+renames on the next run. Failed roots are retained in unique adjacent `.failed-*` paths; `failed-<time>/roots.json`
+is an index of them. No archive is extracted directly into a live parent. A failed unrecoverable transaction leaves
+the service stopped, exits 3 and names the journal, backup, retained driver and failed state. Unrelated code edits
+cause a safe refusal instead of a forced checkout.
+
+Backups use stable `root-0001` IDs and a private schema-1 manifest plus integrity sidecar. Coverage includes data,
+state, private, configuration even without HOME_HUB_HOME, instance.json, site/watch overrides, external AUTH_FILE
+and its sibling secret.key, and explicit secret-key/integration-secret/GitHub-token/TLS files. Physical ancestors
+are deduplicated, top-level symlink topology is checked, nested links are preserved without traversal, and escaping
+links require explicitly covered targets. Add `--backup-root PATH` for each plugin-managed external resource.
+Environment keys and macOS Keychain keys are reported as external prerequisites, never serialized. The service's
+stop command must stop all managed writers; core cannot infer arbitrary plugin jobs or independently running
+writers. Hard-linked files, unsupported special files/modes and layouts are refused before switching. Archives inside data (including
+legitimate `.tgz` files) are retained. There are no wildcard exclusions in this implementation.
+
+Backup creation inventories bytes/modes/links, streams a restricted USTAR gzip, reads it completely, stages a restore
+and compares its complete inventory before publishing. Local limits are 20,000 entries, 256 MiB compressed,
+1 GiB expanded and 64 MiB per file; larger instances need a separately verified backup procedure. Legacy `.tgz`
+archives are inspected and staged by the same restricted reader, explicitly labelled as lacking integrity provenance;
+unsupported PAX/GNU extensions, special entries and ambiguous metadata require manual recovery. A retained journal's
+archive is never pruned; archive sidecars are pruned together. Old core and failed roots require manual retention
+review, and are never automatically deleted.
+
+Readiness retains `/healthz` body `{ok:true}` and adds `X-Home-Hub-Run-Id`. `run.json` retains existing fields and adds
+boot ID, capability 1, full commit/package digest and exact loaded-plugin and complete source-content fingerprints (excluding `.git` and `node_modules`). Modern updates of a selected Git plugin source require a reproducible tracked tree; untracked/ignored resources must be relocated outside that source first. Every sample checks
+HTTP body/status, local boot identity, live new process, full target identity and complete plugin versions/content.
+It requires **10 consecutive seconds**, resetting on failure or restart; `health.seconds` remains the initial startup
+deadline, with up to ten extra seconds for observation. Old recovery targets use sustained legacy checks, explicitly
+with reduced assurance. An expected modern identity never downgrades when fields/header are missing.
+
+## Preparing source package assets (publisher machine only)
+
+The release script still prepares commits/tags locally and never pushes or publishes. After the exact release tag
+is signed and independently authorized, run `scripts/package-release.mjs --tag … --key FILE --trust FILE --output DIR`
+from the trusted driver. Its package key is Ed25519 PKCS8, owner-only and outside the repository; the package public
+key must already be authorized alongside the Git signer. No actual key is supplied by core. The tool materializes
+tracked regular blobs from the exact commit using Git plumbing (no filters/hooks), leak scans them, emits all three
+assets, verifies the emitted package locally, and runs its full extracted test suite without `.git`.
+
+Manifest schema 1 records product/repository/version/tag/fullCommit, epoch, Node/updater requirements, platforms,
+architectures, readiness protocol, payload bytes/hash/expanded bytes, and every regular file's bytes/hash/mode.
+Its size is bounded to 8 MiB. The signature sidecar contains schema 1, `ed25519`, the SHA-256 SPKI key ID and one
+canonical base64 64-byte signature over `UTF8("home-hub-release-manifest-v1\\n") || exact_manifest_bytes` (the domain
+ends with one newline byte). Unknown fields/algorithms, duplicate JSON keys, malformed UTF-8, traversal, aliases,
+case-fold collisions, links, special files, `.git`, reserved receipt paths, unsupported tar extensions, wrong hashes,
+truncation and unlisted files are refused. Signed declarations cannot raise local limits. Packages contain core only,
+no household files, runtime, npm dependencies, bundled executable tools or installation hooks. Review the assets and
+attach them to the release separately; nothing in packaging uploads them.

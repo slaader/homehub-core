@@ -9,6 +9,8 @@
 // MCP: hub_version (read-only). hub.options.updateCheck = {settings, env, fetchJson, fetchImpl, now, random,
 // setTimer, clearTimer, timing} replaces the real network, clock and timers in the tests.
 import {createUpdateChecker,updateSettings,updateSummary,integrationStatus,UPDATE_INTEGRATION} from '../update-check.mjs';
+import {loadTrust,selectTrustFile} from '../release-trust.mjs';
+import {resolvePaths} from '../paths.mjs';
 import {field} from '../text.mjs';
 
 // The environment as it was when the process started: with the check forced off there, the card has no switch.
@@ -19,7 +21,9 @@ const zone=hub=>({timeZone:hub.site.timeZone});
 // What GET /api/updates answers. Turned off by an administrator: `disabled` says by whom, and nothing else is known.
 export function updatesPayload(state,hub){
  const view=state.checker.view({repoSource:state.settings.repoSource}),disabled=view.code==='disabled'?hub.integrationDisabled(UPDATE_INTEGRATION):null;
- return {...view,...field('summary',updateSummary(view,zone(hub))),...(disabled?{disabled}:{}),
+ const home=resolvePaths().home;let trustState='legacy';try{const trustFile=selectTrustFile({home});if(trustFile){loadTrust(trustFile,{forbidden:[hub.root,hub.directory,hub.stateDirectory]});trustState='configured';}}catch{trustState='invalid';}
+ const releases=state.checker.releases();
+ return {...view,discovery:{checkedAt:view.checkedAt,releases:releases.length},trust:{state:trustState,signature:hub.version.packageDigest?'verified':'not-checked'},package:{releases:releases.map(r=>({...r,commands:{download:`node scripts/update.mjs download ${r.tag}${r.manifestDigest?' --manifest-sha256 '+r.manifestDigest:''}`,preflight:`node scripts/update.mjs preflight --package ${r.assets.find(a=>a.name.endsWith('.tar.gz'))?.name??'PACKAGE'}${r.manifestDigest?' --manifest-sha256 '+r.manifestDigest:''}`,apply:`node scripts/update.mjs apply --package ${r.assets.find(a=>a.name.endsWith('.tar.gz'))?.name??'PACKAGE'}${r.manifestDigest?' --manifest-sha256 '+r.manifestDigest:''}`}})),installedManifestDigest:hub.version.packageDigest??null,signature:hub.version.packageDigest?'verified':'legacy',compatibility:'unknown',instructions:'CLI preflight is required for instance compatibility; the browser cannot install or change trust.'},...field('summary',updateSummary(view,zone(hub))),...(disabled?{disabled}:{}),
   // The hub never applies an update. `tag` is the release to switch to and `command` what a person runs on the
   // server for it, from the core checkout (docs/updating.md). A tag that is not a plain release tag gets no command.
   apply:{automatic:false,tag:view.updateAvailable?view.latest.tag:null,command:view.updateAvailable?applyCommand(view.latest.tag):null}};
@@ -44,6 +48,7 @@ export default {
  },
  pollers:[{id:'updates',start:state=>state.checker.start(),stop:state=>state.checker.stop()}],
  routes:[
+  {method:'GET',path:'/api/updates/releases',handler:c=>c.json(200,{repository:c.state.settings.repo,channel:c.state.settings.channel,checkedAt:c.state.checker.view().checkedAt,releases:c.state.checker.releases(),automatic:false})},
   {method:'GET',path:'/api/updates',handler:c=>c.json(200,updatesPayload(c.state,c.hub))},
   {method:'POST',path:'/api/updates/check',scope:null,write:false,handler:adminOnly(async c=>{
     if(!only(c.input,[]))return c.error(400,'INVALID_INPUT','Neplatný požadavek.');
@@ -72,6 +77,7 @@ export default {
     updates:{state:u.state,code:u.code,summary:u.summary,updateAvailable:u.updateAvailable,latest:u.latest?{version:u.latest.version,url:u.latest.url,publishedAt:u.latest.publishedAt}:null,
      checkedAt:u.checkedAt,failedAt:u.failedAt,error:u.error,quarantined:u.quarantined,automatic:false}};}}],
  apiDocs:[{title:'Aktualizace',routes:[
+  ['GET','/api/updates/releases','read','Cached published release selection and package download metadata; no network or installation.'],
   ['GET','/api/updates','read','Která verze Home Hubu běží, nejnovější známé vydání a stav kontroly. MCP hub_version (jen čtení).'],
   ['POST','/api/updates/check','admin','Zkontrolovat teď (nejvýš jednou za minutu).'],
   ['POST','/api/updates/dismiss','admin','{version}: na tohle vydání už v patičce neupozorňovat.']]}],

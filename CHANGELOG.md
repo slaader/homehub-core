@@ -6,6 +6,21 @@ Home Hub core, newest first. One section per release; the section is the text of
 number promises is in `AGENTS.md` → Versioning. The top section is the release being prepared, `## Unreleased`
 until the release gives it its number: a change to the public surface adds its line there in the same commit.
 
+## Unreleased
+
+### Added
+
+- Operator-configured release trust and signed source packages, with local verification and CLI migration; configured trust failures never fall back to the legacy Git policy.
+- Exclusive updater locks, verified backups with staged restoration, per-root recovery and sustained exact runtime readiness.
+
+### Deprecated
+
+- Git updates without independently configured trust retain legacy signature/unsigned behavior and now display explicit legacy warnings. Bare Git apply still chooses the highest stable local tag. Stale locks require manual maintenance after checking that no updater or child remains active.
+
+### Data
+
+- Data epoch 5 adds schema-2 update journals, backup manifests/integrity sidecars, operator trust/required-policy markers and package receipts. Schema-1 journals and legacy backups remain explicitly recoverable. Rollback across the epoch boundary needs the pre-update backup; trust and revocations remain outside restored paths.
+
 ## 2.1.0
 
 ### Added

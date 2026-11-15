@@ -63,12 +63,12 @@ export function createFetchJson({token=null,fetchImpl=fetch,userAgent=UA}={}){
    const location=[301,302,303,307,308].includes(r.status)?r.headers.get('location'):null;
    if(!location)break;
    if(hop>=5)throw new Error(`too many redirects ${url.replace(/\?.*$/,'')}`);
-   current=new URL(location,current).toString();
+   const next=new URL(location,current);if(next.protocol!=='https:'||next.username||next.password)throw new Error('unsafe upstream redirect');current=next.toString();
   }
   // 304 only answers a conditional request; without our If-None-Match it validates nothing.
   if(r.status===304){if(!etag)throw Object.assign(new Error(`HTTP 304 without If-None-Match ${url.replace(/\?.*$/,'')}`),{status:304});return {status:304,etag};}
   if(!r.ok)throw Object.assign(new Error(`HTTP ${r.status} ${url.replace(/\?.*$/,'')}`),{status:r.status,...([403,429].includes(r.status)?{rateLimit:rateLimitOf(r.headers)}:{})});
-  const text=await r.text();if(text.length>24_000_000)throw new Error('response too large');
+  let text='';if(r.body){let bytes=0;const parts=[];for await(const chunk of r.body){bytes+=chunk.length;if(bytes>24_000_000)throw new Error('response too large');parts.push(Buffer.from(chunk));}text=Buffer.concat(parts).toString('utf8');}else{text=await r.text();if(text.length>24_000_000)throw new Error('response too large');}
   return {status:r.status,etag:r.headers.get('etag'),json:JSON.parse(text)};
  };
 }

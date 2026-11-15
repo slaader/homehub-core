@@ -206,6 +206,7 @@ export function report(r){
  if(r.releaseCommit&&r.releaseCommit!==r.commit)lines.push(`  release commit  ${r.releaseCommit.slice(0,7)} (this private history: never published)`,`  public commit   ${r.commit.slice(0,7)} (its export, on the orphan branch)`);
  lines.push(`  tag             ${r.tag} → ${r.commit.slice(0,7)} (${r.signed?'signed':'not signed'})`,'','Publishing is your step. In this order:');
  for(const command of r.publish)lines.push(`  ${command}`);
+ lines.push('','Signed source packages are a separate local preparation step (docs/updating.md):',`  node scripts/package-release.mjs --tag ${r.tag} --key /secure/package-signing.pem --trust /secure/trust.json --output /secure/release-assets`,'  Review and attach the emitted .tar.gz, .manifest.json and .manifest.sig.json assets to the release.','  This command never generates keys, uploads assets, pushes or publishes.');
  if(r.undo.length){lines.push('','To undo it before anything is pushed:');for(const command of r.undo)lines.push(`  ${command}`);}
  return lines;
 }

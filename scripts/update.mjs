@@ -26,27 +26,36 @@
 // Exit: 0 done; 1 refused, or failed and put back (the previous version runs); 2 usage; 3 the previous version could
 // not be brought back and the service is stopped.
 import path from 'node:path';
+import {existsSync,readFileSync,rmSync} from 'node:fs';
+import {acquireLock} from '../server/update-lock.mjs';
+import {verifyPackage} from '../server/release-package.mjs';
+import {downloadPackage,discoverReleases} from '../server/release-catalog.mjs';
+import {loadTrust,validateTrust,publicKey,gitPublicKey,trustDestination,durableWrite,selectTrustFile,rememberTrustSelection} from '../server/release-trust.mjs';
+import {updateSettings,UPDATE_INTEGRATION} from '../server/update-check.mjs';
+import {loadGithubToken,createFetchJson} from '../server/systems-upstream.mjs';
 import {fileURLToPath} from 'node:url';
-import {resolveInstance,preflight,apply,rollback,backup,recover,status,formatStatus,readJournal,unfinished,realContext,UpdateError,RollbackFailed} from '../server/update-apply.mjs';
+import {resolveInstance,preflight,apply,rollback,backup,status,formatStatus,realContext,UpdateError,RollbackFailed} from '../server/update-apply.mjs';
 
-const VALUE=['--to','--plugins','--site-config','--add-plugin-source','--root','--home','--data','--state','--private','--service','--health','--health-seconds','--backups','--keep','--staging','--reason'];
-const FLAG=['--no-fetch','--skip-tests','--allow-unsigned','--force','--yes','--json','--help'];
-const COMMANDS=['status','preflight','apply','rollback','backup'];
-const USAGE=`Usage: node scripts/update.mjs status | preflight [<tag>] | apply [<tag>] | rollback [--yes] | backup
+const VALUE=['--to','--plugins','--site-config','--add-plugin-source','--root','--home','--data','--state','--private','--service','--health','--health-seconds','--backups','--keep','--staging','--reason','--trust','--package','--manifest-sha256','--output','--backup-root','--public-key','--fingerprint','--repository','--role'];
+const FLAG=['--no-fetch','--skip-tests','--allow-unsigned','--force','--yes','--json','--help','--latest-published','--migrate-from-git'];
+const COMMANDS=['status','preflight','apply','rollback','backup','verify-package','download','install','trust-import'];
+const USAGE=`Usage: node scripts/update.mjs status | preflight [<tag>] | apply [<tag>] | rollback [--yes] | backup | verify-package --package FILE | download <tag> | install --package FILE | trust-import
   [--plugins [<source>=]<tag>]… [--add-plugin-source NAME]… [--site-config FILE]
   [--root DIR] [--home DIR] [--data DIR] [--state DIR] [--private DIR]
   [--service SPEC] [--health URL] [--health-seconds N] [--backups DIR] [--keep N] [--staging DIR]
-  [--no-fetch] [--skip-tests] [--allow-unsigned] [--force] [--reason TEXT] [--json]
+  [--trust FILE] [--package FILE] [--manifest-sha256 HASH] [--latest-published] [--migrate-from-git]
+  [--backup-root DIR] [--no-fetch] [--skip-tests] [--allow-unsigned] [--force] [--reason TEXT] [--json]
 docs/updating.md has the whole of it.`;
 
 class UsageError extends Error{}
 export function parseArgs(argv){
- const out={command:null,tag:null,plugins:{},addPluginSources:[],flags:new Set(),values:{}};
+ const out={command:null,tag:null,plugins:{},addPluginSources:[],backupRoots:[],flags:new Set(),values:{}};
  for(let i=0;i<argv.length;i++){
   const a=argv[i];
   if(VALUE.includes(a)){
-   const v=argv[++i];if(v===undefined||v.startsWith('--'))throw new UsageError(`${a} needs a value`);
+   const v=argv[++i];if(!v||v.startsWith('--'))throw new UsageError(`${a} needs a value`);
    if(a==='--plugins'){const at=v.indexOf('=');const [source,tag]=at<0?['*',v]:[v.slice(0,at),v.slice(at+1)];if(!source||!tag||out.plugins[source])throw new UsageError('--plugins takes <tag>, or <source>=<tag> once per source');out.plugins[source]=tag;}
+   else if(a==='--backup-root')out.backupRoots.push(path.resolve(v));
    else if(a==='--add-plugin-source'){if(out.addPluginSources.includes(v))throw new UsageError('--add-plugin-source names each source once');out.addPluginSources.push(v);}
    else if(a==='--to'){if(out.tag)throw new UsageError('the target tag is given twice');out.tag=v;}
    else out.values[a.slice(2)]=v;
@@ -58,11 +67,15 @@ export function parseArgs(argv){
  }
  if(out.flags.has('help'))return out;
  if(!COMMANDS.includes(out.command))throw new UsageError(out.command?`unknown command ${out.command}`:'which command?');
- if((out.tag||Object.keys(out.plugins).length)&&!['preflight','apply'].includes(out.command))throw new UsageError(`${out.command} takes no tag`);
+ if((out.tag||Object.keys(out.plugins).length)&&!['preflight','apply','download'].includes(out.command))throw new UsageError(`${out.command} takes no tag`);
  if(out.values['site-config']&&!['preflight','apply'].includes(out.command))throw new UsageError('--site-config is only for preflight or apply');
  if(out.addPluginSources.length&&!['preflight','apply'].includes(out.command))throw new UsageError('--add-plugin-source is only for preflight or apply');
+ if(out.values.package&&(out.tag||Object.keys(out.plugins).length||out.flags.has('latest-published')))throw new UsageError('Conflicting Git/package targets');
+ if(['verify-package','install'].includes(out.command)&&!out.values.package)throw new UsageError(`${out.command} requires --package FILE`);
+ if(out.command==='download'&&!out.tag)throw new UsageError('download requires a published tag');
+ if(out.values['manifest-sha256']&&!/^[0-9a-f]{64}$/.test(out.values['manifest-sha256']))throw new UsageError('--manifest-sha256 requires 64 lowercase hex digits');
  const whole=(name,min)=>{const v=out.values[name];if(v===undefined)return undefined;if(!/^\d{1,4}$/.test(v)||Number(v)<min)throw new UsageError(`--${name} takes a whole number`);return Number(v);};
- out.options={root:out.values.root,service:out.values.service,health:out.values.health,healthSeconds:whole('health-seconds',2),backups:out.values.backups,keep:whole('keep',1),staging:out.values.staging};
+ out.options={root:out.values.root,service:out.values.service,health:out.values.health,healthSeconds:whole('health-seconds',2),backups:out.values.backups,keep:whole('keep',1),recovery:['rollback','apply','status','install'].includes(out.command),staging:out.values.staging,trust:out.values.trust,backupRoots:out.backupRoots};
  return out;
 }
 /** The instance the flags and the environment name. A rollback without --service uses what the update it undoes was run with. */
@@ -70,10 +83,7 @@ export function instanceFor(args,env=process.env){
  const e={...env};
  for(const [flag,name] of [['home','HOME_HUB_HOME'],['data','DATA_DIR'],['state','STATE_DIR'],['private','HOME_HUB_PRIVATE_DIR']])if(args.values[flag])e[name]=path.resolve(args.values[flag]);
  let inst=resolveInstance({env:e,options:args.options});
- if(args.command==='rollback'&&(!inst.service||!inst.health)){
-  const used=readJournal(inst)?.settings;
-  if(used)inst=resolveInstance({env:e,options:{...args.options,service:args.options.service??inst.service?.spec??used.service,health:args.options.health??inst.health?.url??used.health?.url,healthSeconds:args.options.healthSeconds??inst.health?.seconds??used.health?.seconds}});
- }
+
  return inst;
 }
 
@@ -88,27 +98,40 @@ export async function main(argv,{env=process.env,ctx=null,out=line=>console.log(
  const world=ctx??realContext({log:out,checkpoint:()=>{if(signal)throw Object.assign(new Error(`interrupted (${signal})`),{interrupted:true});}});
  try{
   const inst=instanceFor(args,env);
-  const request={core:args.tag,plugins:args.plugins,addPluginSources:args.addPluginSources,siteConfig:args.values['site-config'],fetch:!args.flags.has('no-fetch'),skipTests:args.flags.has('skip-tests'),allowUnsigned:args.flags.has('allow-unsigned'),force:args.flags.has('force')};
+  const request={core:args.tag,plugins:args.plugins,addPluginSources:args.addPluginSources,siteConfig:args.values['site-config'],fetch:!args.flags.has('no-fetch'),skipTests:args.flags.has('skip-tests'),allowUnsigned:args.flags.has('allow-unsigned'),package:args.values.package,manifestDigest:args.values['manifest-sha256'],migrateFromGit:args.flags.has('migrate-from-git'),trust:args.values.trust,force:args.flags.has('force')};
+  const repository=existsSync(path.join(inst.root,'package.json'))?JSON.parse(readFileSync(path.join(inst.root,'package.json'),'utf8')).homeHub?.updates?.repo:null;
+  const trustFile=['verify-package','download','trust-import'].includes(args.command)?selectTrustFile({home:inst.home,explicit:args.values.trust})??(args.command==='trust-import'?inst.trustFile:null):args.values.trust??inst.trustFile;
+  if(args.command==='trust-import'){
+   const repo=args.values.repository??repository,role=args.values.role??'package',file=args.values['public-key'];if(!file||!args.values.fingerprint||!['package','git'].includes(role))throw new UsageError('trust-import needs --public-key FILE --fingerprint HASH [--repository OWNER/REPO] [--role package|git] and --trust FILE without an instance');if(!trustFile)throw new UsageError('trust-import requires --trust FILE or --home DIR');
+   trustDestination(trustFile,{forbidden:[inst.root,inst.paths.config,inst.paths.data,inst.paths.state,inst.paths.private,...inst.backupRoots]});const releaseTrustLock=acquireLock(trustFile+'.lock');try{const pem=readFileSync(file,'utf8').trim()+'\n',parsed=role==='package'?publicKey(pem):gitPublicKey(pem),id=parsed.id,fingerprint=parsed.fingerprint??id;if(fingerprint!==args.values.fingerprint)throw new UpdateError('Expected public-key fingerprint does not match');
+   const doc=existsSync(trustFile)?loadTrust(trustFile,{forbidden:[inst.root,inst.paths.config,inst.paths.data,inst.paths.state,inst.paths.private]}):{schemaVersion:1,publishers:{}};doc.publishers[repo]??={gitSigners:[],packageKeys:[]};const records=doc.publishers[repo][role==='package'?'packageKeys':'gitSigners'];if(records.some(k=>k.id===id))throw new UpdateError('Key already exists; import never reactivates retired or revoked keys. Review the local trust policy explicitly.');
+   records.push({id,publicKey:pem,fingerprint,role,status:'active',provenance:'Local import with independently supplied expected fingerprint'});validateTrust(doc);out(`Authorizing repository ${repo}, role ${role}, fingerprint ${id}`);durableWrite(trustFile,JSON.stringify(doc,null,1)+'\n');loadTrust(trustFile,{forbidden:[inst.root,inst.paths.config,inst.paths.data,inst.paths.state,inst.paths.private]});rememberTrustSelection(inst.home,trustFile);return 0;}finally{releaseTrustLock();}
+  }
+  if(args.command==='verify-package'){
+   const result=await verifyPackage(args.values.package,{trustFile,repository,manifestDigest:request.manifestDigest,compatibility:false,forbidden:[inst.root,inst.paths.config,inst.paths.data,inst.paths.state,inst.paths.private]});out(JSON.stringify(result,null,1));return 0;
+  }
+  if(args.command==='download'||args.flags.has('latest-published')){
+   const disabled=String(env.HOME_HUB_UPDATE_CHECK??'').toLowerCase()==='off'||JSON.parse(existsSync(path.join(inst.paths.state,'integrations.json'))?readFileSync(path.join(inst.paths.state,'integrations.json'),'utf8'):'{}')?.disabled?.[UPDATE_INTEGRATION];if(disabled)throw new UpdateError('Update discovery is disabled; no update network requests were made.');
+   const site=inst.paths.siteConfig&&existsSync(inst.paths.siteConfig)?JSON.parse(readFileSync(inst.paths.siteConfig,'utf8')):null,settings=updateSettings({site,version:{updates:{repo:repository}},env});
+   const token=(await loadGithubToken({env})).token,fetchJson=createFetchJson({token});
+   if(args.command==='download'){const result=await downloadPackage({tag:args.tag,repository:settings.repo,trustFile,manifestDigest:request.manifestDigest,output:path.resolve(args.values.output??process.cwd()),fetchJson});out(`Verified download: ${result.file}\nManifest SHA-256: ${result.manifestSha256}`);return 0;}
+   const found=await discoverReleases({repository:settings.repo,channel:settings.channel,fetchJson});request.core=found.found.tag;if(!request.core)throw new UpdateError('No published release selected');
+  }
   if(args.command==='status'){
    const s=status(inst,world);
    if(args.flags.has('json'))out(JSON.stringify(s,null,1));else for(const line of formatStatus(s))out(line);
    return s.journal?.unfinished?1:0;
   }
   if(args.command==='preflight'){
-   if(unfinished(readJournal(inst)))out(`NOTE: an earlier update did not finish (${inst.files.journal}); "rollback" puts it back.`);
    out(`Preflight for ${inst.root}:`);
    const plan=await preflight(inst,request,world);
    for(const line of plan.lines)out(`  ${line}`);
-   out(`\nPreflight passed: ${plan.from.label} → ${plan.to.label}. Nothing was changed.`);
+   if(plan.package){rmSync(plan.package.staged,{recursive:true,force:true});}
+   out(`\nPreflight passed: ${plan.from.label} → ${plan.to.label}. The live installation was not switched; staging and trust selection may update local updater metadata.`);
    if(!inst.service||!inst.health)out('To apply it, also say how the hub is stopped, started and checked: --service and --health (or instance.json).');
    return 0;
   }
-  if(args.command==='apply'){
-   if(unfinished(readJournal(inst))){
-    const done=await recover(inst,world);
-    out(`\nThe earlier update was put back (${done.step}); ${done.from.label} is running. Nothing new was applied: run the command again when you are ready.`);
-    return 1;
-   }
+  if(args.command==='apply'||args.command==='install'){
    const {journal,plan}=await apply(inst,request,world);
    out(`\nUpdated: ${plan.from.label} → ${plan.to.label} in ${Math.round((Date.parse(journal.finishedAt)-Date.parse(journal.startedAt))/1000)} s. The hub answers at ${inst.health.url}.`);
    out(`  archive  ${journal.backup.file}`);

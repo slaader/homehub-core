@@ -1,3 +1,4 @@
+import {contentFingerprint,pluginSourceFingerprint,rememberPluginIdentity} from './runtime-identity.mjs';
 // Module registry: the one contract core features and plugins both use to add to the hub.
 // A module is a plain object (docs/plugins.md):
 //   {id, scopes, routes:[{method,path|match,scope,handler,…}], mcpTools, mcpInstructions, pollers, assets, nav, strings, provides, integrations, setup}
@@ -384,6 +385,7 @@ export async function loadPlugins(directories=pluginsDirectories(),{coreVersion=
    const entry=path.join(directory,name,'index.mjs');if(!existsSync(entry))continue;
    if(where.has(name))throw new ModuleError(`plugin "${name}" is in two plugin directories: ${where.get(name)} and ${directory}`);
    where.set(name,directory);
+   const loadedFingerprint=contentFingerprint(path.join(directory,name)),sourceFingerprint=pluginSourceFingerprint(directory);
    const manifest=readPluginManifest(directory,name,{source});
    if(!manifest)warn(`plugin "${name}" has no ${MANIFEST_FILE}: loaded as an unversioned plugin (Home Hub 2.0 will refuse it). docs/plugins.md → plugin.json`);
    else if(!satisfies(coreVersion,manifest.core))throw new ModuleError(`plugin "${name}" ${manifest.version} supports Home Hub ${manifest.core}; this is ${coreVersion}. Update the plugin, or run a core it supports.`);
@@ -394,7 +396,8 @@ export async function loadPlugins(directories=pluginsDirectories(),{coreVersion=
    }
    if(!plain(raw))throw new ModuleError(`plugin "${name}": index.mjs must default-export the module object`);
    if(raw.id!==name)throw new ModuleError(`plugin "${name}": its id is ${JSON.stringify(raw.id)}; the id must equal the directory name`);
-   loaded.push(defineModule(raw,{directory:path.join(directory,name,'public'),manifest}));
+   if(contentFingerprint(path.join(directory,name))!==loadedFingerprint||pluginSourceFingerprint(directory)!==sourceFingerprint)throw new ModuleError(`plugin ${name} changed during import; restart from stable sources`);
+   loaded.push(rememberPluginIdentity(defineModule(raw,{directory:path.join(directory,name,'public'),manifest}),{fingerprint:loadedFingerprint,sourceFingerprint}));
   }
  }
  checkRequirements(loaded,{site});

@@ -1,3 +1,4 @@
+import {bootId,runtimeIdentity} from './runtime-identity.mjs';
 // Home Hub HTTP server: one request pipeline (headers, who is calling, origin and scope checks, body
 // limits, error replies) and a registry of modules that own the routes, pages, assets and MCP tools.
 // Core features are modules in server/core/; a household adds its own as plugins under local/plugins/
@@ -150,7 +151,7 @@ export function createHandler(options) {
     try {
       await integrationSecrets.ready();
       const url = new URL(req.url,origin),pathname=url.pathname;
-      if(req.method==='GET'&&pathname==='/healthz') return json(200,{ok:true});
+      if(req.method==='GET'&&pathname==='/healthz'){res.setHeader('X-Home-Hub-Run-Id',bootId);return json(200,{ok:true});}
       // Native clients send an app token instead of the cookie; such requests need no Origin header (browsers never attach it on their own).
       const bearer=bearerOf(req.headers.authorization),apiBearer=apiBearerOf(req.headers.authorization),agentBearer=agentBearerOf(req.headers.authorization),appToken=bearer?appTokens.verify(bearer):null;
       // Every principal carries the scopes it holds: a person's role, a key's account, everything for an app token,
@@ -277,7 +278,7 @@ if(process.argv[1]===fileURLToPath(import.meta.url)){
   const plugins=startupRegistry.modules.filter(m=>!m.core);
   server.listen(port,process.env.BIND_HOST||(preview?'127.0.0.1':'0.0.0.0'),()=>{
    console.info(startupLine({version:HUB_VERSION,edition:readEdition(),plugins,port}));
-   writeRunFile(handler.hub.stateDirectory,{version:HUB_VERSION,plugins}).catch(e=>console.error(`Could not write run.json: ${e.message}`));
+   writeRunFile(handler.hub.stateDirectory,{version:HUB_VERSION,plugins}).catch(e=>{console.error(`Could not write run.json: ${e.message}`);server.close();process.exitCode=1;handler.stop().catch(()=>{});});
   });
   installShutdown({server,handler});
 }
@@ -290,7 +291,7 @@ export function startupLine({version,edition,plugins=[],port}){return `Home Hub 
 // only {ok:true}, so nobody learns the version without a sign-in.
 export async function writeRunFile(stateDirectory,{version,plugins=[],pid=process.pid,now=Date.now()}){
  const file=path.join(stateDirectory,'run.json'),tmp=`${file}.${pid}.tmp`;
- const doc={version:version.version,commit:version.commit,exact:version.exact,dataEpoch:version.dataEpoch,pid,startedAt:new Date(now).toISOString(),plugins:plugins.map(p=>({id:p.id,...(p.version?{version:p.version}:{})}))};
+ const doc=runtimeIdentity({version,plugins,pid,now});
  await mkdir(stateDirectory,{recursive:true,mode:0o700});
  await writeFile(tmp,JSON.stringify(doc,null,1)+'\n',{mode:0o600});await rename(tmp,file);
  return doc;

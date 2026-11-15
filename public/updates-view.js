@@ -26,6 +26,26 @@ export const footerHint=u=>u&&u.updateAvailable===true&&!u.dismissed&&typeof u.l
 const announce=u=>{try{dispatchEvent(new CustomEvent('updateschange',{detail:u}));}catch{}};
 const day=v=>typeof v==='string'&&Number.isFinite(Date.parse(v))?new Intl.DateTimeFormat(locale(),{day:'numeric',month:'numeric',year:'numeric',timeZone:timeZone()}).format(new Date(v)):'';
 
+function packageSelection(box,u){
+ const releases=u.package?.releases??[];if(!releases.length)return null;
+ const panel=el('div',{class:'up-package'}),select=el('select',{'aria-label':t('Vybrané vydání')}),details=el('div',{});
+ for(const release of releases)select.append(el('option',{value:release.tag},release.version));
+ const render=()=>{const r=releases.find(r=>r.tag===select.value)??releases[0];
+  const commands=Object.entries(r.commands??{}).filter(([,command])=>typeof command==='string'&&/^node scripts\/update\.mjs (?:download|preflight|apply) [A-Za-z0-9._ /-]+$/.test(command));
+  details.replaceChildren(...[
+   el('p',{},t('Běží {installed}; vybráno {selected}.',{installed:u.installed.label,selected:r.version})),
+   el('p',{},t('Vydavatel / repozitář: {repo}',{repo:u.repo})),
+   el('p',{},t('Otisk manifestu: {digest}',{digest:r.manifestDigest??t('Neznámý')})),
+   el('p',{},t('Podpis: {signature}; kompatibilita: {compatibility}.',{signature:t('Dosud neověřený'),compatibility:t('Neznámá')})),
+   el('p',{class:'ig-dim'},t('Požadavek na Node a změnu datového formátu ověří podepsaný manifest a místní preflight. Úplná kompatibilita instance zatím není známá.')),
+   el('p',{class:'ig-dim'},t('Zjištěno: {time}; kryptograficky ověřeno: {verified}.',{time:u.checkedAt??t('Neznámý'),verified:r.verifiedAt??t('Dosud neověřeno')})),
+   (r.quarantine||u.quarantined?.version===r.version)?el('p',{},t('Tohle vydání se tu zkoušelo a vrátilo zpět.')):null,
+   ...r.assets.filter(a=>typeof a.url==='string'&&a.url.startsWith(`https://github.com/${u.repo}/releases/download/`)).map(a=>el('p',{},el('a',{href:a.url,rel:'noopener noreferrer'},a.name))),
+   el('p',{},t('Příkazy spouští správce na serveru s místní důvěrou. Pro přechod z Gitu přidej --migrate-from-git. Stahování připne ověřený otisk; použij jej i v dalších příkazech.')),
+   ...commands.map(([,command])=>el('code',{class:'up-command'},command)),
+  ].filter(Boolean));};select.addEventListener('change',render);render();panel.append(el('label',{},t('Vybrané vydání'),select),details);return panel;
+}
+
 function paint(box,u){
  announce(u);
  const latest=u.latest;
@@ -44,10 +64,11 @@ function paint(box,u){
   el('p',{class:'up-head'},el('b',{},t('Vydání {version}',{version:latest.version})),date?el('span',{class:'ig-dim'},` · ${date}`):null,
    link?el('a',{href:link,target:'_blank',rel:'noopener noreferrer'},t('Otevřít na GitHubu')):null),
   // The command is the server's own text for a plain release tag (GET /api/updates → apply.command); it goes in a text node.
-  u.updateAvailable?el('p',{},applyCommand(u)?t('Home Hub se neaktualizuje sám. Na serveru spusť v jeho checkoutu příkaz níže: ověří vydání {tag}, zazálohuje data, přepne, restartuje a při potížích se vrátí zpět. Postup je v docs/updating.md.',{tag:latest.tag})
+  u.updateAvailable?el('p',{},applyCommand(u)?t('Home Hub se neaktualizuje sám. Na serveru spusť v jeho checkoutu příkaz níže: zkontroluje vydání {tag} podle místní politiky, zazálohuje data, přepne, restartuje a při potížích se vrátí zpět. Postup je v docs/updating.md.',{tag:latest.tag})
    :t('Home Hub se neaktualizuje sám. Aktualizaci provede správce na serveru příkazem scripts/update.mjs; postup je v docs/updating.md.')):null,
   u.updateAvailable&&applyCommand(u)?el('code',{class:'up-command'},applyCommand(u)):null,
   latest.notes?el('details',{class:'up-notes',...(u.updateAvailable?{open:''}:{})},el('summary',{},t('Poznámky k vydání')),el('pre',{},latest.notes)):null,
+  packageSelection(box,u),
   dismiss,u.updateAvailable&&u.dismissed?el('p',{class:'ig-dim'},t('V patičce se tohle vydání nepřipomíná.')):null].filter(Boolean));
 }
 /** The block under the card's summary. It fills in once the answer is here and stays out of the way otherwise. */
