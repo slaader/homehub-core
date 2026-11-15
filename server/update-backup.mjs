@@ -48,12 +48,16 @@ export async function createBackup(inst,ctx,name,{plan=backupPlan(inst)}={}){
   return {file,manifest:file+'.manifest.json',integrity:file+'.integrity.json',entries:plan.roots,bytes:integrity.archiveBytes,files:manifest.files.length,verified:true};
  }finally{rmSync(temp,{force:true});rmSync(scratch,{recursive:true,force:true});}
 }
-function validateRoots(inst,roots){
+function validateRoots(inst,roots,progress=[]){
  for(const e of roots){if(!e||!/^root-\d{4}$/.test(e.id)||!path.isAbsolute(e.canonical)||e.canonical===path.parse(e.canonical).root||!path.isAbsolute(e.logical))throw new Error('invalid backup root roles');
   if(canonical(path.dirname(e.canonical))!==path.dirname(e.canonical)||(exists(e.canonical)&&lstatSync(e.canonical).isSymbolicLink()))throw new Error('restore destination topology changed');
-  for(const alias of e.aliases??[])if(alias.link!==null&&(!exists(alias.logical)||!lstatSync(alias.logical).isSymbolicLink()||readlinkSync(alias.logical)!==alias.link||canonical(alias.logical)!==(alias.canonical??e.canonical)))throw new Error('restore alias topology changed');
+  // The live target can be temporarily absent after a journalled rename. Resolve the
+  // link text without following the dangling link only for that recorded transition.
+  const pending=progress.find(p=>p.id===e.id&&p.live===e.canonical&&['moving-old','old-moved','installing'].includes(p.status)&&exists(p.aside)&&!exists(p.live));
+  const linkMatches=(logical,link,target)=>{if(!exists(logical)||!lstatSync(logical).isSymbolicLink()||readlinkSync(logical)!==link)return false;try{return canonical(logical)===target;}catch(err){if(!pending||err.code!=='ENOENT')throw err;return canonical(path.resolve(path.dirname(logical),link))===target;}};
+  for(const alias of e.aliases??[])if(alias.link!==null&&!linkMatches(alias.logical,alias.link,alias.canonical??e.canonical))throw new Error('restore alias topology changed');
   for(const protectedPath of [inst.backups,inst.files.journal,inst.files.lock,inst.trustFile,inst.driver].filter(Boolean))if(within(canonical(protectedPath),e.canonical))throw new Error('restore would replace recovery metadata or trust');
-  if(e.link!==null&&e.link!==undefined){if(!exists(e.logical)||!lstatSync(e.logical).isSymbolicLink()||readlinkSync(e.logical)!==e.link||canonical(e.logical)!==e.canonical)throw new Error('top-level symlink topology changed; manual recovery required');}
+  if(e.link!==null&&e.link!==undefined&&!linkMatches(e.logical,e.link,e.canonical))throw new Error('top-level symlink topology changed; manual recovery required');
  }
  for(let i=0;i<roots.length;i++)for(let j=0;j<i;j++)if(within(roots[i].canonical,roots[j].canonical)||within(roots[j].canonical,roots[i].canonical))throw new Error('overlapping restore roots');
 }
@@ -61,8 +65,9 @@ export async function restoreBackup(inst,ctx,backup,journal=null){
  if(!exists(backup.file))throw new Error(`the archive ${backup.file} is gone`);let manifest,legacy=false;
  if(backup.manifest&&backup.integrity){const bytes=readFileSync(backup.manifest),integrity=strictJson(readFileSync(backup.integrity));if(integrity.schemaVersion!==1||sha256(bytes)!==integrity.manifestSha256||lstatSync(backup.file).size!==integrity.archiveBytes||fileHash(backup.file)!==integrity.archiveSha256)throw new Error('backup integrity mismatch');manifest=strictJson(bytes);if(manifest.schemaVersion!==BACKUP_SCHEMA||!Array.isArray(manifest.files)||!Array.isArray(manifest.roots))throw new Error('unsupported backup manifest');}
  else{legacy=true;ctx.log('  LEGACY archive: no integrity provenance; strict staged inspection required');manifest={roots:backup.entries.map((e,i)=>({id:`root-${String(i+1).padStart(4,'0')}`,logical:path.join(e.parent,e.name),canonical:canonical(path.join(e.parent,e.name)),link:null,existed:true,legacyName:e.name})),files:null};}
- if(journal?.driver)inst={...inst,driver:journal.driver};validateRoots(inst,manifest.roots);
+ if(journal?.driver)inst={...inst,driver:journal.driver};
  if(journal?.restoreRoots){const ids=new Set();for(const p of journal.restoreRoots){const r=manifest.roots.find(r=>r.id===p.id);if(!r||ids.has(p.id)||p.live!==r.canonical||!p.aside.startsWith(p.live+'.failed-')||!path.basename(p.stageDir).startsWith('.hub-restore-')||p.staged!==path.join(p.stageDir,'root')||p.existed!==r.existed)throw new Error('restore progress does not match authenticated backup root roles');ids.add(p.id);}}
+ validateRoots(inst,manifest.roots,journal?.restoreRoots);
  const scratch=mkdtempSync(path.join(inst.backups,'.restore-'));const save=()=>{if(journal)writeUpdateJournal(inst.files.journal,journal);};
  try{
   const entries=await extractArchive(backup.file,scratch,{release:false,legacy,expected:manifest.files?new Map(manifest.files.map(f=>[f.path,f])):null});
@@ -78,7 +83,7 @@ export async function restoreBackup(inst,ctx,backup,journal=null){
    progress.push({id:r.id,live:r.canonical,staged,stageDir,aside:r.canonical+'.failed-'+randomUUID(),existed:r.existed,status:'prepared'});save();
   }
   if(manifest.files){for(const p of progress.filter(p=>p.status==='prepared'&&p.existed)){const staged=inventory([{id:p.id,existed:true,canonical:p.staged}]).map(({source,...e})=>e),expected=manifest.files.filter(f=>f.path===p.id||f.path.startsWith(p.id+'/'));if(JSON.stringify(staged)!==JSON.stringify(expected))throw new Error('destination staging validation failed');}}
-  validateRoots(inst,manifest.roots);
+  validateRoots(inst,manifest.roots,progress);
   for(const p of progress){if(p.status==='installed')continue;
    if(p.status==='installing'&&!exists(p.staged)&&exists(p.live)){p.status='installed';save();continue;}
    if(p.status==='prepared'||p.status==='moving-old'){p.status='moving-old';save();if(exists(p.live)){if(exists(p.aside))throw new Error('ambiguous partial restore: both live and failed root exist');renameSync(p.live,p.aside);ctx.checkpoint?.('restore-old-renamed');syncDirectory(path.dirname(p.live));}p.status='old-moved';save();}

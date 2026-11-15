@@ -23,3 +23,11 @@ test('backup: interrupted root renames reconcile in a fresh journal read without
 test('backup: uncovered escaping and dangling links and self-including destinations refuse',t=>{
  const {dir,inst}=fixture(t);linkSync(inst.paths.authFile,path.join(inst.paths.private,'hard-link'));assert.throws(()=>backupPlan(inst),/hard-linked/);rmSync(path.join(inst.paths.private,'hard-link'));writeFileSync(path.join(dir,'uncovered'),'x');symlinkSync('../uncovered',path.join(inst.paths.private,'link'));assert.throws(()=>backupPlan(inst),/uncovered escaping/);rmSync(path.join(inst.paths.private,'link'));symlinkSync('missing',path.join(inst.paths.private,'link'));assert.throws(()=>backupPlan(inst),/dangling/);rmSync(path.join(inst.paths.private,'link'));inst.backups=path.join(inst.paths.data,'backups');assert.throws(()=>backupPlan(inst),/inside/);
 });
+test('backup: interrupted rename of a symlinked root can be resumed',async t=>{
+ const {dir,inst,ctx}=fixture(t),physical=path.join(dir,'physical');rmSync(inst.paths.data,{recursive:true});mkdirSync(physical);mkdirSync(path.join(physical,'state'));writeFileSync(path.join(physical,'value'),'before');symlinkSync(physical,inst.paths.data);const backup=await createBackup(inst,ctx,'symlink-crash'),j=journal(inst,backup);writeUpdateJournal(inst.files.journal,j);
+ const root=backup.entries.find(e=>e.canonical===physical);let crashed=false;
+ await assert.rejects(restoreBackup(inst,{...ctx,checkpoint:p=>{if(p==='restore-old-renamed'&&!crashed){crashed=true;throw new Error('crash');}}},backup,j),/crash/);
+ assert.equal(j.restoreRoots.find(p=>p.id===root.id).status,'moving-old');
+ await restoreBackup(inst,ctx,backup,readUpdateJournal(inst.files.journal));
+ assert.equal(readFileSync(path.join(inst.paths.data,'value'),'utf8'),'before');
+});

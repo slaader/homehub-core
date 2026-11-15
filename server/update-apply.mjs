@@ -564,7 +564,11 @@ async function preflightPackage(inst,request,ctx,{forApply}){
  try{
   if(compare(target.version,installed.version)<0||target.dataEpoch<installed.dataEpoch)throw new UpdateError('Package downgrade refused; use the recorded rollback transaction.');
   const quarantine=readQuarantine(inst.files.updates);if(!request.force&&(quarantine[target.version]||quarantine[verified.manifestSha256]))throw new UpdateError('This exact package or version was rolled back; --force permits a verified retry.');
-  if(forApply){needService(inst);const why=runMismatch(run,{version:installed.version},{pidAlive:ctx.pidAlive});if(why||!await probeOk(ctx,inst.health.url))throw new UpdateError(`The installed hub must be running before apply: ${why||'health endpoint does not answer'}`);}
+  if(forApply){needService(inst);const why=runMismatch(run,{version:installed.version},{pidAlive:ctx.pidAlive});if(why||!await probeOk(ctx,inst.health.url))throw new UpdateError(`The installed hub must be running before apply: ${why||'health endpoint does not answer'}`);
+   // A process from another commit of the same version is not a viable rollback target.
+   if(source.git&&typeof run.commit==='string'&&run.commit&&!source.commit.startsWith(run.commit))throw new UpdateError('The running hub commit differs from the installed checkout; restart it before applying a package.');
+   const receipt=packageReceipt(inst.root);if(receipt&&(run.readinessProtocol!==1||run.fullCommit!==receipt.fullCommit||run.packageDigest!==receipt.manifestSha256))throw new UpdateError('The running hub identity differs from the installed package; restart it before applying a package.');
+  }
   const before=pluginsOf(inst),plugins=inst.sources.flatMap(s=>s.plugins.flatMap(rel=>pluginFacts(path.join(s.dir,rel)).map(p=>({...p,fingerprint:contentFingerprint(path.join(s.dir,rel,p.id)),sourceFingerprint:pluginSourceFingerprint(path.join(s.dir,rel))}))));
   for(const p of plugins){if(!p.version||!p.core||!validRange(p.core)||!satisfies(target.version,p.core))throw new UpdateError(`Package target is incompatible with plugin ${p.id}; a version and valid core range are required.`);for(const [id,range] of Object.entries(p.requires)){const other=plugins.find(p=>p.id===id);if(!other?.version||!validRange(range)||!satisfies(other.version,range))throw new UpdateError(`Plugin ${p.id} dependency ${id} is incompatible`);}}
   const siteChange=stageSite(inst,request,installed,target,siteStaging),env=testEnv(inst.env),runner=path.join(stage,'scripts','run-tests.mjs');

@@ -644,6 +644,13 @@ test('signed package migration uses the common transaction and retains the compl
  const back=await rollback(w.inst(),w.ctx);assert.equal(back.journal.step,'rolled-back');assert.equal(w.hub.git('rev-parse','HEAD'),w.v100);assert.ok(existsSync(back.journal.package.failed));
 });
 
+test('package migration refuses a running process from another commit of the same version',async t=>{
+ const w=await world(t,{layout:'home'}),f=await packageFixture(path.join(w.dir,'packages'),{files:{'scripts/run-tests.mjs':RUNNER,'server/index.mjs':INDEX}}),file=path.join(w.state,'run.json'),run=JSON.parse(readFileSync(file,'utf8'));
+ run.commit='0000000';writeFileSync(file,JSON.stringify(run));
+ await refused(apply(w.inst(),{package:f.file,trust:f.trustFile,migrateFromGit:true},w.ctx),/running hub commit differs/);
+ assert.deepEqual(w.svc.calls,[]);assert.equal(w.hub.git('rev-parse','HEAD'),w.v100);
+});
+
 test('invalid package trust executes no target code, calls no service and never accepts unsigned/force bypasses',async t=>{
  const w=await world(t,{layout:'home'}),f=await packageFixture(path.join(w.dir,'packages'),{files:{'scripts/run-tests.mjs':`throw Error('MUST NOT EXECUTE')`,'server/index.mjs':INDEX}});
  const trust=JSON.parse(readFileSync(f.trustFile,'utf8'));trust.publishers['example/core'].packageKeys[0].status='revoked';writeFileSync(f.trustFile,JSON.stringify(trust));
