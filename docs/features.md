@@ -171,8 +171,10 @@ models of the runtimes above them, once something reports that device's runtimes
    Supported: llama-swap, Ollama, LM Studio, llama.cpp server (also router mode), vLLM, SGLang, oMLX,
    mlx-serve, and anything OpenAI-compatible (reachable and its model list). `kind: "auto"` recognises the
    runtime by its answers. The `url` is an origin only (no path, no user or password), on loopback or inside
-   `lanCidrs`, written as an IP address. A runtime that needs a bearer token gets it in the web UI; the token
-   is stored server-side (`private/runtime-tokens.json`, mode 0600) and never shown again.
+   `lanCidrs`, written as an IP address. A runtime bearer token is set through
+   `POST /api/runtimes/endpoints/token` with a password-authenticated browser session that has write access;
+   API keys and MCP cannot set it. There is no dedicated token form yet. The token is stored server-side
+   (`private/runtime-tokens.json`, mode 0600) and never shown again.
    Every read is a `GET` on a fixed list of read-only paths, with a bounded body and a short timeout. The hub
    never loads, unloads or prompts a model, and never requests a route that would (llama-swap's
    `/upstream/…`, for instance, loads one).

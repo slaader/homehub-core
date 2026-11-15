@@ -1,6 +1,6 @@
 # Docker
 
-The short version is in the [README](../README.md#docker). This is all of it.
+The [README](../README.md#quick-start) covers a local checkout. This page covers a container deployment.
 
 Build it yourself from this checkout; no registry image, CI or npm install is involved. The
 [Dockerfile](../Dockerfile) pins `node:22.23.5-alpine3.24`, includes Git, OpenSSH client tools, rsync and Python

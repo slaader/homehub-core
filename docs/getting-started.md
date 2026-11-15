@@ -20,13 +20,15 @@ You need Node 22.13 or newer and git. Nothing else: there are no packages to ins
 
 ```sh
 git clone <this repository> home-hub && cd home-hub
+export HOME_HUB_HOME="$HOME/.local/share/home-hub"
 node scripts/setup.mjs
 LOCAL_PREVIEW=1 PORT=8799 node server/index.mjs
 ```
 
 - `scripts/setup.mjs` creates the administrator sign-in. Only a hash of the password is stored, in
-  `private/auth.json`. `private/` and `data/` are ignored by git; keep them out of any repository.
-- The server prints one line when it is ready: `Home Hub (public edition, 0 plugin(s)) listening on 8799`.
+  `$HOME_HUB_HOME/private/auth.json`. Keep that instance directory out of any repository, and use the same
+  `HOME_HUB_HOME` when running the hub or its scripts in another terminal.
+- The server prints its version when it is ready, for example: `Home Hub 1.0.0 (public edition, 0 plugin(s)) listening on 8799`.
 - Open http://127.0.0.1:8799 and sign in as `admin`.
 
 `LOCAL_PREVIEW=1` means plain HTTP, reachable from this computer only. That is the right way to try it. Step 7
@@ -59,19 +61,23 @@ stops working at once.
 
 ## 3. Add your devices
 
-Devices come from the site configuration, `local/site.json` (until 2.0; an instance directory keeps it apart from
-the code as `config/site.json`: [storage.md](storage.md)).
+Use **Overview → Add device** to add a device without editing a file. You can connect its telemetry in the
+same dialog or later in **Edit device → Telemetry**.
+
+For site-wide settings and devices managed in a file, use `$HOME_HUB_HOME/config/site.json`
+([storage.md](storage.md)). With the instance directory from step 1:
 
 ```sh
-mkdir -p local && cp config/site.example.json local/site.json
+mkdir -p "$HOME_HUB_HOME/config"
+cp config/site.example.json "$HOME_HUB_HOME/config/site.json"
 ```
 
-Edit the name, your network and your devices, then restart the hub. Or hand it to the agent. The Getting
-started page has this prompt ready to copy:
+Edit the name, your network and your devices, then restart the hub. Or give your agent this prompt:
 
 > Set up this Home Hub. Read docs/getting-started.md, docs/plugins.md and config/site.example.json. Ask me
 > for the site name, the network (CIDR), the time zone and the devices (name, hostname, IP, role). Write
-> local/site.json, check it by running npm test, and tell me how to restart Home Hub. No passwords or tokens
+> the active site.json (resolve its location with server/paths.mjs and the hub's environment), validate it with
+> node server/index.mjs --check using that same environment, and tell me how to restart Home Hub. No passwords or tokens
 > belong in that file.
 
 A device needs little:
@@ -84,21 +90,28 @@ A device needs little:
 reach it, a runtime stack to draw) is optional and described in [plugins.md](plugins.md). If a field is wrong,
 the server does not start and names the field.
 
-One device can also be added without the file: **Overview → Add device**.
+Without `HOME_HUB_HOME` or another path override, the legacy default is `local/site.json`; that in-tree layout is
+deprecated. `npm test` uses a fixture site, so it does not validate your own site file.
 
 ## 4. Install the telemetry agent (optional)
 
 Without it, a tile shows the facts from your configuration. With it, a tile shows live CPU and GPU load,
 power draw, temperature and memory, and the device's page draws their history.
 
-The telemetry agent is Thermo, a small app that runs on the device. Its address is in the README (a
-placeholder for now). Install it, turn on its remote access, then either:
+The telemetry agent is Thermo, a separate app for macOS. This release's **How to install Thermo** link is a
+placeholder, so it does not provide a public installer yet. If you already have Thermo, turn on its remote
+access, then either:
 
 - use **Overview → Add device**, enter the device's address and the agent's login, and confirm the
   certificate fingerprint the hub shows you, or
 - set `thermoId` on the device in `site.json` and list the host in `private/thermo-hosts.json`.
 
 The hub only reads from it. Skip this step and nothing else changes.
+
+The [push agent](agent.md) is a different, optional source: it reports the system, updates, watched software,
+SSH keys and LLM runtimes, rather than Thermo's live CPU/GPU metrics. Issue its device key in
+**Users and API → Push agents**; the key dialog shows the installer command. Run the installer on that device,
+using a hub address it can reach (the loopback preview address works only on the hub's own computer).
 
 A Windows device needs no agent: in **Overview → Add device** choose the system Windows and Telemetry → Windows
 (SSH). The dialog asks for host, SSH port and Windows user, creates the hub's own SSH key, shows the one
@@ -120,7 +133,7 @@ collectors; Prometheus 2.x or 3.x with its HTTP API reachable from the hub; for 
 
 ## 5. Fill the inventory
 
-The inventory is one checked file, `data/knowledge.json`: devices, runtimes, tools and stores, and what
+The inventory is one checked file, `$HOME_HUB_HOME/data/knowledge.json`: devices, runtimes, tools and stores, and what
 depends on what. The map and the services catalog are drawn from it. Secrets never go in: an entry says where
 a secret is kept, not what it is, and the checker rejects anything that looks like one.
 
@@ -143,7 +156,7 @@ a systemd timer). They connect over SSH and only read.
 | Run | For | Needs |
 |---|---|---|
 | `node scripts/collect-systems.mjs` | OS and software versions, update candidates, host protection | An `ssh` entry per device in `site.json` |
-| `node scripts/check-upstream.mjs` | The newest upstream release of software you watch | Internet; the list in `local/software-watch.json` |
+| `node scripts/check-upstream.mjs` | The newest upstream release of software you watch | Internet; the list in `$HOME_HUB_HOME/config/software-watch.json` |
 | `node scripts/collect-security.mjs` | Where SSH keys live and what they open | The same `ssh` entries |
 | `python3 scripts/collect-router-unifi.py` | The router's client list | A UniFi gateway |
 
@@ -162,15 +175,17 @@ ORIGIN=https://hub.example.lan HTTP_BEHIND_PROXY=1 PORT=8799 BIND_HOST=127.0.0.1
   You can set `publicOrigin` in `site.json` instead.
 - Keep it on your LAN or VPN. Home Hub is not meant to face the internet.
 - Run it under whatever keeps a process alive on your system, with the same environment each time.
-- Back up `data/` and `private/`. That is all the state there is ([storage.md](storage.md)).
+- Back up the instance's `config/`, `data/` (including its `state/`) and `private/`, with the hub stopped. Include
+  `instance.json` and any paths you override; see [storage.md](storage.md) for the full layout.
 
-To update: `git pull`, then restart. Sign-ins survive the restart.
+To update, follow [Updating](updating.md): `node scripts/update.mjs status` explains the checkout and running
+instance. Configure its service and health check before applying a release. Sign-ins survive a restart.
 
 ## When something is off
 
 | You see | Look at |
 |---|---|
-| The server exits at start with `site config: …` | The field it names in `local/site.json` |
+| The server exits at start with `site config: …` | The field it names in the active `site.json` (`$HOME_HUB_HOME/config/site.json` with this guide's layout) |
 | The server exits with `module "…": …` | The plugin it names; [plugins.md](plugins.md) lists what is refused |
 | Sign-in answers "Request not allowed" | `ORIGIN` does not match the address in the browser |
 | A page says "Administrators only" | You are signed in as a viewer |

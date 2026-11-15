@@ -503,8 +503,8 @@ it. Settings changes name the keys, never a value.
 Core's update check declares `updates.check` (kind `upstream`): whether a newer release of Home Hub exists
 (`server/update-check.mjs`; README → Updating says what it contacts; `docs/updating.md` is how an update is applied). Its "Test now" is a real check, at most one
 a minute. `HOME_HUB_UPDATE_CHECK=off` turns it off from the environment and takes the switch away. Its state file
-keys results by source (`core` today), so a plugin package that is released on its own can join the same card once
-plugins carry a version; today a plugin has no version to compare, so only core is checked.
+keys results by source (`core` today). Only core releases are checked; plugins have their own versions, but the
+hub does not check their releases for updates.
 
 Core's own LLM-runtime reader declares `runtimes.endpoints` (kind `llm-runtimes`), one item per runtime endpoint.
 A llama-swap item's summary adds when a record was last added, how many arrived today (on the site's clock) and
