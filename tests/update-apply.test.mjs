@@ -4,6 +4,7 @@
 // `--check` are real. Nothing here touches a network, a real service or this checkout.
 import {sourceLockPath} from '../server/update-lock.mjs';
 import {gitPublicKey} from '../server/release-trust.mjs';
+import {selectTrustFile} from '../server/release-trust.mjs';
 import {contentFingerprint} from '../server/runtime-identity.mjs';
 import {packageFixture} from './package-fixture.mjs';
 import test from 'node:test';
@@ -686,4 +687,41 @@ test('fresh process recovers package migration after each core rename and durabl
 test('manual backup interruption restarts the old process and preserves the preceding rollback transaction',async t=>{
  const w=await world(t),inst=w.inst();await w.upstream.commit('1.1.0',tree('1.1.0'),{tag:'v1.1.0'});const applied=await apply(inst,{core:'v1.1.0'},w.ctx);const ctx={...w.ctx,checkpoint:point=>{if(point==='manual-backup-stopped')throw new Error('simulated backup interruption');}};
  await assert.rejects(backup(inst,ctx),/backup interruption/);assert.equal(w.svc.running,false);assert.equal(readJournal(inst).kind,'backup');await recover(inst,w.ctx);assert.equal(w.svc.running,true);assert.equal(readJournal(inst).id,applied.journal.id);assert.equal(readJournal(inst).step,'done');await rollback(inst,w.ctx);assert.equal(w.hub.git('rev-parse','HEAD'),w.v100);
+});
+
+test('package CLI verification and download honor the site publisher and retain required trust',async t=>{
+ for(const command of ['verify-package','download']){
+  const w=await world(t,{layout:'home'}),f=await packageFixture(path.join(w.dir,'packages'),{repository:'example/fork'});
+  await writeFile(path.join(w.home,'config','site.json'),JSON.stringify({updates:{repo:'example/fork'}}));
+  const names=[path.basename(f.file),path.basename(f.base)+'.manifest.json',path.basename(f.base)+'.manifest.sig.json'];
+  const published={tag_name:'v1.1.0',draft:false,prerelease:false,assets:names.map(name=>({name,browser_download_url:`https://github.com/example/fork/releases/download/v1.1.0/${name}`}))};
+  const originalFetch=globalThis.fetch;let requests=0;
+  globalThis.fetch=async raw=>{requests++;const url=new URL(raw);assert.equal(url.protocol,'https:');
+   if(url.hostname==='api.github.com'){assert.ok(url.pathname.startsWith('/repos/example/fork/'));return Response.json(url.pathname.endsWith('/latest')?published:[published]);}
+   assert.equal(url.hostname,'github.com');const name=decodeURIComponent(url.pathname.split('/').at(-1));assert.ok(names.includes(name));return new Response(readFileSync(path.join(path.dirname(f.file),name)));
+  };
+  try{
+   const args=command==='download'?['download','v1.1.0','--output',path.join(w.dir,'downloaded')]:['verify-package','--package',f.file];
+   assert.equal(await main([...args,'--trust',f.trustFile],{env:w.env,ctx:w.ctx,out:()=>{}}),0);
+   assert.equal(requests,command==='download'?5:0,'offline verification never contacts a forge');
+   assert.equal(selectTrustFile({home:w.home}),f.trustFile);
+   await rm(f.trustFile);
+   await refused(preflight(w.inst(),{core:'v1.1.0',allowUnsigned:true},w.ctx),/Trust policy refused/);
+   assert.deepEqual(w.svc.calls,[]);
+  }finally{globalThis.fetch=originalFetch;}
+ }
+});
+
+test('CLI discovery honors normalized environment and stored integration disablement without network requests',async t=>{
+ const w=await world(t,{layout:'home'}),originalFetch=globalThis.fetch;let requests=0;
+ globalThis.fetch=async()=>{requests++;throw new Error('unexpected update network request');};
+ try{
+  for(const command of [['download','v1.1.0'],['preflight','--latest-published']]){
+   for(const value of ['off',' OFF ','\toff\n'])assert.equal(await main(command,{env:{...w.env,HOME_HUB_UPDATE_CHECK:value},ctx:w.ctx,out:()=>{}}),1);
+   await writeFile(path.join(w.state,'integrations.json'),JSON.stringify({schemaVersion:1,disabled:{'updates.check':null}}));
+   assert.equal(await main(command,{env:w.env,ctx:w.ctx,out:()=>{}}),1);
+   await rm(path.join(w.state,'integrations.json'));
+  }
+  assert.equal(requests,0);assert.deepEqual(w.svc.calls,[]);
+ }finally{globalThis.fetch=originalFetch;}
 });

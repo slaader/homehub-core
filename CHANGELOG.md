@@ -45,6 +45,11 @@ API, an MCP endpoint and a plugin contract. Everything below is new in the sense
 - **Release tooling.** `node scripts/release.mjs`, the leak scan (`node scripts/leak-scan.mjs`) and the pre-push hook
   that refuses to publish a household value.
 
+### Fixed
+
+- Package verification follows the site's release repository and, like downloads, retains the selected operator
+  trust policy for later operations. CLI discovery honors the same environment and integration disablement as the hub.
+
 ### Deprecated
 
 All of these keep working through this major version and are removed in 2.0.

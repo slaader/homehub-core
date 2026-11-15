@@ -108,13 +108,15 @@ export async function main(argv,{env=process.env,ctx=null,out=line=>console.log(
    records.push({id,publicKey:pem,fingerprint,role,status:'active',provenance:'Local import with independently supplied expected fingerprint'});validateTrust(doc);out(`Authorizing repository ${repo}, role ${role}, fingerprint ${id}`);durableWrite(trustFile,JSON.stringify(doc,null,1)+'\n');loadTrust(trustFile,{forbidden:[inst.root,inst.paths.config,inst.paths.data,inst.paths.state,inst.paths.private]});rememberTrustSelection(inst.home,trustFile);return 0;}finally{releaseTrustLock();}
   }
   if(args.command==='verify-package'){
-   const result=await verifyPackage(args.values.package,{trustFile,repository,manifestDigest:request.manifestDigest,compatibility:false,forbidden:[inst.root,inst.paths.config,inst.paths.data,inst.paths.state,inst.paths.private]});out(JSON.stringify(result,null,1));return 0;
+   const site=inst.paths.siteConfig&&existsSync(inst.paths.siteConfig)?JSON.parse(readFileSync(inst.paths.siteConfig,'utf8')):null;
+   const settings=updateSettings({site,version:{updates:{repo:repository}},env});
+   const result=await verifyPackage(args.values.package,{trustFile,repository:settings.repo,manifestDigest:request.manifestDigest,compatibility:false,forbidden:[inst.root,inst.paths.config,inst.paths.data,inst.paths.state,inst.paths.private,...inst.backupRoots]});rememberTrustSelection(inst.home,trustFile);out(JSON.stringify(result,null,1));return 0;
   }
   if(args.command==='download'||args.flags.has('latest-published')){
-   const disabled=String(env.HOME_HUB_UPDATE_CHECK??'').toLowerCase()==='off'||JSON.parse(existsSync(path.join(inst.paths.state,'integrations.json'))?readFileSync(path.join(inst.paths.state,'integrations.json'),'utf8'):'{}')?.disabled?.[UPDATE_INTEGRATION];if(disabled)throw new UpdateError('Update discovery is disabled; no update network requests were made.');
+   const disabled=updateSettings({env}).envOff||Object.hasOwn(JSON.parse(existsSync(path.join(inst.paths.state,'integrations.json'))?readFileSync(path.join(inst.paths.state,'integrations.json'),'utf8'):'{}')?.disabled??{},UPDATE_INTEGRATION);if(disabled)throw new UpdateError('Update discovery is disabled; no update network requests were made.');
    const site=inst.paths.siteConfig&&existsSync(inst.paths.siteConfig)?JSON.parse(readFileSync(inst.paths.siteConfig,'utf8')):null,settings=updateSettings({site,version:{updates:{repo:repository}},env});
    const token=(await loadGithubToken({env})).token,fetchJson=createFetchJson({token});
-   if(args.command==='download'){const result=await downloadPackage({tag:args.tag,repository:settings.repo,trustFile,manifestDigest:request.manifestDigest,output:path.resolve(args.values.output??process.cwd()),fetchJson});out(`Verified download: ${result.file}\nManifest SHA-256: ${result.manifestSha256}`);return 0;}
+   if(args.command==='download'){if(trustFile)loadTrust(trustFile,{forbidden:[inst.root,inst.paths.config,inst.paths.data,inst.paths.state,inst.paths.private,...inst.backupRoots]});const result=await downloadPackage({tag:args.tag,repository:settings.repo,trustFile,manifestDigest:request.manifestDigest,output:path.resolve(args.values.output??process.cwd()),fetchJson});rememberTrustSelection(inst.home,trustFile);out(`Verified download: ${result.file}\nManifest SHA-256: ${result.manifestSha256}`);return 0;}
    const found=await discoverReleases({repository:settings.repo,channel:settings.channel,fetchJson});request.core=found.found.tag;if(!request.core)throw new UpdateError('No published release selected');
   }
   if(args.command==='status'){
