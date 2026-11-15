@@ -74,7 +74,7 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
  function write(fn,selection={projects:null,releases:null,tickets:null}){
   const run=queue.then(()=>store.change(selection,(data,count)=>{
     const now=new Date().toISOString(),result=fn(data,now,count);data.revision++;data.updatedAt=now;return result;
-   })).then(result=>{searchRevision++;for(const listener of searchListeners)try{listener();}catch{}return result;});queue=run.catch(()=>{});return run;
+   })).then(result=>{if(Object.hasOwn(selection,'tickets')){searchRevision++;for(const listener of searchListeners)try{listener();}catch{}}return result;});queue=run.catch(()=>{});return run;
  }
  const projectOf=(data,id)=>data.projects.find(p=>p.id===id)||fail('invalid');
  function releaseOf(data,project,version){
@@ -84,6 +84,27 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
  }
  const ticketOf=(data,id)=>(typeof id==='string'&&TICKET_ID.test(id)&&data.tickets.find(t=>t.id===id))||fail('not-found');
 
+ // Cache only the list projection, never comments/history/file contents. A returned document is
+ // always detached from this internal view. Bound retained JSON size; oversized sites use cold reads.
+ let readView=null,buildingView=null,lastViewVersion=null;
+ async function view(){
+  const version=await store.version();
+  if(readView?.version===version)return readView.data;
+  if(buildingView?.version===version)return buildingView.promise;
+  // Admit on repeated reads: write/read alternation avoids cache-sizing work.
+  const retain=lastViewVersion===version;lastViewVersion=version;
+  const promise=(async()=>{
+   const data=await store.read({forWrite:false});
+   if(retain)data.tickets=data.tickets.map(summary);
+   const bytes=retain?Buffer.byteLength(JSON.stringify(data)):Infinity;
+   const value={data,summarized:retain};
+   readView=bytes<=16*1024*1024?{version,data:value}:null;
+   return value;
+  })();
+  const pending={version,promise};buildingView=pending;
+  try{return await promise;}finally{if(buildingView===pending)buildingView=null;}
+ }
+
  // Read side ---------------------------------------------------------------------------------
 
  // authors: true adds `authors` = {created, changes, seeded} over the projects, releases and tickets of the
@@ -91,7 +112,7 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
  async function list(filter={},{authors=false}={}){
   const {f,match}=ticketFilter(filter);
   if(f.q&&f.q.length>100)fail('invalid');
-  const data=await store.read({forWrite:false});
+  const {data,summarized}=await view();
   const q=f.q?f.q.toLowerCase():null,limit=f.limit===undefined?null:Number(f.limit);
   if(limit!==null&&!(Number.isInteger(limit)&&limit>0&&limit<=LIMITS.tickets))fail('invalid');
   let tickets=data.tickets.filter(t=>match(t)&&(!q||[t.id,t.title,t.description,...t.labels].join('\n').toLowerCase().includes(q)));
@@ -103,14 +124,14 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
   const releases=data.releases.filter(r=>!f.project||r.project===f.project).map(r=>{
    const counts=progress.get(r.project+'/'+r.version)||emptyCounts();
    return {...r,counts,total:Object.values(counts).reduce((a,b)=>a+b,0)};}).sort((a,b)=>a.project.localeCompare(b.project)||compareVersions(a.version,b.version));
-  const out={updatedAt:data.updatedAt,projects:data.projects.map(publicProject),releases,total,tickets:tickets.map(summary)};
-  if(!authors)return out;
+  const out={updatedAt:data.updatedAt,projects:data.projects.map(publicProject),releases,total,tickets:summarized?tickets:tickets.map(summary)};
+  if(!authors)return structuredClone(out);
   const facts={created:[],changes:[],seeded:0},mine=x=>!f.project||(x.project??x.id)===f.project;
   // A project without an author was seeded from the site configuration (site.json → tracker.projects).
   for(const p of data.projects.filter(mine)){if(p.createdBy)facts.created.push([p.createdBy,p.createdAt]);else facts.seeded++;}
   for(const r of data.releases.filter(mine))facts.created.push([r.createdBy,r.createdAt]);
-  for(const t of data.tickets.filter(mine)){const a=ticketAuthors(t);facts.created.push(...a.created);facts.changes.push(...a.changes);}
-  return {...out,authors:facts};
+  for(const t of (summarized?await store.list('tickets'):data.tickets).filter(mine)){const a=ticketAuthors(t);facts.created.push(...a.created);facts.changes.push(...a.changes);}
+  return structuredClone({...out,authors:facts});
  }
  async function projects(){return (await store.list('projects')).map(publicProject);}
  async function get(id){
@@ -124,13 +145,15 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
   const {f,match}=ticketFilter(filter);
   if(typeof f.q!=='string'||f.q.length>200||!/[\p{L}\p{N}_]/u.test(f.q))fail('invalid');
   const limit=f.limit===undefined?20:Number(f.limit);if(!(Number.isInteger(limit)&&limit>0&&limit<=100))fail('invalid');
-  const data=await store.read({forWrite:false}),byId=new Map(data.tickets.map(t=>[t.id,t]));
+  const {data,summarized}=await view(),byId=new Map(data.tickets.map(t=>[t.id,t]));
   const query={q:f.q,kind:'ticket',...(f.project?{project:f.project}:{})};
-  // Rank and filter all hits, but build expensive body snippets only for the returned page.
-  const hits=db.search({...query,limit:LIMITS.tickets},{max:LIMITS.tickets,snippets:false}).results
-   .map(r=>({r,t:byId.get(r.id)})).filter(x=>x.t&&match(x.t));
-  const page=hits.slice(0,limit),snippets=new Map(db.search({...query,limit},{ids:page.map(x=>x.t.id)}).results.map(r=>[r.id,r.snippet]));
-  return {q:f.q,total:hits.length,tickets:page.map(({r,t})=>({...summary(t),snippet:snippets.get(t.id),score:r.score}))};
+  // Apply field filters before ranking, then materialize/snippet only the requested page.
+  const filtered=Object.keys(f).some(k=>!['q','project','limit'].includes(k));
+  const ids=filtered?data.tickets.filter(match).map(t=>t.id):null;
+  const hits=db.search({...query,limit},{ids,countAll:true,snippets:false});
+  const page=hits.results.map(r=>({r,t:byId.get(r.id)})).filter(x=>x.t);
+  const snippets=new Map(db.search({...query,limit},{ids:page.map(x=>x.t.id)}).results.map(r=>[r.id,r.snippet]));
+  return {q:f.q,total:hits.total,tickets:page.map(({r,t})=>({...structuredClone(summarized?t:summary(t)),snippet:snippets.get(t.id),score:r.score}))};
  }
  // The names tickets know: assignees (with how many tickets they hold, and how many of those are active),
  // reporters and comment authors. The assignee field suggests them.

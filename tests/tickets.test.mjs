@@ -1,4 +1,6 @@
 import test from 'node:test';
+import {DatabaseSync} from 'node:sqlite';
+import {openDb} from '../server/db.mjs';
 import assert from 'node:assert/strict';
 import {mkdtemp,rm,readFile,writeFile,stat} from 'node:fs/promises';
 import http from 'node:http';
@@ -616,4 +618,37 @@ test('tickets UI: an item shows its files under the description; ![name] is a ch
  const bare=await s.create({project:'home-hub',title:'No files'},'alex');globalThis.fetch=async url=>Response.json(url==='/api/tickets/people'?{people:[]}:url.startsWith('/api/tickets/HH-')?await s.get(bare.id):await s.list());
  const empty=trackerView({canWrite:false},'items',bare.id);document.body.append(empty);await flush();
  assert.equal(nodes(empty,n=>n.tag==='hr').length,0);assert.ok(!empty.textContent.includes('Attachments'));
+});
+
+
+test('tickets: cached list/search views detach replies and refresh after writes',async t=>{
+ const {s}=await store(t);
+ const a=await s.create({project:'home-hub',title:'needle first',labels:['one']},'alice');
+ await s.create({project:'home-hub',title:'needle second',priority:'urgent'},'alice');
+ const first=await s.list({limit:1});assert.equal(first.total,2);
+ first.projects[0].name='corrupted';first.tickets[0].title='corrupted';first.tickets[0].labels.push('corrupted');
+ const next=await s.list({limit:1});assert.notEqual(next.projects[0].name,'corrupted');assert.notEqual(next.tickets[0].title,'corrupted');assert.ok(!next.tickets[0].labels.includes('corrupted'));
+ let found=await s.search({q:'needle',limit:1});assert.equal(found.total,2);assert.equal(found.tickets.length,1);
+ found.tickets[0].labels.push('corrupted');assert.ok(!(await s.search({q:'needle',limit:1})).tickets[0].labels.includes('corrupted'));
+ await s.comment({id:a.id,text:'new comment'},'alice');
+ await s.update({id:a.id,rev:1,status:'done'},'alice');
+ const filtered=await s.search({q:'needle',status:'done',limit:1});assert.equal(filtered.total,1);assert.equal(filtered.tickets[0].id,a.id);assert.equal(filtered.tickets[0].comments,1);
+ const list=await s.list({status:'done'},{authors:true});assert.equal(list.total,1);assert.equal(list.tickets[0].comments,1);assert.ok(list.authors.changes.some(([name])=>name==='alice'));
+ const revision=s.searchRevision();await s.saveProject({id:'home-hub',rev:1,name:'Renamed'},'alice');
+ assert.equal(s.searchRevision(),revision);assert.equal((await s.list()).projects.find(p=>p.id==='home-hub').name,'Renamed');
+});
+
+
+test('tickets: summary view invalidates for imports and another SQLite connection',async t=>{
+ const {dir,s}=await store(t);const created=await s.create({project:'home-hub',title:'Original'},'alice');
+ await s.list();const collection=openDb(path.join(dir,'hub.db')).collection('tickets');
+ const imported=await collection.read();imported.tickets[0].title='Imported';await collection.write(imported);
+ assert.equal((await s.list()).tickets[0].title,'Imported');
+ const other=new DatabaseSync(path.join(dir,'hub.db'));
+ try{
+  const row=other.prepare("SELECT doc FROM docs WHERE kind='tickets' AND coll='tickets' AND id=?").get(created.id);
+  const ticket=JSON.parse(row.doc);ticket.title='External';
+  other.prepare("UPDATE docs SET doc=? WHERE kind='tickets' AND coll='tickets' AND id=?").run(JSON.stringify(ticket),created.id);
+  assert.equal((await s.list()).tickets[0].title,'External');
+ }finally{other.close();}
 });

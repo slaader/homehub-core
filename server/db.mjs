@@ -49,6 +49,7 @@ function migrate(db){
 function wrap(db,file){
  const q=sql=>db.prepare(sql);
  const st={
+  dataVersion:q('PRAGMA data_version'),
   meta:q('SELECT doc FROM meta WHERE kind=?'),putMeta:q('INSERT INTO meta(kind,doc) VALUES(?,?) ON CONFLICT(kind) DO UPDATE SET doc=excluded.doc'),
   rows:q('SELECT coll,id,doc FROM docs WHERE kind=? ORDER BY rowid'),
   row:q('SELECT doc FROM docs WHERE kind=? AND coll=? AND id=?'),
@@ -68,7 +69,7 @@ function wrap(db,file){
  const collections=new Map();
  function collection(kind,spec){if(!collections.has(kind))collections.set(kind,makeCollection(kind,spec));return collections.get(kind);}
  function makeCollection(kind,{empty,split,join,search=()=>null,searchKinds=[],legacy=null,valid=()=>true}){
-  let snapshot=null,ready=null;
+  let snapshot=null,ready=null,generation=0;
   const stamp=(coll,id)=>coll+'\u0000'+id;
   function load(){
    const m=st.meta.get(kind);if(!m)return null;
@@ -87,7 +88,7 @@ function wrap(db,file){
     if(previous)for(const key of previous.keys())if(!next.has(key)){const [coll,id]=key.split('\u0000');st.del.run(kind,coll,id);}
    };
    if(inTransaction)apply();else tx(apply);
-   snapshot=selection?null:new Map([...next].map(([k,r])=>[k,r.json]));
+   snapshot=selection?null:new Map([...next].map(([k,r])=>[k,r.json]));generation++;
   }
   function reindex(data){
    const {colls}=split(data);
@@ -112,6 +113,8 @@ function wrap(db,file){
   }
   const ensure=()=>ready??=init().catch(e=>{ready=null;throw e;});
   const store={
+   // SQLite data_version detects other connections; generation catches local imports.
+   async version(){await ensure();return generation+'\u0000'+st.dataVersion.get().data_version+'\u0000'+st.meta.get(kind).doc;},
    async read({forWrite=true}={}){await ensure();const data=load();if(forWrite){snapshot=new Map();const {colls}=split(data);for(const [coll,rows] of Object.entries(colls))for(const [id,doc] of rows)snapshot.set(stamp(coll,id),JSON.stringify(doc));}return data;},
    // Indexed reads do not load unrelated documents or replace a writer's snapshot.
    async get(coll,id){await ensure();const row=st.row.get(kind,coll,id);return row?JSON.parse(row.doc):null;},
@@ -151,7 +154,7 @@ function wrap(db,file){
  const KINDS=['ticket','review'];
  // max: the largest limit a caller may ask for. HTTP and MCP callers get 100; a store that filters the hits
  // further (tickets-store search) passes its own ceiling.
- function search({q,kind,project,limit=20}={},{max=100,snippets=true,ids=null}={}){
+ function search({q,kind,project,limit=20}={},{max=100,snippets=true,ids=null,countAll=false}={}){
   if(typeof q!=='string'||q.length>200)throw new Error('invalid');
   if(kind!==undefined&&kind!==''&&!KINDS.includes(kind)||project!==undefined&&project!==''&&!/^[a-z][a-z0-9-]{1,39}$/.test(project))throw new Error('invalid');
   limit=Number(limit);if(!Number.isInteger(limit)||limit<1||limit>max)throw new Error('invalid');
@@ -165,7 +168,8 @@ function wrap(db,file){
   const rows=db.prepare(`SELECT kind,id,project,updated,${snippets?"highlight(search,4,char(1),char(2)) title,snippet(search,5,char(1),char(2),'…',14) snippet":"title,NULL snippet"},bm25(search,0,0,0,0,4,1) score
    FROM search WHERE ${where.join(' AND ')} ORDER BY (id=?) DESC, score LIMIT ?`).all(...args,q.trim().toUpperCase(),limit);
   // \u0001…\u0002 mark the matches; the UI renders them as <mark> through text nodes, never as HTML.
-  return {q,total:rows.length,results:rows.map(r=>({kind:r.kind,id:r.id,project:r.project,updatedAt:r.updated,title:r.title,snippet:r.snippet,score:Number((-r.score).toPrecision(4))}))};
+  const total=countAll?db.prepare(`SELECT count(*) n FROM search WHERE ${where.join(' AND ')}`).get(...args).n:rows.length;
+  return {q,total,results:rows.map(r=>({kind:r.kind,id:r.id,project:r.project,updatedAt:r.updated,title:r.title,snippet:r.snippet,score:Number((-r.score).toPrecision(4))}))};
  }
  // How many documents of each kind the index holds: lets a client tell "nothing to search yet" from "no match".
  const indexed=q('SELECT kind,count(*) n FROM search GROUP BY kind');

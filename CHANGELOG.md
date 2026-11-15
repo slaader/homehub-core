@@ -19,6 +19,8 @@ until the release gives it its number: a change to the public surface adds its l
 
 ### Changed
 
+- Ticket lists and searches reuse a bounded, revision-checked summary view and materialize only the requested full-text search page. Project/release metadata writes no longer schedule unchanged ticket-content indexing. Responses remain detached and writes invalidate the view.
+
 - The experimental Rust MCP frontend reuses bounded private IPC connections, transfers catalog descriptors only when their revision changes, and avoids redundant JSON copies while retaining live authorization for every request.
 
 - Full-text search is the default, including attachment metadata and supported UTF-8 contents in global HTTP/MCP search. Meaning-based ticket search requires a configured provider, explicit administrator opt-in and an explicit semantic/hybrid query mode.
