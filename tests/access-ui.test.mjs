@@ -73,6 +73,18 @@ test('the access pages build the DOM from text only and name no plugin',async()=
  }
 });
 
+test('person and service-account names use valid HTML patterns under Unicode sets',async()=>{
+ const src=await readFile(new URL('../public/access-view.js',import.meta.url),'utf8');
+ const patterns=[...src.matchAll(/pattern:'([^']+)'/g)].map(m=>m[1].replaceAll('\\\\','\\'));
+ assert.equal(patterns.length,2,'both name forms keep browser validation');
+ for(const pattern of patterns){
+  // HTML input.pattern uses v, whose character classes require an escaped hyphen.
+  const re=new RegExp(`^(?:${pattern})$`,'v');
+  for(const name of ['admin','agent-laptop','alice.test','agent_01','a'.repeat(40)])assert.ok(re.test(name),name);
+  for(const name of ['ab','Alice','agent laptop','a/b','a'.repeat(41)])assert.ok(!re.test(name),name);
+ }
+});
+
 test('the MCP tool table: rows come from the manifest, a plugin tool is tagged, a long description folds',()=>{
  assert.deepEqual(toolLead('Search the inventory (devices, tools). Matches id and name. Returns the hash.'),['Search the inventory (devices, tools).','Matches id and name. Returns the hash.']);
  assert.deepEqual(toolLead('Add a comment, e.g. what was done.'),['Add a comment, e.g. what was done.',''],'an abbreviation does not end the sentence');
