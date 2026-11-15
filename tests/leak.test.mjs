@@ -29,12 +29,12 @@ test('the scanner finds each kind of household detail and lets placeholders thro
 
 // The update check names the public repository, whose owner is the site word. Only that slug passes.
 test('the site word passes only as the public repository slug',()=>{
- const word=siteName.toLowerCase(),slug=`${word}/homehub-core`;
+ const word=siteName.toLowerCase(),slug=`${word}/homehub-core`,plugins=`${word}/homehub-plugins`;
  const hits=text=>scanText('x.md',text).map(f=>f.rule);
  for(const fine of [`{"homeHub":{"updates":{"repo":"${slug}"}}}`,`releases of \`${slug}\`.`,`see ${slug} for it`,`https://github.com/${slug}`,`https://github.com/${slug}/releases/tag/v1.1.0`,
-  `git clone https://github.com/${slug}.git`,`(github.com/${slug})`])assert.deepEqual(hits(fine),[],fine);
+  `git clone https://github.com/${slug}.git`,`(github.com/${slug})`,`https://github.com/${plugins}`,`[plugins](https://github.com/${plugins}/releases)`,`see ${plugins}`])assert.deepEqual(hits(fine),[],fine);
  for(const caught of [word,`Home Hub · ${siteName}`,`the ${word} household`,`"siteName":"${siteName}"`,`${word}.json`,`local/${word}/notes.md`,
-  `https://github.com/${word}`,`https://github.com/${word}/other-repo`,`https://github.com/${word}/homehub-core2`,`https://github.com/${word}/homehub-core-private`,`${word}/homehub-cores`,
+  `https://github.com/${word}`,`https://github.com/${word}/other-repo`,`https://github.com/${word}/homehub-core2`,`https://github.com/${word}/homehub-core-private`,`${word}/homehub-cores`,`https://github.com/${word}/homehub-plugins2`,`https://github.com/${word}/homehub-plugins-private`,`${word}/homehub-pluginsx`,`https://gitlab.com/${plugins}`,`/srv/${plugins}`,
   `https://example.com/${slug}`,`https://gitlab.com/${slug}`,`https://notgithub.com/${slug}`,`https://github.com/x/${slug}`,`/srv/${slug}`,`~/${slug}`,`${siteName}/homehub-core`,`${word.toUpperCase()}/homehub-core`,
   `user@${slug}`,`x.${slug}`,`${slug} and ${word}`])assert.ok(hits(caught).includes('site-name'),caught);
  assert.deepEqual(hits(`${slug} and ${word}`),['site-name'],'the slug passes, the bare word next to it does not');

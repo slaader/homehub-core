@@ -42,6 +42,7 @@ API, an MCP endpoint and a plugin contract. Everything below is new in the sense
 - **Signed release packages and a hardened updater.** Operator-configured release trust and signed source packages,
   verified locally and installed from the command line (`docs/updating.md`); exclusive updater locks, verified backups
   with staged restoration, per-root recovery and a health check that waits for the exact build to stay ready.
+- **Licence.** MIT (`LICENSE`, `package.json → license`).
 - **Release tooling.** `node scripts/release.mjs`, the leak scan (`node scripts/leak-scan.mjs`) and the pre-push hook
   that refuses to publish a household value.
 

@@ -43,13 +43,16 @@ const EMAIL_ALLOWED=/@(?:[a-z0-9-]+\.)*example\.(?:com|org|net|lan)$|@(?:[a-z0-9
 // The words themselves are assembled from pieces, so that this file passes its own scan.
 const word=(...parts)=>parts.join('');
 const OWNER=word('sg','dovin'),SITE=word('sla','ader'),SUBNET=word('192','\\.168','\\.50');
-// The one place the site word may stand: the public repository's slug, "<site word>/homehub-core", written in
-// lower case, on its own (after a quote, a space, a bracket…) or right after "github.com/" (with or without
-// https://). Not as part of a longer path, another host, another repository name, or an address.
-const PUBLIC_REPO=word(SITE,'/home','hub-core');
+// The one place the site word may stand: the slug of the project's own public repositories, "<site word>/homehub-core"
+// and "<site word>/homehub-plugins", written in lower case, on their own (after a quote, a space, a bracket…) or right
+// after "github.com/" (with or without https://). Not as part of a longer path, another host, another repository
+// name, or an address.
+const PUBLIC_REPOS=[word(SITE,'/home','hub-core'),word(SITE,'/home','hub-plugins')];
 function publicRepoSlug(match,text,index){
- if(match!==SITE||text.slice(index,index+PUBLIC_REPO.length)!==PUBLIC_REPO)return false;
- if(/[A-Za-z0-9_-]/.test(text[index+PUBLIC_REPO.length]||''))return false;
+ if(match!==SITE)return false;
+ const repo=PUBLIC_REPOS.find(r=>text.slice(index,index+r.length)===r);
+ if(!repo)return false;
+ if(/[A-Za-z0-9_-]/.test(text[index+repo.length]||''))return false;
  const before=text.slice(Math.max(0,index-40),index);
  return /(?:^|[^A-Za-z0-9_.\/@:-])$/.test(before)||/(?:^|[^A-Za-z0-9_.\/@:-])(?:https:\/\/)?github\.com\/$/.test(before);
 }
@@ -59,7 +62,7 @@ export const LEAK_RULES=Object.freeze([
  // A macOS home path. Placeholder users (alice, bob, you) and the shell variable in the SSH probe are fine.
  {id:'home-path',pattern:/\/Users\/[^\s'"`)]*/g,allow:m=>/^\/Users\/(?:alice|bob|you|example|Shared)(?:\/|$)|^\/Users\/\$|^\/Users\/<|^\/Users\/\*|^\/Users\/$/.test(m)},
  // The site word is also the owner of the public repository, and the update check has to name that repository
- // (package.json → homeHub.updates.repo). Exactly that slug passes, and nothing else: see publicRepoSlug.
+ // (package.json → homeHub.updates.repo), and the README links the plugin repository. Exactly those slugs pass, and nothing else: see publicRepoSlug.
  {id:'site-name',pattern:new RegExp(SITE,'gi'),allow:(m,text,index)=>publicRepoSlug(m,text,index)},
  {id:'home-domain',pattern:new RegExp(word('home\\.',OWNER),'gi')},
  {id:'email',pattern:EMAIL,allow:m=>EMAIL_ALLOWED.test(m)},

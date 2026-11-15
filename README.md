@@ -53,7 +53,7 @@ for installation and [Docker](docs/docker.md) for a container deployment.
 
 ## Plugins
 
-Plugins live in a separate repository named `homehub-plugins`; example plugins
+Plugins live in a separate repository, [homehub-plugins](https://github.com/slaader/homehub-plugins); example plugins
 include UniFi and macOS runtimes. A plugin source is a directory registered in
 `instance.json`. See [the plugin guide](docs/plugins.md) for registration,
 configuration and the core extension points.
@@ -92,3 +92,7 @@ Home Hub reports available releases; updates are applied with the command in
 
 Run `npm test` for the complete core suite. Read [AGENTS.md](AGENTS.md) before
 contributing; [SPEC.md](SPEC.md) describes the application requirements.
+
+## Licence
+
+MIT, see [LICENSE](LICENSE).
