@@ -105,7 +105,7 @@ local/plugins/notes/
   "id": "notes",
   "version": "1.0.0",
   "title": "Notes",
-  "core": ">=2.0.0 <3.0.0",
+  "core": ">=1.0.0 <2.0.0",
   "requires": {"compute": ">=1.0.0"},
   "dataEpoch": 1,
   "config": {"required": ["hosts"]},
@@ -119,7 +119,7 @@ local/plugins/notes/
 | `id` | Equals the directory name and `index.mjs`'s `id` |
 | `version` | The plugin's semver. Optional when its source's `package.json` has a `version`: the plugin then has the source's |
 | `title` | Optional; for people |
-| `core` | The Home Hub versions it supports: comparators joined by spaces (`>=2.0.0 <3.0.0`), `^2.1.0`, `~2.1.0`, `2.x`, `*`, and `a \|\| b` for either (`server/semver.mjs`). Optional when the source's `package.json` has `homeHub.core` |
+| `core` | The Home Hub versions it supports: comparators joined by spaces (`>=1.0.0 <2.0.0`), `^1.1.0`, `~1.1.0`, `1.x`, `*`, and `a \|\| b` for either (`server/semver.mjs`). Optional when the source's `package.json` has `homeHub.core` |
 | `requires` | Other plugins it needs, each with a range. Use it instead of importing another plugin silently |
 | `dataEpoch` | A positive integer you raise whenever the plugin's own stored format changes |
 | `config.required` | Keys of `site.json → plugins.<id>` it cannot work without; a missing one stops the start, by name. Checking the values stays the plugin's job, in `setup` |
@@ -129,7 +129,7 @@ An unknown field, a wrong value, a core range this core is outside of, an unmet 
 setting stops the start with the plugin's name (`node server/index.mjs --check` runs every one of these checks and
 exits, opening nothing). A plugin **without** `plugin.json` still loads in 1.x, with one warning line (an
 "unversioned plugin"); 2.0 will require it. The start-up line names every plugin with its version
-(`Home Hub 2.0.0 (… 9 plugin(s): compute 1.0.0, …)`), and so do `GET /api/ui/manifest → modules[]` and the footer's
+(`Home Hub 1.0.0 (… 9 plugin(s): compute 1.0.0, …)`), and so do `GET /api/ui/manifest → modules[]` and the footer's
 tooltip.
 
 ### Importing core
@@ -539,9 +539,9 @@ list as `clients` and the counts as `health.clientCounts: {connected, wired, wir
 folds the clients into the plugin's own network-device list, `inventory.devices` (each `{id, mac, ip, name, …}`,
 keyed by the MAC address without colons, with `routerMacs` for a device's other interfaces): a client it does not know
 is added as an unidentified entry to review. That list is the plugin's, not the hub's devices (`site.json → devices`
-and the overview's added devices). The census was `devices` in 1.x: an adapter that still returns `devices`
-reports no clients. Only the included file adapter still reads the 1.x names, because its file may come from a 1.x
-collector on another host (`docs/storage.md` → State written by 1.x).
+and the overview's added devices). The census was `devices` before 1.0: an adapter that still returns `devices`
+reports no clients. Only the included file adapter still reads the old names, because its file may come from a
+pre-1.0 collector on another host (`docs/storage.md` → State written before 1.0).
 
 ### The browser side
 
@@ -623,16 +623,16 @@ For the deprecated in-tree `local/`, `npm test` in the core checkout runs them a
 `1.1.0+dev (4172c37)`), and `null` where there is no git checkout to tell.
 Under the test runner, front-end modules can be imported in Node with the same URL-style imports.
 
-## Upgrading a plugin from 1.x
+## Upgrading a plugin from before 1.0
 
-Home Hub 2.0 calls a device what 1.x called a machine, an app token what 1.x called a device token, and the
-router's network clients `clients` where 1.x said `devices`, so that a device is only ever the household's. No old name
-is kept as an alias, so a plugin written for 1.x changes these before 2.0 starts with it. `CHANGELOG.md` → 2.0.0 has
-the HTTP routes, fields and error codes a plugin's page or script may call; this is the plugin contract.
+Home Hub 1.0 calls a device what builds before it called a machine, an app token what they called a device token, and the
+router's network clients `clients` where they said `devices`, so that a device is only ever the household's. No old name
+is kept as an alias, so a plugin written for a pre-1.0 build changes these before 1.0 starts with it. The table below
+lists the HTTP routes, fields and error codes a plugin's page or script may call; this is the plugin contract.
 
-| Where | 1.x | 2.0 |
+| Where | Before 1.0 | 1.0 |
 |---|---|---|
-| `plugin.json → core` (or the source's `homeHub.core`) | a range that ends below 2.0.0, such as `>=1.0.0 <2.0.0` | one that holds 2.x, such as `>=2.0.0 <3.0.0`. A plugin outside its range stops the start |
+| `plugin.json → core` (or the source's `homeHub.core`) | a range that does not hold 1.0.0, such as `>=2.0.0 <3.0.0` or one that ends below 1.0.0 | one that holds 1.x, such as `>=1.0.0 <2.0.0`. A plugin outside its range stops the start |
 | `site.json` | `machines[]`, `runtimes[].machine` | `devices[]`, `runtimes[].device`. A file with `machines` is refused, by name. `plugins.<id>.agents.<agent>.<device id>` keeps its shape |
 | The site object (`hub.site`, `site()`, `loadSite()`) | `site.machines` | `site.devices` |
 | Extension point | `machines.facets`: `(machines) => report`, a report's `machines: {[id]: entry}` | `devices.facets`: `(devices) => report`, a report's `devices: {[id]: entry}` |
@@ -644,7 +644,7 @@ the HTTP routes, fields and error codes a plugin's page or script may call; this
 | Page context (`(context) => Node`) | `context.machine` | `context.device` |
 | A host agent's `config` module | `({site, machine}) => object` | `({site, device}) => object` |
 | `home-hub/testing` | `machineKind`, `systemMachines`; `buildSystems({machines})`, `buildGraph(live, list, requests, {machines})`, `liveState(merged, machines)` | `deviceKind`, `systemDevices`; `buildSystems({devices})`, `buildGraph(live, list, requests, {devices})`, `liveState(merged, devices)`. What they return says `device` and `devices` too (`cleanRequest`: `device`, `clientDevice`), and `knowledge()` is a `schema: 2` document |
-| The inventory document (`createKnowledgeEditor`, `validateKnowledge`, `walkKnowledge`, `findKnowledge`, an `inventory.writer`) | `schema: 1`; entry kind `machine`, entry field `machine` | `schema: 2`; kind `device`, field `device`. `validateKnowledge` refuses `schema: 1`; the editor and `loadKnowledge` read a 1.x file forward. `entryHash` covers the fields, so an entry of kind `device` and every entry placed on one has a new hash |
+| The inventory document (`createKnowledgeEditor`, `validateKnowledge`, `walkKnowledge`, `findKnowledge`, an `inventory.writer`) | `schema: 1`; entry kind `machine`, entry field `machine` | `schema: 2`; kind `device`, field `device`. `validateKnowledge` refuses `schema: 1`; the editor and `loadKnowledge` read a pre-1.0 file forward. `entryHash` covers the fields, so an entry of kind `device` and every entry placed on one has a new hash |
 | MCP tools named in `mcpInstructions`, prompts and docs | `machine_list`, `machine_upsert`, `machine_remove`; the argument `machine` | `device_list`, `device_upsert`, `device_remove`; the argument `device` (also in `runtime_publish`, `inventory_search`, `runtime_endpoint_upsert`) |
 | Routes a plugin's page or script calls | `/api/home/machines`, `/api/home/machines/remove`, `/api/admin/machines`, `/api/devices/tokens` | `/api/home/devices`, `/api/home/devices/remove`, `/api/admin/devices`, `/api/app-tokens`; the answers say `devices` and `device` |
 | Error codes | `MACHINE_…`, `AGENT_MACHINE_GONE`, `DEVICE_LIMIT` (tokens) | `DEVICE_…`, `AGENT_DEVICE_GONE`, `APP_TOKEN_LIMIT` (`DEVICE_LIMIT` now means the overview's 20 added devices) |
@@ -659,7 +659,7 @@ Unchanged: `home.snapshots`, `home.services` and `home.runtimes` (keyed by devic
 `git-lfs.providers`, the scopes, the Czech source strings that do not name a device, and `/views.js`, `/ui.js` and
 `/i18n.js`. What a plugin
 stores for itself (`hub.pluginData(id)`) is its own: core migrates only core's files (`docs/storage.md` → State
-written by 1.x), so a plugin that wrote `machine` into its files reads them forward itself and raises its
+written before 1.0), so a plugin that wrote `machine` into its files reads them forward itself and raises its
 `dataEpoch`.
 
 ## Keeping household details out of core

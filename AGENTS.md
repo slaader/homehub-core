@@ -82,7 +82,7 @@ that needs a household's own data or devices belongs in that household's plugin 
 
 Core is versioned with semver. `package.json → version` is the source of truth (`server/version.mjs` reads it);
 the footer, `GET /api/ui/manifest`, the MCP `serverInfo`, the tool `hub_version`, the start-up line and
-`<state>/run.json` show it. Releases are annotated tags `vX.Y.Z` on `main` with a GitHub Release each; `CHANGELOG.md` has
+`<state>/run.json` show it. Releases are annotated tags `vX.Y.Z` on `main` with a Release on the forge each; `CHANGELOG.md` has
 one section per version, and that section is the text of the Release. A checkout that is not on the tag of its
 version is a development build and says so (`1.1.0+dev`).
 
@@ -106,8 +106,8 @@ Rules:
 - Do not edit `version` by hand and do not tag by hand: `node scripts/release.mjs <version>` checks (clean tree
   on `main`, changelog section, the epoch rules, the leak scan, the tests on exactly what ships), bumps, commits
   and tags. `--dry-run` only checks; `--notes` prints the Release text; `--baseline <commit>` tags something
-  that is already published. **It never pushes**: it prints the push and `gh release create` commands, and
-  running them is the owner's decision.
+  that is already published. **It never pushes**: it prints the push and the command that publishes the Release
+  (`gh release create`, or `tea releases create` when the remote is not GitHub), and running them is the owner's decision.
 - The release commit (`Release vX.Y.Z`) and the tag go on `main` of this repository, and the push the script
   prints (`git push origin main refs/tags/vX.Y.Z`) goes through the pre-push hook like any other. The tagger is a
   neutral identity (`Home Hub release`); the release commit has the repository's (Development), and the script

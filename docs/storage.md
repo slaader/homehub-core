@@ -80,15 +80,15 @@ then renames it to `*.migrated`. A file that does not parse or has the wrong sha
 and the store does not start with an empty tracker. To roll back to code from before hub.db: stop Home Hub, rename the
 `*.migrated` files back (any change made since lives only in hub.db) and deploy the older commit.
 
-## State written by 1.x
+## State written before 1.0
 
-In 2.0 a machine became a device, in what is stored as everywhere else (data epoch 2). Nothing has to be run: each
-file below is read in its 1.x form the first time 2.0 opens it, written in the 2.0 form in its place (a whole file
+Before 1.0 a device was called a machine, in what is stored as everywhere else (data epoch 2). Nothing has to be run: each
+file below is read in its pre-1.0 form the first time 1.0 opens it, written in the 1.0 form in its place (a whole file
 under a temporary name, then a rename) and read as that from then on. Ids, hashes, stamps and everything a person
-wrote stay as they were. `server/state-forward.mjs` holds the 1.x names; `tests/state-forward.test.mjs` starts each
-store from a literal 1.0.0 file.
+wrote stay as they were. `server/state-forward.mjs` holds the pre-1.0 names; `tests/state-forward.test.mjs` starts each
+store from a literal file of the pre-1.0 form.
 
-| File | 1.x | 2.0 | Moved forward |
+| File | Before 1.0 | 1.0 | Moved forward |
 |---|---|---|---|
 | `state/device-tokens.json`, `state/device-tokens-audit.jsonl` | `{schemaVersion: 1, devices}` | `state/app-tokens.json` `{schemaVersion: 2, tokens}`, `state/app-tokens-audit.jsonl` | at start |
 | `state/agents.json` | `schemaVersion: 1`; `agents[].machine`, `.machineCreatedAt`; `revokedBy` `machine-removed`, `machine-changed` | `schemaVersion: 2`; `device`, `deviceCreatedAt`; `device-removed`, `device-changed` | at start. Every key keeps working |
@@ -107,11 +107,11 @@ network clients `clients` and the UniFi collector writes the network gear (gatew
 `hardware`, the name the adapter contract always had. This file is not the hub's: the UniFi collector writes it and
 may run on another host, its file copied here, so the hub never rewrites it and reads both forms on every read.
 
-| File | 1.x | 2.0 | Read forward |
+| File | Before 1.0 | 1.0 | Read forward |
 |---|---|---|---|
-| `data/router-observations.json` | `schemaVersion: 1`; `devices` (the clients), `unifiDevices` (the gear) | `schemaVersion: 2`; `clients`, `hardware` | on every read, never rewritten (`forwardObservation` in `server/router-data.mjs`). A file with both keeps the 2.0 one. The 2.0 collector's first run writes the 2.0 names and drops the old ones, carrying the last census over when that run fails |
+| `data/router-observations.json` | `schemaVersion: 1`; `devices` (the clients), `unifiDevices` (the gear) | `schemaVersion: 2`; `clients`, `hardware` | on every read, never rewritten (`forwardObservation` in `server/router-data.mjs`). A file with both keeps the 1.0 one. The 1.0 collector's first run writes the 2.0 names and drops the old ones, carrying the last census over when that run fails |
 
-A collector left on 1.x keeps working against a 2.0 hub; a 1.x hub reads a 2.0 collector's file as no clients.
+A collector left on a pre-1.0 build keeps working against a 1.0 hub; a pre-1.0 hub reads a 1.0 collector's file as no clients.
 
 Not rewritten, and read in today's words: `state/agent-audit.jsonl` (a line's `machine` is shown as the device) and
 the agent-key lines of `state/access-audit.jsonl` (`machine <id>`, `machine-removed`). An audit file is only ever
@@ -119,15 +119,15 @@ appended to.
 
 - **The hub may not write the collectors' directory** (`data/systems/`, `data/security/` owned by another account):
   the snapshot and the key inventory are then read forward on every read and left as they are, until the collector
-  of 2.0 writes them. Update the checkout the collectors run from together with the hub: a 1.x collector writes
-  schema 1 again (the hub keeps reading it), and a 1.x collector does not read a 2.0 `site.json`.
-- **Older code refuses newer state.** A 1.x hub started on these files refuses the key store and the device reports,
+  of 1.0 writes them. Update the checkout the collectors run from together with the hub: a pre-1.0 collector writes
+  schema 1 again (the hub keeps reading it), and a pre-1.0 collector does not read a 1.0 `site.json`.
+- **Older code refuses newer state.** A pre-1.0 hub started on these files refuses the key store and the device reports,
   shows no key inventory and no inventory (`schema must be 1`), and reads the snapshot, the endpoints and the request
-  history without their devices. Going back to 1.x means restoring the archive made before the update
+  history without their devices. Going back to a pre-1.0 build means restoring the archive made before the update
   (`docs/updating.md` → The data epoch).
-- **On other computers.** An agent key file downloaded from 1.x (`agent.machine`) is still accepted by the 2.0
+- **On other computers.** An agent key file downloaded from a pre-1.0 build (`agent.machine`) is still accepted by the 1.0
   installers; a new one says `agent.device`. An install's `.agent-install.json` is written again by the next install
-  and never read for its device. A map layout a browser saved under 1.x (`localStorage`) loads with its column and
+  and never read for its device. A map layout a browser saved by a pre-1.0 build (`localStorage`) loads with its column and
   card order and is saved with the new names at the next change.
 
 ## Backups
@@ -207,7 +207,7 @@ The files in `state/home/` use owner-only permissions: POSIX mode 0600 under a 0
 
 Ticket hybrid search stores a disposable derived SQLite cache under `<state>/tickets/search/`.
 Schema 1 is covered by data epoch 4; canonical tickets and attachment blobs are unchanged.
-An older 2.0.1 store without a cache opens normally and builds it asynchronously. Newer cache
+An earlier store without a cache opens normally and builds it asynchronously. Newer cache
 schemas are refused. Use the pre-update archive for rollback across data epochs. Search caches
 contain ticket and attachment text and require the same private storage protection as tickets.
 

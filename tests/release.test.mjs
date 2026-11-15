@@ -12,7 +12,7 @@ import {fileURLToPath} from 'node:url';
 // No global git configuration reaches these repositories (a signing key, a hooks path, an identity).
 Object.assign(process.env,{GIT_CONFIG_GLOBAL:'/dev/null',GIT_CONFIG_SYSTEM:'/dev/null',GIT_AUTHOR_NAME:'Private Person',GIT_AUTHOR_EMAIL:'private.person@example.com',GIT_COMMITTER_NAME:'Private Person',GIT_COMMITTER_EMAIL:'private.person@example.com'});
 delete process.env.PUBLIC_AUTHOR_NAME;delete process.env.PUBLIC_AUTHOR_EMAIL;
-const {release,report,changelogSections,changelogSection,bumpKind,signingPlan,SIGNING_HELP,CHANGELOG_HEADINGS}=await import('../scripts/release.mjs');
+const {release,report,changelogSections,changelogSection,bumpKind,signingPlan,SIGNING_HELP,CHANGELOG_HEADINGS,forgeOf,notesCommandFor}=await import('../scripts/release.mjs');
 const {readVersion,readPackage}=await import('../server/version.mjs');
 
 const repoRoot=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -186,4 +186,12 @@ test('signing: a configured SSH key signs the tag; without one the tag is unsign
  await writeFile(path.join(dir,'signers'),`release ${(await readFile(`${key}.pub`,'utf8')).trim()}\n`);
  assert.equal(spawnSync('git',['-C',root,'-c',`gpg.ssh.allowedSignersFile=${path.join(dir,'signers')}`,'verify-tag','v1.0.1'],{stdio:'ignore'}).status,0,'the tag verifies against the committed signers file');
  assert.equal(tagger(git,'v1.0.1'),'Home Hub release <release@home-hub.invalid>');
+});
+
+test('the Release text is published with gh on GitHub and with tea on any other forge',()=>{
+ for(const url of ['https://github.com/alice/home-hub.git','git@github.com:alice/home-hub.git','/some/path.git',''])assert.equal(forgeOf(url),'github',url);
+ for(const url of ['ssh://git@git.example.lan:2222/alice/home-hub.git','https://git.example.lan/alice/home-hub','git@git.example.lan:alice/home-hub.git'])assert.equal(forgeOf(url),'forgejo',url);
+ const base={version:'1.0.0',tag:'v1.0.0',slug:'alice/home-hub',pushTo:'origin'};
+ assert.equal(notesCommandFor({...base,url:'ssh://git@git.example.lan:2222/alice/home-hub.git'}),'tea releases create --remote origin --tag v1.0.0 --title v1.0.0 --note "$(node scripts/release.mjs 1.0.0 --notes)"');
+ assert.equal(notesCommandFor({...base,url:'https://github.com/alice/home-hub.git'}),'node scripts/release.mjs 1.0.0 --notes | gh release create v1.0.0 --repo alice/home-hub --title v1.0.0 --notes-file - --verify-tag');
 });

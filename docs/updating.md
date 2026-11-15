@@ -50,7 +50,7 @@ node scripts/update.mjs apply v1.3.0 \
 |---|---|---|---|
 | The core checkout | `sources.core` (a directory of the instance) | `--root DIR` | the checkout this script is in |
 | Plugin sources | `sources.plugins` | (`HOME_HUB_PLUGINS_DIR`); `--add-plugin-source NAME` stages an addition | `local/plugins` in the checkout |
-| Replacement site for the target | | `--site-config FILE` (preflight/apply) | the current site; 1.x core keys are converted in staging for 2.0 |
+| Replacement site for the target | | `--site-config FILE` (preflight/apply) | the current site; pre-1.0 core keys are converted in staging |
 | The service | `service` | `--service SPEC` | none: `apply`, `rollback` and `backup` refuse without it |
 | Where it answers | `health.url`, `health.seconds` | `--health URL`, `--health-seconds N` | none; 60 s |
 | Archives | `backups.keep` | `--backups DIR`, `--keep N` | `<home>/backups`, else `<checkout>/backups`; the newest 5 |
@@ -134,11 +134,28 @@ health settings, or remove existing sources.
 
 Exit codes: 0 done; 1 refused, or failed and put back; 2 usage; 3 the rollback failed.
 
-### 1.x to 2.0 and back
+### Moving from a pre-1.0 build
 
-2.0 renames `site.json` keys (`machines` → `devices`, `runtimes[].machine` → `runtimes[].device`). Use the **2.0
-update driver from a separate verified checkout**, with `--root` naming the real deployment checkout. The 1.x
-updater cannot perform this transaction. Keep the driver checkout until the update and its rollback window are
+Builds that ran before 1.0.0 carried other version numbers, some of them higher than 1.0.0. `update.mjs` never applies
+a version lower than the one that is running, so a hub on such a build is switched **by hand, once**. When its
+data epoch is 4 or 5 (`package.json → homeHub.dataEpoch`; 1.0.0 is 5), no site file changes are needed and state moves
+forward by itself the first time 1.0.0 opens it, so the archive of step 1 is what going back needs:
+
+1. `node scripts/update.mjs backup` (stop, archive, start), so there is an archive to go back to.
+2. Check the `core` range in each plugin source's `plugin.json` and `package.json`: core refuses to start with a
+   plugin outside its range, and a plugin written for a pre-1.0 build names a range that does not hold 1.0.0.
+3. Stop the service, `git fetch --prune --prune-tags --force`, `git checkout v1.0.0`, start the service.
+4. Check `/healthz`, that the footer reads `1.0.0` (not `1.0.0+dev`), and `node scripts/update.mjs status`.
+
+Going back is `git checkout` of the previous commit and, when the epoch differs, a restore of the archive from step 1.
+From 1.0.0 on, every update is `apply`.
+
+A hub older than that (data epoch below 4, or a site file with the pre-1.0 key names) is moved with the update driver
+below, which converts the site file in a staged copy.
+
+Before 1.0 `site.json` named devices `machines` (`runtimes[].machine` for `runtimes[].device`). Use the **1.0
+update driver from a separate verified checkout**, with `--root` naming the real deployment checkout. The updater of
+such a build cannot perform this transaction. Keep the driver checkout until the update and its rollback window are
 finished, and use that same driver for recovery. The hub service continues to run from the deployment checkout.
 
 With an instance directory (use the same environment as the service):
@@ -146,9 +163,9 @@ With an instance directory (use the same environment as the service):
 ```sh
 git -C <core> fetch --tags
 # Verify the release tag against your trusted release signers before executing its code.
-git -C <core> worktree add --detach /tmp/hub-update-driver v2.0.0
-HOME_HUB_HOME=<home> node /tmp/hub-update-driver/scripts/update.mjs preflight v2.0.0 --root <core>
-HOME_HUB_HOME=<home> node /tmp/hub-update-driver/scripts/update.mjs apply v2.0.0 --root <core>
+git -C <core> worktree add --detach /tmp/hub-update-driver v1.0.0
+HOME_HUB_HOME=<home> node /tmp/hub-update-driver/scripts/update.mjs preflight v1.0.0 --root <core>
+HOME_HUB_HOME=<home> node /tmp/hub-update-driver/scripts/update.mjs apply v1.0.0 --root <core>
 ```
 
 For an installation without `HOME_HUB_HOME`, pass the service, health, data, state, secrets and site settings the
@@ -157,9 +174,9 @@ service uses, as described above. Compatible plugin releases belong in the same 
 exist under the instance directory. If their settings also changed, pass a separately prepared `--site-config` candidate;
 the automatic conversion only knows core's two renamed keys. Do not convert the live site before `apply`.
 
-The driver converts the known 1.x keys in a staged copy and validates it with 2.0. A refused preflight leaves the
-running 1.x hub and its collectors' configuration intact. A failed start automatically restores old code, data when
-required, and the original site before restarting 1.x. To undo a successful update, or recover after the driver's
+The driver converts the known pre-1.0 keys in a staged copy and validates it with 1.0. A refused preflight leaves the
+running hub and its collectors' configuration intact. A failed start automatically restores old code, data when
+required, and the original site before restarting the old build. To undo a successful update, or recover after the driver's
 process was interrupted:
 
 ```sh
@@ -171,7 +188,7 @@ the pre-update data after an epoch rise. Once the update is accepted and recover
 driver worktree with `git -C <core> worktree remove /tmp/hub-update-driver`.
 
 `convert-site.mjs` remains an offline file-conversion utility, with a `site.v1.json` copy for manual work. It is not
-the upgrade or rollback driver and must not be run against a live 1.x site's file before updating.
+the upgrade or rollback driver and must not be run against a live pre-1.0 site's file before updating.
 
 ## The data epoch: when going back needs the archive
 
@@ -252,9 +269,9 @@ Delete the tag right away: while it is there, a bare `apply` would take it for t
 - The command does not install or update host agents on other devices (`scripts/install-host-agent.mjs` does, on
   the device in question).
 
-## Operator trust and signed packages (transition release)
+## Operator trust and signed packages
 
-This is an additive MINOR transition, with data epoch 5. Existing Git commands keep their earlier semantics:
+Signed packages sit beside the Git commands, which keep their legacy semantics (data epoch 5):
 without independently configured trust they display `legacy-unverified` or legacy-policy warnings. An installed
 `config/release-signers` is still used by the legacy path, and its existing `--allow-unsigned` override remains.
 These updates are **not authenticated by the new operator trust policy**. Bare `apply` still selects the highest
@@ -301,14 +318,14 @@ Its target tests and `--check` run authenticated code under the updater account:
 Tests use a sanitized environment; `--check` may read the instance configuration and plugin settings.
 
 ```sh
-node /trusted/driver/scripts/update.mjs download v2.2.0 --home /srv/home-hub --output /secure/downloads
+node /trusted/driver/scripts/update.mjs download v1.0.0 --home /srv/home-hub --output /secure/downloads
 # Copy the verified manifest digest printed by download into every following command.
 node /trusted/driver/scripts/update.mjs verify-package --home /srv/home-hub \
-  --package /secure/downloads/home-hub-v2.2.0-node-source.tar.gz --manifest-sha256 MANIFEST_HEX
+  --package /secure/downloads/home-hub-v1.0.0-node-source.tar.gz --manifest-sha256 MANIFEST_HEX
 node /trusted/driver/scripts/update.mjs preflight --home /srv/home-hub \
-  --package /secure/downloads/home-hub-v2.2.0-node-source.tar.gz --manifest-sha256 MANIFEST_HEX --migrate-from-git
+  --package /secure/downloads/home-hub-v1.0.0-node-source.tar.gz --manifest-sha256 MANIFEST_HEX --migrate-from-git
 node /trusted/driver/scripts/update.mjs apply --home /srv/home-hub \
-  --package /secure/downloads/home-hub-v2.2.0-node-source.tar.gz --manifest-sha256 MANIFEST_HEX --migrate-from-git
+  --package /secure/downloads/home-hub-v1.0.0-node-source.tar.gz --manifest-sha256 MANIFEST_HEX --migrate-from-git
 ```
 
 `verify-package` is offline and executes no package code. `download` authenticates metadata before fetching the

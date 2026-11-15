@@ -111,7 +111,7 @@ area is `legacy: false`; enqueueing for a device is an administrator action, nev
 
 **The data epoch stays at 1.** Nothing an earlier release reads changes format; the new files (`agents.json`,
 `state/agent/`, `data/security/probes.json`) are ignored by older code. Steps 1 and 2 put `AGENTS_SCHEMA`,
-`AGENT_REPORTS_SCHEMA` and `SECURITY_PROBES_SCHEMA` (all 1 then; 2 since Home Hub 2.0, which raised the epoch to 2) into the table of
+`AGENT_REPORTS_SCHEMA` and `SECURITY_PROBES_SCHEMA` (all 1 then; 2 since the epoch rose to 2, before 1.0) into the table of
 `tests/data-epoch.test.mjs` and write them under `### Data`, with one caveat: a restore of an archive (because some other change raised the epoch) brings
 back `agents.json` as it was, keys revoked since included. Revoke them again after a restore.
 

@@ -6,7 +6,7 @@
 //   node scripts/release.mjs 1.3.0 --notes             print the CHANGELOG section (the body of the Release)
 //   node scripts/release.mjs 1.0.0 --baseline <commit> tag a commit that is already published; no bump, no commit
 // Options: --sign (refuse without a signing key), --unsigned (do not sign and do not warn about it),
-//          --branch <name> (default main), --remote <name> (in the printed commands; default github, else origin).
+//          --branch <name> (default main), --remote <name> (in the printed commands; default origin, or github when such a remote exists).
 //
 // It refuses unless: the version is a semver greater than every existing v* tag; the tree is clean and on the
 // branch; CHANGELOG.md has a section for the version; a PATCH leaves the data epoch alone and a changed epoch
@@ -96,6 +96,20 @@ export const SUITES=Object.freeze({
  python:(dir,log)=>!existsSync(path.join(dir,'tests','router_unifi_test.py'))||passes('python3',[path.join(dir,'tests','router_unifi_test.py')],dir,log),
 });
 
+// The command that publishes the Release text on the forge the tag is pushed to. GitHub (or a remote that is not a
+// URL, which says nothing): `gh`. Any other host is taken to be a Forgejo or Gitea forge: `tea`, which finds its
+// login from the remote, so nothing about the household is written into this file or into a commit.
+export function forgeOf(url){
+ const text=String(url||'').trim();
+ const host=(/^[a-z][a-z0-9+.-]*:\/\/(?:[^@/]+@)?([^/:]+)/i.exec(text)||/^[^@/\s]+@([^:/]+):/.exec(text)||[])[1]||null;
+ return host===null||host.toLowerCase()==='github.com'?'github':'forgejo';
+}
+export function notesCommandFor({version,tag,slug,pushTo,url}){
+ const notes=`node scripts/release.mjs ${version} --notes`;
+ if(forgeOf(url)==='forgejo')return `tea releases create --remote ${pushTo} --tag ${tag} --title ${tag} --note "$(${notes})"`;
+ return `${notes} | gh release create ${tag}${slug?` --repo ${slug}`:''} --title ${tag} --notes-file - --verify-tag`;
+}
+
 /**
  * → {version, tag, mode, commit, tagged, signed, publish: [command, …], undo: [command, …], notes}
  * Throws an Error with .refused for anything it will not release. suites, publish: stand-ins for the tests.
@@ -113,7 +127,7 @@ export function release({root=repoRoot,version,baseline=null,dryRun=false,sign=f
  const pkg=JSON.parse(readFileSync(packageFile,'utf8')),slug=validRepo(pkg.homeHub?.updates?.repo)?pkg.homeHub.updates.repo:null;
  const pushTo=remote||((tryGit(['remote'])||'').split('\n').includes('github')?'github':'origin');
  const plan=signingPlan({key:tryGit(['config','--get','user.signingkey']),sign,unsigned});
- const notesCommand=`node scripts/release.mjs ${version} --notes | gh release create ${tag}${slug?` --repo ${slug}`:''} --title ${tag} --notes-file - --verify-tag`;
+ const notesCommand=notesCommandFor({version,tag,slug,pushTo,url:tryGit(['remote','get-url',pushTo])});
  const makeTag=commit=>{
   git(['tag',plan.signed?'-s':'-a','-m',`Home Hub ${version}`,tag,commit],{env:{...process.env,GIT_COMMITTER_NAME:process.env.PUBLIC_AUTHOR_NAME||TAGGER.name,GIT_COMMITTER_EMAIL:process.env.PUBLIC_AUTHOR_EMAIL||TAGGER.email}});
   if(plan.warn)log(`\nWARNING: ${tag} is NOT signed: no signing key is configured (git config user.signingkey).\nAnyone who can move the tag or tamper with a mirror can change what "${tag}" means. Pass --unsigned to accept that without this warning.\n${SIGNING_HELP}\n`);
@@ -216,7 +230,7 @@ if(process.argv[1]===fileURLToPath(import.meta.url)){
  const taking=['--baseline','--branch','--remote'],version=args.find((a,i)=>!a.startsWith('--')&&!taking.includes(args[i-1]));
  const known=['--notes','--dry-run','--sign','--unsigned',...taking],unknown=args.filter(a=>a.startsWith('--')&&!known.includes(a));
  if(!version||unknown.length||(flag('--baseline')&&!value('--baseline'))){
-  console.error(`${unknown.length?`Unknown option: ${unknown.join(', ')}\n`:''}Usage: node scripts/release.mjs <version> [--dry-run] [--sign | --unsigned] [--branch main] [--remote github]\n       node scripts/release.mjs <version> --notes\n       node scripts/release.mjs <version> --baseline <commit>`);process.exit(2);}
+  console.error(`${unknown.length?`Unknown option: ${unknown.join(', ')}\n`:''}Usage: node scripts/release.mjs <version> [--dry-run] [--sign | --unsigned] [--branch main] [--remote origin]\n       node scripts/release.mjs <version> --notes\n       node scripts/release.mjs <version> --baseline <commit>`);process.exit(2);}
  try{
   if(flag('--notes')){
    const notes=existsSync(path.join(repoRoot,'CHANGELOG.md'))?changelogSection(readFileSync(path.join(repoRoot,'CHANGELOG.md'),'utf8'),version):null;
