@@ -162,7 +162,8 @@ export function release({root=repoRoot,version,baseline=null,dryRun=false,sign=f
  }
  const last=lastTag(),previous=last?last.slice(1):null;
  if(previous&&!(compareVersions(version,previous)>0))refuse(`${version} is not greater than the last release (${previous}).`);
- if(compareVersions(version,pkg.version)<0)refuse(`${version} is lower than package.json (${pkg.version}).`);
+ // A tree with no release tag at all may be given its first number, whatever package.json says now (a re-baseline).
+ if(previous&&compareVersions(version,pkg.version)<0)refuse(`${version} is lower than package.json (${pkg.version}).`);
  // The data epoch: a PATCH never changes an on-disk format; a release that does says so under "### Data".
  const epoch=dataEpochOf(JSON.stringify(pkg)),before=previous?dataEpochOf(tryGit(['show',`${last}:package.json`])):null;
  const kind=bumpKind(previous,version);

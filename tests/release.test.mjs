@@ -195,3 +195,12 @@ test('the Release text is published with gh on GitHub and with tea on any other 
  assert.equal(notesCommandFor({...base,url:'ssh://git@git.example.lan:2222/alice/home-hub.git'}),'tea releases create --remote origin --tag v1.0.0 --title v1.0.0 --note "$(node scripts/release.mjs 1.0.0 --notes)"');
  assert.equal(notesCommandFor({...base,url:'https://github.com/alice/home-hub.git'}),'node scripts/release.mjs 1.0.0 --notes | gh release create v1.0.0 --repo alice/home-hub --title v1.0.0 --notes-file - --verify-tag');
 });
+
+test('a tree with no release tag may take a first version below package.json; once released, a lower one is refused',async t=>{
+ const {root,git,commit,go}=await repo(t);
+ await commit('rebaseline',{'package.json':PACKAGE('2.2.0'),'CHANGELOG.md':CHANGELOG});
+ const done=go({version:'1.0.0'});
+ assert.equal(done.tag,'v1.0.0');assert.equal(JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version,'1.0.0');assert.equal(git('log','-1','--format=%s'),'Release v1.0.0');
+ await commit('later',{'package.json':PACKAGE('1.0.0').replace('1.0.0','2.5.0'),'server/index.mjs':'export const ok=false;\n'});
+ refused(()=>go({version:'1.0.1'}),/lower than package\.json \(2\.5\.0\)/);
+});
