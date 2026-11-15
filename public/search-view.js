@@ -45,7 +45,7 @@ const tips=()=>el('ul',{class:'sr-tips'},
  [t('Piš obyčejná slova; musí se najít všechna.'),
   t('Stačí začátek slova: „exp“ najde export i exportovat. Uprostřed slova se nehledá.'),
   t('Velikost písmen a diakritika nerozhodují.'),
-  t('Hledá se v názvu, popisu, komentářích, štítcích, odkazech a jménech u položek a v názvech, poznámkách a připomínkách review.'),
+  t('Hledá se v názvu, popisu, komentářích, štítcích, odkazech, metadatech a textovém obsahu příloh a v poznámkách review.'),
   t('Id najdeš přímo: napiš třeba APP-12 nebo R-3.'),
   t('Agenti hledají stejně přes MCP: nástroje search a ticket_search (scope read).')].map(text=>el('li',{},text)));
 // What a hit is right now: a ticket's status, a review set's state.
@@ -71,16 +71,25 @@ const hit=r=>el('a',{class:`sr-hit ${r.kind}`,href:resultHref(r)},
  r.snippet?el('p',{},...marked(r.snippet)):null);
 
 export function searchView(me,sub){
- const q=queryOf(sub),body=el('div',{class:'sr-body','aria-live':'polite'},el('p',{class:'sec-dim',role:'status'},q?t('Hledám…'):t('Načítám…')));
- const view=el('section',{class:'sec tk sr'},pageHeader({eyebrow:t('Hledání'),title:q?t('Hledání: {q}',{q}):t('Hledání'),lead:q?undefined:t('Napiš, co hledáš: slova z názvu, popisu, komentářů nebo poznámek.')}),body);
+ const q=queryOf(sub),modePicker=el('div',{}),body=el('div',{class:'sr-body','aria-live':'polite'},el('p',{class:'sec-dim',role:'status'},q?t('Hledám…'):t('Načítám…')));
+ const view=el('section',{class:'sec tk sr'},pageHeader({eyebrow:t('Hledání'),title:q?t('Hledání: {q}',{q}):t('Hledání'),lead:q?undefined:t('Napiš, co hledáš: slova z názvu, popisu, komentářů nebo poznámek.')}),modePicker,body);
  const live=sessionTicket(),lost=authGuard(live);
- let only='';
+ let only='',mode='text';
+ function chooseMode(data){
+  if(!data.semanticAvailable&&mode==='text'){modePicker.replaceChildren();return;}
+  const select=el('select',{'aria-label':t('Způsob hledání'),onchange:()=>{mode=select.value;search();}},
+   [['text',t('Fulltext (výchozí)')],['semantic',t('Podle významu (tickety)')],['hybrid',t('Hybridní (tickety)')]].map(([id,label])=>el('option',{value:id,selected:mode===id?'':null},label)));
+  modePicker.replaceChildren(el('label',{},t('Způsob hledání'),' ',select));
+ }
  const failed=text=>body.replaceChildren(emptyState({icon:'⚠',title:t('Hledání teď nejde'),body:text,actions:[{label:t('Zkusit znovu'),primary:true,onclick:()=>{location.hash=q?searchHash(q):'#search';view.replaceWith(searchView(me,sub));}}]}));
  // Nothing indexed: this hub has no tickets or review sets yet, so there is nothing to find.
  const nothingIndexed=()=>emptyState({icon:'⌕',title:t('Zatím není co prohledávat'),
   body:t('Hledání prochází položky Project Trackeru a sady Review. Na tomhle Home Hubu zatím žádné nejsou; jakmile vzniknou, najdou se tady hned.'),
   actions:[{label:`${t('Projekty')} →`,href:'#projects',primary:true},{label:'Review →',href:'#review'}]});
  function draw(data){
+  chooseMode(data);
+  const warning=data.attachmentSearch&&data.attachmentSearch.state!=='ready'?el('p',{class:'sec-dim',role:'status'},t('Index hledání ještě není úplný. Prázdný výsledek teď nemusí znamenat, že záznam neexistuje.')):null;
+  if(warning)modePicker.append(warning);
   const indexed=data.indexed||{},total=(indexed.ticket||0)+(indexed.review||0),groups=groupResults(data.results),names=Object.fromEntries(KINDS());
   // Even with nothing to find yet, the page says how search will read a query.
   if(data.indexed&&!total)return body.replaceChildren(nothingIndexed(),el('div',{class:'acc-card sr-help'},el('h3',{},t('Jak hledat')),tips()));
@@ -106,12 +115,15 @@ export function searchView(me,sub){
   };
   addEventListener('keydown',onKey);onLeave(()=>removeEventListener('keydown',onKey));
  }
- fetch('/api/search?'+new URLSearchParams({q,limit:'100'})).then(async r=>{
-  lost(r);if(!live())return;
+ let requestNumber=0;
+ function search(){const request=++requestNumber;body.setAttribute('aria-busy','true');
+ fetch('/api/search?'+new URLSearchParams({q,limit:'100',mode})).then(async r=>{
+  lost(r);if(!live()||request!==requestNumber)return;
   if(!r.ok)return failed(r.status===400?t('Tohle hledání nejde (nejvýš 200 znaků).'):t('Hledání teď nejde. Zkus to znovu.'));
-  const data=await r.json();if(!live())return;
+  const data=await r.json();if(!live()||request!==requestNumber)return;body.removeAttribute('aria-busy');
   draw({...data,results:Array.isArray(data.results)?data.results:[]});
- }).catch(()=>{if(live())failed(t('Hledání teď nejde. Zkus to znovu.'));});
+ }).catch(()=>{if(live()&&request===requestNumber){body.removeAttribute('aria-busy');failed(t('Hledání teď nejde. Zkus to znovu.'));}});
+ }search();
  return view;
 }
 // Page entry for the shell (app.js): every page module exports (context) => Node, and the server's UI

@@ -86,12 +86,12 @@ function zoneCard(profile){
 }
 // The account card: who, the role, and what the role allows.
 function accountCard(me,profile){
- const allowed=profile?.permissions||[];
+ const allowed=profile?.permissions||[],link=(text,tab)=>me?.canAdmin?el('a',{href:'#access/'+tab},text):text;
  return el('section',{class:'set-card'},el('h3',{},t('Účet')),
   el('dl',{class:'set-dl'},
-   el('dt',{},t('Uživatel')),el('dd',{},me?.username||'—'),
+   el('dt',{},t('Uživatel')),el('dd',{},link(me?.username||'—','people')),
    el('dt',{},t('Jméno')),el('dd',{},me?.name||me?.username||'—'),
-   el('dt',{},t('Role')),el('dd',{},roleLabel(me),el('span',{class:'set-dim'},` · ${me?.canAdmin?t('plný přístup, správa uživatelů a klíčů'):me?.canWrite?t('čtení a zápis podle role'):t('jen čtení')}`)),
+   el('dt',{},t('Role')),el('dd',{},link(roleLabel(me),'roles'),el('span',{class:'set-dim'},` · ${me?.canAdmin?t('plný přístup, správa uživatelů a klíčů'):me?.canWrite?t('čtení a zápis podle role'):t('jen čtení')}`)),
    el('dt',{},t('Přihlášení')),el('dd',{},signIn(me))),
   allowed.length?[el('p',{class:'set-dim set-allowed-head'},t('Co tvoje role smí')),
    el('ul',{class:'set-allowed'},allowed.map(p=>el('li',{title:`${p.id} – ${t(p.desc)}`},el('span',{class:`set-dot ${p.write?'write':'read'}`,'aria-hidden':'true'}),t(p.label))))]:null,
@@ -110,8 +110,12 @@ export function settingsView(me){
  }else zone.append(el('section',{class:'set-card'},el('h3',{},t('Časové pásmo')),el('p',{class:'set-dim'},t('Časy se ukazují v pásmu webu ({zone}). Vlastní pásmo si nastavíš po přihlášení heslem v prohlížeči.',{zone:site().timeZone||browserZone()}))));
  return el('div',{class:'set'},
   pageHeader({eyebrow:t('Účet'),title:t('Nastavení'),lead:t('Tvůj účet, jazyk, vzhled, časové pásmo a heslo.')}),
-  el('div',{class:'set-grid'},
-   account,
+  el('section',{'aria-label':t('Informace')},el('h2',{class:'set-section'},t('Informace')),
+   el('div',{class:'set-grid'},account,
+    el('section',{class:'set-card'},el('h3',{},t('Změna hesla')),
+     session?[el('p',{class:'set-dim'},t('Po změně skončí všechna ostatní přihlášení tohoto účtu (jiné prohlížeče a záložky). Tokeny aplikací a API klíče platí dál.')),passwordForm(me)]
+      :el('p',{class:'set-dim'},t('Heslo se dá změnit jen po přihlášení heslem v prohlížeči, ne přes token aplikace nebo API klíč.'))))),
+  el('section',{'aria-label':t('Uživatelská nastavení')},el('h2',{class:'set-section'},t('Uživatelská nastavení')),el('div',{class:'set-grid'},
    el('section',{class:'set-card'},el('h3',{},t('Jazyk')),
     el('p',{class:'set-dim'},t('Jazyk rozhraní. Volba platí pro tento prohlížeč.')),
     segmented({label:t('Jazyk'),value:getLang(),onchange:setLang,options:LANGS.map(([id,name])=>({id,label:name,lang:id}))})),
@@ -119,10 +123,7 @@ export function settingsView(me){
    el('section',{class:'set-card'},el('h3',{},t('Vzhled')),
     el('p',{class:'set-dim'},t('Světlý, tmavý, nebo podle systému. Volba platí pro tento prohlížeč.')),
     themeSwitch()),
-   zone,
-   el('section',{class:'set-card'},el('h3',{},t('Změna hesla')),
-    session?[el('p',{class:'set-dim'},t('Po změně skončí všechna ostatní přihlášení tohoto účtu (jiné prohlížeče a záložky). Tokeny aplikací a API klíče platí dál.')),passwordForm(me)]
-     :el('p',{class:'set-dim'},t('Heslo se dá změnit jen po přihlášení heslem v prohlížeči, ne přes token aplikace nebo API klíč.')))));
+   zone)));
 }
 // Page entry for the shell (app.js): every page module exports (context) => Node, and the server's UI
 // manifest names it. context = {me, page, sub, device, site}.

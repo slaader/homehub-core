@@ -132,7 +132,7 @@ export function createHandler(options) {
   for(const image of siteImages(siteImagesDirectory===undefined?(options.site?null:siteConfigPath()&&path.join(path.dirname(siteConfigPath()),'images')):siteImagesDirectory)){
    if(assets.has(image.url))throw new Error(`site image ${image.url} clashes with an asset of module "${assets.get(image.url).module}"`);assets.set(image.url,image);}
   const home=states.get('home'),tracker=states.get('tracker'),inventory=states.get('inventory');
-  const mcp=createMcp({version:version.version,tools:registry.tools,instructions:registry.instructions,ctx:{home:()=>home.payload(),search:q=>db.search(q),tickets:tracker.tickets,ticketFiles:tracker.ticketFiles,review:states.get('review').review,
+  const mcp=createMcp({version:version.version,tools:registry.tools,instructions:registry.instructions,ctx:{home:()=>home.payload(),search:q=>tracker.fullTextSearch(q),tickets:tracker.tickets,ticketFiles:tracker.ticketFiles,review:states.get('review').review,
    inventory:{read:inventory.read,put:inventory.put},log:entry=>accessStore.logApi(entry),moduleContext:id=>({state:states.get(id),hub})}});
   // A request has ten seconds to arrive whole, answered or not: a refusal that went out at once does not let the
   // rest of the request trickle in for longer. Only a raw upload may take longer: a file streamed by its route,
@@ -237,6 +237,7 @@ export function createHandler(options) {
       error(500,'UNAVAILABLE','Dashboard data is temporarily unavailable.');
     }
   };
+  handler.mcpBusiness=mcp.business; // Internal experiment/test seam; uses this exact registry, stores and audit.
   handler.hub=hub;handler.registry=registry;handler.state=hub.state;handler.thermo=home.thermoPoller;
   // Every background reader the modules declared (Thermo pull, plugin pollers). A failure to start is logged, not fatal.
   handler.ready=()=>integrationSecrets.ready();

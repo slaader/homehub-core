@@ -206,7 +206,12 @@ first read (retried every ten minutes while no key can be made).
 The files in `state/home/` use owner-only permissions: POSIX mode 0600 under a 0700 directory; on Windows, an explicit DACL permits only the Home Hub account and SYSTEM. New files are protected before the atomic rename, including `telemetry-hosts.json` passwords and tokens.
 
 Ticket hybrid search stores a disposable derived SQLite cache under `<state>/tickets/search/`.
-Schema 1 is covered by data epoch 3; canonical tickets and attachment blobs are unchanged.
+Schema 1 is covered by data epoch 4; canonical tickets and attachment blobs are unchanged.
 An older 2.0.1 store without a cache opens normally and builds it asynchronously. Newer cache
 schemas are refused. Use the pre-update archive for rollback across data epochs. Search caches
 contain ticket and attachment text and require the same private storage protection as tickets.
+
+The `platform-search` collection metadata in `hub.db` stores schema 1 `{enabled: boolean}`,
+initially false. It is an administrator's explicit permission to send ticket/accepted text to
+the configured embedding provider. It stores no URL, model or token. Provider configuration
+stays in the service environment. This addition is covered by data epoch 4.

@@ -100,7 +100,7 @@ export const MCP_TOOLS=Object.freeze([
   inputSchema:{type:'object',properties:{id:{type:'string',pattern:TICKET_ID.source},name:{type:'string',minLength:1,maxLength:120},data:{type:'string',minLength:4,maxLength:43692,description:'Canonical padded base64 for 1..32768 file bytes.'}},required:['id','name','data'],additionalProperties:false},
   annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:true,openWorldHint:false}},
  {name:'search',scope:'read',title:'Home Hub: full-text search',
-  description:'Full-text search across tickets (id, title, description, comments, attachment names, labels, refs, people) and review sets (title, description, round notes, item and variant texts, decisions and comments). Plain words, never query syntax: every word must match as a prefix; case and diacritics are ignored (resume finds Résumé). Best match first, a title hit above a body hit; matched words are wrapped in \\u0001…\\u0002 in title and snippet. Use ticket_get or review_get for the full record, and ticket_search to narrow tickets by status, assignee, label or release.',
+  description:'Full-text search across tickets (id, title, description, comments, attachment metadata and supported UTF-8 contents, labels, refs, people) and review sets (title, description, round notes, item and variant texts, decisions and comments). Plain words, never query syntax: every word must match as a prefix; case and diacritics are ignored (resume finds Résumé). Best match first, a title hit above a body hit; matched words are wrapped in \\u0001…\\u0002 in title and snippet. Use ticket_get or review_get for the full record, and ticket_search to narrow tickets by status, assignee, label or release.',
   inputSchema:{type:'object',properties:{query:{type:'string',minLength:1,maxLength:200,description:'Up to 12 words.'},kind:{type:'string',enum:['ticket','review'],description:'Only tickets or only review sets.'},project:{type:'string',maxLength:40,description:'Project id.'},limit:{type:'integer',minimum:1,maximum:100,description:'Maximum results (default 20).'}},required:['query'],additionalProperties:false},
   annotations:{readOnlyHint:true,openWorldHint:false}},
  {name:'review_list',scope:'read',title:'Review: list sets',
@@ -155,7 +155,7 @@ const subjectOf=(tool,args,data)=>tool==='inventory_update'?(typeof args.entry?.
  * ctx.home(): Promise<home payload>; ctx.inventory.read(): Promise<doc|null>;
  * ctx.inventory.put(change): Promise<{ok,entry,hash,published,errors}>; ctx.log(entry): Promise
  */
-export function createMcp({version='2',ctx,tools:extraTools=[],instructions=[]}){
+export function createMcpBusiness({version='2',ctx,tools:extraTools=[],instructions=[]}){
  const allowed=(principal,tool)=>principal.scopes.includes(tool.scope);
  // What an agent reads when it connects: what this is, who it is here, then a few lines per module that has
  // something to say (mcpInstructions in the module definitions, core and plugins alike, in load order).
@@ -242,10 +242,10 @@ export function createMcp({version='2',ctx,tools:extraTools=[],instructions=[]})
    if(a.type==='text/plain'&&f.size<=256*1024)return {mcpContent:[{type:'text',text:JSON.stringify(meta)},{type:'text',text:await readFile(f.path,'utf8')}],meta};
    return {...meta,note:'Binary or large file: only metadata is returned. Download it from url with a session or API key.'};
   },
-  search({query,kind,project,limit=20,...rest}){
+  async search({query,kind,project,limit=20,...rest}){
    if(!ctx.search)throw new ToolError('Search is not available on this Home Hub.');
    if(Object.keys(rest).length)throw new ToolError('Invalid search: use query, kind, project, limit.');
-   try{return ctx.search({q:query,kind,project,limit});}catch{throw new ToolError('Invalid search: query is 1-200 characters, kind ticket|review, limit 1-100.');}
+   try{return await ctx.search({q:query,kind,project,limit});}catch{throw new ToolError('Invalid search: query is 1-200 characters, kind ticket|review, limit 1-100.');}
   },
   review_list:({feedbackPending,...args})=>reviews(r=>r.list({...args,...(feedbackPending?{feedback:'pending'}:{})})),
   async review_get({id,round,...rest}){
@@ -308,8 +308,18 @@ export function createMcp({version='2',ctx,tools:extraTools=[],instructions=[]})
   throw Object.assign(new Error(`Method not found: ${text(method,60)}`),{code:-32601});
  }
 
+ return Object.freeze({
+  catalog:()=>TOOLS,
+  initialize:principal=>({serverInfo:{name:'home-hub',title:'Home Hub',version},instructions:orientation(principal)}),
+  callTool:(name,args,principal)=>dispatch({method:'tools/call',params:{name,arguments:args}},principal),
+  dispatch
+ });
+}
+
+export function createMcp(options){
+ const business=createMcpBusiness(options),{dispatch}=business;
  // Returns {status, headers, body}; the HTTP layer does auth, origin and size checks first.
- return async function handle(raw,principal){
+ const handle=async function handle(raw,principal){
   let msg;try{msg=JSON.parse(raw);}catch{return reply(400,{jsonrpc:'2.0',id:null,error:{code:-32700,message:'Parse error'}});}
   if(Array.isArray(msg))return reply(400,{jsonrpc:'2.0',id:null,error:{code:-32600,message:'Batch requests are not supported.'}});
   if(!msg||typeof msg!=='object'||msg.jsonrpc!=='2.0'||typeof msg.method!=='string'){
@@ -320,6 +330,7 @@ export function createMcp({version='2',ctx,tools:extraTools=[],instructions=[]})
   try{return reply(200,{jsonrpc:'2.0',id:msg.id,result:await dispatch(msg,principal)});}
   catch(e){return reply(200,{jsonrpc:'2.0',id:msg.id,error:{code:Number.isInteger(e.code)?e.code:-32603,message:Number.isInteger(e.code)?e.message:'Internal error'}});}
  };
+ handle.business=business;return handle;
 }
 const reply=(status,body)=>({status,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 // toolError (server/tool-error.mjs): for a plugin tool's run(), an error whose message goes back to the agent as the

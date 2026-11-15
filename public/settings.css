@@ -37,3 +37,8 @@
 .set-card a{color:var(--accent)}
 .set-card .hh-choice{margin-top:var(--space-2)}
 .set-card .hh-choice button{min-height:32px;padding:var(--space-1) var(--space-3);font-size:var(--text-xs)}
+
+.set-section{font:600 var(--text-lg)/1.4 var(--sans);margin:4px 0 14px;color:var(--txt)}
+.set-toggle{display:flex;align-items:center;gap:10px;margin:16px 0;font-weight:600}
+.set-card ol{padding-left:22px;line-height:1.7;color:var(--dim)}
+.set-card pre{white-space:pre-wrap;overflow-wrap:anywhere}

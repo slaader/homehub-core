@@ -10,9 +10,16 @@ until the release gives it its number: a change to the public surface adds its l
 
 ### Added
 
+- Administration → Platform settings provides administrator-only semantic search opt-in and a Qwen embedding setup guide. Profile settings group Info (account, role, permission-aware management links and password) and User settings (language, time zone and theme).
+- An optional experimental Rust MCP HTTP/protocol frontend and independent Node-versus-Rust correctness/performance harness share the live Node tool business logic, authorization and audit over private Unix IPC.
+
 - Optional hybrid ticket search via `ticket_hybrid_search`, `ticket_search_status` and matching HTTP routes, with attachment metadata and complete bounded UTF-8 text, source citations and explicit indexing/semantic coverage.
 - MCP `projects_list` reads projects without loading tickets, and `ticket_attachment_put` attaches up to 32 KiB of base64 file bytes with content-based duplicate protection.
 - `scripts/ticket-push.mjs` streams local ticket attachments using existing service-account credentials, skips identical content and reconciles lost responses without automatically replaying uploads. `scripts/benchmark-tickets.mjs` measures tracker operations against disposable synthetic data.
+
+### Changed
+
+- Full-text search is the default, including attachment metadata and supported UTF-8 contents in global HTTP/MCP search. Meaning-based ticket search requires a configured provider, explicit administrator opt-in and an explicit semantic/hybrid query mode.
 
 ### Fixed
 
@@ -23,7 +30,7 @@ until the release gives it its number: a change to the public surface adds its l
 
 ### Data
 
-- Data epoch 3 adds a disposable ticket search SQLite cache (schema 1). Existing canonical ticket stores remain readable without it. Rolling back requires the pre-update archive.
+- Data epoch 4 adds the platform semantic-search opt-in preference (schema 1) in hub.db and a disposable ticket search SQLite cache (schema 1). Existing canonical ticket stores remain readable without it. Rolling back requires the pre-update archive.
 
 ## 2.0.1
 

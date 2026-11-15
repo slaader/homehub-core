@@ -31,7 +31,7 @@ test('model invalidation and bounded vector capacity settle',async t=>{
 test('invalid dimensions retry without caching, later success and query reuse',async t=>{
  let fail=true,queries=0;const {index}=await setup(t,{retryMs:1,embed:async(texts,{query}={})=>{if(query)queries++;if(fail){fail=false;return [[NaN,0]];}return texts.map(()=>[1,0]);}});
  index.sync([doc('a','needle')]);await index.whenIdle();assert.equal(index.status().embedded,1);
- await index.search({query:'needle'});await index.search({query:'needle'});assert.equal(queries,1);
+ await index.search({query:'needle',mode:'hybrid'});await index.search({query:'needle',mode:'hybrid'});assert.equal(queries,1);
  index.sync([doc('a','replacement')]);assert.equal((await index.search({query:'needle',mode:'text'})).results.length,0);await index.whenIdle();
 });
 test('close prevents late provider writes even if provider ignores cancellation',async t=>{

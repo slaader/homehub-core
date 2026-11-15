@@ -978,8 +978,8 @@ Projects carry `type`: `app`, `game`, `other` or `null` (`POST /api/tickets/proj
 `GET /api/tickets/search/hybrid?query=words&mode=hybrid` and MCP `ticket_hybrid_search`
 require normal `read` access. Existing ticket search is unchanged. Required `query` is 1–200
 characters with a letter or digit. Optional `project`, `status`, `type`, `priority`, `release`,
-`assignee`, `label` use ticket-list filters; `limit` is 1–100 (default 20). `mode` is `text`,
-`hybrid` (default), or `semantic`; `minScore` is a finite cosine threshold from 0 to 1.
+`assignee`, `label` use ticket-list filters; `limit` is 1–100 (default 20). `mode` is `text` (default),
+`hybrid`, or `semantic`; `minScore` is a finite cosine threshold from 0 to 1.
 Unknown fields are refused. Results cite ticket/project, source, attachment id/name/type when
 applicable, snippets and match kind. Semantic scores and fused ranking scores differ.
 
@@ -1482,3 +1482,18 @@ curl -s -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
 `POST /api/service-registrations` (scope `inventory:write`) and MCP `service_register` create or update an inventory runtime's typed service descriptor. Required fields are `id`, `device`, `name`, `kind`, `binary`, `platform`, `port`. Optional fields are `mode` (`server` or `on-demand`), `address`, `endpointId`, `watchId`, and `base`. Existing entries require the current inventory hash as `base`; a conflict returns 409 without writing. Invalid references or descriptors return 422. A successful response is `{ok:true, entry, hash, published}`. The existing inventory writer performs validation and publication; no binary is executed or service installed.
 
 See [the type model, schemas and per-OS setup](services.md) for stable IDs, registration examples, supported kinds and extension instructions.
+
+### Platform search settings (administrator password session)
+
+`GET /api/admin/platform/search` returns `{defaultMode:"text",configured,enabled,model,status}`.
+`POST /api/admin/platform/search` accepts only `{enabled:boolean}`; enabling requires a configured
+provider. Viewers, other non-admin roles, app tokens and API keys cannot use these routes. No
+provider credential or URL is returned. The setting persists across restarts; changing it cancels
+and rebuilds the derived service without changing canonical tickets.
+
+Global `GET /api/search?q=...` and MCP `search` include attachment metadata and supported UTF-8
+contents by default. HTTP accepts `mode=text|semantic|hybrid`, default text; semantic/hybrid search
+covers tickets only. Its response adds `mode`, `semanticAvailable`, and `attachmentSearch` readiness.
+Existing field filters and the legacy `ticket_search` response are preserved. The attachment-aware
+`ticket_hybrid_search` tool also defaults to text; request semantic or hybrid mode explicitly.
+The platform toggle enables provider use, not an implicit change to query semantics.

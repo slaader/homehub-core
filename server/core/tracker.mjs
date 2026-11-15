@@ -1,7 +1,8 @@
 // Core module "tracker": projects, releases, tickets with attachments, and the full-text search over
 // tickets and review sets. Projects are created in the UI (or seeded once from site.json → tracker.projects).
 import path from 'node:path';
-import {createTicketSearchService} from '../ticket-search-service.mjs';
+import {createPlatformSearch} from '../platform-search-settings.mjs';
+import {fullTextSearch} from '../full-text-search.mjs';
 import {createReadStream} from 'node:fs';
 import {pipeline} from 'node:stream/promises';
 import {createTicketStore,ticketAuthors,TICKET_ID,TICKET_TYPES,TICKET_PRIORITIES,TICKET_ATTACHMENTS} from '../tickets-store.mjs';
@@ -67,23 +68,27 @@ const SEARCH_ARGS=['query','project','status','type','priority','release','assig
 export default {
  id:'tracker',title:'Project Tracker',
  mcpInstructions:[
-  'Tracker: projects_list finds projects; tickets_list filters tickets/releases. ticket_search searches words; ticket_hybrid_search adds file text and semantics (ticket_search_status: coverage). search includes reviews. Known id: ticket_get; ticket_attachment_get reads files.',
+  'Tracker: projects_list finds projects; tickets_list filters tickets/releases. ticket_search searches words; ticket_hybrid_search: attachment full-text by default; optional semantics (ticket_search_status: coverage). search includes reviews. Known id: ticket_get; ticket_attachment_get reads files.',
   {scope:'tickets:write',text:'With tickets:write: project_save then ticket_create. ticket_update uses the returned rev; ticket_comment appends. release_save/project_save: omit rev to create. ticket_attachment_put: up to 32 KiB; larger files use HTTP.'},
  ],
- assets:['tracker-view.js','tracker-md.js','tracker-attach.js','search-view.js','tickets.css','i18n-en-tracker.js'],
+ assets:['tracker-view.js','tracker-md.js','tracker-attach.js','search-view.js','platform-settings-view.js','tickets.css','i18n-en-tracker.js'],
  nav:[
   {group:'Project Tracker',hash:'projects',labelKey:'Projekty',view:'tracker-view.js#trackerPage',order:40},
   {group:'Project Tracker',hash:'items',labelKey:'Otevřené položky',view:'tracker-view.js#trackerPage',order:41},
   {group:'Project Tracker',hash:'releases',labelKey:'Releasy',view:'tracker-view.js#trackerPage',order:42},
+  {groupKey:'Správa',hash:'platform-settings',labelKey:'Nastavení platformy',view:'platform-settings-view.js#platformSettingsPage',admin:true,order:49},
   {hash:'search',label:'Search',view:'search-view.js#searchPage',hidden:true},
  ],
  setup(hub){
   const dir=path.join(hub.stateDirectory,'tickets');
   const tickets=createTicketStore(dir,{db:hub.db,seedProjects:hub.site.tracker.projects}),ticketFiles=createTicketFiles(dir);
-  return {tickets,ticketFiles,ticketSearch:createTicketSearchService(dir,{tickets,ticketFiles,...hub.options.ticketSearch})};
+  const ticketSearch=createPlatformSearch(dir,{db:hub.db,tickets,ticketFiles,...hub.options.ticketSearch});
+  return {tickets,ticketFiles,ticketSearch,fullTextSearch:input=>fullTextSearch({db:hub.db,tickets,ticketSearch},input)};
  },
  pollers:[{id:'ticket-search',start:state=>state.ticketSearch.start(),stop:state=>state.ticketSearch.close()}],
  routes:[
+  {method:'GET',path:'/api/admin/platform/search',scope:null,error:ticketsError,handler:async c=>c.json(200,await c.state.ticketSearch.settings())},
+  {method:'POST',path:'/api/admin/platform/search',scope:null,error:ticketsError,handler:async c=>c.json(200,await c.state.ticketSearch.setEnabled(c.input))},
   // Ticket attachments: the raw file in one request (at most 100 MiB); the name comes in the query.
   {method:'PUT',match:/^\/api\/tickets\/([A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,5})\/attachments$/,scope:'tickets:write',raw:true,contentType:'application/octet-stream',error:ticketsError,
    async handler(c){const {tickets,ticketFiles}=c.state,id=c.params[1];
@@ -119,14 +124,14 @@ export default {
   {method:'GET',match:/^\/api\/tickets\/(.*)$/,error:ticketsError,async handler(c){const {params,json,state}=c;if(!TICKET_ID.test(params[1]))throw new Error('not-found');return json(200,withProvenance(c,await state.tickets.get(params[1])));}},
   // Full-text search over tickets and review sets (title, description, comments, notes); plain words, diacritics ignored.
   // `indexed` counts what the index holds per kind (0 everywhere = nothing to search yet); each hit carries `meta`.
-  {method:'GET',path:'/api/search',error:searchError,async handler(c){const {query,json,hub}=c;if(Object.keys(query).some(k=>!['q','kind','project','limit'].includes(k)))throw new Error('invalid');
-    const found=hub.db.search({...query,limit:query.limit===undefined?20:query.limit});
+  {method:'GET',path:'/api/search',error:searchError,async handler(c){const {query,json,hub}=c;if(Object.keys(query).some(k=>!['q','kind','project','limit','mode'].includes(k)))throw new Error('invalid');
+    const found=await c.state.fullTextSearch({...query,limit:query.limit===undefined?20:query.limit});
     return json(200,{...found,results:await describeHits(found.results,c),indexed:hub.db.searchStats()});}},
  ],
  mcpTools:[
   {name:'ticket_search_status',scope:'read',description:'Ticket search readiness, semantic availability and attachment content coverage.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,openWorldHint:false},run(args,{state}){if(Object.keys(args).length)throw toolError('Invalid ticket search status request.');return state.ticketSearch.status();}},
-  {name:'ticket_hybrid_search',scope:'read',description:'Search ticket text and attachment metadata and complete bounded UTF-8 text. Modes text, hybrid, semantic; returns source citations and explicit readiness/coverage.',
-   inputSchema:{type:'object',properties:{query:{type:'string',minLength:1,maxLength:200},project:{type:'string'},status:{type:'string'},type:{type:'string'},priority:{type:'string'},release:{type:'string'},assignee:{type:'string'},label:{type:'string'},limit:{type:'integer',minimum:1,maximum:100},mode:{enum:['text','hybrid','semantic']},minScore:{type:'number',minimum:0,maximum:1}},required:['query'],additionalProperties:false},annotations:{readOnlyHint:true,openWorldHint:false},
+  {name:'ticket_hybrid_search',scope:'read',description:'Search ticket text and attachment metadata and complete bounded UTF-8 text. Full-text mode is the default; optional hybrid/semantic modes require administrator opt-in and a configured provider. Returns source citations and explicit readiness/coverage.',
+   inputSchema:{type:'object',properties:{query:{type:'string',minLength:1,maxLength:200},project:{type:'string'},status:{type:'string'},type:{type:'string'},priority:{type:'string'},release:{type:'string'},assignee:{type:'string'},label:{type:'string'},limit:{type:'integer',minimum:1,maximum:100},mode:{enum:['text','hybrid','semantic'],default:'text'},minScore:{type:'number',minimum:0,maximum:1}},required:['query'],additionalProperties:false},annotations:{readOnlyHint:true,openWorldHint:false},
    async run(args,{state}){try{if(args.limit!==undefined&&!Number.isInteger(args.limit))throw new Error('invalid');return await state.ticketSearch.search(args);}catch(e){throw toolError(e.message==='invalid'?'Invalid ticket hybrid search request.':'Ticket search unavailable.');}}},
   {name:'ticket_search',scope:'read',title:'Tickets: full-text search with filters',
    description:'Find tickets by words in their title, description, comments, attachment names, labels, refs or people, narrowed by the same field filters as tickets_list. Plain words, never query syntax: every word must match as a prefix, and case and diacritics are ignored. Best match first. Each ticket comes as in tickets_list plus snippet, the matching text with the matched words wrapped in \\u0001…\\u0002. Use tickets_list when you only filter by fields, and search to look in review sets too.',
@@ -150,7 +155,7 @@ export default {
  // Rows for the API reference (Users and API); the first card of the same title already lists the basic routes.
  apiDocs:[
   {title:'Project Tracker',routes:[
-   ['GET','/api/tickets/search/hybrid?query=&mode=hybrid','read','Hybrid ticket and attachment text search with citations and coverage.'],
+   ['GET','/api/tickets/search/hybrid?query=&mode=text','read','Hybrid ticket and attachment text search with citations and coverage.'],
    ['GET','/api/tickets/search/status','read','Ticket search readiness and attachment extraction coverage.'],
    ['GET','/api/tickets/search?q=&status=&assignee=&label=&release=','read','Fulltext v ticketech (i komentáře) se stejnými filtry jako seznam.'],
    ['GET','/api/tickets/people','read','Jména pro pole Řeší: účty, servisní účty a lidé z ticketů.'],

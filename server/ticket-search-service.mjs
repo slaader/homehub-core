@@ -112,7 +112,7 @@ export function createTicketSearchService(directory,{tickets,ticketFiles,env=pro
  }
  async function search(input){
   if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>!['query','project','status','type','priority','release','assignee','label','limit','mode','minScore'].includes(k)))throw new Error('invalid');
-  const {query,mode='hybrid',minScore,...raw}=input;
+  const {query,mode='text',minScore,...raw}=input;
   if(typeof query!=='string'||query.length>200||!/[\p{L}\p{N}_]/u.test(query)||!['text','hybrid','semantic'].includes(mode)||minScore!==undefined&&(typeof minScore!=='number'||!Number.isFinite(minScore)||minScore<0||minScore>1))throw new Error('invalid');
   const {f:filters}=tickets.validateSearchFilters(raw);
   if(filters.limit!==undefined&&(!/^\d+$/.test(String(filters.limit))||Number(filters.limit)<1||Number(filters.limit)>100))throw new Error('invalid');

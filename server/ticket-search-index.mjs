@@ -132,7 +132,7 @@ export function createTicketSearchIndex(directory,options={}) {
   }finally{queryControllers.delete(ctl);queryPromises.delete(key);}});
   queryPromises.set(key,promise);return promise;
  }
- async function search({query,project,status:filterStatus,type,priority,release,assignee,label,limit=20,mode='hybrid',minScore:cutoff=minScore}={}){
+ async function search({query,project,status:filterStatus,type,priority,release,assignee,label,limit=20,mode='text',minScore:cutoff=minScore}={}){
   assertOpen();if(typeof query!=='string'||!query.trim()||query.length>4096||!['hybrid','text','semantic'].includes(mode)||!Number.isInteger(limit)||limit<1||limit>100||!Number.isFinite(cutoff)||cutoff<0||cutoff>1)throw new Error('Invalid ticket search query');
   const initial=status(),gen=generation;
   const {match}=ticketFilter({project,status:filterStatus,type,priority,release,assignee,label});
