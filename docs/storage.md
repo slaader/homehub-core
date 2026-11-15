@@ -32,7 +32,7 @@ code directory.
 |---|---|---|
 | `state/hub.db` (+ `-wal`, `-shm`) | Tickets (projects, releases, tickets with comments and history), the review index (sets → rounds → items → feedback, blob metadata), browser sign-in sessions, the full-text search index | SQLite, `node:sqlite` built into Node, no npm package |
 | `state/review/blobs/` | Review files (mockups, images, `.glb`), content-addressed by sha256 | files |
-| `state/access.json`, `state/app-tokens.json` | Users and their roles, custom roles, service accounts, API keys, per-account preferences, app tokens (hashes only; `{schemaVersion: 2, tokens}`). A `device-tokens.json` and `device-tokens-audit.jsonl` from legacy internal builds are moved to `app-tokens.json` and `app-tokens-audit.jsonl` once, at the first start that reads them | JSON |
+| `state/access.json`, `state/app-tokens.json` | Users and their roles, custom roles, service accounts, API keys, per-account preferences, app tokens (hashes only; `{schemaVersion: 2, tokens}`). Legacy `device-tokens.json` and `device-tokens-audit.jsonl` files are moved to `app-tokens.json` and `app-tokens-audit.jsonl` once, at startup | JSON |
 | `state/agents.json`, `state/agent/` | Push agent keys (hashes only, each bound to one device; `schemaVersion: 2`), and per device (`agent/<device>.json`, `schemaVersion: 2`) the latest copy of each part its agent reported, with the hub's receive time (0600, directory 0700); `agent/history.jsonl`, the agents' trend (one line per device at most every six hours, at most 3000 lines) | JSON / JSONL |
 | `state/compute/`, `state/thermo/`, `state/windows/`, `state/linux/` | Telemetry history, one line per sample (`windows/`: Windows over SSH or WinRM; `linux/`: Node Exporter, Prometheus or SSH; a device that switches within a family keeps its history) | JSONL, monthly files |
 | `state/home/` | Devices added on the overview (`devices.json`), their telemetry logins (`thermo-hosts.json`), Windows SSH connections (`windows-hosts.json`) and the other agent-less connections (`telemetry-hosts.json`: WinRM, Node Exporter, Prometheus, Linux SSH; holds the WinRM password, a Node Exporter's Basic password and a Prometheus password or bearer token; **this file and `thermo-hosts.json` are sealed**, see Secrets at rest), and which devices of the site configuration are read through one of them (`site-telemetry.json`: id, provider, platform, who and when; no secrets; their connections are in the two files above under the same id; `site.json` is never written), and the owner's display edits of those devices over the site's values (`site-overrides.json`: name, hostname, ip, hardware, picture, who and when; their uploaded picture in `images/`), all 0600 | JSON |
@@ -100,8 +100,8 @@ Those archives hold every secret of the instance: `<home>/backups/`, or `backups
 `private/`. The update command's own files are `update-journal.json` and `update.lock` (in the instance directory,
 else in `backups/`) and `state/update-history.jsonl`, one line per update: `{at, id, from, to, by, seconds, result}`.
 
-A deploy (`scripts/deploy-mini-server.sh` on the mini) restarts the service in place. `state/` is gitignored, so
-pulling code never touches the database, and sessions survive the restart.
+Restart Home Hub through the service manager configured for your installation. `state/` is gitignored, so
+changing code does not replace the database, and sessions survive the restart. See [updating.md](updating.md).
 
 ### Secrets at rest
 

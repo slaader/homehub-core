@@ -29,6 +29,7 @@ Use the clone URL from this repository's Code button:
 ```sh
 git clone <repository-url> home-hub
 cd home-hub
+export HOME_HUB_HOME="$HOME/.local/share/home-hub"
 node scripts/setup.mjs
 LOCAL_PREVIEW=1 PORT=8799 node server/index.mjs
 ```
@@ -43,6 +44,7 @@ for installation and [Docker](docs/docker.md) for a container deployment.
 - Add devices with **Add device** on the Overview. Connect Thermo for telemetry,
   or use the [push agent](docs/agent.md) for device reports; agent-less telemetry
   sources are also supported. See [features](docs/features.md).
+  Thermo is a separate app; this release does not yet link a public installer.
 - Device detail pages show hardware, telemetry and runtime stacks. Define the
   device's runtime endpoints and inventory entries, or let your coding agent
   create the initial inventory through the API or MCP endpoint.

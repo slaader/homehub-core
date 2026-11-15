@@ -31,9 +31,9 @@ function describe(step,me){
     actions(pageAllowed('access',me)?{label:t('Otevřít Uživatelé a API'),href:'#access',primary:true}:null)]};
   case 'devices':return {title:t('Přidej svá zařízení'),
    line:step.done?tp(d.count,'{n} zařízení v přehledu.|{n} zařízení v přehledu.|{n} zařízení v přehledu.'):t('Přehled je zatím prázdný.'),
-   body:()=>[el('p',{},t('Zařízení se berou z konfigurace webu (local/site.json). Jednotlivé zařízení jde přidat i rovnou v Přehledu.')),
-    steps(rich(t('Zkopíruj {from} do {to} a vyplň název, síť a zařízení.'),{from:code('config/site.example.json'),to:code('local/site.json')}),t('Restartuj Home Hub.'),t('Nebo v Přehledu použij tlačítko Přidat zařízení.')),
-    copyBlock(t('Zadání pro agenta'),t('Nastav tenhle Home Hub. Přečti docs/getting-started.md, docs/plugins.md a config/site.example.json. Zeptej se mě na název webu, síť (CIDR), časové pásmo a zařízení (název, hostname, IP, role). Zapiš local/site.json, ověř ho spuštěním npm test a řekni mi, jak Home Hub restartovat. Žádná hesla ani tokeny do souboru nepatří.')),
+   body:()=>[el('p',{},t('Jednotlivé zařízení přidej rovnou v Přehledu. Konfigurace webu je v HOME_HUB_HOME/config/site.json, nebo ji určuje HOME_HUB_SITE_CONFIG; bez instance je starší výchozí cesta local/site.json. Umístění popisuje docs/storage.md.')),
+    steps(rich(t('Zkopíruj {from} do aktivního {to} a vyplň název, síť a zařízení.'),{from:code('config/site.example.json'),to:code('site.json')}),t('Ověř konfiguraci příkazem node server/index.mjs --check se stejným prostředím jako hub a restartuj Home Hub.'),t('Nebo v Přehledu použij tlačítko Přidat zařízení.')),
+    copyBlock(t('Zadání pro agenta'),t('Nastav tenhle Home Hub. Přečti docs/getting-started.md, docs/plugins.md, docs/storage.md a config/site.example.json. Zeptej se mě na název webu, síť (CIDR), časové pásmo a zařízení (název, hostname, IP, role). Zjisti aktivní cestu site.json podle server/paths.mjs a prostředí hubu, zapiš ji a ověř příkazem node server/index.mjs --check se stejným prostředím. npm test používá testovací web, ne mou konfiguraci. Řekni mi, jak Home Hub restartovat. Žádná hesla ani tokeny do souboru nepatří.')),
     actions({label:t('Otevřít Přehled'),href:'#overview',primary:true})]};
   case 'telemetry':return {title:t('Nainstaluj telemetrického agenta'),
    line:step.done?tp(d.count,'{n} zařízení posílá živá čísla.|{n} zařízení posílají živá čísla.|{n} zařízení posílá živá čísla.'):t('Bez něj dlaždice ukazují jen statické údaje z konfigurace.'),

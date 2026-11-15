@@ -1,6 +1,6 @@
 # Docker
 
-The [README](../README.md#quick-start) covers a local preview. This page covers containers.
+The [README](../README.md#quick-start) covers a local checkout. This page covers a container deployment.
 
 Build it yourself from this checkout; no registry image, CI or npm install is involved. The
 [Dockerfile](../Dockerfile) pins `node:22.23.5-alpine3.24`, includes Git, OpenSSH client tools, rsync and Python
@@ -47,18 +47,17 @@ publish their snapshots into the data volume.
 
 A container is not updated by `scripts/update.mjs` (that command switches a git checkout and restarts a service;
 [updating.md](updating.md)). Here the image is rebuilt from the release tag, and the same steps are yours to run,
-on the Docker host, in the checkout the image is built from. Set `TARGET_TAG` to the published release you
-want and `PREVIOUS_TAG` to the release currently running before starting:
+on the Docker host, in the checkout the image is built from:
 
 | Step | Command |
 |---|---|
-| The release | `git fetch --tags && git checkout "$TARGET_TAG"`. Read its section of `CHANGELOG.md`: a **Data** part means that going back needs the backup below. |
+| The release | `git fetch --tags && git checkout v1.3.0`. Read its section of `CHANGELOG.md`: a **Data** part means that going back needs the backup below. |
 | Build | `docker compose build`. The running container is untouched. |
 | Would it start? | `docker compose run --rm --no-deps hub node server/index.mjs --check`: the new image with your volumes and your mounted site and plugins. It checks the site file, every plugin and its version range, and the auth file; it opens no port and writes nothing. |
-| Backup | `docker compose stop hub`, then the three volumes into one archive (the names are `<project>_hub-data` and so on; `docker volume ls` shows them): `docker run --rm -v <project>_hub-data:/data:ro -v <project>_hub-private:/private:ro -v <project>_hub-state:/state:ro -v "$PWD/backups:/out" alpine tar czf /out/pre-update.tgz /data /private /state` |
+| Backup | `docker compose stop hub`, then the three volumes into one archive (the names are `<project>_hub-data` and so on; `docker volume ls` shows them): `docker run --rm -v <project>_hub-data:/data:ro -v <project>_hub-private:/private:ro -v <project>_hub-state:/state:ro -v "$PWD/backups:/out" alpine tar czf /out/pre-v1.3.0.tgz /data /private /state` |
 | Switch and start | `docker compose up -d` |
 | Health | `docker inspect --format '{{.State.Health.Status}}' "$(docker compose ps -q hub)"` must say `healthy` (the image's own check of `/healthz`), and the footer must show the new version. |
-| Going back | `git checkout "$PREVIOUS_TAG" && docker compose up -d --build`. If the data epoch rose, restore the three volumes from the archive first, with the hub stopped: `docker run --rm -v <project>_hub-data:/data -v <project>_hub-private:/private -v <project>_hub-state:/state -v "$PWD/backups:/out:ro" alpine sh -c 'rm -rf /data/* /private/* /state/* && tar xzf /out/pre-update.tgz -C /'` |
+| Going back | `git checkout v1.2.0 && docker compose up -d --build`. If the data epoch rose, restore the three volumes from the archive first, with the hub stopped: `docker run --rm -v <project>_hub-data:/data -v <project>_hub-private:/private -v <project>_hub-state:/state -v "$PWD/backups:/out:ro" alpine sh -c 'rm -rf /data/* /private/* /state/* && tar xzf /out/pre-v1.3.0.tgz -C /'` |
 
 The update check runs in the container like anywhere else and tells you when a release is out; the command its card
 shows is for a checkout, so use the table above instead. Following `main` without tags still works

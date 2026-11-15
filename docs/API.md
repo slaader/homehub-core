@@ -1180,7 +1180,7 @@ The client census and the router's health from the router adapter (`docs/plugins
 | `stale` | The last observation is older than `staleAfterSeconds` (180 for the included adapter) |
 | `ok` | A fresh observation |
 
-`clients` are the network clients the router saw (not the household's devices); `health.hardware` is the router's own network gear (gateway, switches, access points), and `health.clientCounts` counts the clients (`known`: seen in the last 90 days, `null` when the adapter does not say). Until 2.0 the list was `devices` and the counts `health.clients` (`schemaVersion: 1`). `status` (`ok`, `unavailable`, `not-configured`) and `freshness` are the fields `GET /api/home → router` has always carried. `presence` is what was seen: `associated` (on Wi-Fi), `reachable`, `lease-only` (a DHCP lease is not proof of connectivity) or `cache-only`. Only clients with a host address inside `lanCidrs` are listed.
+`clients` are the network clients the router saw (not the household's devices); `health.hardware` is the router's own network gear (gateway, switches, access points), and `health.clientCounts` counts the clients (`known`: seen in the last 90 days, `null` when the adapter does not say). Legacy snapshots used `devices` for the list and `health.clients` for the counts (`schemaVersion: 1`); core reads those fields forward. `status` (`ok`, `unavailable`, `not-configured`) and `freshness` are the fields `GET /api/home → router` has always carried. `presence` is what was seen: `associated` (on Wi-Fi), `reachable`, `lease-only` (a DHCP lease is not proof of connectivity) or `cache-only`. Only clients with a host address inside `lanCidrs` are listed.
 
 ### MCP tools
 

@@ -136,7 +136,7 @@ function peopleTab(status,me){
   const about=el('small',{}),sync=()=>{about.textContent=t(roles.find(r=>r.id===s.value)?.description||'');};s.addEventListener('change',sync);sync();
   return {select:s,about};};
  async function add(){
-  const username=el('input',{name:'username',required:'',pattern:'[a-z][a-z0-9._-]{2,39}',autocomplete:'off',autocapitalize:'none',spellcheck:'false',placeholder:t('jmeno-uzivatele')});
+  const username=el('input',{name:'username',required:'',pattern:'[a-z][a-z0-9._\\-]{2,39}',autocomplete:'off',autocapitalize:'none',spellcheck:'false',placeholder:t('jmeno-uzivatele')});
   const display=el('input',{name:'name',maxlength:'80',autocomplete:'off',placeholder:t('Zobrazované jméno (nepovinné)')});
   const password=el('input',{name:'password',type:'password',autocomplete:'new-password',minlength:'12',maxlength:'256',placeholder:t('Prázdné = vygenerovat')});
   const role=roleSelect('viewer');
@@ -260,7 +260,7 @@ function accountsTab(status){
    ready:()=>!presets.find(p=>p.id===chosen)?.wildcard||ack.checked};
  }
  async function add(){
-  const name=el('input',{name:'name',required:'',pattern:'[a-z][a-z0-9._-]{2,39}',autocomplete:'off',autocapitalize:'none',spellcheck:'false',placeholder:'agent-studio'});
+  const name=el('input',{name:'name',required:'',pattern:'[a-z][a-z0-9._\\-]{2,39}',autocomplete:'off',autocapitalize:'none',spellcheck:'false',placeholder:'agent-studio'});
   const description=el('input',{name:'description',maxlength:'200',autocomplete:'off',placeholder:t('Kdo ho používá, např. Codex na serveru – údržba inventáře')});
   const chooser=presetChooser(null);
   const made=await formDialog({wide:true,title:t('Nový servisní účet'),label:t('Vytvořit účet a klíč'),lead:t('Účet pro agenta, MCP klienta nebo skript. Dostane vlastní klíč a jen ta oprávnění, která vybereš.'),
