@@ -3,7 +3,7 @@
 // profile menu at the bottom of the sidebar. POST /api/profile/password needs the current password; on
 // success the server ends this account's other sessions and hands this browser a fresh one.
 import {el} from './views.js';
-import {authGuard} from './session-cache.js';
+import {authGuard,sessionTicket} from './session-cache.js';
 import {t,getLang,setLang,locale,LANGS} from './i18n.js';
 import {site,setSite} from './site.js';
 import {pageHeader,segmented,themeSwitch} from './ui.js';
@@ -86,6 +86,7 @@ function zoneCard(profile){
 }
 // The account card: who, the role, and what the role allows.
 function accountCard(me,profile){
+ me=profile?.user??me;
  const allowed=profile?.permissions||[],link=(text,tab)=>me?.canAdmin?el('a',{href:'#access/'+tab},text):text;
  return el('section',{class:'set-card'},el('h3',{},t('Účet')),
   el('dl',{class:'set-dl'},
@@ -99,13 +100,13 @@ function accountCard(me,profile){
 }
 
 export function settingsView(me){
- const session=me?.authKind==='session';
+ const session=me?.authKind==='session',live=sessionTicket();
  const account=el('div',{},accountCard(me,null)),zone=el('div',{});
  if(session){
   zone.append(el('section',{class:'set-card','aria-busy':'true'},el('h3',{},t('Časové pásmo')),el('p',{class:'set-dim'},t('Načítám…'))));
-  const load=()=>call('/api/profile').then(profile=>{account.replaceChildren(accountCard(me,profile));zone.replaceChildren(zoneCard(profile));})
-   .catch(err=>zone.replaceChildren(el('section',{class:'set-card'},el('h3',{},t('Časové pásmo')),el('p',{class:'set-status bad',role:'alert'},err.message||t('Home Hub neodpovídá. Zkus to znovu.')),
-    el('div',{class:'set-actions'},el('button',{type:'button',class:'ui-button',onclick:load},t('Zkusit znovu'))))));
+  const load=()=>call('/api/profile').then(profile=>{if(live()){account.replaceChildren(accountCard(me,profile));zone.replaceChildren(zoneCard(profile));}})
+   .catch(err=>{if(live())zone.replaceChildren(el('section',{class:'set-card'},el('h3',{},t('Časové pásmo')),el('p',{class:'set-status bad',role:'alert'},err.message||t('Home Hub neodpovídá. Zkus to znovu.')),
+    el('div',{class:'set-actions'},el('button',{type:'button',class:'ui-button',onclick:load},t('Zkusit znovu')))));});
   load();
  }else zone.append(el('section',{class:'set-card'},el('h3',{},t('Časové pásmo')),el('p',{class:'set-dim'},t('Časy se ukazují v pásmu webu ({zone}). Vlastní pásmo si nastavíš po přihlášení heslem v prohlížeči.',{zone:site().timeZone||browserZone()}))));
  return el('div',{class:'set'},

@@ -26,6 +26,18 @@ test('profile groups account/password and user preferences, and only admins get 
  }
 });
 
+test('profile uses freshly fetched role permissions and drops responses from a previous sign-in',async()=>{
+ setLang('en');setPrincipal(admin);
+ const viewer={...admin,role:'viewer',roleId:'viewer',roleName:'Čtenář',canAdmin:false};
+ globalThis.fetch=async()=>({ok:true,status:200,json:async()=>profile(viewer)});
+ document.body.replaceChildren(settingsView(admin));await tick();
+ assert.ok(!nodes(document.body).some(n=>n.getAttribute?.('href')==='#access/roles'),'freshly downgraded permissions remove the role link');
+ let finish;globalThis.fetch=()=>new Promise(resolve=>{finish=resolve;});
+ document.body.replaceChildren(settingsView(admin));setPrincipal({...viewer,username:'another-user'});
+ finish({ok:true,status:200,json:async()=>profile({...admin,username:'late-profile'})});await tick();
+ assert.ok(!document.body.textContent.includes('late-profile'));
+});
+
 test('platform settings guide is admin-only, exposes explicit toggle and saves without provider secrets',async()=>{
  setLang('en');let calls=[];
  globalThis.fetch=async(url,options={})=>{calls.push({url,options});return {ok:true,status:200,json:async()=>({configured:true,enabled:options.body?JSON.parse(options.body).enabled:false,model:'example-model',status:{semanticState:'disabled',coverage:{chunks:4,embedded:0}}})};};
