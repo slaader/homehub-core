@@ -109,3 +109,5 @@ export function tagCommit(root,name,{git=gitPeel}={}){
   return null;
  }catch{return null;}
 }
+
+export function packageReceipt(root){try{const p=JSON.parse(readFileSync(path.join(root,'.home-hub-package.json'),'utf8'));if(p.schemaVersion!==1||!/^[0-9a-f]{64}$/.test(p.manifestSha256)||!/^[0-9a-f]{40}$/.test(p.fullCommit))return null;return p;}catch{return null;}}

@@ -85,7 +85,9 @@ test('the start-up line and run.json say what is answering',async t=>{
  assert.equal(startupLine({version:{...version,label:'1.2.0+dev (abc1234)'},edition:'private',plugins:[{id:'nas'},{id:'lfs'}],port:1}),'Home Hub 1.2.0+dev (abc1234) (private edition, 2 plugin(s): nas, lfs) listening on 1');
  const state=path.join(dir,'state');
  const doc=await writeRunFile(state,{version,plugins:[{id:'nas',title:'NAS'}],pid:4242,now:Date.parse('2026-11-12T10:00:00Z')});
- assert.deepEqual(doc,{version:'1.2.0',commit:'abc1234',exact:true,dataEpoch:3,pid:4242,startedAt:'2026-11-12T10:00:00.000Z',plugins:[{id:'nas'}]});
+ assert.equal(doc.readinessProtocol,1);assert.ok(doc.bootId);
+ const {readinessProtocol,bootId,fullCommit,packageDigest,...legacy}=doc;
+ assert.deepEqual(legacy,{version:'1.2.0',commit:'abc1234',exact:true,dataEpoch:3,pid:4242,startedAt:'2026-11-12T10:00:00.000Z',plugins:[{id:'nas'}]});
  assert.deepEqual(JSON.parse(await readFile(path.join(state,'run.json'),'utf8')),doc);
  assert.equal((await stat(path.join(state,'run.json'))).mode&0o777,0o600);
  await writeRunFile(state,{version:{...version,version:'1.2.1'},pid:4243});

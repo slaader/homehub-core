@@ -34,13 +34,25 @@ export default {
  'Vydání {version}':'Release {version}',
  'Otevřít na GitHubu':'Open on GitHub',
  'Poznámky k vydání':'Release notes',
- 'Home Hub se neaktualizuje sám. Na serveru spusť v jeho checkoutu příkaz níže: ověří vydání {tag}, zazálohuje data, přepne, restartuje a při potížích se vrátí zpět. Postup je v docs/updating.md.':
-  'Home Hub does not update itself. On the server, run the command below in its checkout: it checks release {tag}, archives the data, switches, restarts, and goes back if anything fails. docs/updating.md has the steps.',
+ 'Home Hub se neaktualizuje sám. Na serveru spusť v jeho checkoutu příkaz níže: zkontroluje vydání {tag} podle místní politiky, zazálohuje data, přepne, restartuje a při potížích se vrátí zpět. Postup je v docs/updating.md.':
+  'Home Hub does not update itself. On the server, run the command below in its checkout: it checks release {tag} under the local policy, archives the data, switches, restarts, and goes back if anything fails. docs/updating.md has the steps.',
  'Home Hub se neaktualizuje sám. Aktualizaci provede správce na serveru příkazem scripts/update.mjs; postup je v docs/updating.md.':
   'Home Hub does not update itself. An administrator updates it on the server with scripts/update.mjs; docs/updating.md has the steps.',
  'V patičce nepřipomínat':'Do not show in the footer',
  'V patičce se tohle vydání nepřipomíná.':'The footer does not point at this release.',
  'Vydání {version} se už v patičce nepřipomíná.':'The footer no longer points at release {version}.',
+ 'Vybrané vydání':'Selected release',
+ 'Běží {installed}; vybráno {selected}.':'Installed {installed}; selected {selected}.',
+ 'Vydavatel / repozitář: {repo}':'Publisher / repository: {repo}',
+ 'Otisk manifestu: {digest}':'Manifest digest: {digest}',
+ 'Neznámý':'Unknown', 'Neznámá':'Unknown', 'Dosud neověřený':'Not checked', 'Dosud neověřeno':'Not checked',
+ 'Podpis: {signature}; kompatibilita: {compatibility}.':'Signature: {signature}; compatibility: {compatibility}.',
+ 'Požadavek na Node a změnu datového formátu ověří podepsaný manifest a místní preflight. Úplná kompatibilita instance zatím není známá.':'The signed manifest and local preflight check the Node requirement and data epoch. Complete instance compatibility is still unknown.',
+ 'Zjištěno: {time}; kryptograficky ověřeno: {verified}.':'Discovered: {time}; cryptographically verified: {verified}.',
+ 'Tohle vydání se tu zkoušelo a vrátilo zpět.':'This release was tried here and rolled back.',
+ 'Příkazy spouští správce na serveru s místní důvěrou. Pro přechod z Gitu přidej --migrate-from-git. Stahování připne ověřený otisk; použij jej i v dalších příkazech.':'An administrator runs these commands on the server with local trust. Add --migrate-from-git to migrate a Git checkout. Download pins the verified digest; use it in subsequent commands.',
+ 'Cached published release selection and package download metadata; no network or installation.':'Cached published release selection and package download metadata; no network or installation.',
+
  // the footer
  'Je dostupné vydání {latest}. Otevřít Integrace.':'Release {latest} is available. Open Integrations.',
  // the API reference

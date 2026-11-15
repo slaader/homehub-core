@@ -2,11 +2,15 @@
 // with release tags, a clone that is the installation, and a service that is a stand-in (`svc stop` / `svc start`
 // change a flag and write run.json the way a real hub does). git, tar, the staged test run and the staged
 // `--check` are real. Nothing here touches a network, a real service or this checkout.
+import {sourceLockPath} from '../server/update-lock.mjs';
+import {gitPublicKey} from '../server/release-trust.mjs';
+import {contentFingerprint} from '../server/runtime-identity.mjs';
+import {packageFixture} from './package-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,writeFile,readFile,rm,realpath} from 'node:fs/promises';
 import {existsSync,readFileSync,readdirSync,writeFileSync,statSync,chmodSync} from 'node:fs';
-import {execFileSync} from 'node:child_process';
+import {execFileSync,spawnSync} from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -34,7 +38,7 @@ if(existsSync(path.join(root,'FAIL_CHECK'))){console.error('plugin "p-one" needs
 if(existsSync(path.join(root,'STRICT_SITE'))){const site=JSON.parse(readFileSync(process.env.HOME_HUB_SITE_CONFIG,'utf8'));if(!Array.isArray(site.devices)||'machines' in site){console.error('target needs devices, refuses machines');process.exit(1);}}
 console.info('check ok: Home Hub '+JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version+'; site '+process.env.HOME_HUB_SITE_CONFIG);
 `;
-const pkg=(version,epoch=1)=>JSON.stringify({name:'home-hub',version,type:'module',engines:{node:'>=22'},homeHub:{dataEpoch:epoch}})+'\n';
+const pkg=(version,epoch=1)=>JSON.stringify({name:'home-hub',version,type:'module',engines:{node:'>=22'},homeHub:{dataEpoch:epoch,updates:{repo:'example/core'}}})+'\n';
 const tree=(version,epoch=1,extra={})=>({'package.json':pkg(version,epoch),'scripts/run-tests.mjs':RUNNER,'server/index.mjs':INDEX,'.gitignore':'data/\nstate/\nprivate/\nbackups/\n',...extra});
 const manifest=(id,version,more={})=>JSON.stringify({id,version,core:'>=1.0.0 <2.0.0',...more})+'\n';
 
@@ -92,15 +96,16 @@ async function world(t,{layout='checkout',instance={}}={}){
   svc.pid++;svc.running=true;
   const configured=home&&env.HOME_HUB_PLUGINS_DIR!=='none'?(readInstance(home).sources.plugins??[]).flatMap(name=>pluginFacts(path.join(home,name,'plugins'))):[];
   if(configured.some(p=>p.core&&!satisfies(version,p.core))){svc.running=false;return {status:0,stdout:'',stderr:'plugin core range refused'};}
+  const receipt=existsSync(path.join(root,'.home-hub-package.json'))?JSON.parse(readFileSync(path.join(root,'.home-hub-package.json'),'utf8')):null;
   const loaded=configured.map(p=>({id:p.id,version:p.version}));
-  writeFileSync(path.join(state,'run.json'),JSON.stringify({version,commit:hub.git('rev-parse','HEAD').slice(0,7),exact:true,dataEpoch:1,pid:svc.pid,startedAt:new Date(clock).toISOString(),plugins:loaded}));
+  writeFileSync(path.join(state,'run.json'),JSON.stringify({version,commit:(receipt?.fullCommit??hub.git('rev-parse','HEAD')).slice(0,7),...(receipt?{fullCommit:receipt.fullCommit,packageDigest:receipt.manifestSha256,readinessProtocol:1,bootId:'boot-'+svc.pid}:{}),exact:true,dataEpoch:JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).homeHub.dataEpoch,pid:svc.pid,startedAt:new Date(clock).toISOString(),plugins:receipt?loaded.map(p=>({...p,fingerprint:contentFingerprint(path.join(home,'household','plugins',p.id)),sourceFingerprint:contentFingerprint(path.join(home,'household'))})):loaded}));
   svc.onStart?.(version);
   return {status:0,stdout:'',stderr:''};
  };
  const stop=()=>{svc.calls.push('stop');if(svc.ignoreStop)return {status:0,stdout:'',stderr:''};if(svc.refuseStop)return {status:1,stdout:'',stderr:'sudo: a password is required'};svc.running=false;return {status:0,stdout:'',stderr:''};};
  const lines=[];
  const ctx={exec:(command,args,options={})=>{svc.execs.push({command,args,env:options.env});return command==='svc'?(args[0]==='start'?start():stop()):realExec(command,args,options);},
-  probe:async()=>svc.running,pidAlive:pid=>svc.running&&pid===svc.pid,sleep:async ms=>{clock+=ms;},now:()=>clock,log:line=>lines.push(line),checkpoint:()=>{},node:process.execPath,user:'alice',stopSeconds:2};
+  probe:async()=>{const run=JSON.parse(readFileSync(path.join(state,'run.json'),'utf8'));return run.readinessProtocol===1?{ok:svc.running,bootId:run.bootId}:svc.running;},pidAlive:pid=>svc.running&&pid===svc.pid,sleep:async ms=>{clock+=ms;},now:()=>clock,log:line=>lines.push(line),checkpoint:()=>{},node:process.execPath,user:'alice',stopSeconds:2};
  start();svc.calls.length=0;
  const options=home?{}:{service:'command:{"stop":["svc","stop"],"start":["svc","start"]}',health:'http://127.0.0.1:9/healthz',healthSeconds:2};
  const inst=(more={})=>resolveInstance({env,root,options:{...options,...more}});
@@ -139,15 +144,15 @@ test('the instance: a checkout with its data inside, or an instance directory; f
  const w=await world(t),inst=w.inst();
  assert.deepEqual({root:inst.root,home:inst.home,data:inst.paths.data,state:inst.paths.state,private:inst.paths.private,backups:inst.backups,journal:inst.files.journal,sources:inst.sources.map(s=>s.id)},
   {root:w.root,home:null,data:path.join(w.root,'data'),state:path.join(w.root,'state'),private:path.join(w.root,'private'),backups:path.join(w.root,'backups'),journal:path.join(w.root,'backups','update-journal.json'),sources:['core']});
- assert.deepEqual(archiveEntries(inst).map(e=>e.name),['data','state','private'],'state beside data is archived on its own');
- assert.deepEqual(archiveEntries(resolveInstance({env:{},root:w.root})).map(e=>e.name),['data','private'],'state inside data comes with it');
+ assert.deepEqual(archiveEntries(inst).filter(e=>e.existed).map(e=>e.name),['data','state','private'],'state beside data is archived on its own');
+ assert.deepEqual(archiveEntries(resolveInstance({env:{},root:w.root})).filter(e=>e.existed).map(e=>e.name),['data','private'],'state inside data comes with it');
  assert.throws(()=>archiveEntries(w.inst({backups:path.join(w.root,'private','backups')})),/inside .*private, which is archived/);
  assert.throws(()=>resolveInstance({env:{},root:path.join(w.dir,'nowhere')}),/not a Home Hub checkout/);
  const h=await world(t,{layout:'home'}),hi=h.inst();
  assert.deepEqual({root:hi.root,home:hi.home,state:hi.paths.state,backups:hi.backups,journal:hi.files.journal,staging:hi.staging,sources:hi.sources.map(s=>[s.id,s.kind,s.plugins]),service:hi.service.stop,health:hi.health.seconds},
   {root:path.join(h.home,'core'),home:h.home,state:path.join(h.home,'data','state'),backups:path.join(h.home,'backups'),journal:path.join(h.home,'update-journal.json'),staging:path.join(h.home,'staging'),
    sources:[['core','core',[]],['household','plugins',['plugins']]],service:['svc','stop'],health:2});
- assert.deepEqual(archiveEntries(hi).map(e=>e.name),['config','data','private']);
+ assert.deepEqual(archiveEntries(hi).filter(e=>e.existed).map(e=>e.name),['data','private','config','instance.json']);
  const flagged=h.inst({service:'systemd:hub.service',health:'http://127.0.0.1:1/x',healthSeconds:9,keep:2,backups:path.join(h.dir,'elsewhere')});
  assert.deepEqual({kind:flagged.service.kind,health:{...flagged.health},keep:flagged.keep,backups:flagged.backups},{kind:'systemd',health:{url:'http://127.0.0.1:1/x',seconds:9},keep:2,backups:path.join(h.dir,'elsewhere')});
  assert.equal(resolveInstance({env:{...h.env,HOME_HUB_PLUGINS_DIR:'none'},root:h.root}).sources.length,1);
@@ -180,7 +185,7 @@ test('apply, the whole way: a checkout on a branch ends detached at the tag, wit
  assert.equal(path.dirname(journal.backup.file),path.join(w.root,'backups'));assert.match(path.basename(journal.backup.file),/^pre-1\.0\.0-to-1\.1\.0-20261112-\d{6}\.tgz$/);
  assert.equal(statSync(journal.backup.file).mode&0o777,0o600);
  const names=tarList(journal.backup.file);
- for(const f of ['data/knowledge.json','state/hub.db','state/run.json','private/auth.json'])assert.ok(names.includes(f),f);
+ for(const [label,file] of [['data','knowledge.json'],['state','hub.db'],['state','run.json'],['private','auth.json']]){const root=journal.backup.entries.find(e=>e.name===label);assert.ok(names.includes(root.id+'/'+file),file);}
  // the journal, the history and the note
  const saved=readJournal(inst);
  assert.deepEqual({step:saved.step,started:saved.started,by:saved.by,service:saved.settings.service,state:saved.settings.state},{step:'done',started:true,by:'alice',service:{stop:['svc','stop'],start:['svc','start']},state:path.join(w.root,'state')});
@@ -198,7 +203,7 @@ test('apply, the whole way: a checkout on a branch ends detached at the tag, wit
  const back=await rollback(inst,w.ctx,{reason:'the map page is broken'});
  assert.deepEqual({step:back.journal.step,calls:w.svc.calls,head:w.hub.git('rev-parse','HEAD'),branch:w.hub.git('symbolic-ref','--short','HEAD')},{step:'rolled-back',calls:['stop','start 1.0.0'],head:w.v100,branch:'main'});
  assert.equal(readFileSync(path.join(w.state,'hub.db'),'utf8'),'written by 1.1.0\n','same data epoch: nothing written since is lost');
- assert.deepEqual(Object.entries(readQuarantine(inst.files.updates)).map(([v,q])=>[v,q.reason]),[['1.1.0','the map page is broken']]);
+ assert.deepEqual(Object.entries(readQuarantine(inst.files.updates)).map(([v,q])=>[v,q.reason]),[['git-'+v110,'the map page is broken'],['1.1.0','the map page is broken']]);
  await refused(rollback(inst,w.ctx),/already ended as "rolled-back"/);
  // what the hub then tells: the update card reads the same file
  const view=updateView({record:{repo:'alice/home-hub',channel:'stable',checkedAt:'2026-11-12T09:00:00.000Z',version:'1.1.0',tag:'v1.1.0',url:null,publishedAt:null,notes:''},quarantined:readUpdateState(inst.files.updates).state.quarantined,
@@ -289,8 +294,8 @@ test('the data epoch: when it rises, going back restores the archive, and what w
   {db:'written by 1.0.0\n',knowledge:'{"entries":[]}\n',auth:'{"secret":"kept"}\n',mode:0o600});
  const aside=back.journal.failedState;
  assert.match(path.basename(aside),/^failed-20261112-\d{6}$/);
- assert.equal(readFileSync(path.join(aside,'state','hub.db'),'utf8'),'migrated by 1.1.0\n','the newer state is kept, not deleted');
- assert.equal(readFileSync(path.join(aside,'data','knowledge.json'),'utf8'),'{"entries":["added after the update"]}\n');
+ assert.equal(readFileSync(path.join(JSON.parse(readFileSync(path.join(aside,'roots.json'),'utf8')).find(r=>r.live===w.state).aside,'hub.db'),'utf8'),'migrated by 1.1.0\n','the newer state is kept, not deleted');
+ assert.equal(readFileSync(path.join(JSON.parse(readFileSync(path.join(aside,'roots.json'),'utf8')).find(r=>r.live===path.join(w.root,'data')).aside,'knowledge.json'),'utf8'),'{"entries":["added after the update"]}\n');
  assert.equal(JSON.parse(readFileSync(inst.files.run,'utf8')).version,'1.0.0');
  assert.ok(readFileSync(inst.files.history,'utf8').includes('"result":"rolled-back"'),'the history says so, in the restored state');
  assert.ok(existsSync(journal.backup.file),'the archive is still there');
@@ -313,7 +318,7 @@ test('cut short: the next run puts the previous version back from the journal',a
  const cut=step=>writeFileSync(inst.files.journal,JSON.stringify({...journal,step,finishedAt:undefined}));
  cut('starting');w.svc.calls.length=0;
  assert.match(formatStatus(status(inst,w.ctx)).join('\n'),/UNFINISHED: run "rollback"/);
- await refused(apply(inst,{core:'v1.1.0'},w.ctx),/An earlier update did not finish/);
+ await refused(apply(inst,{core:'v1.1.0'},w.ctx),/unfinished transaction was recovered/);cut('switched');w.svc.calls.length=0;
  const done=await recover(inst,w.ctx);
  assert.deepEqual({step:done.step,calls:w.svc.calls,head:w.hub.git('rev-parse','HEAD'),why:done.failure.message},{step:'rolled-back',calls:['stop','start 1.0.0'],head:w.v100,why:'the update was interrupted'});
  assert.deepEqual(readQuarantine(inst.files.updates),{},'an interrupted update says nothing about the release');
@@ -326,7 +331,7 @@ test('cut short: the next run puts the previous version back from the journal',a
  cut('switched');w.hub.git('checkout','-q','--detach','v1.1.0');
  const out=[];
  const code=await main(['apply','v1.1.0','--root',w.root,'--state',w.state,'--service','command:{"stop":["svc","stop"],"start":["svc","start"]}','--health','http://127.0.0.1:9/healthz','--health-seconds','2'],{env:{},ctx:w.ctx,out:l=>out.push(l)});
- assert.equal(code,1);assert.match(out.join('\n'),/The earlier update was put back \(rolled-back\); 1\.0\.0 @ \w{7} is running\. Nothing new was applied/);
+ assert.equal(code,1);assert.equal(readJournal(inst).step,'rolled-back');
  assert.equal(w.hub.git('rev-parse','HEAD'),w.v100);
  // Ctrl-C between the switch and the start: back, and no quarantine
  let armed=false;const interrupted={...w.ctx,log:line=>{w.ctx.log(line);if(/^Starting /.test(line))armed=true;},checkpoint:()=>{if(armed)throw Object.assign(new Error('interrupted (SIGINT)'),{interrupted:true});}};
@@ -357,7 +362,7 @@ test('a stop that is refused changes nothing; a rollback that fails leaves the s
  broken=false;
  const done=await rollback(inst,ctx);
  assert.deepEqual({recovered:done.recovered,step:done.journal.step,running:w.svc.running},{recovered:true,step:'rolled-back',running:true});
- assert.deepEqual(Object.keys(readQuarantine(inst.files.updates)),['1.1.0'],'the release that crashed stays noted');
+ assert.ok(readQuarantine(inst.files.updates)['1.1.0'],'the release that crashed stays noted');assert.ok(Object.keys(readQuarantine(inst.files.updates)).some(k=>k.startsWith('git-')),'the exact failed target stays noted');
 });
 
 test('an instance directory: core and a plugin source update in one transaction, and a plugin can hold core back',async t=>{
@@ -384,7 +389,7 @@ test('an instance directory: core and a plugin source update in one transaction,
  const tests=w.svc.execs.filter(e=>e.args.some(a=>a.endsWith('run-tests.mjs')));
  assert.deepEqual(tests.at(-1).args.slice(1),['--plugins',path.join(stage,'household')]);assert.ok(!('HOME_HUB_HOME' in tests[0].env),'tests never see the instance');
  assert.ok(!existsSync(stage));
- assert.deepEqual(tarList(journal.backup.file).filter(n=>!n.endsWith('/')).map(n=>n.split('/')[0]).filter((n,i,a)=>a.indexOf(n)===i).sort(),['config','data','private']);
+ assert.deepEqual([...new Set(tarList(journal.backup.file).map(n=>n.split('/')[0]))].sort(),journal.backup.entries.filter(e=>e.existed).map(e=>e.id).sort());
  assert.equal(path.dirname(journal.backup.file),path.join(w.home,'backups'));
  // only the plugins, later: the core range check still holds, and a failure names the plugin that did not load
  await w.pluginsUpstream.commit('1.2.0',{'package.json':JSON.stringify({name:'household',version:'1.2.0',homeHub:{core:'>=1.1.0 <2.0.0'}})+'\n','plugins/p-one/plugin.json':manifest('p-one','1.2.0')},{tag:'v1.2.0'});
@@ -398,7 +403,7 @@ test('an instance directory: core and a plugin source update in one transaction,
  // only the archive
  w.svc.calls.length=0;
  const made=await backup(inst,w.ctx);
- assert.deepEqual({calls:w.svc.calls,name:/^manual-1\.1\.0-\d{8}-\d{6}\.tgz$/.test(path.basename(made.file)),entries:made.entries.map(e=>e.name)},{calls:['stop','start 1.1.0'],name:true,entries:['config','data','private']});
+ assert.deepEqual({calls:w.svc.calls,name:/^manual-1\.1\.0-\d{8}-\d{6}\.tgz$/.test(path.basename(made.file)),entries:made.entries.map(e=>e.name)},{calls:['stop','start 1.1.0'],name:true,entries:['data','private','config','instance.json']});
 });
 
 test('preflight fixture tests inherit only OS settings; startup checks retain the live plugin environment',async t=>{
@@ -432,7 +437,7 @@ test('the command line: arguments, status, and a rollback that remembers how the
  const first=await run('status','--root',w.root,'--state',w.state);
  assert.equal(first.code,0);assert.match(first.text,/Home Hub 1\.0\.0 @ \w{7} \(branch main\)[\s\S]*Running:  1\.0\.0, pid 1001 \(alive\)[\s\S]*Service:  not configured[\s\S]*Last update: none recorded/);
  const pre=await run('preflight',...flags);
- assert.equal(pre.code,0);assert.match(pre.text,/Preflight passed: 1\.0\.0 @ \w{7} → 1\.1\.0 @ \w{7}\. Nothing was changed\./);assert.deepEqual(w.svc.calls,[]);
+ assert.equal(pre.code,0);assert.match(pre.text,/Preflight passed: 1\.0\.0 @ \w{7} → 1\.1\.0 @ \w{7}\. The live installation was not switched; staging and trust selection may update local updater metadata\./);assert.deepEqual(w.svc.calls,[]);
  const done=await run('apply',...flags);
  assert.equal(done.code,0);assert.match(done.text,/Updated: 1\.0\.0 @ \w{7} → 1\.1\.0 @ \w{7} in \d+ s[\s\S]*To go back: the same command with "rollback"/);
  assert.match((await run('status','--root',w.root,'--state',w.state,'--json')).text,/"step": "done"/);
@@ -485,7 +490,7 @@ test('1.x to 2.0 saves original site bytes and restores them on later rollback, 
   assert.equal(statSync(w.file).mode&0o777,0o640);
   assert.deepEqual(JSON.parse(readFileSync(w.file,'utf8')).devices,[{id:'alpha'}]);
   assert.deepEqual(w.svc.calls,['stop','start 2.0.0']);
-  if(home){const saved=execFileSync('tar',['-xOf',journal.backup.file,'config/site.json'],{encoding:'utf8'});assert.equal(saved,w.original,'the archive predates conversion');}
+  if(home){const saved=execFileSync('tar',['-xOf',journal.backup.file,journal.backup.entries.find(e=>e.name==='config').id+'/site.json'],{encoding:'utf8'});assert.equal(saved,w.original,'the archive predates conversion');}
   else assert.ok(!tarList(journal.backup.file).some(n=>n.endsWith('/site.json')),'the site sidecar covers paths outside the ordinary archive');
   const {journal:back}=await rollback(inst,w.ctx,{yes:true});
   assert.equal(back.site.status,'restored');assert.equal(w.svc.running,true);
@@ -627,4 +632,58 @@ test('adding plugin sources refuses ambiguous targets, overrides, and concurrent
  assert.equal(readFileSync(w.file,'utf8'),changed);assert.deepEqual(w.svc.calls,[]);
  assert.deepEqual(parseArgs(['apply','v2.0.0','--add-plugin-source','public-plugins','--plugins','public-plugins=v1.0.0']).addPluginSources,['public-plugins']);
  assert.throws(()=>parseArgs(['rollback','--add-plugin-source','public-plugins']),/only for preflight or apply/);
+});
+
+
+test('signed package migration uses the common transaction and retains the complete Git checkout for rollback',async t=>{
+ const w=await world(t,{layout:'home'}),inst=w.inst(),f=await packageFixture(path.join(w.dir,'packages'),{files:{'scripts/run-tests.mjs':RUNNER,'server/index.mjs':INDEX}});
+ await refused(apply(inst,{package:f.file,trust:f.trustFile},w.ctx),/migrate-from-git/);assert.deepEqual(w.svc.calls,[]);
+ const {journal,plan}=await apply(inst,{package:f.file,trust:f.trustFile,migrateFromGit:true},w.ctx);
+ assert.equal(journal.step,'done');assert.equal(plan.package.manifestSha256,f.manifestSha256);assert.ok(existsSync(path.join(journal.package.old,'.git')));assert.ok(!existsSync(path.join(w.root,'.git')));assert.ok(existsSync(path.join(journal.driver,'scripts','update.mjs')));
+ assert.equal(JSON.parse(readFileSync(inst.files.run,'utf8')).packageDigest,f.manifestSha256);
+ const back=await rollback(w.inst(),w.ctx);assert.equal(back.journal.step,'rolled-back');assert.equal(w.hub.git('rev-parse','HEAD'),w.v100);assert.ok(existsSync(back.journal.package.failed));
+});
+
+test('package migration refuses a running process from another commit of the same version',async t=>{
+ const w=await world(t,{layout:'home'}),f=await packageFixture(path.join(w.dir,'packages'),{files:{'scripts/run-tests.mjs':RUNNER,'server/index.mjs':INDEX}}),file=path.join(w.state,'run.json'),run=JSON.parse(readFileSync(file,'utf8'));
+ run.commit='0000000';writeFileSync(file,JSON.stringify(run));
+ await refused(apply(w.inst(),{package:f.file,trust:f.trustFile,migrateFromGit:true},w.ctx),/running hub commit differs/);
+ assert.deepEqual(w.svc.calls,[]);assert.equal(w.hub.git('rev-parse','HEAD'),w.v100);
+});
+
+test('invalid package trust executes no target code, calls no service and never accepts unsigned/force bypasses',async t=>{
+ const w=await world(t,{layout:'home'}),f=await packageFixture(path.join(w.dir,'packages'),{files:{'scripts/run-tests.mjs':`throw Error('MUST NOT EXECUTE')`,'server/index.mjs':INDEX}});
+ const trust=JSON.parse(readFileSync(f.trustFile,'utf8'));trust.publishers['example/core'].packageKeys[0].status='revoked';writeFileSync(f.trustFile,JSON.stringify(trust));
+ await refused(apply(w.inst(),{package:f.file,trust:f.trustFile,migrateFromGit:true,allowUnsigned:true,force:true,skipTests:true},w.ctx),/unauthorized/);assert.deepEqual(w.svc.calls,[]);assert.ok(!w.svc.execs.some(e=>e.args.some(a=>a.includes('.hub-package-')&&a.endsWith('run-tests.mjs'))));assert.equal(w.hub.git('rev-parse','HEAD'),w.v100);
+});
+
+test('package startup failure restores Git, original instance and data after an epoch rise',async t=>{
+ const w=await world(t,{layout:'home'}),f=await packageFixture(path.join(w.dir,'packages'),{epoch:2,files:{'scripts/run-tests.mjs':RUNNER,'server/index.mjs':INDEX,'CRASH_AT_START':''}}),original=readFileSync(path.join(w.home,'instance.json'));
+ await refused(apply(w.inst(),{package:f.file,trust:f.trustFile,migrateFromGit:true},w.ctx),/failed at "starting"/);
+ assert.equal(w.hub.git('rev-parse','HEAD'),w.v100);assert.ok(readFileSync(path.join(w.home,'instance.json')).equals(original));assert.equal(readFileSync(path.join(w.state,'hub.db'),'utf8'),'written by 1.0.0\n');assert.equal(readJournal(w.inst()).restored,true);
+});
+
+
+test('hardened Git verifies exact signed objects and never falls back after revocation, including with unsigned/force',async t=>{
+ const w=await world(t),ssh=path.join(w.dir,'ephemeral-git-key');execFileSync('ssh-keygen',['-q','-t','ed25519','-N','','-f',ssh],{stdio:'pipe'});w.upstream.git('config','gpg.format','ssh');w.upstream.git('config','user.signingkey',ssh);
+ const commit=await w.upstream.commit('signed target',tree('1.1.0'));w.upstream.git('tag','-s','-m','fixture release','v1.1.0');const text=readFileSync(ssh+'.pub','utf8').trim(),key=gitPublicKey(text),trustFile=path.join(w.dir,'trust.json'),trust={schemaVersion:1,publishers:{'example/core':{gitSigners:[{id:key.id,fingerprint:key.fingerprint,publicKey:text,role:'git',status:'active'}],packageKeys:[]}}};writeFileSync(trustFile,JSON.stringify(trust),{mode:0o600});
+ const plan=await preflight(w.inst(),{core:'v1.1.0',trust:trustFile},w.ctx);assert.equal(plan.changes[0].to,commit);assert.equal(plan.changes[0].verification,'verified');assert.match(plan.changes[0].tagObject,/^[0-9a-f]{40}$/);assert.deepEqual(w.svc.calls,[]);
+ trust.publishers['example/core'].gitSigners[0].status='revoked';writeFileSync(trustFile,JSON.stringify(trust));await refused(apply(w.inst(),{core:'v1.1.0',trust:trustFile,allowUnsigned:true,force:true},w.ctx),/no authorized Git signers/);assert.deepEqual(w.svc.calls,[]);
+});
+
+test('fresh process recovers package migration after each core rename and durable target-start intent',async t=>{
+ for(const boundary of ['package-old-renamed','package-new-renamed','target-start-intent']){const w=await world(t,{layout:'home'}),inst=w.inst(),f=await packageFixture(path.join(w.dir,'packages'),{files:{'scripts/run-tests.mjs':RUNNER,'server/index.mjs':INDEX}});
+ const locks=inst.sources.flatMap(s=>[sourceLockPath(s.dir),sourceLockPath(path.join(s.dir,'.git'))]);
+ const script=`import {apply,resolveInstance,realContext,realExec} from ${JSON.stringify(new URL('../server/update-apply.mjs',import.meta.url).href)};let running=true;const ctx=realContext({exec:(cmd,args,options)=>{if(cmd==='svc'){running=args[0]==='start';return {status:0,stdout:'',stderr:''};}return realExec(cmd,args,options);},probe:async()=>running,pidAlive:()=>running,log:()=>{},checkpoint:p=>{if(p===${JSON.stringify(boundary)})process.exit(99);}});await apply(resolveInstance({env:${JSON.stringify(w.env)},root:${JSON.stringify(w.root)}}),{package:${JSON.stringify(f.file)},trust:${JSON.stringify(f.trustFile)},migrateFromGit:true},ctx);`;
+ const child=spawnSync(process.execPath,['--input-type=module','-e',script],{encoding:'utf8',timeout:30000});assert.equal(child.status,99,child.stderr);
+ // Explicit maintenance only after this known child has exited; production locks are never inspected or touched.
+ for(const lock of [inst.files.lock,...locks])await rm(lock,{recursive:true,force:true});w.svc.running=false;
+ const restored=await recover(w.inst({recovery:true}),w.ctx);assert.equal(restored.step,'rolled-back');assert.equal(w.hub.git('rev-parse','HEAD'),w.v100);assert.equal(restored.package.status,'restored');assert.ok(w.svc.running);
+ }
+});
+
+
+test('manual backup interruption restarts the old process and preserves the preceding rollback transaction',async t=>{
+ const w=await world(t),inst=w.inst();await w.upstream.commit('1.1.0',tree('1.1.0'),{tag:'v1.1.0'});const applied=await apply(inst,{core:'v1.1.0'},w.ctx);const ctx={...w.ctx,checkpoint:point=>{if(point==='manual-backup-stopped')throw new Error('simulated backup interruption');}};
+ await assert.rejects(backup(inst,ctx),/backup interruption/);assert.equal(w.svc.running,false);assert.equal(readJournal(inst).kind,'backup');await recover(inst,w.ctx);assert.equal(w.svc.running,true);assert.equal(readJournal(inst).id,applied.journal.id);assert.equal(readJournal(inst).step,'done');await rollback(inst,w.ctx);assert.equal(w.hub.git('rev-parse','HEAD'),w.v100);
 });

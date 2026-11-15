@@ -10,7 +10,7 @@
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
 import {repoRoot} from './edition.mjs';
-import {readBuild,headCommit,tagCommit} from './build-info.mjs';
+import {readBuild,headCommit,tagCommit,packageReceipt} from './build-info.mjs';
 
 export const SEMVER=/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
 // owner/name on a git host: the only shape a release repository takes (GitHub's own limits).
@@ -33,6 +33,6 @@ export function readPackage(root=repoRoot){
 export function readVersion(root=repoRoot){
  const pkg=readPackage(root),build=readBuild(root),head=headCommit(root);
  const exact=head?tagCommit(root,`v${pkg.version}`)===head:null;
- const commit=build?.commit??null;
- return Object.freeze({version:pkg.version,dataEpoch:pkg.dataEpoch,commit,exact,label:versionLabel({version:pkg.version,exact,commit}),updates:Object.freeze({...pkg.updates})});
+ const receipt=packageReceipt(root),commit=build?.commit??receipt?.fullCommit.slice(0,7)??null;
+ return Object.freeze({version:pkg.version,dataEpoch:pkg.dataEpoch,commit,fullCommit:head??receipt?.fullCommit??null,packageDigest:receipt?.manifestSha256??null,exact,label:versionLabel({version:pkg.version,exact,commit}),updates:Object.freeze({...pkg.updates})});
 }

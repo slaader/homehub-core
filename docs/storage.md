@@ -215,3 +215,15 @@ The `platform-search` collection metadata in `hub.db` stores schema 1 `{enabled:
 initially false. It is an administrator's explicit permission to send ticket/accepted text to
 the configured embedding provider. It stores no URL, model or token. Provider configuration
 stays in the service environment. This addition is covered by data epoch 4.
+
+### Update recovery metadata
+
+`<home>/update/trust.json` is an operator-controlled public-key trust policy, outside every restored application
+root. Revocations are never rolled back. The schema-1 `update/trust-required.json` remembers selection of an independent policy so deleting the policy cannot silently revive legacy updates. `<home>/update/drivers/<transaction>/` retains the trusted package-update
+driver. `update.lock` is now an ownership-token lock directory; stale directories and legacy PID files require manual
+maintenance after all updater/child activity has stopped. The schema-2 `update-journal.json` records per-source and
+per-root recovery progress and reads schema 1 explicitly. Backups have private `.manifest.json` and `.integrity.json`
+sidecars; failed roots remain adjacent to their destinations with an index under the backups directory. These formats
+raise the data epoch to 5. `.home-hub-package.json` inside a package core is an updater-written schema-1 receipt of
+the exact signed manifest digest and full release commit. See [updating.md](updating.md) for supported layouts and
+external key/plugin-state recovery prerequisites.

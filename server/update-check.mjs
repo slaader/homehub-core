@@ -25,9 +25,11 @@ import {mkdir,writeFile,rename} from 'node:fs/promises';
 import path from 'node:path';
 import {compareVersions} from './versions.mjs';
 import {resolveUpstream,createFetchJson,loadGithubToken,RELEASE_NOTES_LIMIT} from './systems-upstream.mjs';
+import {discoverReleases,publishedCatalog} from './release-catalog.mjs';
+import {validRepo} from './version.mjs';
 import {tx} from './text.mjs';
 
-export const UPDATES_SCHEMA=1;
+export const UPDATES_SCHEMA=2;
 export const UPDATE_INTEGRATION='updates.check';
 export const UPDATE_USER_AGENT='home-hub-update-check';
 export const CORE_SOURCE='core';
@@ -69,11 +71,12 @@ export function errorCode(e){
 // --- the state file ---------------------------------------------------------------------------------
 const emptyState=()=>({sources:{},quarantined:{},dismissed:null});
 function sourceOf(raw){
- if(!plain(raw)||typeof raw.repo!=='string')return null;
+ if(!plain(raw)||!validRepo(raw.repo))return null;
  const out={repo:raw.repo,channel:raw.channel==='prerelease'?'prerelease':'stable',attemptedAt:time(raw.attemptedAt)?raw.attemptedAt:null,checkedAt:time(raw.checkedAt)?raw.checkedAt:null,
   version:typeof raw.version==='string'&&raw.version.length<=64?raw.version:null,tag:typeof raw.tag==='string'&&raw.tag.length<=80?raw.tag:null,
   url:typeof raw.url==='string'?raw.url:null,publishedAt:time(raw.publishedAt)?raw.publishedAt:null,notes:clean(raw.notes,RELEASE_NOTES_LIMIT),
   failures:Number.isSafeInteger(raw.failures)&&raw.failures>0?raw.failures:0,cache:plain(raw.cache)?raw.cache:null};
+ if(Array.isArray(raw.catalog))out.catalog=publishedCatalog(raw.catalog,{repository:raw.repo,channel:out.channel});
  if(time(raw.failedAt)){out.failedAt=raw.failedAt;out.error=clean(raw.error,80)||'failed';}
  if(time(raw.notBefore))out.notBefore=raw.notBefore;
  return out;
@@ -83,7 +86,7 @@ export function readUpdateState(file){
  if(!existsSync(file))return {state:emptyState(),locked:false};
  let raw;try{raw=JSON.parse(readFileSync(file,'utf8'));}catch{return {state:emptyState(),locked:false};}
  if(Number.isInteger(raw?.schemaVersion)&&raw.schemaVersion>UPDATES_SCHEMA)return {state:emptyState(),locked:true};
- if(raw?.schemaVersion!==UPDATES_SCHEMA)return {state:emptyState(),locked:false};
+ if(![1,UPDATES_SCHEMA].includes(raw?.schemaVersion))return {state:emptyState(),locked:false};
  const state=emptyState();
  for(const [id,source] of Object.entries(plain(raw.sources)?raw.sources:{})){const s=/^[a-z][a-z0-9:._-]{0,63}$/.test(id)?sourceOf(source):null;if(s)state.sources[id]=s;}
  for(const [version,q] of Object.entries(plain(raw.quarantined)?raw.quarantined:{}).slice(0,50))if(/^[0-9A-Za-z.+-]{1,64}$/.test(version)&&plain(q)&&time(q.at))state.quarantined[version]={at:q.at,reason:clean(q.reason,120).trim()||null};
@@ -121,8 +124,8 @@ export function createUpdateChecker({stateDirectory,file=path.join(stateDirector
   const fresh=(found,cache)=>({...base,checkedAt:iso(at),version:found?.version??null,tag:found?.tag??null,url:found?releaseUrl(settings.repo,found.url,found.tag):null,
    publishedAt:time(found?.publishedAt)?found.publishedAt:null,notes:clean(found?.notes,RELEASE_NOTES_LIMIT),failures:0,cache:cache??null});
   try{
-   const found=await resolveUpstream({type:'github',repo:settings.repo,allowPrerelease:settings.channel==='prerelease',notes:true},{fetchJson:call,previous:prev?.cache?{ok:true,cache:prev.cache}:null});
-   return put(fresh(found,found.cache));
+   const {found,releases}=await discoverReleases({repository:settings.repo,channel:settings.channel,fetchJson:call,previous:prev?.cache?{ok:true,cache:prev.cache}:null});
+   return put({...fresh(found,found.cache),catalog:releases.length?releases:prev?.catalog??[]});
   }catch(e){
    // Every request was answered and there is no release that counts: an answer, not a failure.
    if(e?.code==='no-release')return put(fresh(null,e.cache));
@@ -188,6 +191,7 @@ export function createUpdateChecker({stateDirectory,file=path.join(stateDirector
    return state.dismissed;
   },
   view:(extra={})=>updateView({record:record(),quarantined:state.quarantined,dismissed:state.dismissed,version,settings,enabled:Boolean(enabled()),now:now(),nextAt:started?nextAt:null,...extra}),
+  releases:()=>active()?structuredClone((record()?.catalog??[]).map(r=>({...r,quarantine:state.quarantined[r.manifestDigest]??state.quarantined[r.version]??null}))):[],
   state:()=>structuredClone(state),
  };
 }

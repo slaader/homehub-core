@@ -1497,3 +1497,15 @@ covers tickets only. Its response adds `mode`, `semanticAvailable`, and `attachm
 Existing field filters and the legacy `ticket_search` response are preserved. The attachment-aware
 `ticket_hybrid_search` tool also defaults to text; request semantic or hybrid mode explicitly.
 The platform toggle enables provider use, not an implicit change to query semantics.
+
+### Release package discovery (additive)
+
+`GET /api/updates/releases` (authenticated, scope `read`) returns cached published release selection, repository,
+channel, discovery time and deterministic package assets. Reading it makes no network request. Drafts and excluded
+prereleases are absent; a disabled integration returns no releases. `GET /api/updates` retains `latest`, dismissal,
+`apply.tag`, the existing Git `apply.command` and `apply.automatic:false`, and adds `discovery`, `trust` and `package`.
+Package entries include CLI download/preflight/apply instructions, hosting-provided manifest digest when available,
+`signature:not-checked`, `compatibility:unknown`, verification time and asset links. This is discovery evidence;
+only CLI preflight establishes real instance compatibility and independently configured signatures authorize code.
+There is no package upload, installation, trust-write or restart route or MCP tool. `/healthz` remains unauthenticated
+with exactly `{ok:true}`; `X-Home-Hub-Run-Id` correlates it with the local runtime identity file without exposing version.
