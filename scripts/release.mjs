@@ -97,19 +97,23 @@ export const SUITES=Object.freeze({
 });
 
 // The command that publishes the Release text on the forge the tag is pushed to. GitHub (or a remote that is not a
-// URL, which says nothing): `gh`. Any other host is taken to be a Forgejo or Gitea forge: `tea`, which finds its
-// login from the remote, so nothing about the household is written into this file or into a commit.
+// URL, which says nothing): `gh`. Any other host is taken to be a Forgejo or Gitea forge: `tea`, named by the
+// owner/name the remote's address ends in (tea's own login is the one that serves that host), so nothing about the
+// household is written into this file or into a commit.
 export function forgeOf(url){
  const text=String(url||'').trim();
  const host=(/^[a-z][a-z0-9+.-]*:\/\/(?:[^@/]+@)?([^/:]+)/i.exec(text)||/^[^@/\s]+@([^:/]+):/.exec(text)||[])[1]||null;
  return host===null||host.toLowerCase()==='github.com'?'github':'forgejo';
 }
+export function repoOf(url){
+ const m=/([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+?)(?:\.git)?\/?$/.exec(String(url||'').trim());
+ return m?`${m[1]}/${m[2]}`:null;
+}
 export function notesCommandFor({version,tag,slug,pushTo,url}){
  const notes=`node scripts/release.mjs ${version} --notes`;
- if(forgeOf(url)==='forgejo')return `tea releases create --remote ${pushTo} --tag ${tag} --title ${tag} --note "$(${notes})"`;
+ if(forgeOf(url)==='forgejo')return `tea releases create --repo ${repoOf(url)||`<owner>/<name of ${pushTo}>`} --tag ${tag} --title ${tag} --note "$(${notes})"`;
  return `${notes} | gh release create ${tag}${slug?` --repo ${slug}`:''} --title ${tag} --notes-file - --verify-tag`;
 }
-
 /**
  * → {version, tag, mode, commit, tagged, signed, publish: [command, …], undo: [command, …], notes}
  * Throws an Error with .refused for anything it will not release. suites, publish: stand-ins for the tests.
