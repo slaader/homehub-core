@@ -6,6 +6,24 @@ Home Hub core, newest first. One section per release; the section is the text of
 number promises is in `AGENTS.md` → Versioning. The top section is the release being prepared, `## Unreleased`
 until the release gives it its number: a change to the public surface adds its line there in the same commit.
 
+## 2.2.0
+
+### Added
+
+- Review metadata updates accept same-project ticket links with revision validation over HTTP and MCP `review_set_save`; `review_get` includes the set revision. Ticket pages discover linked reviews and pending publisher feedback; review pages guide ticket-first agent publishing and link repair, including an unlinked filter.
+
+### Changed
+
+- Review publisher guidance requires individually inspectable media, genuine alternatives only, selected-work revisions, correctly labeled references and listening/motion QA through captions and notes. Unlinked publication returns additive linkage warnings and remains compatible with existing callers.
+
+### Deprecated
+
+- Creating unlinked review sets is discouraged in new publisher guidance; omitted and empty ticket arrays remain supported. No data format or epoch changes.
+
+### Fixed
+
+- Swipe requires explicit alignment, distinct single files, equal observed dimensions and compatible clip timing. Independent approval deliverables do not synchronize; explicit aligned reference comparisons remain available. Hidden media pauses/mutes, transport failures are visible and retryable, and page/session disposal stops playback. Swipe annotation explicitly opens the selected source at the current time.
+
 ## 2.1.0
 
 ### Added

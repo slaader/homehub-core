@@ -3,7 +3,7 @@
 //   #review/<project>     open sets of one project (the Review button on a project card)
 //   #review/R-<n>         one set: rounds, a tab per kind, one row of variants per item, pins and the decision
 // Variants of an item are compared side by side, one at a time (the default on a phone), or, for images and clips
-// of one shape, by dragging a divider across two of them (swipe). Clips (mp4, webm) play in sync: one play/pause,
+// explicitly aligned, by dragging a divider across two of them (swipe). Clips (mp4, webm) play in sync: one play/pause,
 // scrub bar and speed for all variants, and a pin remembers the time. Audio tracks play the same way under their
 // waveforms, one variant audible at a time. Only one item plays at once, and an item stops when it scrolls out of
 // sight. A bar on top counts the decisions and jumps to the next open item.
@@ -15,6 +15,8 @@
 // these" opens the note for what to redo; it takes links and screenshots (pasted or picked, uploaded as review blobs).
 // Text: Czech source strings through t() (English in i18n-en-review.js); dates follow the active language and
 // the site's time zone.
+import {videoClock,comparisonAllowed,swipeEligible,clampComparison} from './review-media.js';
+import {reviewPrompt,reviewDialog} from './review-guidance.js';
 import {el,onLeave} from './views.js';
 import {onSessionReset,authGuard} from './session-cache.js';
 import {timeZone} from './site.js';
@@ -97,18 +99,22 @@ async function api(url,body){
  return data;
 }
 // Drafts and view choices survive re-renders within one page load and one sign-in.
-const drafts=new Map(),views=new Map(),filters={status:'active'};
+const drafts=new Map(),views=new Map(),filters={status:'active',ticket:''};
+const pageClocks=new Set(),pageViewers=new Set(),renderCleanups=new Set();
+function onRenderLeave(fn){let done=false;const clean=()=>{if(done)return;done=true;unhook();renderCleanups.delete(clean);fn();};const unhook=onLeave(clean);renderCleanups.add(clean);return clean;}
+const stopClocks=()=>{for(const c of pageClocks)c.stop();pageClocks.clear();for(const v of pageViewers)v.dispose?.();pageViewers.clear();for(const clean of [...renderCleanups])clean();};
 // Where the user came from, read from the previous hash: '' = the all-projects list (sidebar), otherwise null.
 let previousHash='';
 if(typeof addEventListener==='function')addEventListener('hashchange',e=>{try{previousHash=new URL(e.oldURL).hash;}catch{previousHash='';}});
 const fromAllList=()=>previousHash==='#review';let sessionEpoch=0,draftSeq=0;
-onSessionReset(()=>{sessionEpoch++;drafts.clear();views.clear();filters.status='active';});
+onSessionReset(()=>{sessionEpoch++;drafts.clear();views.clear();filters.status='active';filters.ticket='';stopClocks();});
 const status=()=>el('p',{class:'acc-status',role:'status'});
 const fail=(node,e)=>{node.textContent=e.message;node.classList.add('error');};
 // Unsaved work: a comment with text that has not been sent yet (saving happens when its box loses focus).
 const dirty=()=>[...drafts.values()].some(d=>d.drafts.some(x=>x.text.trim()));
 
 export function reviewView(me,sub){
+ stopClocks();onLeave(stopClocks);
  const wrap=el('section',{class:'sec tk rv'},el('p',{class:'sec-dim',role:'status'},t('Načítám…')));
  const canWrite=me?.canWrite===true,epoch=sessionEpoch;
  const run=()=>(sub&&SET_ID.test(sub)?setPage(wrap,{canWrite,id:sub,epoch,me:me?.username||null}):listPage(wrap,{canWrite,project:sub&&PROJECT_ID.test(sub)?sub:'',epoch}))
@@ -136,20 +142,23 @@ function noSets(project,hasProjects){
    t('Skriptem: popiš sadu v review.json a spusť HOME_HUB_URL=… HOME_HUB_TOKEN=hhk_… node scripts/review-push.mjs review.json.'),
    t('Nebo přes MCP: agent zavolá review_publish; malé HTML pošle rovnou, větší soubory nahraje předem.'),
    t('Rozhodnutí si agent přečte nástrojem review_get a publikuje další kolo.')],
-  agentPrompt:t('Připoj se k mému Home Hubu přes MCP (příkaz níže; servisní účet potřebuje scope review:write). Připrav 2–3 varianty toho, co navrhuješ, jako samostatné HTML soubory (CSS a JS uvnitř, žádná síť, důležité prvky označ atributem data-mock-id) nebo jako obrázky. Publikuj je nástrojem review_publish: project{project} (id z tickets_list → projects), title a items[] s id, title, kind html|image|model a variantami a, b, c s media. Malé HTML pošli rovnou jako media {type:"text/html", html}; větší soubory nahraj předem skriptem scripts/review-push.mjs. Pošli mi odkaz #review/R-n. Až rozhodnu, přečti si rozhodnutí přes review_get, zapracuj je a publikuj další kolo se set a addresses.',{project:project?` "${project}"`:''}),
+  agentPrompt:reviewPrompt({project}),
   mcpSnippet:true,
   actions:hasProjects?[]:[{label:`${t('Projekty')} →`,href:'#projects',primary:true}]});
 }
 // List ------------------------------------------------------------------------------------------
 async function listPage(wrap,{canWrite,project,epoch}){
- const query=state=>new URLSearchParams({status:state,...(project?{project}:{})});
+ const query=state=>new URLSearchParams({status:state,...(project?{project}:{}),...(filters.ticket?{ticket:filters.ticket}:{})});
  const [data,meta]=await Promise.all([api('/api/review?'+query(filters.status)),api('/api/tickets?limit=1')]);if(epoch!==sessionEpoch||!wrap.isConnected)return;
  // An empty tab is not an empty hub: only when no set exists at all does the page explain how to publish one.
  let any=data.sets.length>0||filters.status==='all';
  if(!data.sets.length&&filters.status!=='all'){try{any=(await api('/api/review?'+query('all'))).sets.length>0;}catch{any=true;}if(epoch!==sessionEpoch||!wrap.isConnected)return;}
  const projects=new Map(meta.projects.map(p=>[p.id,p])),redraw=()=>listPage(wrap,{canWrite,project,epoch}).catch(e=>fail(msg,e)),msg=status(),kinds=KINDS();
+ const request=canWrite?el('button',{type:'button',class:'acc-btn primary',onclick:()=>reviewDialog({project,createTicket:()=>import('./tracker-view.js').then(m=>m.createReviewTicket(project))})},'Create review · agent instructions'):el('span',{class:'sec-dim'},'Publishing and ticket linking require review write access.');
+ const ticketFilter=el('input',{value:filters.ticket,placeholder:'Ticket ID or unlinked','aria-label':'Filter reviews by ticket ID or unlinked',onchange:e=>{filters.ticket=e.target.value.trim();redraw();}});
+ const reset=el('button',{type:'button',class:'acc-btn small',onclick:()=>{filters.ticket='';filters.status='all';redraw();}},'Reset filters');
  const title=pageHeader({eyebrow:'Project Tracker',title:'Review',lead:t('Varianty, které agenti navrhli: porovnej je, vyber a okomentuj. Rozhodnutí si agent přečte přes MCP.'),provenance:data.provenance});
- if(!any&&!data.sets.length)return wrap.replaceChildren(title,...(project?[el('div',{class:'tk-toolbar'},el('div',{class:'tk-toolbar-left'},crumbs(projects.get(project),project)))]:[]),noSets(project,meta.projects.length>0));
+ if(!any&&!data.sets.length)return wrap.replaceChildren(title,...(project?[el('div',{class:'tk-toolbar'},el('div',{class:'tk-toolbar-left'},crumbs(projects.get(project),project)))]:[]),request,ticketFilter,reset,noSets(project,meta.projects.length>0));
  const statusSwitch=segmented(t('Stav review'),[['active',t('Otevřená')],['done',t('Hotová')],['archived',t('Archiv')],['all',t('Vše')]],filters.status,v=>{filters.status=v;redraw();});
  // On hover a card shows a bin (archive) or, in the archive, a way back.
  const move=s=>canWrite?el('button',{type:'button',class:'rv-card-bin',title:s.status==='open'?t('Přesunout do archivu'):t('Vrátit z archivu'),'aria-label':s.status==='open'?t('Archivovat {id}',{id:s.id}):t('Vrátit {id} z archivu',{id:s.id}),
@@ -169,8 +178,8 @@ async function listPage(wrap,{canWrite,project,epoch}){
  const emptyTab={active:[t('Nic nečeká na rozhodnutí'),t('Všechny otevřené sady mají ke každé položce vybranou variantu. Hotové najdeš na kartě Hotová.')],done:[t('Zatím nic hotového'),t('Sada je hotová, když má každá její položka vybranou variantu.')],
   archived:[t('Archiv je prázdný'),t('Sem se přesouvají sady, které už nechceš mít mezi otevřenými.')]}[filters.status]||[t('Zatím žádné review'),''];
  wrap.replaceChildren(title,
-  el('div',{class:'tk-toolbar'},el('div',{class:'tk-toolbar-left'},project?crumbs(projects.get(project),project):null,statusSwitch)),msg,
-  data.sets.length?el('div',{class:'rv-cards'},data.sets.map(card)):el('div',{class:'tk-none'},el('h2',{},emptyTab[0]),emptyTab[1]?el('p',{class:'sec-dim'},emptyTab[1]):null));
+  el('div',{class:'tk-toolbar'},el('div',{class:'tk-toolbar-left'},project?crumbs(projects.get(project),project):null,statusSwitch,ticketFilter,reset,request)),msg,
+  data.sets.length?el('div',{class:'rv-cards'},data.sets.map(card)):el('div',{class:'tk-none'},el('h2',{},filters.ticket?'No reviews match these filters':emptyTab[0]),emptyTab[1]?el('p',{class:'sec-dim'},emptyTab[1]):null));
 }
 
 // One set ---------------------------------------------------------------------------------------
@@ -179,9 +188,11 @@ async function setPage(wrap,{canWrite,id,epoch,me}){
  const guard=e=>{if(dirty()){e.preventDefault();e.returnValue='';}};
  addEventListener('beforeunload',guard);onLeave(()=>removeEventListener('beforeunload',guard));
  views.set(set.id,{...(views.get(set.id)||{}),fromAll});
- renderSet(wrap,{canWrite,epoch,meta,me},set);
+const linked=await Promise.all(set.tickets.map(id=>api('/api/tickets/'+encodeURIComponent(id)).catch(()=>({id,unavailable:true}))));if(epoch!==sessionEpoch||!wrap.isConnected)return;
+ renderSet(wrap,{canWrite,epoch,meta,me,linked},set);
 }
 function renderSet(wrap,ctx,set){
+ stopClocks();
  const {canWrite,meta}=ctx,project=meta.projects.find(p=>p.id===set.project),view=views.get(set.id)||{};views.set(set.id,view);
  const latest=set.rounds[set.rounds.length-1],round=set.rounds.find(r=>r.n===view.round)||latest,readOnly=!canWrite||round!==latest||set.status!=='open';
  // Default tab: a game opens on its 3D models and renders, anything else on its mockups.
@@ -201,7 +212,7 @@ function renderSet(wrap,ctx,set){
    set.description?el('p',{class:'tk-text acc-dim'},set.description):null,
    el('div',{class:'tk-pills'},view.fromAll?el('a',{class:'sec-pill tk-pill info',href:'#projects/'+set.project,title:t('Otevřít projekt')},project?.name||set.project):null,project?.type?el('span',{class:'sec-pill'},PROJECT_TYPES()[project.type]||project.type):null,
     set.status==='archived'?el('span',{class:'sec-pill dim'},t('archiv')):null,set.feedbackPending?el('span',{class:'sec-pill warn'},t('čeká na agenta')):null,
-    set.tickets.map(id=>el('a',{class:'sec-pill tk-pill info',href:'#items/'+id},id)))),archive);
+    set.tickets.map(id=>el('a',{class:'sec-pill tk-pill info',href:'#items/'+id},(()=>{const tk=ctx.linked?.find(t=>t.id===id);return tk?.unavailable?id+' · unavailable':tk?id+' · '+tk.title+' · '+tk.status:id;})())))),archive);
  const rounds=set.rounds.length>1?segmented(t('Kolo'),set.rounds.map(r=>[r.n,`${t('Kolo {n}',{n:r.n})} · ${when(r.publishedAt)}`]),round.n,n=>{
   if(round===latest&&dirty()&&!confirm(t('Rozepsané připomínky k tomuto kolu zůstanou, dokud stránku neopustíš. Přepnout?')))return;view.round=n;redraw();}):null;
  const kindTabs=kinds.length>1?segmented(t('Typ variant'),kinds.map(k=>[k,`${kindNames[k]||k} (${round.items.filter(i=>i.kind===k).length})`]),kind,k=>{view.kind=k;redraw();}):null;
@@ -214,7 +225,8 @@ function renderSet(wrap,ctx,set){
  const goTo=item=>{if(item.kind!==kind){view.kind=item.kind;redraw();}requestAnimationFrame(()=>wrap.querySelector('#rv-item-'+item.id)?.scrollIntoView({behavior:'smooth',block:'start'}));};
  const summary=summaryBar(round,{actionable:!readOnly,goTo});
  const shown=round.items.filter(i=>i.kind===kind);
- wrap.replaceChildren(...[head,switches,old,notes,summary.node,msg].filter(Boolean),
+ const linkage=el('aside',{class:'rv-banner'},set.tickets.length?'Linked tickets: '+set.tickets.join(', '):'Link a ticket: this legacy review remains fully usable.',canWrite?el('button',{type:'button',class:'acc-btn small',onclick:()=>reviewDialog({project:set.project,set,onSaved:async saved=>{Object.assign(set,{tickets:saved.tickets,rev:saved.rev});try{const fresh=await api('/api/review/sets/'+set.id);if(ctx.epoch!==sessionEpoch||!wrap.isConnected)return;Object.assign(set,fresh);ctx.linked=await Promise.all(set.tickets.map(id=>api('/api/tickets/'+encodeURIComponent(id)).catch(()=>({id,unavailable:true}))));redraw();}catch(e){fail(msg,e);}}})},'Change ticket links'):el('span',{},' Ticket linking requires review write access.'),el('button',{type:'button',class:'acc-btn small',onclick:()=>reviewDialog({project:set.project,set,canLink:false})},'Publisher instructions'));
+ wrap.replaceChildren(...[head,linkage,switches,old,notes,summary.node,msg].filter(Boolean),
   ...shown.map((item,index)=>itemSection({set,round,item,readOnly,me:ctx.me,latest:round===latest&&set.status==='open',answeredIn,epoch:ctx.epoch,index,count:shown.length,onSaved:summary.draw,
    // Comments of earlier rounds on this item that no round has answered yet.
    carried:set.rounds.filter(r=>r.n<round.n).flatMap(r=>(r.feedback[item.id]?.comments||[]).filter(c=>!answeredAny.has(c.id)).map(c=>({...c,round:r.n})))})));
@@ -235,57 +247,16 @@ function summaryBar(round,{actionable,goTo}){
  draw();return {node,draw};
 }
 
-// Whether the variants' first pictures (or clips) share one shape (aspect ratio within 1 %), so a divider across
-// two of them lines up. Sizes are read once per file and kept for the page's life; one that fails to load counts as no.
+// Metadata is bounded and cached per blob; failed/unknown observations never enable swipe.
 const shapes=new Map();
 const shapeOf=(sha,video)=>{if(!shapes.has(sha))shapes.set(sha,new Promise(done=>{
- if(video){const v=document.createElement('video');v.preload='metadata';v.muted=true;
-  v.onloadedmetadata=()=>{done(v.videoWidth&&v.videoHeight?v.videoWidth/v.videoHeight:null);v.removeAttribute('src');v.load();};v.onerror=()=>done(null);v.src=blob(sha);return;}
- const i=new Image();i.decoding='async';
- i.onload=()=>done(i.naturalWidth&&i.naturalHeight?i.naturalWidth/i.naturalHeight:null);i.onerror=()=>done(null);i.src=blob(sha);}));return shapes.get(sha);};
-const sameShape=async item=>{const r=await Promise.all(item.variants.map(v=>shapeOf(v.media[0].sha256,item.kind==='video')));
- return r.every(x=>x!==null&&Math.abs(x/r[0]-1)<=0.01);};
-
-// The clips of one video item play as one: one play/pause, one time, one speed. The first visible clip leads and
-// the others follow it, re-synced when they drift by more than a few frames; hidden clips (another comparison view)
-// stay paused. A clip shorter than the leader loops on its own until the leader comes round. Sound is off, or
-// comes from one chosen variant, so two soundtracks never play over each other. An <audio> element has no box of its
-// own: its waveform (c.host) says whether it is shown. Only one clock plays at a time on the page.
-const FRAME=1/30,clocks=new Set();
-function videoClock({sound:initial=null}={}){
- const clips=new Set(),listeners=new Set();let playing=false,rate=1,sound=initial,at=0,raf=0;
- const shown=c=>{const h=c.host||c;return h.isConnected&&h.offsetParent!==null&&c.readyState>0;};
- const lead=()=>[...clips].find(shown)||null;
- const len=c=>Number.isFinite(c.duration)?c.duration:0;
- const emit=()=>{for(const f of listeners)f();};
- const apply=c=>{c.muted=!sound||c.dataset.variant!==sound;c.playbackRate=rate;};
- const place=(c,t)=>{if(c.readyState>0)c.currentTime=len(c)?Math.min(t,len(c)):t;};
- function tick(){raf=0;
-  for(const c of [...clips])if(!(c.host||c).isConnected){c.pause();clips.delete(c);}
-  const l=lead();if(l)at=l.currentTime;
-  for(const c of clips){if(!shown(c)){if(!c.paused)c.pause();continue;}
-   if(c===l)continue;if(at<len(c)&&Math.abs(c.currentTime-at)>0.1)c.currentTime=at;}
-  if(playing){for(const c of clips)if(shown(c)&&c.paused)c.play().catch(()=>{});raf=requestAnimationFrame(tick);}
-  emit();}
- const kick=()=>{if(!raf)raf=requestAnimationFrame(tick);};
- const clock={
-  add(c){clips.add(c);apply(c);c.addEventListener('loadedmetadata',()=>{place(c,at);apply(c);if(playing)kick();emit();});return c;},
-  update(c){apply(c);},
-  playing:()=>playing,time:()=>at,rate:()=>rate,sound:()=>sound,
-  duration:()=>Math.max(0,...[...clips].filter(shown).map(len)),
-  play(){for(const other of clocks)if(other!==clock&&other.playing())other.pause();playing=true;for(const c of clips)if(shown(c)){place(c,at);apply(c);c.play().catch(()=>{});}kick();emit();},
-  pause(){playing=false;const l=lead();if(l)at=l.currentTime;for(const c of clips){c.pause();place(c,at);}emit();},
-  toggle(){playing?clock.pause():clock.play();},
-  seek(t){at=Math.max(0,t);for(const c of clips)place(c,at);emit();},
-  step(d){clock.pause();clock.seek(Math.min(clock.duration()||Infinity,Math.max(0,at+d*FRAME)));},
-  setRate(r){rate=r;for(const c of clips)apply(c);emit();},
-  setSound(vid){sound=vid||null;for(const c of clips)apply(c);emit();},
-  // After the comparison view changed: the newly shown clips start where the others were.
-  refresh(){for(const c of clips)place(c,at);if(playing)kick();emit();},
-  stop(){playing=false;for(const c of clips)c.pause();clocks.delete(clock);},
-  on(f){listeners.add(f);}};
- clocks.add(clock);return clock;
-}
+ const media=video?document.createElement('video'):new Image();let timer;
+ const finish=value=>{clearTimeout(timer);media.onload=media.onloadedmetadata=media.onerror=null;if(video){media.removeAttribute('src');media.load();}done(value);};
+ timer=setTimeout(()=>finish(null),10000);
+ if(video){media.preload='metadata';media.muted=true;media.onloadedmetadata=()=>finish({width:media.videoWidth,height:media.videoHeight,duration:media.duration});}
+ else media.onload=()=>finish({width:media.naturalWidth,height:media.naturalHeight});
+ media.onerror=()=>finish(null);media.src=blob(sha);
+ }));return shapes.get(sha);};
 const fmtTime=s=>`${(Math.floor(s*100)/100).toFixed(2)} s`;
 // Under a video item: play/pause, a frame back and forward, the scrub bar, the time, the speed and the sound.
 function transport(item,clock){
@@ -294,23 +265,24 @@ function transport(item,clock){
  const back=el('button',{type:'button',class:'acc-btn small',title:t('O snímek zpět'),'aria-label':t('O snímek zpět'),onclick:()=>clock.step(-1)},'⏮');
  const fwd=el('button',{type:'button',class:'acc-btn small',title:t('O snímek dál'),'aria-label':t('O snímek dál'),onclick:()=>clock.step(1)},'⏭');
  const scrub=el('input',{type:'range',min:'0',max:'1',step:'0.01',value:'0',class:'rv-scrub','aria-label':t('Čas klipu')});
- scrub.addEventListener('pointerdown',()=>{dragging=true;clock.pause();});addEventListener('pointerup',()=>{dragging=false;},{passive:true});
+ scrub.addEventListener('pointerdown',()=>{dragging=true;clock.pause();});const release=()=>{dragging=false;};addEventListener('pointerup',release,{passive:true});onRenderLeave(()=>removeEventListener('pointerup',release));
  scrub.addEventListener('input',()=>{if(clock.playing())clock.pause();clock.seek(Number(scrub.value));});
- const time=el('span',{class:'rv-time'});
+ const time=el('span',{class:'rv-time'}),message=el('span',{role:'status'});
  const speed=el('select',{'aria-label':t('Rychlost'),onchange:e=>clock.setRate(Number(e.target.value))},[1,0.5,0.25].map(r=>el('option',{value:String(r)},r===1?'1×':`${r}× ${t('zpomaleně')}`)));
  const audio=item.kind==='audio';
+ const volume=el('input',{type:'range',min:'0',max:'1',step:'0.05',value:String(clock.volume()),'aria-label':'Playback volume',oninput:e=>clock.setVolume(Number(e.target.value))});
  const sound=el('select',{'aria-label':t('Zvuk'),onchange:e=>clock.setSound(e.target.value)},el('option',{value:''},`🔇 ${t('Bez zvuku')}`),item.variants.map(v=>el('option',{value:v.id},`🔈 ${t('Zvuk {label}',{label:v.label})}`)));
- const draw=()=>{const d=clock.duration();play.textContent=clock.playing()?`⏸ ${t('Pauza')}`:`▶ ${t('Přehrát')}`;
-  sound.value=clock.sound()||'';scrub.max=String(d||1);if(!dragging)scrub.value=String(Math.min(clock.time(),d||1));time.textContent=`${fmtTime(clock.time())} / ${fmtTime(d)}`;};
+ const draw=()=>{message.textContent=clock.error()|| (clock.state()==='buffering'?'Buffering…':'Audio stream presence unknown; listen to verify.');const d=clock.duration();play.textContent=clock.playing()?`⏸ ${t('Pauza')}`:`▶ ${t('Přehrát')}`;
+  for(const option of sound.options)if(option.value)option.disabled=!clock.available(option.value);sound.value=clock.sound()||'';volume.value=String(clock.volume());scrub.max=String(d||1);if(!dragging)scrub.value=String(Math.min(clock.time(),d||1));time.textContent=`${fmtTime(clock.time())} / ${fmtTime(d)}`;};
  clock.on(draw);draw();
- return el('div',{class:'rv-transport'},play,audio?null:back,audio?null:fwd,scrub,time,speed,sound);
+ return el('div',{class:'rv-transport'},play,audio?null:back,audio?null:fwd,scrub,time,speed,sound,volume,message);
 }
 
 // Two image variants in one frame with a divider to drag: left of it the first variant, right of it the second.
 // The divider is a range input laid over the pictures, so the mouse, a finger and the arrow keys all move it.
-function swipeStage(item,cmp,clock){
+function swipeStage(item,cmp,clock,onComment,onPairChange){
  const pick=id=>item.variants.find(v=>v.id===id)||item.variants[0],video=item.kind==='video';
- const media=()=>video?clock.add(Object.assign(el('video',{playsinline:'',preload:'metadata',disablepictureinpicture:''}),{muted:true,loop:true,onclick:()=>clock.toggle()})):el('img',{alt:'',draggable:'false',decoding:'async'});
+ const media=()=>video?clock.add(Object.assign(el('video',{playsinline:'',preload:'metadata',disablepictureinpicture:''}),{muted:true,loop:false,onclick:()=>clock.toggle()})):el('img',{alt:'',draggable:'false',decoding:'async'});
  const top=media(),base=media();
  const setSrc=(n,v)=>{const src=blob(v.media[0].sha256);if(n.getAttribute('src')!==src)n.setAttribute('src',src);n.dataset.variant=v.id;if(video){if(v.media[0].poster)n.setAttribute('poster',blob(v.media[0].poster.sha256));clock.update(n);}};
  const tagL=el('span',{class:'rv-swipe-tag left'}),tagR=el('span',{class:'rv-swipe-tag right'});
@@ -319,7 +291,7 @@ function swipeStage(item,cmp,clock){
  const setPos=v=>{cmp.pos=v;stage.style.setProperty('--pos',v+'%');};
  range.addEventListener('input',()=>setPos(Number(range.value)));
  const actions=el('div',{class:'rv-variant-actions'});
- const side=(key,label)=>el('label',{class:'rv-swipe-side'},label,el('select',{onchange:e=>{cmp[key]=e.target.value;draw();}},item.variants.map(v=>{const o=el('option',{value:v.id},`${v.label}${v.title?' · '+v.title:''}`);if(v.id===cmp[key])o.selected=true;return o;})));
+ const side=(key,label)=>el('label',{class:'rv-swipe-side'},label,el('select',{onchange:e=>{const other=key==='left'?'right':'left',old=cmp[key];cmp[key]=e.target.value;if(cmp[other]===cmp[key])cmp[other]=old;onPairChange();clock?.refresh();}},item.variants.map(v=>{const o=el('option',{value:v.id},`${v.label}${v.title?' · '+v.title:''}`);if(v.id===cmp[key])o.selected=true;return o;})));
  const controls=el('div',{class:'rv-swipe-controls'});
  function draw(){
   const left=pick(cmp.left),right=pick(cmp.right);
@@ -327,7 +299,7 @@ function swipeStage(item,cmp,clock){
   setSrc(base,right);base.setAttribute(video?'aria-label':'alt',t('Varianta {label}',{label:right.label}));
   tagL.textContent=left.label;tagR.textContent=right.label;range.value=String(cmp.pos);setPos(cmp.pos);
   controls.replaceChildren(side('left',t('Vlevo')),el('button',{type:'button',class:'acc-btn small',title:t('Prohodit strany'),'aria-label':t('Prohodit strany'),onclick:()=>{[cmp.left,cmp.right]=[cmp.right,cmp.left];draw();}},'⇄'),side('right',t('Vpravo')),
-   el('span',{class:'sec-dim'},t('Táhni čárou, nebo šipkami ← →. Připomínky se připínají v zobrazení Vedle sebe nebo Po jedné.')));
+   ...['left','right'].map(side=>el('button',{type:'button',class:'acc-btn small',onclick:()=>onComment(cmp[side])},'Comment on '+side)),el('span',{class:'sec-dim'},'Commenting pauses playback and opens the selected media at the same time. Return with Swipe.'));
  }
  return {node:el('div',{class:'rv-swipe',hidden:''},controls,stage,actions),actions,draw};
 }
@@ -353,20 +325,25 @@ function itemSection({set,round,item,readOnly,me,latest,answeredIn,carried,epoch
  const pinsFor=vid=>[...state.drafts.map((d,i)=>({...d,n:String(i+1),kind:'draft'})),...comments().map((c,i)=>({...c,n:'S'+(i+1),kind:answeredIn.has(c.id)?'done':'saved'}))].filter(p=>p.variant===vid&&p.anchor);
  const viewers=new Map(),picks=new Map(),zooms=new Map();
  // How the variants are compared: side by side, one at a time (tabs; the default on a phone) or, for images, swipe.
- // Swipe is offered only when the pictures have one shape (a contact sheet beside a differently laid-out sheet
- // would not line up), and is the default for an item the agent published as aligned (the same shot in each).
- const cmpKey='cmp:'+key,images=['image','video'].includes(item.kind)&&item.variants.length>1,plainMode=()=>narrow()&&item.variants.length>1?'one':'side';
- // Clips and tracks run on one clock. A track item starts with its first variant audible (a clip starts muted).
- const clock=['video','audio'].includes(item.kind)?videoClock({sound:item.kind==='audio'?item.variants[0].id:null}):null;if(clock)onLeave(()=>clock.stop());
- let canSwipe=images&&item.aligned===true;
- const cmp=views.get(cmpKey)||{mode:canSwipe?'swipe':plainMode(),one:item.variants[0].id,left:item.variants[0].id,right:(item.variants[1]||item.variants[0]).id,pos:50};views.set(cmpKey,cmp);
- const swipe=images?swipeStage(item,cmp,clock):null,modeBar=el('div',{class:'rv-modes'});
- if(images)sameShape(item).then(ok=>{if(ok===canSwipe&&(ok||cmp.mode!=='swipe'))return;canSwipe=ok;if(!ok&&cmp.mode==='swipe')cmp.mode=plainMode();applyMode();});
- // 3D: moving one variant's camera moves the others (toggle in the item header), so A/B/C are seen from the same side.
+ // Swipe requires declared alignment plus observed matching dimensions/timing of distinct single files.
+ const comparable=comparisonAllowed(item),cmpKey='cmp:'+key,images=comparable&&['image','video'].includes(item.kind)&&item.variants.length>1,plainMode=()=>!comparable||narrow()&&item.variants.length>1?'one':'side';
+ const clock=['video','audio'].includes(item.kind)?videoClock({sound:item.variants[0].id,independent:!comparable}):null;if(clock){pageClocks.add(clock);onRenderLeave(()=>clock.stop());}
+ let canSwipe=false,geometry=0;
+ const cmp=clampComparison(item,views.get(cmpKey)||{mode:plainMode(),one:item.variants[0].id,left:item.variants[0].id,right:item.variants[1]?.id,pos:50});views.set(cmpKey,cmp);
+ const restoreSwipe=cmp.mode==='swipe';if(restoreSwipe)cmp.mode=plainMode();
+ const swipe=images?swipeStage(item,cmp,clock,vid=>{cmp.mode='one';cmp.one=vid;applyMode();setCommenting(true);},()=>{canSwipe=false;cmp.mode=plainMode();applyMode();checkShape();}):null,modeBar=el('div',{class:'rv-modes'});
+ requestAnimationFrame(()=>{clock?.refresh();checkShape();});
+ const checkShape=async()=>{const token=++geometry;
+  if(!images||item.aligned!==true)return;
+  const pair=[cmp.left,cmp.right],metadata=await Promise.all(pair.map(id=>shapeOf(item.variants.find(v=>v.id===id).media[0].sha256,item.kind==='video')));
+  if(token!==geometry||!section?.isConnected)return;
+  const ok=swipeEligible(item,...pair,metadata),changed=canSwipe!==ok;canSwipe=ok;
+  if(ok&&restoreSwipe&&geometry===token&&token===1)cmp.mode='swipe';
+  if(!ok&&cmp.mode==='swipe'){cmp.mode=plainMode();applyMode();}else if(changed)applyMode();
+ };
  const syncText=on=>on?`🔗 ${t('Pohledy spolu')}`:t('Pohledy zvlášť');
- const camSync=item.kind==='model'&&item.variants.length>1?(()=>{const on=views.get('cam-sync')!==false;
-  const b=el('button',{type:'button',class:'acc-btn small rv-sync','aria-pressed':String(on),title:t('Otáčení a přiblížení jedné varianty pohne i ostatními.'),
-   onclick:()=>{const next=b.getAttribute('aria-pressed')!=='true';views.set('cam-sync',next);b.setAttribute('aria-pressed',String(next));b.textContent=syncText(next);}},syncText(on));return b;})():null;
+ const camSync=comparable&&item.kind==='model'&&item.variants.length>1?(()=>{const on=views.get('cam-sync:'+key)!==false;
+  const b=el('button',{type:'button',class:'acc-btn small rv-sync','aria-pressed':String(on),onclick:()=>{const next=b.getAttribute('aria-pressed')!=='true';views.set('cam-sync:'+key,next);b.setAttribute('aria-pressed',String(next));b.textContent=syncText(next);}},syncText(on));return b;})():null;
  const onCamera=(from,cam)=>{if(camSync?.getAttribute('aria-pressed')!=='true')return;for(const [vid,v] of viewers)if(vid!==from)v.setCamera?.(cam);};
  const refreshPins=()=>{for(const [vid,v] of viewers)v.setPins(pinsFor(vid));};
  // One variant at most. Picking it again clears it; "None of these" clears it too. Either way it saves.
@@ -387,7 +364,7 @@ function itemSection({set,round,item,readOnly,me,latest,answeredIn,carried,epoch
  // approve items: green = all approved, amber = some sent back with comments.
  const frame=()=>{if(!section)return;const st=decision.rev?decision.status:'pending';
   section.classList.toggle('rv-taken',approveMode?st==='accept':st==='accept'||st==='revise');section.classList.toggle('rv-changes',approveMode&&st==='revise');section.classList.toggle('rv-rework',st==='reject');};
- const setCommenting=on=>{state.commenting=on;if(on)clock?.pause();if(on&&cmp.mode==='swipe'){cmp.mode='side';applyMode();}for(const v of viewers.values())v.setMode(on);row.classList.toggle('rv-commenting',on);drawPanel();};
+ const setCommenting=on=>{state.commenting=on;if(on)clock?.pause();if(on&&cmp.mode==='swipe'){cmp.mode='one';cmp.one=cmp.left;applyMode();}for(const v of viewers.values())v.setMode(on);row.classList.toggle('rv-commenting',on);drawPanel();};
  // A comment on a variant also picks it when nothing is picked yet.
  const addDraft=(variant,anchor)=>{state.drafts.push({id:++draftSeq,variant,anchor,text:''});state.focus=draftSeq;if(!approveMode&&!state.choice&&!state.reject&&decidable.includes(variant))state.choice=variant;refreshPins();sync();};
  // Esc: drop the comment being written (an empty draft), otherwise leave comment mode.
@@ -396,31 +373,33 @@ function itemSection({set,round,item,readOnly,me,latest,answeredIn,carried,epoch
   if(state.commenting)setCommenting(false);};
  const onKey=e=>{if(e.key!=='Escape'||readOnly||!section.isConnected)return;const inPanel=panel.contains(document.activeElement);if(!state.commenting&&!inPanel)return;
   if(inPanel&&document.activeElement.tagName==='TEXTAREA'&&document.activeElement.value.trim())return;e.preventDefault();document.activeElement?.blur?.();cancel();};
- addEventListener('keydown',onKey);onLeave(()=>removeEventListener('keydown',onKey));
+ addEventListener('keydown',onKey);onRenderLeave(()=>removeEventListener('keydown',onKey));
  let section=null;
  const row=el('div',{class:'rv-row'});row.style.setProperty('--rv-cols',String(Math.min(item.variants.length,3)));
  // Shows the chosen way of comparing: the grid, one variant with tabs to flip through, or the swipe frame.
  function applyMode(focusTab=false){
-  const one=cmp.mode==='one';
+  clock?.pause();
+  clampComparison(item,cmp);const one=cmp.mode==='one';
   if(one)row.dataset.focus=cmp.one;else delete row.dataset.focus;
-  for(const c of row.children)c.classList.toggle('on',one&&c.dataset.variant===cmp.one);
+  for(const c of row.children){c.classList.toggle('on',one&&c.dataset.variant===cmp.one);if(one&&c.dataset.variant!==cmp.one)viewers.get(c.dataset.variant)?.pause?.();}
   for(const [vid,b] of zooms)b.textContent=one&&vid===cmp.one?`⤡ ${t('Porovnat')}`:`⤢ ${t('Zvětšit')}`;
-  row.hidden=cmp.mode==='swipe';if(swipe){swipe.node.hidden=cmp.mode!=='swipe';if(cmp.mode==='swipe'){swipe.draw();swipeActions();}}clock?.refresh();
+  row.hidden=cmp.mode==='swipe';if(swipe){swipe.node.hidden=cmp.mode!=='swipe';if(cmp.mode==='swipe'){swipe.draw();swipeActions();}}if(one)clock?.select(cmp.one);clock?.refresh();
   if(item.variants.length<2){modeBar.hidden=true;return;}
   const flip=d=>{const ids=item.variants.map(v=>v.id);cmp.one=ids[(ids.indexOf(cmp.one)+d+ids.length)%ids.length];applyMode(true);};
-  modeBar.replaceChildren(...[segmented(t('Způsob porovnání'),[['side',t('Vedle sebe')],['one',t('Po jedné')],...(canSwipe?[['swipe',t('Přejíždět')]]:[])],cmp.mode,m=>{cmp.mode=m;applyMode();}),
+  modeBar.replaceChildren(...[segmented(t('Způsob porovnání'),[...(comparable?[['side',t('Vedle sebe')]]:[]),['one',t('Po jedné')],...(canSwipe?[['swipe',t('Přejíždět')]]:[])],cmp.mode,m=>{cmp.mode=m;if(m==='swipe')setCommenting(false);applyMode();}),
    one?el('div',{class:'rv-tabs',role:'tablist','aria-label':t('Varianta')},item.variants.map(v=>el('button',{type:'button',role:'tab','aria-selected':String(v.id===cmp.one),tabindex:v.id===cmp.one?'0':'-1',class:v.id===cmp.one?'on':'',title:v.title||'',
     onclick:()=>{cmp.one=v.id;applyMode(true);},onkeydown:e=>{if(e.key==='ArrowRight'){e.preventDefault();flip(1);}else if(e.key==='ArrowLeft'){e.preventDefault();flip(-1);}}},v.label,picked(v.id)?' ✓':''))):null].filter(Boolean));
+  if(images&&item.aligned===true&&!canSwipe)modeBar.append(el('span',{class:'sec-dim'},'Swipe needs two distinct single files with verified equal dimensions and compatible duration.'));
   if(focusTab)modeBar.querySelector('[role=tab].on')?.focus();
  }
  for(const v of item.variants){
-  const viewer=item.kind==='html'?frameViewer(v,{onPick:a=>addDraft(v.id,a),onEscape:()=>cancel()}):item.kind==='model'?modelViewer(v,{onPick:a=>addDraft(v.id,a),onCamera:cam=>onCamera(v.id,cam)}):item.kind==='video'?videoViewer(v,{onPick:a=>addDraft(v.id,a),clock}):item.kind==='audio'?audioViewer(v,{onPick:a=>addDraft(v.id,a),clock}):imageViewer(v,{onPick:a=>addDraft(v.id,a)});viewers.set(v.id,viewer);
-  const zoom=item.variants.length>1?el('button',{type:'button',class:'acc-btn small',title:t('Zobrazit jen tuto variantu přes celou šířku'),onclick:()=>{if(cmp.mode==='one'&&cmp.one===v.id)cmp.mode='side';else{cmp.mode='one';cmp.one=v.id;}applyMode();}},`⤢ ${t('Zvětšit')}`):null;if(zoom)zooms.set(v.id,zoom);
+  const viewer=item.kind==='html'?frameViewer(v,{onPick:a=>addDraft(v.id,a),onEscape:()=>cancel()}):item.kind==='model'?modelViewer(v,{onPick:a=>addDraft(v.id,a),onCamera:cam=>onCamera(v.id,cam)}):item.kind==='video'?videoViewer(v,{onPick:a=>addDraft(v.id,a),clock}):item.kind==='audio'?audioViewer(v,{onPick:a=>addDraft(v.id,a),clock}):imageViewer(v,{onPick:a=>addDraft(v.id,a)});viewers.set(v.id,viewer);pageViewers.add(viewer);
+  const zoom=comparable&&item.variants.length>1?el('button',{type:'button',class:'acc-btn small',title:t('Zobrazit jen tuto variantu přes celou šířku'),onclick:()=>{if(cmp.mode==='one'&&cmp.one===v.id)cmp.mode='side';else{cmp.mode='one';cmp.one=v.id;}applyMode();}},`⤢ ${t('Zvětšit')}`):null;if(zoom)zooms.set(v.id,zoom);
   // 🔊 on one variant at a time: muting the one you hear hands the sound to the next variant.
   const listen=clock?(()=>{const ids=item.variants.map(x=>x.id),b=el('button',{type:'button',class:'acc-btn small rv-listen',
-    onclick:()=>clock.setSound(clock.sound()===v.id?(ids.length>1?ids[(ids.indexOf(v.id)+1)%ids.length]:null):v.id)});
+    onclick:()=>clock.setSound(clock.sound()===v.id?null:v.id)});
    const draw=()=>{const on=clock.sound()===v.id;b.setAttribute('aria-pressed',String(on));b.textContent=on?`🔊 ${t('Slyšíš {label}',{label:v.label})}`:`🔈 ${t('Poslouchat {label}',{label:v.label})}`;
-    b.title=on?t('Ztlumit — zvuk přejde na další variantu'):t('Pustit zvuk této varianty (ostatní ztichnou)');};clock.on(draw);draw();return b;})():null;
+    b.title=on?t('Bez zvuku'):t('Pustit zvuk této varianty (ostatní ztichnou)');};clock.on(draw);draw();return b;})():null;
   const pick=readOnly||v.reference?null:el('button',{type:'button',class:'acc-btn small rv-pick','aria-pressed':'false',onclick:()=>choose(v.id)},pickText(v.id,false));if(pick)picks.set(v.id,pick);
   const verdict=(decision.approvals||{})[v.id];
   row.append(el('article',{class:'rv-variant','data-variant':v.id},
@@ -593,7 +572,7 @@ function itemSection({set,round,item,readOnly,me,latest,answeredIn,carried,epoch
   el('header',{class:'rv-item-head'},el('span',{class:'rv-item-no'},`${index+1}/${count}`),el('h2',{class:'rv-item-title'},item.title),camSync,badge),
   item.description?el('p',{class:'tk-text acc-dim rv-item-desc'},item.description):null,modeBar,row,swipe?.node,clock?transport(item,clock):null,panel);
  // An item that scrolls out of sight stops playing.
- if(clock&&typeof IntersectionObserver==='function'){const io=new IntersectionObserver(es=>{if(es.some(e=>!e.isIntersecting)&&clock.playing())clock.pause();});io.observe(section);onLeave(()=>io.disconnect());}
+ if(clock&&typeof IntersectionObserver==='function'){const io=new IntersectionObserver(es=>{if(es.some(e=>!e.isIntersecting)&&clock.playing())clock.pause();});io.observe(section);onRenderLeave(()=>io.disconnect());}
  drawPanel();refreshPins();sync();applyMode();if(state.commenting)setCommenting(true);
  if(!readOnly&&decision.rev&&!changed())setSaveLine(t('Uloženo {at}',{at:when(decision.updatedAt)}));
  return section;
@@ -648,12 +627,12 @@ function frameViewer(variant,{onPick,onEscape}){
   }
  }
  let attached=true;addEventListener('message',onMessage);const ro=typeof ResizeObserver==='function'?new ResizeObserver(()=>layout()):null;ro?.observe(node);
- const detach=()=>{attached=false;removeEventListener('message',onMessage);ro?.disconnect();};onLeave(detach);
+ const detach=()=>{attached=false;removeEventListener('message',onMessage);ro?.disconnect();};onRenderLeave(detach);
  const caption=el('p',{class:'sec-dim rv-caption'});
  const pick=i=>{index=i;strip.mark(i);caption.textContent=variant.media[i].caption||'';caption.hidden=!variant.media[i].caption;load();};
  const strip=mediaStrip(variant,'rv-media-tabs',pick,(m,i)=>m.name||t('Stránka {n}',{n:i+1}));
  node.append(...[strip.node,box,caption].filter(Boolean));pick(0);
- return {node,setMode(on){mode=on;box.classList.toggle('rv-commenting',on);post({type:'mode',mode:on?'comment':'browse'});draw();},setPins(list){pins=list;draw();},
+ return {node,dispose:detach,setMode(on){mode=on;box.classList.toggle('rv-commenting',on);post({type:'mode',mode:on?'comment':'browse'});draw();},setPins(list){pins=list;draw();},
   focus(a){if(!a)return;if((a.media||0)!==index)pick(a.media||0);setTimeout(()=>post({type:'scrollTo',y:a.y}),index===(a.media||0)?0:400);box.scrollIntoView({block:'nearest',behavior:'smooth'});}};
 }
 
@@ -661,6 +640,7 @@ function frameViewer(variant,{onPick,onEscape}){
 function imageViewer(variant,{onPick}){
  let index=0,mode=false,pins=[];
  const node=el('div',{class:'rv-media'}),box=el('div',{class:'rv-image'}),overlay=el('div',{class:'rv-overlay'}),caption=el('p',{class:'sec-dim rv-caption'});
+ overlay.tabIndex=-1;overlay.setAttribute('role','button');overlay.setAttribute('aria-label','Add a comment at the center of this image (Enter)');overlay.addEventListener('keydown',e=>{if(mode&&(e.key==='Enter'||e.key===' ')){e.preventDefault();onPick({kind:'point',media:index,x:0.5,y:0.5});}});
  const img=el('img',{alt:'',loading:'lazy',decoding:'async'});
  overlay.addEventListener('click',e=>{if(!mode||e.target!==overlay)return;const r=overlay.getBoundingClientRect();if(!r.width||!r.height)return;
   onPick({kind:'point',media:index,x:Math.round(Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*1000)/1000,y:Math.round(Math.max(0,Math.min(1,(e.clientY-r.top)/r.height))*1000)/1000});});
@@ -668,7 +648,7 @@ function imageViewer(variant,{onPick}){
  const show=i=>{index=i;strip.mark(i);const m=variant.media[i];img.src=blob(m.sha256);img.alt=t('Varianta {label}',{label:variant.label})+(m.caption?': '+m.caption:'');caption.textContent=m.caption||'';caption.hidden=!m.caption;draw();};
  const strip=mediaStrip(variant,'rv-thumbs',i=>show(i),(m,i)=>el('img',{src:blob(m.sha256),alt:m.caption||m.name||t('Obrázek {n}',{n:i+1}),loading:'lazy'}));
  box.append(img,overlay);node.append(...[box,strip.node,caption].filter(Boolean));show(0);
- return {node,setMode(on){mode=on;box.classList.toggle('rv-commenting',on);},setPins(list){pins=list;draw();},focus(a){if(a&&(a.media||0)!==index)show(a.media||0);box.scrollIntoView({block:'nearest',behavior:'smooth'});}};
+ return {node,setMode(on){mode=on;overlay.tabIndex=on?0:-1;overlay.setAttribute('aria-disabled',String(!on));box.classList.toggle('rv-commenting',on);},setPins(list){pins=list;draw();},focus(a){if(a&&(a.media||0)!==index)show(a.media||0);box.scrollIntoView({block:'nearest',behavior:'smooth'});}};
 }
 
 // Clip (mp4, webm): played by the item's clock, no own controls; a click plays or pauses, in comment mode it
@@ -676,18 +656,19 @@ function imageViewer(variant,{onPick}){
 function videoViewer(variant,{onPick,clock}){
  let index=0,mode=false,pins=[];
  const node=el('div',{class:'rv-media'}),box=el('div',{class:'rv-image rv-video'}),overlay=el('div',{class:'rv-overlay'}),caption=el('p',{class:'sec-dim rv-caption'});
- const video=clock.add(Object.assign(el('video',{playsinline:'',preload:'metadata',disablepictureinpicture:'','data-variant':variant.id}),{muted:true,loop:true}));
+ const video=clock.add(Object.assign(el('video',{playsinline:'',preload:'metadata',disablepictureinpicture:'','data-variant':variant.id}),{muted:true,loop:false}));
+ overlay.tabIndex=-1;overlay.setAttribute('role','button');overlay.setAttribute('aria-label','Add a comment at the current frame center (Enter)');overlay.addEventListener('keydown',e=>{if(mode&&(e.key==='Enter'||e.key===' ')){e.preventDefault();clock.pause();onPick({kind:'frame',media:index,t:Math.round(video.currentTime*1000)/1000,x:0.5,y:0.5});}});
  video.addEventListener('click',()=>clock.toggle());
  overlay.addEventListener('click',e=>{if(!mode||e.target!==overlay)return;const r=overlay.getBoundingClientRect();if(!r.width||!r.height)return;clock.pause();
   onPick({kind:'frame',media:index,t:Math.round(video.currentTime*1000)/1000,x:Math.round(Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*1000)/1000,y:Math.round(Math.max(0,Math.min(1,(e.clientY-r.top)/r.height))*1000)/1000});});
  const draw=()=>overlay.replaceChildren(...pins.filter(p=>(p.anchor.media||0)===index&&Math.abs((p.anchor.t||0)-video.currentTime)<=0.25).map(p=>{
   const n=pinNode(p,{onClick:e=>{e.stopPropagation();clock.pause();clock.seek(p.anchor.t||0);}});n.style.left=p.anchor.x*100+'%';n.style.top=p.anchor.y*100+'%';return n;}));
  video.addEventListener('timeupdate',draw);video.addEventListener('seeked',draw);
- const show=i=>{index=i;strip.mark(i);const m=variant.media[i];video.src=blob(m.sha256);if(m.poster)video.poster=blob(m.poster.sha256);else video.removeAttribute('poster');
+ const show=i=>{clock.pause();index=i;strip.mark(i);const m=variant.media[i];video.src=blob(m.sha256);if(m.poster)video.poster=blob(m.poster.sha256);else video.removeAttribute('poster');
   video.setAttribute('aria-label',t('Varianta {label}',{label:variant.label})+(m.caption?': '+m.caption:''));caption.textContent=m.caption||'';caption.hidden=!m.caption;draw();};
  const strip=mediaStrip(variant,'rv-media-tabs',i=>show(i),(m,i)=>m.name||t('Klip {n}',{n:i+1}));
  box.append(video,overlay);node.append(...[strip.node,box,caption].filter(Boolean));show(0);
- return {node,setMode(on){mode=on;box.classList.toggle('rv-commenting',on);},setPins(list){pins=list;draw();},
+ return {node,setMode(on){mode=on;overlay.tabIndex=on?0:-1;overlay.setAttribute('aria-disabled',String(!on));box.classList.toggle('rv-commenting',on);},setPins(list){pins=list;draw();},
   focus(a){if(a&&(a.media||0)!==index)show(a.media||0);if(a&&a.kind==='frame'){clock.pause();clock.seek(a.t);}box.scrollIntoView({block:'nearest',behavior:'smooth'});}};
 }
 
@@ -708,7 +689,8 @@ function audioViewer(variant,{onPick,clock}){
  let index=0,mode=false,pins=[],peaks=null;
  const node=el('div',{class:'rv-media'}),box=el('div',{class:'rv-wave',role:'img'}),canvas=el('canvas',{class:'rv-wave-canvas'}),head=el('div',{class:'rv-wave-head','aria-hidden':'true'});
  const overlay=el('div',{class:'rv-overlay'}),caption=el('p',{class:'sec-dim rv-caption'});
- const audio=el('audio',{preload:'metadata','data-variant':variant.id});audio.loop=true;audio.host=box;clock.add(audio);
+ box.tabIndex=0;box.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();clock.pause();clock.seek(clock.time()+(e.key==='ArrowRight'?1:-1));}else if(mode&&e.key==='Enter'){e.preventDefault();clock.pause();onPick({kind:'time',media:index,t:Math.round(clock.time()*1000)/1000});}});
+ const audio=el('audio',{preload:'metadata','data-variant':variant.id});audio.loop=false;audio.host=box;clock.add(audio);
  const dur=()=>Number.isFinite(audio.duration)?audio.duration:0;
  function paint(){const w=box.clientWidth,h=box.clientHeight;if(!w||!h)return;const dpr=globalThis.devicePixelRatio||1;
   canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);const g=canvas.getContext('2d');if(!g)return;g.clearRect(0,0,canvas.width,canvas.height);
@@ -720,10 +702,10 @@ function audioViewer(variant,{onPick,clock}){
  box.addEventListener('click',e=>{const r=box.getBoundingClientRect();if(!r.width||!dur())return;const at=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*dur();
   if(mode){clock.pause();clock.seek(at);onPick({kind:'time',media:index,t:Math.round(at*1000)/1000});}else clock.seek(at);});
  audio.addEventListener('loadedmetadata',draw);audio.addEventListener('timeupdate',playhead);audio.addEventListener('seeked',playhead);clock.on(playhead);
- const ro=typeof ResizeObserver==='function'?new ResizeObserver(()=>paint()):null;ro?.observe(box);onLeave(()=>ro?.disconnect());
- const show=i=>{index=i;strip.mark(i);const m=variant.media[i];audio.src=blob(m.sha256);peaks=null;paint();
+ const ro=typeof ResizeObserver==='function'?new ResizeObserver(()=>paint()):null;ro?.observe(box);onRenderLeave(()=>ro?.disconnect());
+ const show=i=>{clock.pause();index=i;strip.mark(i);const m=variant.media[i];audio.src=blob(m.sha256);peaks=null;paint();
   box.setAttribute('aria-label',t('Průběh zvuku, varianta {label}',{label:variant.label})+(m.caption?': '+m.caption:''));caption.textContent=m.caption||'';caption.hidden=!m.caption;draw();
-  peaksOf(m).then(p=>{if(variant.media[index]===m){peaks=p;paint();}},()=>{});};
+  peaksOf(m).then(p=>{if(node.isConnected&&variant.media[index]===m){peaks=p;paint();}},()=>{});};
  const strip=mediaStrip(variant,'rv-media-tabs',i=>show(i),(m,i)=>m.name||t('Stopa {n}',{n:i+1}));
  box.append(canvas,head,overlay);node.append(...[strip.node,box,audio,caption].filter(Boolean));show(0);
  return {node,setMode(on){mode=on;box.classList.toggle('rv-commenting',on);},setPins(list){pins=list;draw();},
@@ -796,7 +778,7 @@ function modelViewer(variant,{onPick,onCamera}){
  function load(){
   const m=variant.media[index],self=document.createElement('model-viewer');mv=self;gen++;posed=false;pendingCam=null;
   // Events of a model that was replaced (another media picked) are ignored.
-  const live=fn=>(...args)=>{if(mv===self)fn(...args);};
+  const live=fn=>(...args)=>{if(mv===self&&node.isConnected)fn(...args);};
   for(const [k,v] of Object.entries({src:blob(m.sha256),'camera-controls':'','interaction-prompt':'none','touch-action':'pan-y','shadow-intensity':'1','max-camera-orbit':'auto auto auto',alt:`${t('3D model {label}',{label:variant.label})}${m.name?' · '+m.name:''}`}))mv.setAttribute(k,v);
   if(m.poster)mv.setAttribute('poster',blob(m.poster.sha256));if(spinning)mv.setAttribute('auto-rotate','');
   mv.addEventListener('load',live(()=>{note.hidden=true;tools.hidden=false;drawAnimations();drawPins();}));
@@ -816,7 +798,7 @@ function modelViewer(variant,{onPick,onCamera}){
  const pick=i=>{index=i;strip.mark(i);caption.textContent=variant.media[i].caption||'';caption.hidden=!variant.media[i].caption;load();};
  const strip=mediaStrip(variant,'rv-media-tabs',i=>pick(i),(m,i)=>m.name||t('Model {n}',{n:i+1}));
  node.append(...[strip.node,box,note,tools,anims,caption].filter(Boolean));
- loadModelViewer().then(()=>pick(index),()=>{note.textContent=t('3D prohlížeč nejde načíst. Obnov stránku.');});
+ loadModelViewer().then(()=>{if(node.isConnected)pick(index);},()=>{note.textContent=t('3D prohlížeč nejde načíst. Obnov stránku.');});
  // Restores the pose the pin was made from, and the animation frame it was made on.
  function focus(a){
   if(!a)return;
@@ -835,7 +817,7 @@ function modelViewer(variant,{onPick,onCamera}){
   };
   if(target?.loaded)go();else target?.addEventListener('load',go,{once:true});
  }
- return {node,setMode(on){mode=on;box.classList.toggle('rv-commenting',on);},setPins(list){pins=list;drawPins();},focus,setCamera(c){setCamera(c);}};
+ return {node,pause(){mv?.pause();mv?.removeAttribute('auto-rotate');spinning=false;},dispose(){req++;gen++;mv?.pause();mv?.removeAttribute('src');mv=null;},setMode(on){mode=on;box.classList.toggle('rv-commenting',on);},setPins(list){pins=list;drawPins();},focus,setCamera(c){setCamera(c);}};
 }
 // Page entry for the shell (app.js): every page module exports (context) => Node, and the server's UI
 // manifest names it. context = {me, page, sub, device, site}.

@@ -1009,13 +1009,13 @@ See [optional provider configuration](configuration.md).
 Variants agents propose for a project (HTML mockups, images, 3D models as `.glb`, clips as `.mp4`/`.webm`, audio tracks), decided in `#review`. The full contract is in
 [review.md](review.md). Writes need `review:write` for API keys.
 
-- `GET /api/review?project=&ticket=&status=open|active|done|archived|all&feedback=pending` → `{sets:[summary], provenance}`.
+- `GET /api/review?project=&ticket=ID|unlinked&status=open|active|done|archived|all&feedback=pending` → `{sets:[summary], provenance}`.
 - `GET /api/review/sets/<R-n>` → the full set with all rounds, decisions, comments and `provenance`. Publishing a round counts as the record (`unit: rounds`), a decision or comment as a change ([Provenance](#provenance)).
 - `HEAD|GET /api/review/blobs/<sha256>` → a published file (range requests); `GET /api/review/frame/<sha256>` → a sandboxed HTML mockup.
 - `PUT /api/review/blobs/<sha256>?offset=&size=` (`application/octet-stream`, ≤ 8 MiB per chunk) → `{received,size,complete}`; `409` with `received` on a wrong offset.
-- `POST /api/review/publish` (≤ 64 kB) → `201` new set or `200` next round; `POST /api/review/feedback` (≤ 64 kB) `{set, round, item, rev, variant, status, note?, comments?, attachments?, editComments?:[{id, text}], deleteComments?:[id]}` (edit or delete your own saved comments; someone else's → `403`); `POST /api/review/sets` `{id, rev, status?, title?}`.
-- MCP: `review_list`, `review_get` (`read`); `review_publish` (`review:write`). Upload files with `scripts/review-push.mjs`.
-- The page compares variants side by side, one at a time or (images and clips of one shape) by swiping a divider (the default for an `aligned` item); clips and tracks play in sync with one variant audible, counts the round's
+- `POST /api/review/publish` (≤ 64 kB) → `201` new set or `200` next round; `POST /api/review/feedback` (≤ 64 kB) `{set, round, item, rev, variant, status, note?, comments?, attachments?, editComments?:[{id, text}], deleteComments?:[id]}` (edit or delete your own saved comments; someone else's → `403`); `POST /api/review/sets` `{id, rev, status?, title?, tickets?}`. Ticket links replace the existing array (at most 20 input entries, duplicates normalized); omitted preserves, `[]` clears. New links must exist in the same project; stale rev → `409`. No round or feedback timestamp changes. Validation is not a cross-store transaction.
+- MCP: `review_list`, `review_get` (`read`); `review_publish`, `review_set_save` (`review:write`; same metadata fields as HTTP). `review_get` adds the set `rev`. Publication adds `warnings` for deprecated unlinked creation while preserving omitted/empty tickets and existing sets. Upload files with `scripts/review-push.mjs`.
+- The page compares alternatives side by side, one at a time or with explicitly aligned, dimension/timing-checked swipe. Independent approval deliverables use local playback; explicit aligned approval against a reference remains comparable. The first visible variant is audible after the user starts playback; hidden media pauses and playback errors offer retry. The page counts the round's
   decisions and shows comments as threads with the round that answered them. With no set on the hub it explains
   the two ways to publish and offers a prompt for a coding agent. Details: [review.md](review.md#the-page-review).
 

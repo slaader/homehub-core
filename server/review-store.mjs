@@ -155,6 +155,10 @@ export function createReviewStore(root,{tickets,db=openDb(path.join(root,'hub.db
  async function frame(sha){const m=await media(sha);if(m.type!=='text/html')fail('not-found');return injectHelper(await readFile(m.file,'utf8'));}
 
  // Validation ---------------------------------------------------------------------------------------
+ function ticketLinks(ids){
+  if(!Array.isArray(ids)||ids.length>LIMITS.tickets||ids.some(id=>typeof id!=='string'||!TICKET_ID.test(id)))fail('invalid');
+  return [...new Set(ids)];
+ }
  async function projectsAndTickets(project,ids){
   const meta=await tickets.list({limit:1});if(!meta.projects.some(p=>p.id===project))fail('invalid');
   for(const id of ids){if(typeof id!=='string'||!TICKET_ID.test(id))fail('invalid');let t;try{t=await tickets.get(id);}catch{fail('invalid');}if(t.project!==project)fail('invalid');}
@@ -244,9 +248,9 @@ export function createReviewStore(root,{tickets,db=openDb(path.join(root,'hub.db
  async function list(filter={},{authors=false}={}){
   if(!onlyKeys(filter,FILTERS))fail('invalid');const f=Object.fromEntries(Object.entries(filter).filter(([,v])=>v!==undefined&&v!==''));
   if(Object.values(f).some(v=>typeof v!=='string'))fail('invalid');
-  if(f.project&&!PROJECT.test(f.project)||f.ticket&&!TICKET_ID.test(f.ticket)||f.status&&!['open','active','done','archived','all'].includes(f.status)||f.feedback&&f.feedback!=='pending')fail('invalid');
+  if(f.project&&!PROJECT.test(f.project)||f.ticket&&f.ticket!=='unlinked'&&!TICKET_ID.test(f.ticket)||f.status&&!['open','active','done','archived','all'].includes(f.status)||f.feedback&&f.feedback!=='pending')fail('invalid');
   const status=f.status||'open',data=await read();
-  const sets=data.sets.filter(s=>(!f.project||s.project===f.project)&&(!f.ticket||s.tickets.includes(f.ticket))&&(status==='all'||(status==='active'?s.status==='open'&&!doneOf(s):status==='done'?s.status==='open'&&doneOf(s):s.status===status))&&(!f.feedback||pendingOf(s)))
+  const sets=data.sets.filter(s=>(!f.project||s.project===f.project)&&(!f.ticket||(f.ticket==='unlinked'?!s.tickets.length:s.tickets.includes(f.ticket)))&&(status==='all'||(status==='active'?s.status==='open'&&!doneOf(s):status==='done'?s.status==='open'&&doneOf(s):s.status===status))&&(!f.feedback||pendingOf(s)))
    .sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
   const out={updatedAt:data.updatedAt,sets:sets.map(summary)};
   if(!authors)return out;
@@ -259,7 +263,7 @@ export function createReviewStore(root,{tickets,db=openDb(path.join(root,'hub.db
  async function publish(input,by){
   if(!onlyKeys(input,['project','set','title','description','tickets','notes','addresses','items']))fail('invalid');
   const {items,inline,checks}=itemsOf(input.items);
-  const ticketIds='tickets'in input?(Array.isArray(input.tickets)&&input.tickets.length<=LIMITS.tickets?[...new Set(input.tickets)]:fail('invalid')):null;
+  const ticketIds='tickets'in input?ticketLinks(input.tickets):null;
   const addresses='addresses'in input?(Array.isArray(input.addresses)&&input.addresses.length<=LIMITS.addresses&&input.addresses.every(a=>typeof a==='string'&&a.length<=64)?[...new Set(input.addresses)]:fail('invalid')):[];
   const notes=opt(input,'notes',4000),title='title'in input?text(input.title,160):null,description='description'in input?text(input.description,4000,{empty:true}):null;
   if('set'in input&&(typeof input.set!=='string'||!REVIEW_ID.test(input.set)))fail('invalid');
@@ -276,7 +280,8 @@ export function createReviewStore(root,{tickets,db=openDb(path.join(root,'hub.db
   const sizes=Object.fromEntries(await Promise.all([...new Set(checks.map(c=>c.sha))].map(async sha=>[sha,(await stat(blobFile(sha))).size])));
   for(const {sha,type} of checks)if(type==='model/gltf-binary'){if(sizes[sha]>LIMITS.model)fail('too-large');if((await head(sha,12)).readUInt32LE(8)!==sizes[sha])fail('invalid');}
   for(const i of items)for(const v of i.variants)for(const m of v.media){m.size=sizes[m.sha256];if(m.poster)m.poster.size=sizes[m.poster.sha256];}
-  return write((data,now)=>{
+  return write(async(data,now)=>{
+   await projectsAndTickets(project,ticketIds||[]);
    for(const {sha,type} of checks){const old=Object.hasOwn(data.blobs,sha)?data.blobs[sha]:null;if(old&&old.type!==type)fail('invalid');data.blobs[sha]={type,size:sizes[sha]};}
    let s;
    if('set'in input){
@@ -290,7 +295,7 @@ export function createReviewStore(root,{tickets,db=openDb(path.join(root,'hub.db
      rounds:[{n:1,notes,addresses:[],publishedAt:now,publishedBy:by,items,feedback:{}}]};
     data.sets.push(s);
    }
-   return {...summary(s),url:`#review/${s.id}`};
+   return {...summary(s),url:`#review/${s.id}`,warnings:s.tickets.length?[]:['Link this review to an existing ticket in its project. Unlinked creation is deprecated; it remains supported.']};
   });
  }
  async function feedback(input,by){
@@ -349,9 +354,17 @@ export function createReviewStore(root,{tickets,db=openDb(path.join(root,'hub.db
   });
  }
  async function saveSet(input){
-  if(!onlyKeys(input,['id','rev','status','title'])||!Number.isSafeInteger(input.rev)||!('status'in input||'title'in input))fail('invalid');
+  if(!onlyKeys(input,['id','rev','status','title','tickets'])||!Number.isSafeInteger(input.rev)||!['status','title','tickets'].some(k=>k in input))fail('invalid');
   if('status'in input&&!['open','archived'].includes(input.status))fail('invalid');const title='title'in input?text(input.title,160):null;
-  return write((data,now)=>{const s=setOf(data,input.id);if(s.rev!==input.rev)fail('conflict');if('status'in input)s.status=input.status;if(title!==null)s.title=title;s.updatedAt=now;s.rev++;return summary(s);});
+  const ids='tickets'in input?ticketLinks(input.tickets):null;
+  return write(async(data,now)=>{
+   const s=setOf(data,input.id);if(s.rev!==input.rev)fail('conflict');
+   // Validate authoritative tracker state inside the review write queue. This is not a cross-store transaction.
+   if(ids!==null)await projectsAndTickets(s.project,ids);
+   if('status'in input)s.status=input.status;if(title!==null)s.title=title;if(ids!==null)s.tickets=ids;
+   s.updatedAt=now;s.rev++;return summary(s);
+  });
  }
+
  return {list,get,publish,feedback,saveSet,putChunk,hasBlob,media,frame};
 }

@@ -307,3 +307,41 @@ test('review store: a comment carries its own screenshots, and may be only a scr
  assert.deepEqual(d.comments[0].attachments,[{...shot,size:SHOT.length}]);assert.equal(d.comments[0].text,'');assert.equal('attachments'in d.comments[1],false);
  assert.equal((await r.media(sha(SHOT))).type,'image/png','a comment screenshot is served');
 });
+
+test('review metadata links: legacy omission/empty, same-project validation, revision guard and feedback invariants',async t=>{
+ const {r,tickets}=await stores(t),one=await tickets.create({project:'home-hub',title:'One'},'a'),two=await tickets.create({project:'home-hub',title:'Two'},'a'),foreign=await tickets.create({project:'sample-game',title:'Foreign'},'a');
+ const pub=await r.publish({project:'home-hub',title:'Legacy',items:[htmlItem()]},'a');assert.equal(pub.warnings.length,1);
+ await r.feedback({set:pub.id,round:1,item:'login',rev:0,status:'accept',variant:'a'},'alice');
+ const before=await r.get(pub.id),saved=await r.saveSet({id:pub.id,rev:before.rev,tickets:[one.id,one.id,two.id]});assert.deepEqual(saved.tickets,[one.id,two.id]);
+ const after=await r.get(pub.id);assert.deepEqual(after.rounds,before.rounds);assert.equal(after.feedbackPending,before.feedbackPending);assert.equal(after.rev,before.rev+1);
+ assert.equal((await r.list({project:'home-hub',ticket:one.id,status:'all'})).sets.length,1);assert.equal((await r.list({project:'sample-game',ticket:one.id,status:'all'})).sets.length,0);
+ await assert.rejects(r.saveSet({id:pub.id,rev:before.rev,tickets:[one.id]}),/conflict/);
+ for(const links of [[foreign.id],['HH-999'],['bad'],[null],{},Array(21).fill(one.id)])await assert.rejects(r.saveSet({id:pub.id,rev:after.rev,tickets:links}),/invalid/);
+ assert.deepEqual((await r.get(pub.id)).tickets,[one.id,two.id]);
+ const renamed=await r.saveSet({id:pub.id,rev:after.rev,title:'Renamed'});assert.deepEqual(renamed.tickets,[one.id,two.id]);
+ const cleared=await r.saveSet({id:pub.id,rev:renamed.rev,tickets:[]});assert.deepEqual(cleared.tickets,[]);assert.equal((await r.list({ticket:'unlinked',status:'all'})).sets.length,1);
+ const round=await r.publish({set:pub.id,tickets:[],items:[htmlItem()]},'a');assert.equal(round.warnings.length,1);assert.deepEqual((await r.get(pub.id)).tickets,[]);
+});
+
+test('review metadata HTTP and MCP parity: auth, invalid/cross-project links, stale revisions, discovery and index',async t=>{
+ const h=await hub(t),reader=await h.account('link-reader',[]),writer=await h.account('link-writer',['review:write']);
+ const one=await (await h.post('/api/tickets',{project:'home-hub',title:'Linked ticket'},h.admin)).json();
+ const foreign=await (await h.post('/api/tickets',{project:'sample-game',title:'Other project'},h.admin)).json();
+ const pub=await (await h.post('/api/review/publish',{project:'home-hub',title:'Link test',items:[htmlItem()]},writer.headers)).json();
+ const change={id:pub.id,rev:pub.rev,tickets:[one.id,one.id]};
+ assert.equal((await h.post('/api/review/sets',change,reader.headers)).status,403);
+ assert.equal((await h.post('/api/review/sets',change,{Cookie:h.admin.Cookie,Origin:'https://evil.example'})).status,403);
+ for(const tickets of [[foreign.id],['HH-999'],['bad']])assert.equal((await h.post('/api/review/sets',{...change,tickets},writer.headers)).status,400);
+ const saved=await (await h.post('/api/review/sets',change,writer.headers)).json();assert.deepEqual(saved.tickets,[one.id]);
+ assert.equal((await h.post('/api/review/sets',change,writer.headers)).status,409);
+ const rpc=async(a,name,args)=>(await (await fetch(h.origin+'/mcp',{method:'POST',headers:{'Content-Type':'application/json',...a.headers},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}})})).json()).result;
+ const got=(await rpc(reader,'review_get',{id:pub.id})).structuredContent;assert.equal(got.rev,saved.rev);
+ assert.equal((await rpc(reader,'review_set_save',{id:pub.id,rev:got.rev,tickets:[]})).isError,true);
+ for(const tickets of [[foreign.id],['HH-999']])assert.equal((await rpc(writer,'review_set_save',{id:pub.id,rev:got.rev,tickets})).isError,true);
+ assert.equal((await rpc(writer,'review_set_save',change)).isError,true);
+ const clear=await rpc(writer,'review_set_save',{id:pub.id,rev:got.rev,tickets:[]});assert.equal(clear.isError,false);assert.deepEqual(clear.structuredContent.tickets,[]);
+ const link=await rpc(writer,'review_set_save',{id:pub.id,rev:clear.structuredContent.rev,tickets:[one.id]});assert.equal(link.isError,false);
+ const discovery=(await rpc(reader,'review_list',{ticket:one.id,project:'home-hub',status:'all'})).structuredContent;assert.equal(discovery.sets[0].id,pub.id);
+ const search=(await rpc(reader,'search',{query:one.id,kind:'review'})).structuredContent;assert.ok(JSON.stringify(search).includes(pub.id));
+ const full=await (await fetch(h.origin+'/api/review/sets/'+pub.id,{headers:h.admin})).json();assert.equal(full.rounds.length,1);assert.deepEqual(full.rounds[0].feedback,{});
+});

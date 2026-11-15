@@ -8,6 +8,49 @@ pages), but it is attached to a project instead of a chat.
 
 Status: phases 1, 2 and 3 are implemented.
 
+## Ticket-first publishing and revision
+
+Start from **Request review · agent publishing instructions** on a ticket, or **Create review · agent instructions**
+on the Review page. The searchable picker is scoped to one project and shows ticket ID, title, project and status.
+The hub prepares instructions; an agent creates and uploads the artifacts and calls `review_publish`. It does not
+fabricate artifacts or create an empty round. The picker offers Create ticket; after creating it, the ticket page
+has Request review. Ticket creation and publication are separate requests: retain the created ticket ID on failure
+and retry publication without creating another ticket.
+
+Ticket detail lists linked reviews, their count and **Review feedback available**, derived from `feedbackPending`.
+Review pages show ticket links and **Change ticket links**, including on legacy unlinked sets. Unavailable ticket
+IDs remain stored and visibly labeled; replace/remove them in the picker. Linking cannot move a set to another project.
+The Review list accepts a ticket ID or `unlinked`; it composes with project/status filters and has Reset filters.
+Global search already indexes review ID/title and linked ticket IDs, and metadata updates refresh that index.
+
+`POST /api/review/sets` and MCP `review_set_save` accept `{id, rev, title?, status?, tickets?}`. `review_get` now
+also returns the set `rev`. `tickets` replaces all links, at most 20 input entries, duplicates normalized; every new
+link must exist in the set's project. Omission preserves links; `[]` remains valid for existing API callers.
+Stale revision returns HTTP 409 (MCP tool error); the picker refetches the revision and keeps the selection for an
+explicit retry. Read-only users retain navigation; metadata writes require existing review write authorization.
+Metadata saves publish no round and change no feedback timestamps. Tracker validation runs inside the review
+write queue against current tracker data, but this is not a transaction across tracker and review stores.
+
+Unlinked creation is deprecated in guidance, not rejected in this major: omitted/empty `tickets` and all legacy
+sets remain readable and revisable. Publication returns additive `warnings: []` or a linkage warning for an unlinked
+set. A future requirement would need an approved major change. No persisted shape changed: tickets, revision,
+mode, alignment and media-index anchors already exist, so no migration or data epoch change is needed.
+
+Choose `mode:choose` only for genuine alternatives. Use `mode:approve` for independent deliverables. Publish every
+asset/shot as separate, individually inspectable media with meaningful names and captions; a contact sheet may only
+supplement these. Use one item per independent decision, or several media files within one deliverable sharing a
+decision. Motion requires a playable clip. Revise the selected work by default, retaining item IDs and the same set.
+Include rejected/superseded artifacts only as clearly labeled `reference:true` context. References are commentable,
+excluded from choices/completion and never auto-approved. New rounds reset decisions; list only comment IDs actually
+addressed in `addresses`. Approval never closes a ticket, and archiving/reopening preserves decisions and comments.
+
+Media QA remains advisory, using existing captions and round notes: explain expected sound or authored silence,
+representative review intervals, and descriptive notes/transcripts for meaningful motion and audio. Open and listen
+to the actual uploaded media before publishing. Signature validation does not prove decode, streams or quality;
+muting is not evidence of missing audio, and browser video APIs cannot portably confirm audio stream presence.
+Optional workstation evidence should identify tool/version and exact blob hash. Quiet/silent work is never rejected
+solely for silence. No media-intent fields, automated QA verdicts, server probes or new dependencies are introduced.
+
 ## Phases
 
 | Phase | Content |
@@ -40,12 +83,12 @@ set R-<n>  {project, title, description, tickets[], status open|archived, rev, r
 ```
 
 - **Two kinds of item.** `mode:"choose"` (the default) shows alternatives and the owner takes one. `mode:"approve"`
-  shows deliverables to sign off one by one: the screens of a flow, clips, contact sheets. Each gets ✓ Approve,
+  shows deliverables to sign off one by one: the screens of a flow, individual clips or icons. Each gets ✓ Approve,
   or comments that send it back. The decision then has no `variant`; `approvals` maps each variant to `approved` or
   `changes`, and the status follows: `accept` when all are approved, `revise` when any has changes, `pending`
   otherwise (`reject` = redo the whole item, as before). Use approve whenever the variants are not alternatives.
 - `aligned:true` (image and video items) says every variant is the same shot: the same camera, framing and pixel
-  size (and, for clips, the same timing), such as one unit rendered before and after a fix. The page opens such an item in *Swipe*. A contact sheet or grid
+  size (and, for clips, the same timing), such as one unit rendered before and after a fix. The page offers *Swipe* after verifying matching actual dimensions and compatible clip durations. A contact sheet or grid
   is never aligned, even of the same subject, because its cells differ between variants: to make a before/after
   swipeable, publish one aligned item per shot rather than one sheet per variant.
 - `reference:true` marks a variant shown only for comparison, such as what is in production now. It can be commented
@@ -57,7 +100,7 @@ set R-<n>  {project, title, description, tickets[], status open|archived, rev, r
   pixels in the mockup's fixed viewport, and `snippet` is the start of the element's `outerHTML`, so the agent
   knows which element was meant. For images it is `{kind:'point', x, y}` with fractions in 0..1. For clips it is `{kind:'frame', t, x, y}`: the
   time in seconds and the point as fractions. For audio it is `{kind:'time', t}`. For 3D models
-  it is `{kind:'surface', …}` (see below). It may also be `null`, a comment on the whole variant.
+  it is `{kind:'surface', …}` (see below). Every anchor also stores the zero-based `media` index within its round/variant (legacy missing index means first media). It may also be `null`, a comment on the whole variant. No anchor format change is needed.
 - A decision is saved in one request, guarded by `rev`: the chosen variant, the status and the new comments.
   `accept` means take it as it is. `revise` means take it, plus the comments. `reject` means none of these;
   make new ones (it needs a note or a comment). `pending` saves comments without deciding.
@@ -84,11 +127,14 @@ time zone (site.json → `timeZone`, else the browser's).
 - **Nothing published yet.** The list explains what Review is for, lists the steps (a service account with
   `review:write`, the push script or MCP `review_publish`), offers a prompt to copy for a coding agent and the
   MCP connection snippet. An empty tab of a hub that has sets only says why that tab is empty.
-- **Comparing.** Each item with several variants has a switch: *Side by side* (the grid), *One at a time*
-  (one variant at full width with A / B / C tabs; ← → move between them; the default on a phone) and, for
-  image and video items whose pictures have one shape (aspect ratio within 1 %), *Swipe*: two variants in one frame with a
-  divider to drag (the mouse, a finger or the arrow keys move it; pick which two with the selects). Swipe is the
-  default for an `aligned` item; pictures of different shapes never get it. Pins are placed in the first two views.
+- **Comparing.** Genuine alternatives offer *Side by side* and *One at a time* (keyboard ← → tabs).
+  Independent approval deliverables use one-at-a-time navigation and do not synchronize playback or cameras.
+  Explicit aligned before/after approval against reference context remains comparable (one deliverable plus references).
+  *Swipe* additionally requires `aligned:true`, two distinct single-media blobs, equal observed pixel dimensions and,
+  for clips, durations within one frame (1/30 s). Unknown/failed metadata disables swipe with an explanation; an equal
+  aspect ratio alone is insufficient. Pick two distinct sides, move the labeled divider with arrow keys, or use
+  **Comment on left/right** to pause and open that source in single-media annotation at the same time. Return with
+  Swipe. Multi-media deliverables retain ordinary individual navigation; swipe never silently compares only file one.
 - **Deciding.** A bar under the header counts the round's decisions (taken, taken with changes, redo,
   undecided) and jumps to the next undecided item, in another kind tab if need be. Each item shows its saved
   state as a badge and a coloured frame, and one line says what to do while it is still undecided.
@@ -112,8 +158,10 @@ mark the item `aligned` when they are the same shot; a few seconds is enough, sl
 
 - **Playing in sync.** Under the item one bar drives every clip (🔈 on a variant's header picks whose sound you hear): ▶/⏸, one frame back and forward (1/30 s), a
   scrub bar, the time, the speed (1×, 0.5×, 0.25×) and the sound (off, or the soundtrack of one variant, so two
-  never play over each other). The first visible clip leads and the others follow it; a shorter clip loops on its
-  own. A click on a clip plays or pauses. Clips loop and start muted.
+  never play over each other). The first visible clip leads and the others follow it; playback stops at the end. A click on a clip plays or pauses. The first visible clip is audible after the user presses play; clips do not loop.
+  Independent approval deliverables play locally; hidden clips pause/mute. Switching the visible source carries
+  sound selection only if sound was enabled. Playback rejection displays a retry message and does not auto-retry;
+  buffering and decode failures are reported. Route/round/kind/view/media changes pause or dispose playback.
 - **Swipe** works as for images, with the two clips playing in step under the divider.
 - **Pins.** In comment mode a click pauses the clips and pins the comment to that time and point
   (`{kind:'frame', t, x, y}`). A pin is drawn while the clip is within a quarter of a second of its time; a click on
@@ -128,9 +176,9 @@ loudness, so a switch between them compares the music, not the volume. Audio ite
 
 - **Waveforms.** Each variant shows its waveform (decoded in the browser; a track over 64 MiB shows a flat line),
   a playhead and its pins. A click on a waveform seeks there.
-- **One audible at a time.** All tracks play in sync on one clock, like clips, and exactly one variant is heard:
-  the first at the start. 🔈 *Listen to B* on a variant switches the sound to it at the same moment; 🔊 on the
-  variant you hear mutes it and hands the sound to the next one. The sound select in the bar does the same, and
+- **One audible at a time.** Choose-mode tracks play in sync on one clock, like clips, and at most one variant is heard:
+  the first visible track is audible after the user presses play. 🔈 *Listen to B* selects that visible variant at the same moment; 🔊 on the
+  variant you hear mutes it. The sound select in the bar does the same, and
   can also turn the sound off.
 - **Pins.** In comment mode a click on the waveform pauses and pins the comment to that time (`{kind:'time', t}`).
 
@@ -248,13 +296,14 @@ Reads need any sign-in. Writes need write permission; API keys need the `review:
   `editComments` `[{id, text}]` replaces the text of saved comments, `deleteComments` `[id]` removes them; both only
   for the caller's own comments (`403` otherwise), an unknown id or one id in both lists is `400`.
   `rev` is the decision's rev (0 before the first save). Body up to 64 kB.
-- `POST /api/review/sets` `{id, rev, status?, title?}` → changes or archives a set.
+- `POST /api/review/sets` `{id, rev, status?, title?, tickets?}` → changes metadata or archives a set without publishing a round. Ticket replacement and revision semantics are described above.
 
 ## MCP
 
 - `review_list` (`read`): sets by project, ticket or status, or only those with `feedbackPending`.
 - `review_get` (`read`): a set with one round (latest by default): items, variants, decisions and comments
   with anchors.
+- `review_set_save` (`review:write`): metadata update with revision-guarded same-project ticket links; `review_get` includes the set revision.
 - `review_publish` (`review:write`): a new set or a new round. Binary files are uploaded first with
   `scripts/review-push.mjs`. Small HTML mockups can be passed inline.
 

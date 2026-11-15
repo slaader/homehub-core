@@ -28,10 +28,10 @@ const write=(path,options,run)=>({method:'POST',path,scope:'review:write',error:
 export default {
  id:'review',title:'Review',
  mcpInstructions:[
-  'Review (variants published for a person to compare and decide): review_list with feedbackPending:true finds decisions waiting for you. review_get returns a set with the decision and comments per item.',
-  {scope:'review:write',text:'With review:write: review_publish creates a set, or the next round of one, listing the comment ids that round answers.'},
+  'Review: review_list feedbackPending:true finds feedback; review_get reads decisions and comments.',
+  {scope:'review:write',text:'With review:write: review_publish publishes individual assets or selected revisions with addresses; review_set_save links tickets via rev. Use choose for alternatives, approve for deliverables; inspect motion and listen.'},
  ],
- assets:['review-view.js','review.css','vendor/model-viewer.min.js','i18n-en-review.js'],
+ assets:['review-view.js','review-media.js','review-guidance.js','review.css','vendor/model-viewer.min.js','i18n-en-review.js'],
  nav:[{group:'Project Tracker',hash:'review',label:'Review',view:'review-view.js#reviewPage',order:43}],
  setup:hub=>({review:createReviewStore(path.join(hub.stateDirectory,'review'),{tickets:hub.state('tracker').tickets,db:hub.db})}),
  routes:[
@@ -73,5 +73,5 @@ export default {
   ['PUT','/api/review/blobs/<sha256>?offset=&size=','review:write','Nahrání souboru po částech (nejvýš 8 MiB na požadavek).'],
   ['POST','/api/review/publish','review:write','Nová sada {project, title, items} nebo další kolo {set, items, addresses?}.'],
   ['POST','/api/review/feedback','review:write','Rozhodnutí k položce {set, round, item, rev, variant, status, note?, comments?, editComments?, deleteComments?}.'],
-  ['POST','/api/review/sets','review:write','Archivace nebo přejmenování sady {id, rev, status?, title?}.']]}],
+  ['POST','/api/review/sets','review:write','Archivace, přejmenování nebo propojení tiketů {id, rev, status?, title?, tickets?}.']]}],
 };

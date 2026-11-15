@@ -5,7 +5,13 @@
 // file instead of a sha256:  {"file":"mockups/login-a.html"}  (relative to review.json; type from the extension).
 // A 3D model (.glb) or a clip (.mp4, .webm) may name its still the same way:  {"file":"units/unit-a.glb","poster":"units/unit-a.png"}.
 // Files are hashed, blobs the hub already has are skipped, the rest go up in 4 MiB chunks, then the set is
-// published. The token needs the review:write scope. Nothing is printed of the token. No dependencies.
+// published. Prefer existing same-project tickets; retain their IDs if publication needs retrying.
+// Use choose only for genuine alternatives, approve for independent deliverables; publish each asset/shot
+// separately (contact sheets are supplemental), and playable clips for motion. Revise selected work in the
+// same set with stable item IDs; rejected context is reference:true. In captions/notes explain intended sound
+// or silence and representative review intervals. Open, inspect and listen to the actual files before publishing;
+// signatures do not prove decode or audio quality. QA remains advisory. See docs/review.md.
+// The token needs the review:write scope. Nothing is printed of the token. No dependencies.
 import {readFile,stat,open} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
@@ -68,6 +74,7 @@ async function main(argv){
  const r=await fetch(url+'/api/review/publish',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify(manifest)});
  const body=await r.json().catch(()=>({}));
  if(!r.ok)die(`publish: HTTP ${r.status} ${body.error?.message||''}`);
+ for(const warning of body.warnings||[])console.error('review-push: '+warning);
  console.log(JSON.stringify({id:body.id,round:body.round?.n,url:`${url}/${body.url}`},null,1));
 }
 if(import.meta.url===`file://${process.argv[1]}`)main(process.argv.slice(2)).catch(e=>die(e.message));

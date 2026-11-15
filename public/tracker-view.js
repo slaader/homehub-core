@@ -1,3 +1,4 @@
+import {reviewDialog} from './review-guidance.js';
 // Project Tracker: a development tracker for your own projects.
 //   #projects        projects overview: health ring, activity, next release, create / edit a project
 //   #projects/<id>   one project: health, activity, next release and a board of its items
@@ -396,12 +397,12 @@ export function backPath(tk,projects,origin=originHash){
  return el('a',{href:'#items',class:'tk-back'},`← ${t('Položky')}`);
 }
 async function ticketPage(wrap,ctx){
- const result=await load(wrap,Promise.all([api('/api/tickets/'+encodeURIComponent(ctx.id)),api('/api/tickets?limit=1'),api('/api/tickets/people').catch(()=>null)]));if(!result)return;
+ const result=await load(wrap,Promise.all([api('/api/tickets/'+encodeURIComponent(ctx.id)),api('/api/tickets?limit=1'),api('/api/tickets/people').catch(()=>null),api('/api/review?'+new URLSearchParams({ticket:ctx.id,status:'all'})).catch(()=>null)]));if(!result)return;
  // What is left to say about files that did not reach this item (from the new-item dialog, or from an upload that
  // ended after its page was left) is said here, once.
  // It waits for a page of that item that is on the screen: a view the user already left does not use it up.
- const [tk,meta,people]=result,mine=wrap.isConnected&&prefs.notices.has(tk.id),notice=mine?{notice:prefs.notices.get(tk.id),noticeError:true}:{};if(mine)prefs.notices.delete(tk.id);
- renderTicket(wrap,{...ctx,meta,people:peopleNames(people)},tk,{fields:{},comment:'',...notice});
+ const [tk,meta,people,reviews]=result,mine=wrap.isConnected&&prefs.notices.has(tk.id),notice=mine?{notice:prefs.notices.get(tk.id),noticeError:true}:{};if(mine)prefs.notices.delete(tk.id);
+ renderTicket(wrap,{...ctx,meta,reviews:Array.isArray(reviews?.sets)?reviews:null,people:peopleNames(people)},tk,{fields:{},comment:'',...notice});
 }
 // Unsaved input on a ticket page: the comment box and every edit-form field that differs from what was rendered,
 // whether the edit form is open, and which field the keyboard is in (and where). A write re-renders from
@@ -560,7 +561,7 @@ function renderTicket(wrap,ctx,tk,keep){
    el('div',{class:'tk-quick'},quick)),
   msg,
   el('div',{class:'tk-detail'},
-   el('div',{class:'acc-stack'},main,comments,timeline(tk)),
+   el('div',{class:'acc-stack'},main,el('section',{class:'acc-card'},el('h3',{},'Review'+(ctx.reviews?' ('+ctx.reviews.sets.length+')':'')),ctx.reviews?ctx.reviews.sets.map(s=>el('p',{},el('a',{href:'#review/'+s.id},s.id+' · '+s.title),s.feedbackPending?el('span',{class:'sec-pill warn'},'Review feedback available'):null)):el('p',{},'Review links could not be loaded. Reopen this ticket to retry.'),canWrite?el('button',{type:'button',class:'acc-btn',onclick:()=>reviewDialog({project:tk.project,ticket:tk})},'Request review · agent publishing instructions'):el('p',{},'Publishing requires review write access.')),comments,timeline(tk)),
    el('div',{class:'acc-stack'},
     el('section',{class:'acc-card'},el('h3',{},t('Údaje')),el('dl',{class:'acc-dl'},
      fact('Release',tk.release?el('a',{class:'sys-link',href:'#releases',onclick:()=>{filters.project=tk.project;}},tk.release):'—'),fact(t('Řeší'),el('span',{class:'tk-fact-row'},tk.assignee?[el('span',{class:'tk-avatar','aria-hidden':'true'},initials(tk.assignee)),tk.assignee]:'—',assignMe)),fact(t('Nahlásil'),tk.reporter||'—'),
@@ -794,3 +795,5 @@ function editProject(p,done){
 // Page entry for the shell (app.js): every page module exports (context) => Node, and the server's UI
 // manifest names it. context = {me, page, sub, device, site}.
 export const trackerPage=({me,page,sub})=>trackerView(me,page,sub);
+
+export async function createReviewTicket(project){const meta=await api('/api/tickets?limit=1');return newTicket(meta.projects,project);}
