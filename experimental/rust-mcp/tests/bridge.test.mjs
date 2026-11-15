@@ -70,3 +70,22 @@ test('timed-out execution still occupies its slot and is never retried',async t=
  assert.equal(count,1);finish();await new Promise(resolve=>setImmediate(resolve));
  assert.deepEqual(await rpc(f.bridge.socketPath,{v:1,operation:'authenticate',authorization:f.authorization}),{ok:true});
 });
+
+test('persistent connection reauthenticates each frame and catalog revisions follow mutations',async t=>{
+ const f=await fixture(t);const socket=net.createConnection(f.bridge.socketPath);t.after(()=>socket.destroy());
+ await new Promise((resolve,reject)=>{socket.once('connect',resolve);socket.once('error',reject);});
+ const send=extra=>new Promise((resolve,reject)=>{
+  let buffer=Buffer.alloc(0);const timer=setTimeout(()=>done(new Error('frame deadline')),2000);
+  const done=(error,value)=>{clearTimeout(timer);socket.off('data',data);socket.off('error',fail);error?reject(error):resolve(value);};
+  const fail=e=>done(e);const data=chunk=>{buffer=Buffer.concat([buffer,chunk]);if(buffer.length>=4&&buffer.length===buffer.readUInt32BE()+4)done(null,JSON.parse(buffer.subarray(4)));};
+  socket.on('data',data);socket.once('error',fail);
+  const raw=Buffer.from(JSON.stringify({v:1,persistent:true,operation:'list',authorization:f.authorization,...extra}));const prefix=Buffer.alloc(4);prefix.writeUInt32BE(raw.length);socket.write(Buffer.concat([prefix,raw]));
+ });
+ const first=await send({});assert.ok(first.result.tools.length);const revision=first.result.revision;
+ const cached=await send({catalogRevision:revision});assert.equal(cached.result.revision,revision);assert.equal(cached.result.tools,undefined);
+ await f.store.updateAccount({id:f.account.id,scopes:['tickets:write']});
+ assert.ok((await send({catalogRevision:revision})).result.scopes.includes('tickets:write'));
+ f.business.catalog().push({name:'new_extension',scope:'read'});
+ const changed=await send({catalogRevision:revision});assert.notEqual(changed.result.revision,revision);assert.equal(changed.result.tools.at(-1).name,'new_extension');
+ await f.store.revokeKey({id:f.issued.key.id});assert.deepEqual(await send({catalogRevision:revision}),{ok:false,status:401});
+});

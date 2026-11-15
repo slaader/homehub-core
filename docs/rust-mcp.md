@@ -33,9 +33,12 @@ from the catalog. Denied writes must reach that check and its audit path. Initia
 instructions and server identity also come from the same business factory and registry.
 
 This is a transport/protocol rewrite with shared Node business execution, **not a full Rust
-Home Hub or Rust ticket-store implementation**. Each request pays an additional Unix socket
-connect and JSON encode/decode round trip. Catalog requests transport the full registry to
-Rust before filtering. Report the combined Node-plus-Rust CPU/RSS and request latency as well
+Home Hub or Rust ticket-store implementation**. Each request pays an additional JSON encode/decode round trip over a pooled Unix socket.
+Connections carry one operation at a time, are bounded by HTTP admission, and are reused
+for up to five idle seconds. Failures discard the connection without replaying the operation.
+Catalog requests send a content revision: Node always resolves current scopes and hashes the
+live registry; unchanged descriptors stay cached in Rust. A changed registry sends the full
+catalog before Rust filters it. This cache never stores principals or authorization decisions. Report the combined Node-plus-Rust CPU/RSS and request latency as well
 as separate process measurements; Node process memory is still necessary. There is no speedup
 claim here. The independent benchmark must use the same live business state and credentials,
 exact request corpus, warmups, concurrency, connection reuse and release binary.
@@ -118,7 +121,7 @@ POST requests with an Origin header are rejected unless its exact value was supp
 | Absolute TCP connection lifetime | 60 seconds, including keep-alive and response writes |
 | IPC request / response | 128 KiB / 16 MiB |
 | IPC sockets / active business executions | 128 each |
-| IPC operation / socket lifetime | 30 seconds, including connect/read/write |
+| IPC operation / idle interval | 30 seconds, including connect/read/write |
 | Unix directory / socket | owner-only 0700 directory / 0600 socket |
 | Unix socket path | absolute; at most 100 UTF-8 bytes on Node side |
 
@@ -130,8 +133,13 @@ by the current UID, or the bridge creates its final directory with mode 0700. It
 symlinked final directories and existing socket paths. Parent directories are trusted.
 The socket protects access by other users; same-user processes are inside this trust boundary.
 
-Wire format: one connection per operation, one 4-byte unsigned big-endian length followed
-by one UTF-8 JSON payload in each direction. There is no multiplexing or connection pool.
+Wire format: one 4-byte unsigned big-endian length followed by one UTF-8 JSON payload
+in each direction. Requests with `persistent:true` keep the connection for the next sequential
+operation; omitted/false retains one-shot compatibility. No pipelining or multiplexing is used.
+The bridge deadline covers each operation and idle interval. A `list` request can include
+`catalogRevision`; the result always includes current scopes and revision, and omits `tools`
+only when the revision matches. The Rust cache keeps a snapshot for each in-flight request
+so concurrent registry updates cannot mix a revision with the wrong descriptors.
 Input fields are strictly allowlisted; `v` must be 1:
 
 ```json

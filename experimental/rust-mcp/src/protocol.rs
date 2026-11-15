@@ -30,7 +30,11 @@ pub fn error(id: Value, code: i64, message: &str) -> Value {
     json!({"jsonrpc":"2.0","id":id,"error":{"code":code,"message":message}})
 }
 pub fn result(id: Value, value: Value) -> Value {
-    json!({"jsonrpc":"2.0","id":id,"result":value})
+    Value::Object(serde_json::Map::from_iter([
+        (String::from("jsonrpc"), Value::String(String::from("2.0"))),
+        (String::from("id"), id),
+        (String::from("result"), value),
+    ]))
 }
 fn immediate(status: u16, value: Value) -> Action {
     Action::Immediate {
@@ -51,7 +55,7 @@ fn short(value: Option<&Value>) -> String {
 /// notifications, ignored response messages, unsupported batches and permissive request ids.
 /// It does not claim schema validation of business arguments (that is shared Node code).
 pub fn parse(raw: &[u8]) -> Action {
-    let msg: Value = match serde_json::from_str(&String::from_utf8_lossy(raw)) {
+    let mut msg: Value = match serde_json::from_str(&String::from_utf8_lossy(raw)) {
         Ok(value) => value,
         Err(_) => return immediate(400, error(Value::Null, -32700, "Parse error")),
     };
@@ -99,21 +103,19 @@ pub fn parse(raw: &[u8]) -> Action {
                     error(id, -32602, &format!("Unknown tool: {}", short(name))),
                 );
             }
-            let arguments = params
-                .and_then(|p| p.get("arguments"))
+            let name = name.unwrap().as_str().unwrap().to_owned();
+            let arguments = msg
+                .pointer_mut("/params/arguments")
+                .map(Value::take)
                 .filter(|v| !v.is_null())
-                .cloned()
                 .unwrap_or_else(|| json!({}));
             if !arguments.is_object() {
                 // Preserve Node's unknown-name-before-invalid-arguments error precedence.
-                return Action::InvalidArguments {
-                    id,
-                    name: name.unwrap().as_str().unwrap().to_owned(),
-                };
+                return Action::InvalidArguments { id, name };
             }
             Action::Call {
                 id,
-                name: name.unwrap().as_str().unwrap().to_owned(),
+                name,
                 arguments,
             }
         }
@@ -129,7 +131,7 @@ pub fn parse(raw: &[u8]) -> Action {
 }
 
 impl Action {
-    pub fn bridge_request(&self, authorization: &str) -> Value {
+    pub fn bridge_request(&mut self, authorization: &str) -> Value {
         let mut request = json!({"v":1,"authorization":authorization,"operation":"authenticate"});
         match self {
             Self::Initialize { .. } => request["operation"] = json!("initialize"),
@@ -139,7 +141,7 @@ impl Action {
             } => {
                 request["operation"] = json!("call");
                 request["name"] = json!(name);
-                request["arguments"] = arguments.clone();
+                request["arguments"] = arguments.take();
             }
             Self::Immediate { .. } => {}
             Self::InvalidArguments { name, .. } => {
@@ -152,7 +154,7 @@ impl Action {
 
     /// Rust owns method dispatch, protocol selection and catalog scope filtering.
     /// Node returns initialization text/server identity and unfiltered live registry descriptors.
-    pub fn finish(self, bridge: Value) -> (u16, Option<Value>) {
+    pub fn finish(self, mut bridge: Value) -> (u16, Option<Value>) {
         let id = match &self {
             Self::Immediate { .. } => Value::Null,
             Self::Initialize { id, .. }
@@ -202,36 +204,60 @@ impl Action {
                 )
             }
             Self::List { id } => {
-                let Some(scopes) = bridge.pointer("/result/scopes").and_then(Value::as_array)
+                let scopes_value = bridge
+                    .pointer_mut("/result/scopes")
+                    .map(Value::take)
+                    .unwrap_or(Value::Null);
+                let Some(scopes) = scopes_value.as_array() else {
+                    return (
+                        502,
+                        Some(error(id, -32603, "Invalid business bridge response")),
+                    );
+                };
+                let Value::Array(tools) = bridge
+                    .pointer_mut("/result/tools")
+                    .map(Value::take)
+                    .unwrap_or(Value::Null)
                 else {
                     return (
                         502,
                         Some(error(id, -32603, "Invalid business bridge response")),
                     );
                 };
-                let Some(tools) = bridge.pointer("/result/tools").and_then(Value::as_array) else {
-                    return (
-                        502,
-                        Some(error(id, -32603, "Invalid business bridge response")),
-                    );
-                };
                 let visible: Vec<Value> = tools
-                    .iter()
+                    .into_iter()
                     .filter(|tool| {
                         tool.get("scope")
                             .is_some_and(|scope| scopes.contains(scope))
                     })
-                    .map(|tool| {
-                        let mut tool = tool.clone();
+                    .map(|mut tool| {
                         if let Some(map) = tool.as_object_mut() {
                             map.remove("scope");
                         }
                         tool
                     })
                     .collect();
-                (200, Some(result(id, json!({"tools":visible}))))
+                (
+                    200,
+                    Some(result(
+                        id,
+                        Value::Object(serde_json::Map::from_iter([(
+                            String::from("tools"),
+                            Value::Array(visible),
+                        )])),
+                    )),
+                )
             }
-            Self::Call { id, .. } => (200, Some(result(id, bridge["result"].clone()))),
+            Self::Call { id, .. } => (
+                200,
+                Some(result(
+                    id,
+                    bridge
+                        .get_mut("result")
+                        .map(Value::take)
+                        .unwrap_or(Value::Null),
+                )),
+            ),
             Self::InvalidArguments { id, name } => {
                 let message = if bridge.pointer("/result/known") == Some(&Value::Bool(true)) {
                     "arguments must be an object".to_owned()
@@ -280,7 +306,7 @@ mod tests {
     #[test]
     fn protocol_negotiation_is_rust_owned() {
         for (asked, expected) in [("2025-03-26", "2025-03-26"), ("unknown", PROTOCOLS[0])] {
-            let action = parse(json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":asked}}).to_string().as_bytes());
+            let mut action = parse(json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":asked}}).to_string().as_bytes());
             assert_eq!(
                 action.bridge_request("Bearer example")["operation"],
                 "initialize"
@@ -300,7 +326,7 @@ mod tests {
     }
     #[test]
     fn calls_pass_only_business_operation() {
-        let action=parse(br#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ticket_get","arguments":{"id":"APP-1"}}}"#);
+        let mut action=parse(br#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ticket_get","arguments":{"id":"APP-1"}}}"#);
         let request = action.bridge_request("Bearer example");
         assert_eq!(request["operation"], "call");
         assert!(request.get("method").is_none());

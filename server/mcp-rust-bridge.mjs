@@ -1,6 +1,7 @@
 // Experimental, opt-in business bridge. It is never imported by the normal HTTP endpoint.
-// No JSON-RPC parsing here: Rust sends a single already-dispatched operation per connection.
+// No JSON-RPC parsing here: Rust sends sequential already-dispatched operations.
 import net from 'node:net';
+import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {mkdir,lstat,chmod,unlink} from 'node:fs/promises';
 import {apiBearerOf} from './access-store.mjs';
@@ -29,7 +30,7 @@ export async function createRustMcpBridge({socketPath,accessStore,business,limit
  try{await lstat(socketPath);throw new Error('Socket path already exists; refusing to replace it.');}catch(e){if(e.code!=='ENOENT')throw e;}
  const sockets=new Set();let closed=false,identity,executions=0;
  async function execute(input){
-  if(!plain(input)||input.v!==1||typeof input.operation!=='string'||Object.keys(input).some(k=>!['v','operation','authorization','name','arguments'].includes(k)))return fault(-32600,'Invalid bridge request');
+  if(!plain(input)||(input.persistent!==undefined&&typeof input.persistent!=='boolean')||(input.catalogRevision!==undefined&&(typeof input.catalogRevision!=='string'||!/^([a-f0-9]{64})$/.test(input.catalogRevision)))||input.v!==1||typeof input.operation!=='string'||Object.keys(input).some(k=>!['v','operation','authorization','name','arguments','persistent','catalogRevision'].includes(k)))return fault(-32600,'Invalid bridge request');
   // Take no principal supplied by Rust. Re-resolve account disable/revoke/scope changes live.
   const token=apiBearerOf(input.authorization),principal=token?accessStore.verifyKey(token):null;
   if(principal?.authKind!=='api-key')return {ok:false,status:401};
@@ -37,7 +38,12 @@ export async function createRustMcpBridge({socketPath,accessStore,business,limit
    switch(input.operation){
     case 'authenticate':return {ok:true};
     case 'initialize':return {ok:true,result:await business.initialize(principal)};
-    case 'list':return {ok:true,result:{scopes:principal.scopes,tools:await business.catalog()}};
+    case 'list':{
+     const tools=await business.catalog();
+     const serialized=JSON.stringify(tools);
+     const revision=createHash('sha256').update(serialized).digest('hex');
+     return {ok:true,result:{scopes:principal.scopes,revision,...(input.catalogRevision===revision?{}:{tools:JSON.parse(serialized)})}};
+    }
     case 'lookup':{
      if(typeof input.name!=='string')return fault(-32602,'Invalid tool name');
      return {ok:true,result:{known:(await business.catalog()).some(tool=>tool.name===input.name)}};
@@ -53,7 +59,7 @@ export async function createRustMcpBridge({socketPath,accessStore,business,limit
  const server=net.createServer(socket=>{
   if(closed||sockets.size>=bounds.connections||executions>=bounds.connections){socket.destroy();return;}
   sockets.add(socket);socket.on('error',()=>{});socket.once('close',()=>sockets.delete(socket));
-  const deadline=setTimeout(()=>socket.destroy(),bounds.timeoutMs);deadline.unref();socket.once('close',()=>clearTimeout(deadline));
+  let deadline;const arm=()=>{clearTimeout(deadline);deadline=setTimeout(()=>socket.destroy(),bounds.timeoutMs);deadline.unref();};arm();socket.once('close',()=>clearTimeout(deadline));
   let expected=null,buffer,length=0,header=Buffer.alloc(0),dispatched=false;
   socket.on('data',chunk=>{
    if(dispatched){socket.destroy();return;}
@@ -68,7 +74,7 @@ export async function createRustMcpBridge({socketPath,accessStore,business,limit
    length+=chunk.length;
    if(length>expected){socket.destroy();return;}
    chunk.copy(buffer,length-chunk.length);if(length!==expected)return;
-   dispatched=true;socket.pause();
+   dispatched=true;socket.pause();arm();
    let input;try{input=JSON.parse(buffer.toString('utf8'));}catch{socket.destroy();return;}
    buffer=null;
    // The execution is not cancelled by a disconnected client; a write may already have happened.
@@ -81,7 +87,14 @@ export async function createRustMcpBridge({socketPath,accessStore,business,limit
     let bytes;try{bytes=Buffer.from(JSON.stringify(output));}catch{bytes=Buffer.from(JSON.stringify(fault(-32603,'Internal error')));}
     if(bytes.length>bounds.responseBytes)bytes=Buffer.from(JSON.stringify(fault(-32603,'Bridge response exceeds configured limit')));
     if(bytes.length>bounds.responseBytes){socket.destroy();return;}
-    const prefix=Buffer.alloc(4);prefix.writeUInt32BE(bytes.length);socket.end(Buffer.concat([prefix,bytes]),()=>socket.destroy());
+    const prefix=Buffer.alloc(4);prefix.writeUInt32BE(bytes.length);
+    const frame=Buffer.concat([prefix,bytes]);
+    if(input.persistent===true){
+     socket.write(frame,()=>{
+      if(socket.destroyed)return;
+      expected=null;buffer=null;length=0;header=Buffer.alloc(0);dispatched=false;arm();socket.resume();
+     });
+    }else socket.end(frame,()=>socket.destroy());
    }).catch(()=>socket.destroy()).finally(()=>{executions--;});
   });
  });
