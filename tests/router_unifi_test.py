@@ -184,7 +184,7 @@ class UnifiTests(unittest.TestCase):
   census = [{'mac': 'aa:bb:cc:dd:ee:ff', 'ip': '10.0.0.9', 'name': 'x', 'connection': 'Unknown', 'presence': 'lease-only'}]
   previous = {'schemaVersion': 1, 'source': 'UniFi Network API', 'status': 'ok', 'observedAt': '2026-10-30T08:49:01+00:00', 'devices': census, 'unifiDevices': [{'name': 'Gateway', 'state': 'ONLINE'}]}
   snapshot, written = self.failed_collect(previous)
-  self.assertEqual((snapshot['status'], snapshot['clients'], snapshot['hardware']), ('unavailable', census, previous['unifiDevices']), 'the 1.x census and gear, under their 2.0 names')
+  self.assertEqual((snapshot['status'], snapshot['clients'], snapshot['hardware']), ('unavailable', census, previous['unifiDevices']), 'the legacy census and gear, under their current names')
   self.assertEqual(written['schemaVersion'], 2)
   self.assertNotIn('devices', written); self.assertNotIn('unifiDevices', written)
 if __name__ == '__main__': unittest.main()

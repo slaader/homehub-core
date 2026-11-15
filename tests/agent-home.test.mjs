@@ -47,7 +47,7 @@ test('buildHome and deviceList: agent only where the agent module names the devi
  const plain=buildHome({site:SITE,thermo:quiet,now});
  const home=buildHome({site:SITE,thermo:quiet,now,agentNow:now,hubVersion:'1.6.0',agents:{mini:{lastReportAt:at,agentVersion:'1.6.0',parts:{heartbeat:{receivedAt:at,interval:60}}}}});
  assert.deepEqual(home.devices.map(m=>[m.id,m.agent?.freshness??null]),[['mini','fresh'],['studio',null],['mini_server',null],['nas',null],['router',null]]);
- assert.deepEqual(home.devices.map(m=>m.online),plain.devices.map(m=>m.online),'a fresh heartbeat is not online (the owner\'s decision for 1.x)');
+ assert.deepEqual(home.devices.map(m=>m.online),plain.devices.map(m=>m.online),'a fresh heartbeat is not online (the owner\'s decision for legacy)');
  assert.deepEqual(without(home.devices,'agent'),without(plain.devices,'agent'));
  const list=deviceList({site:SITE,home});
  assert.deepEqual(list.devices.map(m=>m.agent?.freshness??null),['fresh',null,null,null,null]);

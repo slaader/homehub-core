@@ -263,7 +263,7 @@ test('device API over HTTP: home:write for keys, a write session for people, sit
   const r=await h.post('/api/home/devices',{device:pi},headers);assert.equal(r.status,403);assert.equal((await r.json()).error.code,'SCOPE_REQUIRED');
   assert.equal((await h.post('/api/home/devices/remove',{id:'pi-hole',base:'0'.repeat(64)},headers)).status,403);
   assert.equal((await h.post('/api/home/runtime',{device:'mini',stack:STACK},headers)).status,403);}
- // The 1.x routes are gone: not found, for a key as for a person, whatever the key's scopes; a path with a route that
+ // The legacy routes are gone: not found, for a key as for a person, whatever the key's scopes; a path with a route that
  // keys may not use is still refused.
  for(const headers of [writer.headers,reader.headers,legacy])for(const url of ['/api/home/machines','/api/home/machines/remove']){
   const r=await h.post(url,{machine:pi},headers);assert.equal(r.status,404,url);assert.equal((await r.json()).error.code,'NOT_FOUND');}
@@ -311,7 +311,7 @@ test('device API over HTTP: home:write for keys, a write session for people, sit
  assert.equal((await h.post('/api/home/devices/remove',{id:'pi-hole',extra:1},h.admin)).status,400);
  const spare=await (await h.post('/api/home/devices',{device:{id:'spare',name:'Spare'}},writer.headers)).json();assert.equal(spare.created,true);
  assert.deepEqual(await (await h.post('/api/home/devices/remove',{id:'spare'},h.admin)).json(),{ok:true,id:'spare',removed:true},'a session removes without base');
- // A person whose role writes but has no home:write removes as in 1.x (the overview offers the button to canWrite).
+ // A person whose role writes but has no home:write removes as in legacy (the overview offers the button to canWrite).
  const {role}=await (await h.post('/api/admin/roles',{name:'Tickets only',scopes:['tickets:write']},h.admin)).json();
  const {initialPassword}=await (await h.post('/api/admin/users',{username:'bob',role:role.id},h.admin)).json();
  const bobLogin=await h.post('/api/session',{username:'bob',password:initialPassword});assert.equal(bobLogin.status,200);

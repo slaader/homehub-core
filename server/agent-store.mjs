@@ -14,7 +14,7 @@
 //   key's first report; a report after no news; a changed agentVersion or platform, each of these three at most
 //   once per key and event per ten minutes). Never a body or a token.
 // Issuing and revoking a key go to access-audit.jsonl, beside the other credentials.
-// Schema 1 of both files is what 1.x wrote, with its own word for a device in the keys and in revokedBy
+// Schema 1 of both files is what legacy wrote, with its own word for a device in the keys and in revokedBy
 // (server/state-forward.mjs). Each file is read once in that form and written in this one, at start.
 import {readFileSync,readdirSync,statSync} from 'node:fs';
 import {mkdir,writeFile,rename,appendFile} from 'node:fs/promises';
@@ -62,10 +62,10 @@ function loadAgents(file){
  if(!plain(doc)||doc.schemaVersion!==AGENTS_SCHEMA||!Array.isArray(doc.agents))throw new Error('Invalid agent key store (agents.json)');
  return doc;
 }
-// agents.json as 1.x wrote it → schema 2: the same keys with the same ids, hashes and stamps, so every key keeps working.
+// agents.json as legacy wrote it → schema 2: the same keys with the same ids, hashes and stamps, so every key keeps working.
 export const forwardAgents=doc=>({...doc,schemaVersion:AGENTS_SCHEMA,agents:doc.agents.map(a=>{
  if(!plain(a))return a;const next=forwardKeys(a,'device','deviceCreatedAt');return typeof next.revokedBy==='string'&&forwardWord(next.revokedBy)!==next.revokedBy?{...next,revokedBy:forwardWord(next.revokedBy)}:next;})});
-// One device's report file as 1.x wrote it → schema 2, or null when it is not one.
+// One device's report file as legacy wrote it → schema 2, or null when it is not one.
 export const forwardReport=doc=>plain(doc)&&doc.schemaVersion===1&&typeof doc[V1.device]==='string'?{...forwardKeys(doc,'device'),schemaVersion:AGENT_REPORTS_SCHEMA}:null;
 const view=a=>({id:a.id,device:a.device,name:a.name,prefix:a.prefix,createdAt:a.createdAt,createdBy:a.createdBy??null,revokedAt:a.revokedAt??null,revokedBy:a.revokedBy??null});
 const usable=a=>plain(a)&&AGENT_ID.test(a.id)&&/^[a-f0-9]{64}$/.test(a.hash)&&DEVICE_ID.test(a.device)&&!a.revokedAt;
@@ -129,7 +129,7 @@ export function createReportStore(directory,{now=Date.now,log=console}={}){
  const dir=path.join(directory,'agent');
  const records=new Map(),flushedAt=new Map(),dirty=new Set(),newer=new Set();
  // What is on disk is loaded once. A file written by a newer hub is left as it is and never overwritten here; one
- // written by 1.x is written again in this schema before anything else reads it.
+ // written by legacy is written again in this schema before anything else reads it.
  let names=[];try{names=readdirSync(dir).filter(f=>f.endsWith('.json')&&DEVICE_ID.test(f.slice(0,-5)));}catch(e){if(e.code!=='ENOENT')throw e;}
  for(const f of names){const device=f.slice(0,-5);
   try{let doc=JSON.parse(readFileSync(path.join(dir,f),'utf8'));

@@ -26,19 +26,19 @@ flowchart LR
   A -- "POST /api/agent/report<br>Bearer hha_…, verified TLS" --> G[request pipeline<br>agent gate]
   G --> S[(state/agent/&lt;device&gt;.json)]
   S --> V[systems, security,<br>home.runtimes readers]
-  C[collectors over SSH<br>unchanged through 1.x] --> V
+  C[collectors over SSH<br>unchanged through this major version] --> V
 ```
 
 ## What stays as it is
 
-- **The NAS** stays agent-less, on the SSH `nas-probe.sh` (which calls `sudo midclt`) through 1.x; nothing installs
+- **The NAS** stays agent-less, on the SSH `nas-probe.sh` (which calls `sudo midclt`) through this major version; nothing installs
   Node on an appliance. A reader for the TrueNAS API is separate, later work that this design does not cover.
 - **The router**: `scripts/collect-router-unifi.py` is not rewritten and keeps running where it runs.
 - **No ping.** Reachability, when it comes, is a separate TCP signal and is not part of this design.
 - **No probe field in `plugin.json`** in this series: an older core refuses a manifest field it does not know.
-- **Old paths keep working through 1.x**: `plugin.json → hostAgents`, `scripts/install-host-agent.mjs --plugin`, the
+- **Old paths keep working through this major version**: `plugin.json → hostAgents`, `scripts/install-host-agent.mjs --plugin`, the
   SSH collectors and the SSH and WinRM telemetry providers. They may be deprecated in a MINOR and are removed only in
-  2.0, after the owner agrees. No plugin manifest that 1.x accepts today is refused because of this design.
+  2.0, after the owner agrees. No plugin manifest accepted today today is refused because of this design.
 - **Controls stay in plugins.** Core carries no start, stop or restart (see [Later: a mailbox](#later-a-mailbox)).
 
 **The invariant.** The hub never delivers code, probes, commands or agent configuration to a device. Everything
@@ -79,7 +79,7 @@ not an app token and not a role, and it holds **no scope**: not `read`, not anyt
 | | |
 |---|---|
 | Token | `hha_` + 64 lowercase hex (32 random bytes). `hh_` is an app token, `hhk_` an API key; neither parser (`bearerOf`, `apiBearerOf`) matches `hha_` |
-| Stored | `<state>/agents.json` (0600, its own file; `access.json` is not touched): `{schemaVersion: 2, agents: [{id, device, deviceCreatedAt, name, prefix, hash, createdAt, createdBy, revokedAt, revokedBy}]}`. `hash` is the SHA-256 of the token, `prefix` its first 12 characters. Module `server/agent-store.mjs`, constant `AGENTS_SCHEMA = 2` (schema 1 is the file 1.x wrote; it is read once and written as schema 2 with the same keys, `docs/storage.md` → State written by 1.x) |
+| Stored | `<state>/agents.json` (0600, its own file; `access.json` is not touched): `{schemaVersion: 2, agents: [{id, device, deviceCreatedAt, name, prefix, hash, createdAt, createdBy, revokedAt, revokedBy}]}`. `hash` is the SHA-256 of the token, `prefix` its first 12 characters. Module `server/agent-store.mjs`, constant `AGENTS_SCHEMA = 2` (schema 1 is supported legacy input; it is read once and written as schema 2 with the same keys, `docs/storage.md` → Stored-file compatibility) |
 | Limits | 100 keys that are not revoked; at most two per device, so a key can be rotated (issue, install, revoke the old one) |
 | Last seen | Never in `agents.json`. Kept in the report store (below), so a report never rewrites the credential file |
 | Admin API | Password sign-in, `/api/admin/` rules. `GET /api/admin/agents` → `{agents: [{id, device, name, prefix, createdAt, createdBy, revokedAt, revokedBy, lastReportAt, agentVersion, platform}]}`. `POST /api/admin/agents {device, name?}` → `201 {token, agent}` (the token once); `400 AGENT_INVALID` (unknown device, router, NAS), `409 AGENT_LIMIT`. `POST /api/admin/agents/revoke {id}` → `200 {agent}`, `404 NOT_FOUND` |
@@ -106,14 +106,7 @@ worked out and the unknown-credential `401`, before the `/mcp` branch). The agen
 role, legacy write keys and app tokens, all derived from it, cannot reach an agent route. A later scope in this
 area is `legacy: false`; enqueueing for a device is an administrator action, never a scope (see the mailbox).
 
-**Rollback.** An older core does not read `agents.json` and its parsers do not match `hha_`: a request with one gets
-`401` on `/api/` and `/mcp` and is anonymous on a page. The key is inert there; `access.json` keeps schema 1.
-
-**The data epoch stays at 1.** Nothing an earlier release reads changes format; the new files (`agents.json`,
-`state/agent/`, `data/security/probes.json`) are ignored by older code. Steps 1 and 2 put `AGENTS_SCHEMA`,
-`AGENT_REPORTS_SCHEMA` and `SECURITY_PROBES_SCHEMA` (all 1 then; 2 since the epoch rose to 2, before 1.0) into the table of
-`tests/data-epoch.test.mjs` and write them under `### Data`, with one caveat: a restore of an archive (because some other change raised the epoch) brings
-back `agents.json` as it was, keys revoked since included. Revoke them again after a restore.
+Agent state schemas are tracked in `tests/data-epoch.test.mjs`. Restore agent state carefully: an archive includes the revocation state at backup time.
 
 ## 3. The report
 
@@ -240,7 +233,7 @@ five minutes between `sentAt` and receipt is shown as clock skew, never correcte
 
 **Staleness.** A part is fresh until `receivedAt + 3 × interval`, then it is **no news**: shown stale with its age,
 never off (for the 60 s heartbeat, the hub's usual three minutes). A heartbeat proves that the key works and the
-agent runs, nothing about the device's health; in 1.x `online` is not derived from it (`devices[].agent`, step 4).
+agent runs, nothing about the device's health; in this major version `online` is not derived from it (`devices[].agent`, step 4).
 
 **Limits and answers.**
 
@@ -679,7 +672,7 @@ What step 4 settled, beside the row of §7:
   re-issued key showed the previous key's report as fresh; the second compared only with the earliest live key's
   issue time, so an old key that reported after its successor was issued still showed as the successor's, and the
   readers read it too.) The heartbeat counts here and
-  nowhere else, and `online` never follows it (open question 1, decided by the owner: not in 1.x). The word is "no news" on every page, never off, offline or down.
+  nowhere else, and `online` never follows it (open question 1, decided by the owner: not in this major version). The word is "no news" on every page, never off, offline or down.
 - **`specsDiffer`** compares the last `SPECS` line of the stored `packages` part with the SHA-256 of `specsFileText` for
   the device from the hub's current watch list; the watch list is read only when an agent sent a digest, and again only
   when its file changes. A watch list that cannot be read or is invalid gives `null`, never `true`: `agent-specs.mjs`
@@ -1042,13 +1035,13 @@ enable it; enqueueing is an administrator's or a plugin's action, never a scope;
 
 ## Open questions for the owner
 
-Decided: the macOS account is the owner's login account (§5); the NAS stays on SSH through 1.x; no plugin path is
-reserved; Windows is a PowerShell-only agent (above); a fresh heartbeat does not count towards `online` in 1.x (question 1; step 4 as built).
+Decided: the macOS account is the owner's login account (§5); the NAS stays on SSH through this major version; no plugin path is
+reserved; Windows is a PowerShell-only agent (above); a fresh heartbeat does not count towards `online` in this major version (question 1; step 4 as built).
 
-1. **Does a fresh heartbeat count towards `online`?** Recommended: not in 1.x; the agent's freshness is its own field.
+1. **Does a fresh heartbeat count towards `online`?** Recommended: not in this major version; the agent's freshness is its own field.
 2. **Other accounts' SSH keys.** Recommended: `own` by default on macOS (the owner's keys), `off` on Linux;
    `all-accounts` per device where the inventory needs it. Until then a current root collector record wins on coverage.
-3. **WinRM**, a hub-held credential like SSH. Recommended: keep it through 1.x, deprecate it in step 6.
+3. **WinRM**, a hub-held credential like SSH. Recommended: keep it through this major version, deprecate it in step 6.
 4. **Where agent keys are handed out.** Recommended: the admin page (token shown once) and the CLI (`--output`).
 5. **Revocations after an archive restore.** Recommended: document it; a revocation list kept outside the archive
    costs a second file to keep consistent.

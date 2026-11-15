@@ -437,7 +437,7 @@ test('router adapter: site.json names it, a plugin can provide one, a hub with a
  assert.equal(home.devices.find(m=>m.id==='router').online,'online');assert.deepEqual(home.devices.find(m=>m.id==='router').quad,{clients:2,wifi:1,power:null,temp:null});
 });
 
-test('router observation: a 2.0 collector writes clients and hardware, a 1.x one devices and unifiDevices; both are read',async t=>{
+test('router observation: a current collector writes clients and hardware, a legacy one devices and unifiDevices; both are read',async t=>{
  const dir=await tmp(t),now=Date.parse('2026-11-08T12:00:00Z'),lanCidrs=['10.0.0.0/24'],file=path.join(dir,ROUTER_FILE);
  const census=[{mac:'aa:bb:cc:dd:ee:01',ip:'10.0.0.151',name:'Desktop',connection:'Ethernet',presence:'reachable'},{mac:'aa:bb:cc:dd:ee:02',ip:'10.0.0.77',name:'Phone',connection:'Wi-Fi · 5 GHz',presence:'associated'}];
  const gear=[{name:'Gateway',model:'UDR7',state:'ONLINE',firmware:'4.3.6',ip:'10.0.0.1'}];
@@ -447,13 +447,13 @@ test('router observation: a 2.0 collector writes clients and hardware, a 1.x one
  const current=await read({...base,schemaVersion:2,clients:census,hardware:gear});
  assert.deepEqual(current.clients.map(c=>c.name),['Desktop','Phone']);assert.equal(current.health.hardware[0].name,'Gateway');
  assert.deepEqual(current.health.clientCounts,{connected:2,wired:1,wireless:1,other:0,known:null});assert.equal(current.devices,undefined);
- // A 1.x collector on another host keeps writing devices and unifiDevices: the same census, and the file stays its own.
+ // A legacy collector on another host keeps writing devices and unifiDevices: the same census, and the file stays its own.
  const written={...base,schemaVersion:1,devices:census,unifiDevices:gear},before=JSON.stringify(written);
  const old=await read(written);
  assert.deepEqual({clients:old.clients,hardware:old.health.hardware,counts:old.health.clientCounts},{clients:current.clients,hardware:current.health.hardware,counts:current.health.clientCounts});
  assert.equal(await readFile(file,'utf8'),before,'the hub never rewrites the collector\'s file');
  assert.equal((await readRouterFor({site:validateSite({lanCidrs}),directory:dir,provided:()=>undefined},{now})).clients.length,2,'the file adapter of a hub');
- // A file that carries both (a 2.0 collector over a 1.x file): the 2.0 keys win.
+ // A file that carries both (a current collector over a legacy file): the current keys win.
  const both=await read({...base,clients:census.slice(0,1),devices:census,hardware:gear,unifiDevices:[]});
  assert.equal(both.clients.length,1);assert.equal(both.health.hardware.length,1);
  // A plugin's adapter speaks 2.0: a census it still returns as devices is not read.

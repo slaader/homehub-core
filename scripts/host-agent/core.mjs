@@ -145,10 +145,11 @@ export function parseCoreArgs(argv){
 }
 
 // --- the plan ----------------------------------------------------------------------------------------------------------
+// Legacy field name.
 const KEY_FILE_V1='machine';
 /**
- * A key file as create-agent-key --output writes it → {token, agent: {id, device, prefix}}. A file a 1.x hub wrote
- * names the device under 1.x's key (KEY_FILE_V1): the key in it still works, so the file is read as it is.
+ * A key file as create-agent-key --output writes it → {token, agent: {id, device, prefix}}. A file a legacy hub wrote
+ * names the device under legacy's key (KEY_FILE_V1): the key in it still works, so the file is read as it is.
  */
 export function readKeyFile(text){
  let raw;try{raw=JSON.parse(text);}catch{refuse('--key-file is not the JSON file create-agent-key --output wrote');}

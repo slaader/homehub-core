@@ -146,7 +146,7 @@ export default {
   const load=async()=>{
    let text;try{text=await readFile(file,'utf8');}catch(e){return e.code==='ENOENT'?{missing:true}:{unreadable:true};}
    let doc;try{doc=JSON.parse(text);}catch{return {unreadable:true};}
-   // A file Home Hub 1.x wrote: read forward, and written forward once (when this hub may write it).
+   // A file legacy Home Hub wrote: read forward, and written forward once (when this hub may write it).
    const forward=forwardInventory(doc);if(forward!==doc){doc=forward;await local.forward().catch(()=>{});}
    const {errors,warnings}=check(doc,{secretStores});return {doc,errors,warnings};
   };

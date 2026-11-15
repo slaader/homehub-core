@@ -80,55 +80,9 @@ then renames it to `*.migrated`. A file that does not parse or has the wrong sha
 and the store does not start with an empty tracker. To roll back to code from before hub.db: stop Home Hub, rename the
 `*.migrated` files back (any change made since lives only in hub.db) and deploy the older commit.
 
-## State written before 1.0
+## Stored-file compatibility
 
-Before 1.0 a device was called a machine, in what is stored as everywhere else (data epoch 2). Nothing has to be run: each
-file below is read in its pre-1.0 form the first time 1.0 opens it, written in the 1.0 form in its place (a whole file
-under a temporary name, then a rename) and read as that from then on. Ids, hashes, stamps and everything a person
-wrote stay as they were. `server/state-forward.mjs` holds the pre-1.0 names; `tests/state-forward.test.mjs` starts each
-store from a literal file of the pre-1.0 form.
-
-| File | Before 1.0 | 1.0 | Moved forward |
-|---|---|---|---|
-| `state/device-tokens.json`, `state/device-tokens-audit.jsonl` | `{schemaVersion: 1, devices}` | `state/app-tokens.json` `{schemaVersion: 2, tokens}`, `state/app-tokens-audit.jsonl` | at start |
-| `state/agents.json` | `schemaVersion: 1`; `agents[].machine`, `.machineCreatedAt`; `revokedBy` `machine-removed`, `machine-changed` | `schemaVersion: 2`; `device`, `deviceCreatedAt`; `device-removed`, `device-changed` | at start. Every key keeps working |
-| `state/agent/<id>.json` | `schemaVersion: 1`, `machine` | `schemaVersion: 2`, `device` | at start |
-| `state/agent/history.jsonl`, `data/systems/history.jsonl` | lines `{at, machines}` | lines `{at, devices}` | at start; the collector's at its next run |
-| `state/runtimes-config.json` | `schema: 1`, `endpoints[].machine` | `schema: 2`, `endpoints[].device` | when the endpoints are first read |
-| `state/runtimes/<id>/requests-YYYY-MM.jsonl` | lines with `machine`, `clientMachine` | `device`, `clientDevice` | when a device's history is first read |
-| `data/systems/snapshot.json` | `schemaVersion: 1`, `machines` | `schemaVersion: 2`, `devices` | when first read, keeping the file's time; else by the collector's next run |
-| `data/security/ssh-keys.json` | `schemaVersion: 1`; `machines` and `machine` in every copy, access target, route, other key and unknown authorized key; `{machine}` and the Czech word "stroj" in the findings' stored templates and texts | `schemaVersion: 2`; `devices`, `device`, `{device}`, "zařízení" (`V1_TEXT` in `server/state-forward.mjs`) | the same |
-| `data/security/probes.json` | `schemaVersion: 1`, `extraMachines` | `schemaVersion: 2`, `extraDevices` | the same |
-| `data/machines/` | the descriptor directory | `data/devices/` | renamed at start, while `data/devices/` does not exist. A directory named by `DEVICES_DIR` is used as it is |
-| `data/knowledge.json` | `schema: 1`; kind `machine`, field `machine` | `schema: 2`; kind `device`, field `device` | when first read. A placed entry's hash changes with its field |
-
-The router's census moved too, so that a device is only ever the household's: the router observation calls the
-network clients `clients` and the UniFi collector writes the network gear (gateway, switches, access points) as
-`hardware`, the name the adapter contract always had. This file is not the hub's: the UniFi collector writes it and
-may run on another host, its file copied here, so the hub never rewrites it and reads both forms on every read.
-
-| File | Before 1.0 | 1.0 | Read forward |
-|---|---|---|---|
-| `data/router-observations.json` | `schemaVersion: 1`; `devices` (the clients), `unifiDevices` (the gear) | `schemaVersion: 2`; `clients`, `hardware` | on every read, never rewritten (`forwardObservation` in `server/router-data.mjs`). A file with both keeps the 1.0 one. The 1.0 collector's first run writes the 2.0 names and drops the old ones, carrying the last census over when that run fails |
-
-A collector left on a pre-1.0 build keeps working against a 1.0 hub; a pre-1.0 hub reads a 1.0 collector's file as no clients.
-
-Not rewritten, and read in today's words: `state/agent-audit.jsonl` (a line's `machine` is shown as the device) and
-the agent-key lines of `state/access-audit.jsonl` (`machine <id>`, `machine-removed`). An audit file is only ever
-appended to.
-
-- **The hub may not write the collectors' directory** (`data/systems/`, `data/security/` owned by another account):
-  the snapshot and the key inventory are then read forward on every read and left as they are, until the collector
-  of 1.0 writes them. Update the checkout the collectors run from together with the hub: a pre-1.0 collector writes
-  schema 1 again (the hub keeps reading it), and a pre-1.0 collector does not read a 1.0 `site.json`.
-- **Older code refuses newer state.** A pre-1.0 hub started on these files refuses the key store and the device reports,
-  shows no key inventory and no inventory (`schema must be 1`), and reads the snapshot, the endpoints and the request
-  history without their devices. Going back to a pre-1.0 build means restoring the archive made before the update
-  (`docs/updating.md` → The data epoch).
-- **On other computers.** An agent key file downloaded from a pre-1.0 build (`agent.machine`) is still accepted by the 1.0
-  installers; a new one says `agent.device`. An install's `.agent-install.json` is written again by the next install
-  and never read for its device. A map layout a browser saved by a pre-1.0 build (`localStorage`) loads with its column and
-  card order and is saved with the new names at the next change.
+Core reads supported legacy state and collector files without invalidating agent keys; `server/state-forward.mjs` holds the field mappings.
 
 ## Backups
 

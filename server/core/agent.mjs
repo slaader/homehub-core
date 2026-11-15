@@ -252,7 +252,7 @@ function setupAgent(hub){
  // The trend: one line {at, devices:{<id>: {os, software, apps, warn, crit, stale}}} per device at most every six
  // hours, the shape of the collector's history.jsonl, capped at 3000 lines.
  const historyFile=path.join(hub.stateDirectory,'agent','history.jsonl'),historyAt=new Map();let historyRead=null;
- // A file 1.x wrote is written forward at start, once (server/state-forward.mjs), before anything reads or adds a line.
+ // A file legacy wrote is written forward at start, once (server/state-forward.mjs), before anything reads or adds a line.
  const historyForwarded=forwardJsonl(historyFile,forwardTrendLine).catch(()=>0);
  const readHistory=()=>historyRead??=historyForwarded.then(()=>readFile(historyFile,'utf8')).then(text=>{for(const line of text.split('\n'))try{const x=forwardTrendLine(JSON.parse(line)),t=Date.parse(x.at);
   for(const id of Object.keys(x.devices||{}))if(Number.isFinite(t)&&!(historyAt.get(id)>t))historyAt.set(id,t);}catch{}}).catch(()=>{});

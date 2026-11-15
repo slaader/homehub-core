@@ -57,7 +57,7 @@ test('custom roles: create, change, apply at once, and delete only once nobody h
  await assert.rejects(s.createRole({name:'Editor',scopes:[]}),/conflict/,'a built-in name is taken');
  await assert.rejects(s.createRole({name:'Other',id:'admin',scopes:[]}),/conflict/,'a built-in id is taken');
  assert.throws(()=>s.createRole({name:'Wild',scopes:['*']}),/invalid/);
- // The principal kinds are not role ids. "app" joined them in 2.0; a role that 1.0 stored under it still loads.
+ // The principal kinds are not role ids. "app" joined them; a role that 1.0 stored under it still loads.
  await assert.rejects(s.createRole({name:'Other',id:'app',scopes:[]}),/conflict/,'a principal kind is taken');
  assert.equal((await s.createRole({name:'App',scopes:[]})).role.id,'app-2','a name that would make that id gets another');
  {const dir=await temp(t,'hub-roles-app-');await writeFile(path.join(dir,'access.json'),JSON.stringify({schemaVersion:1,users:[],keys:[],roles:[{id:'app',name:'App team',description:'',scopes:['read']},{id:'device',name:'Device team',description:'',scopes:['read']}]}));

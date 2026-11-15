@@ -508,7 +508,7 @@ export default {
     c.subject=typeof c.input?.device?.id==='string'&&DEVICE_ID.test(c.input.device.id)?c.input.device.id:null;
     const r=await upsertDevice(c.state,c.input,c.principal);return c.json(r.created?201:200,r);})},
   // One removal for keys, MCP and the overview. An API key needs home:write and sends base; a person or an app with
-  // write access (as in 1.x, whatever the role's scopes) may leave base out, and a base that is sent is checked.
+  // write access (as in legacy, whatever the role's scopes) may leave base out, and a base that is sent is checked.
   {method:'POST',path:'/api/home/devices/remove',scope:'home:write',people:'write',error:homeError,handler:deviceApi(async c=>c.json(200,await removeDevice(c.state,c.input,{baseOptional:['session','app'].includes(c.principal.authKind)})))},
   {method:'POST',path:'/api/home/runtime',scope:'home:write',bodyLimit:65536,error:homeError,handler:deviceApi(async c=>{
     c.subject=typeof c.input?.device==='string'&&DEVICE_ID.test(c.input.device)?c.input.device:null;

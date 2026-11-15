@@ -558,7 +558,7 @@ def collect(write=True):
         if not isinstance(previous, dict):
             previous = {}
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        # 1.x wrote the census as `devices` and the gear as `unifiDevices`: carried forward, then dropped.
+        # legacy wrote the census as `devices` and the gear as `unifiDevices`: carried forward, then dropped.
         previous_clients = previous.get('clients', previous.get('devices', []))
         snapshot = {k: v for k, v in previous.items() if k not in ('devices', 'unifiDevices')}
         if 'hardware' not in snapshot and 'unifiDevices' in previous:

@@ -306,7 +306,7 @@ export async function readAccessAudit(directory,{accessStore,appTokens,agentStor
  const apps=new Map((appTokens?.list()||[]).map(a=>[a.id,a.name])),agentKeys=new Map((agentStore?.list()||[]).map(a=>[a.id,a.name]));
  const nameOf=e=>(e.event?.startsWith('key-')?keys:e.event?.startsWith('agent-key-')?agentKeys:e.event?.startsWith('account-')?accounts:e.event?.startsWith('role-')?roles:users).get(e.id)||(typeof e.name==='string'?e.name:null);
  const want=k=>!kind||kind===k;
- // The audit files are never rewritten. A line 1.x wrote about an agent key is shown in today's words: detail
+ // The audit files are never rewritten. A line legacy wrote about an agent key is shown in today's words: detail
  // "device <id>", by "device-removed", and the agent audit's device (server/state-forward.mjs).
  const access=want('access')?(await lines('access-audit.jsonl')).map(e=>{const old=e.event?.startsWith('agent-key-'),detail=old?forwardWord(e.detail):e.detail,by=old?forwardWord(e.by):e.by;
   return {at:e.at,kind:'access',event:e.event,id:e.id||null,subject:nameOf(e),...(detail?{detail}:{}),...(by?{by}:{})};}):[];

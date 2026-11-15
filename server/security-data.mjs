@@ -18,13 +18,13 @@ import {forwardKeys,forwardTemplate,forwardText,writeJson,readJsonSeen,devicesDi
 export {fingerprintOf,parseAuthorizedLine,parseKeygenLine};
 
 // The schema of GET /api/security and of data/security/ssh-keys.json (what buildSecurity returns). Schema 1 is the
-// document as the 1.x collector wrote it, with its own word for a device in the keys and in the stored text
+// document as the legacy collector wrote it, with its own word for a device in the keys and in the stored text
 // templates of the findings (forwardSecurity, below).
 export const SECURITY_SCHEMA=2;
 // probes.json beside ssh-keys.json (scripts/collect-security.mjs): the collector's raw probe output per device, so the
 // hub can rebuild the inventory with the push agents' sshkeys parts (docs/agent.md §3 → Who wins over the collectors).
 //   {schemaVersion: 2, collectedAt, collectedFrom, probes: {id: {text, probedAt} | {error}}, forgejo, extraDevices}
-// Schema 1 had the last key under 1.x's name.
+// Schema 1 had the last key under legacy's name.
 export const SECURITY_PROBES_SCHEMA=2;
 const clean=(v,n=400)=>typeof v==='string'?v.replace(/[\u0000-\u001f\u007f]/g,' ').trim().slice(0,n):'';
 
@@ -347,7 +347,7 @@ async function readProbes(file){
  if(!plain(doc)||doc.schemaVersion!==SECURITY_PROBES_SCHEMA||!plain(doc.probes))return {doc:null,why:'probes-unreadable'};
  return {doc,time};
 }
-// --- what the 1.x collector wrote (server/state-forward.mjs) ---------------------------------------------------------
+// --- what the legacy collector wrote (server/state-forward.mjs) ---------------------------------------------------------
 const each=(list,f)=>Array.isArray(list)?list.map(x=>plain(x)?f(x):x):list;
 // A copy of o with f applied to each key of `fields` it has.
 const over=(o,fields)=>{const out={...o};for(const [k,f] of Object.entries(fields))if(Object.hasOwn(out,k))out[k]=f(out[k]);return out;};
@@ -356,10 +356,10 @@ const forwardTarget=o=>over(forwardOne(o),{target:t=>plain(t)?forwardOne(t):t});
 // The stored templates of a finding (titleT, detailT: [{key, params}]): the placeholder, its parameter and the wording;
 // the rendered title and detail: the wording.
 const forwardTexts=o=>Object.fromEntries(Object.entries(o).map(([k,v])=>[k,k.endsWith('T')?each(v,p=>over(p,{key:forwardTemplate,params:x=>forwardKeys(x,'device')})):k==='title'||k==='detail'?forwardText(v):v]));
-/** probes.json as 1.x wrote it → this schema; anything else as it is. */
+/** probes.json as legacy wrote it → this schema; anything else as it is. */
 export const forwardProbes=doc=>plain(doc)&&doc.schemaVersion===1?{...forwardKeys(doc,'extraDevices'),schemaVersion:SECURITY_PROBES_SCHEMA}:doc;
 /**
- * ssh-keys.json as 1.x wrote it → this schema; anything else as it is. Every key that named a device is renamed
+ * ssh-keys.json as legacy wrote it → this schema; anything else as it is. Every key that named a device is renamed
  * (the list itself, each copy, access target and route of a key, the other keys, the unknown authorized keys), and
  * so are the findings' templates, which the pages look up in today's dictionary.
  */
@@ -379,7 +379,7 @@ export const forwardSecurity=doc=>!plain(doc)||doc.schemaVersion!==1?doc:over({.
 export async function loadSecurity(directory,file=process.env.SECURITY_FILE||path.join(directory,'security','ssh-keys.json'),{agents=[],site=loadedSite(),now=Date.now(),devicesDir=devicesDirectory(directory)}={}){
  let doc=null,seen=null;
  try{({doc,seen}=await readJsonSeen(file));}catch(e){if(e.code!=='ENOENT')throw new Error('invalid');}
- // A file the 1.x collector wrote is written forward in place, once, keeping its time; where the hub may not write
+ // A file the legacy collector wrote is written forward in place, once, keeping its time; where the hub may not write
  // the collector's directory it is read forward each time, until the collector's next run. Never over a file the
  // collector wrote since it was read (seen).
  const forward=forwardSecurity(doc);if(forward!==doc){doc=forward;await writeJson(file,doc,{pretty:1,keepTimes:true,seen}).catch(()=>{});}

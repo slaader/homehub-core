@@ -143,14 +143,14 @@ export const toolCatalog=(extraTools=[])=>[...MCP_TOOLS.map(t=>({...t,module:'co
 class ToolError extends Error{}
 /**
  * A tool whose schema says additionalProperties:false takes only the arguments it lists; anything else is refused.
- * An argument 1.x named otherwise (server/state-forward.mjs) is told its new name instead of being ignored.
+ * A legacy argument (server/state-forward.mjs) is told its new name instead of being ignored.
  */
 function unknownArguments(tool,args){
  const schema=tool.inputSchema;
  if(!schema||schema.additionalProperties!==false)return null;
  const known=Object.keys(schema.properties||{}),extra=Object.keys(args).filter(k=>!Object.hasOwn(schema.properties||{},k));
  if(!extra.length)return null;
- const said=extra.slice(0,5).map(k=>{const name=JSON.stringify(text(k,40));const now=renamedKey(k);return now&&known.includes(now)?`${name} (renamed to "${now}" in 2.0)`:name;});
+ const said=extra.slice(0,5).map(k=>{const name=JSON.stringify(text(k,40));const now=renamedKey(k);return now&&known.includes(now)?`${name} (use "${now}")`:name;});
  return `${tool.name} does not take the argument${extra.length>1?'s':''} ${said.join(', ')}${extra.length>5?', …':''}. It takes: ${known.join(', ')||'no arguments'}.`;
 }
 // Ticket subjects come from successful store results, never rejected argument text.

@@ -1,3 +1,4 @@
+import {V1} from './state-forward.mjs';
 // Applying an update: the steps behind scripts/update.mjs (docs/updating.md). The hub never runs this: it is a
 // command a person or an agent starts on the server, outside the hub's process, and it works on a checkout and
 // an instance that are named to it. Everything that touches the world comes in through `ctx` (exec, probe,
@@ -75,7 +76,7 @@ function stageSite(inst,request,installed,target,staging){
   if(automatic&&original!==null){
    const raw=JSON.parse(original.toString('utf8'));
    if(plain(raw)&&(Object.hasOwn(raw,'devices')||(Array.isArray(raw.runtimes)&&raw.runtimes.some(r=>plain(r)&&Object.hasOwn(r,'device')))))
-    throw new Error('the live 1.x site already has 2.0 keys; restore its working 1.x configuration before updating');
+    throw new Error('the live legacy site already has current keys; restore its working legacy configuration before updating');
   }
   if(request.siteConfig)text=readFileSync(path.resolve(request.siteConfig),'utf8');
   else{
@@ -83,7 +84,7 @@ function stageSite(inst,request,installed,target,staging){
    const raw=JSON.parse(original.toString('utf8'));
    // No renamed key means this configuration needs no conversion. --check still validates it with the target.
    if(!plain(raw))throw new Error('the site file must be a JSON object');
-   if(!Object.hasOwn(raw,'machines')&&!(Array.isArray(raw.runtimes)&&raw.runtimes.some(r=>plain(r)&&Object.hasOwn(r,'machine'))))return null;
+   if(!Object.hasOwn(raw,V1.devices)&&!(Array.isArray(raw.runtimes)&&raw.runtimes.some(r=>plain(r)&&Object.hasOwn(r,V1.device))))return null;
    text=JSON.stringify(convertSite(raw).site,null,2)+'\n';
   }
   JSON.parse(text);

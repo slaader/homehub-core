@@ -14,7 +14,7 @@
 // and GET /logs/stream/http?no-history. Both are refused before a socket opens when the path differs in any
 // character. No POST, no /upstream/…, no unload, no capture.
 //
-// A line 1.x wrote names the device and the client's device with 1.x's keys (server/state-forward.mjs). The
+// A line legacy wrote names the device and the client's device with legacy's keys (server/state-forward.mjs). The
 // first time a device's files are touched, each one that holds such lines is written again in today's form;
 // the reader forwards each line as well, so a file that could not be rewritten still reads.
 //
@@ -127,7 +127,7 @@ export function cleanRecord(r){
  if(address&&(IPV4.test(address)||isLoopback(address)))out.clientAddress=address;
  return out;
 }
-/** A stored line as 1.x wrote it → today's keys (the same object when it has none of the old ones). */
+/** A stored line as legacy wrote it → today's keys (the same object when it has none of the old ones). */
 export const forwardRecord=r=>forwardKeys(r,'device','clientDevice');
 export const recordKey=r=>metricKey({device:r.device,runtime:r.runtime,metricId:r.metricId,at:timeMs(r.at)});
 // llama-swap's activity records (one page's data[]) → stored records of this device and runtime. The
@@ -148,7 +148,7 @@ export function fromActivity(items,{device,runtime,devices=[]}){
 // status, …tokens, uaFamily, requestor}). Events and anything without a record id are left out.
 export function fromImportLine(raw,{device}){
  if(!plain(raw)||raw.kind==='event')return null;
- // A file from a 1.x store names the device the old way; it is the same record.
+ // A file from a legacy store names the device the old way; it is the same record.
  raw=forwardRecord(raw);
  if(raw.device!==undefined&&raw.device!==device)return null;
  const v1=raw.kind==='request'||raw.serviceId!==undefined;
@@ -167,7 +167,7 @@ export function createRequestHistory(stateDirectory,{retentionMonths=RETENTION_M
  const queues=new Map(),pruned=new Map(),stats=new Map();
  const queue=device=>{if(!queues.has(device))queues.set(device,serial());return queues.get(device);};
  const forwarded=new Map();
- // Once per device and process: the files 1.x wrote, written forward.
+ // Once per device and process: the files legacy wrote, written forward.
  const forward=device=>{if(!forwarded.has(device))forwarded.set(device,(async()=>{let names;try{names=(await readdir(dir(device))).filter(f=>FILE.test(f));}catch{return;}
    for(const f of names)await forwardJsonl(path.join(dir(device),f),forwardRecord);})());return forwarded.get(device);};
  async function filesOf(device){await forward(device);try{return (await readdir(dir(device))).filter(f=>FILE.test(f)).sort();}catch{return [];}}

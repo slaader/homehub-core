@@ -11,9 +11,6 @@ until the release gives it its number: a change to the public surface adds its l
 The first release of Home Hub core: one hub for a household's devices, services, software and work, with an HTTP
 API, an MCP endpoint and a plugin contract. Everything below is new in the sense that nothing was released before it.
 
-This is the first public version number. Earlier builds that carried other numbers were pre-release work and are not
-supported: a hub that ran one of them moves to 1.0.0 by hand (`docs/updating.md` → Moving from a pre-1.0 build).
-
 ### Added
 
 - **The hub.** The overview with Thermo and agent-less telemetry, the inventory map and services catalog, software
@@ -33,11 +30,11 @@ supported: a hub that ran one of them moves to 1.0.0 by hand (`docs/updating.md`
 - **The instance directory** (`HOME_HUB_HOME`, `docs/storage.md`): configuration (`config/site.json`,
   `software-watch.json`, `images/`), data and secrets kept apart from the code, with `instance.json` naming the
   plugin sources, the service and its health check.
-- **The push agent** for macOS, Linux and Windows (`docs/agent.md`). A machine reports its system and updates, the
+- **The push agent** for macOS, Linux and Windows (`docs/agent.md`). A device reports its system and updates, the
   watched software, SSH keys and local LLM runtimes to the hub with a key of its own; the pages say whose record they
   show. `node scripts/install-host-agent.mjs --core` installs it as a launchd agent, a launchd daemon that runs from
   boot (`--service launchd-daemon`) or a systemd system service; `install-agent.ps1` installs it on Windows. The hub
-  also checks every minute whether each machine's address answers.
+  also checks every minute whether each device's address answers.
 - **Versions and updates.** The version in the footer, the manifest, the MCP `serverInfo` and `<state>/run.json`; an
   update check that only tells (`HOME_HUB_UPDATE_CHECK=off` turns it off); and `node scripts/update.mjs apply <tag>`
   (`docs/updating.md`), which checks, stops, archives, switches, starts, and puts the previous version back on any
@@ -50,7 +47,7 @@ supported: a hub that ran one of them moves to 1.0.0 by hand (`docs/updating.md`
 
 ### Deprecated
 
-All of these keep working through 1.x and are removed in 2.0.
+All of these keep working through this major version and are removed in 2.0.
 
 - **The in-tree overlay `local/` as the default** for the site configuration (`local/site.json`,
   `local/software-watch.json`, `local/images/`) and the plugins (`local/plugins/`). Keep them outside the code: an
@@ -72,18 +69,16 @@ All of these keep working through 1.x and are removed in 2.0.
 ### Data
 
 - Data epoch 5. It holds schema-2 update journals, backup manifests and integrity sidecars, operator trust and
-  required-policy markers and package receipts; schema-1 journals and older backups stay recoverable. State written
-  by a pre-1.0 build is read in the form that build wrote it and written in the 1.0 form in its place, once
-  (`server/state-forward.mjs`, `docs/storage.md` → State written before 1.0). Going back to a pre-1.0 build, or across
-  the epoch boundary, needs the archive made before the update; trust and revocations stay outside the restored paths.
+  required-policy markers and package receipts; schema-1 journals and older backups stay recoverable. Restoring across
+  the epoch boundary needs the archive made before the update; trust and revocations stay outside the restored paths.
 
 ### Upgrade notes
 
 - **The update check reads GitHub releases only** (`docs/updating.md`, `README.md`). A hub whose releases live on
   another forge applies updates with `node scripts/update.mjs apply <tag>` and turns the check off
   (`HOME_HUB_UPDATE_CHECK=off`) or points `site.json → updates.repo` at a GitHub mirror.
-- **The agents do not update themselves.** A newer agent reaches a machine when its installer is run again from a
+- **The agents do not update themselves.** A newer agent reaches a device when its installer is run again from a
   newer checkout.
-- **Not yet verified on a real machine:** the launchd daemon on a Mac; on Windows, an install whose health check
-  passes on the machine itself, and the Windows Update search, which Windows refuses to `LocalService` (the update
+- **Not yet verified on a real device:** the launchd daemon on a Mac; on Windows, an install whose health check
+  passes on the device itself, and the Windows Update search, which Windows refuses to `LocalService` (the update
   check then shows `unknown`); and the items each first-run checklist in `docs/agent.md` marks as not tried.

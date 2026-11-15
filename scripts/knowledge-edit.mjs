@@ -147,7 +147,7 @@ export const bulkSummary=results=>({create:results.filter(r=>r.action==='create'
  */
 export function createKnowledgeEditor({file=path.join(resolvePaths().data,'knowledge.json'),secretStores,publish=process.env.KNOWLEDGE_PUBLISH?()=>run(path.resolve(process.env.KNOWLEDGE_PUBLISH),[],{timeout:30000}):async()=>{}}={}){
  let busy=false;
- // A file Home Hub 1.x wrote (schema 1) is read forward; the next save writes schema 2.
+ // A file legacy Home Hub wrote (schema 1) is read forward; the next save writes schema 2.
  const read=async()=>{let text;try{text=await readFile(file,'utf8');}catch(e){if(e.code==='ENOENT')return emptyDoc();throw e;}return forwardInventory(JSON.parse(text));};
  const write=async doc=>{await mkdir(path.dirname(file),{recursive:true});const tmp=`${file}.edit-${process.pid}`;await writeFile(tmp,JSON.stringify(doc,null,2)+'\n',{mode:0o600});await rename(tmp,file);};
  // apply(doc) → {doc, …extra} to check and save, or {stop: result} to answer without writing.
@@ -175,7 +175,7 @@ export function createKnowledgeEditor({file=path.join(resolvePaths().data,'knowl
    if(r.conflicts.length)return {stop:{ok:false,...(change.dryRun?{dryRun:true}:{}),conflicts:r.conflicts}};
    return {doc:r.doc,results:r.results,summary:bulkSummary(r.results),changed:r.changed};},{dryRun:change.dryRun});};
  // Writes a schema 1 file forward, once, under the same lock as every other write → whether it wrote. Nothing is
- // checked or restamped: the entries are the ones 1.x held, under today's names.
+ // checked or restamped: the entries are the ones legacy held, under today's names.
  editor.forward=async()=>{
   if(busy)return false;busy=true;
   try{let doc;try{doc=JSON.parse(await readFile(file,'utf8'));}catch{return false;}

@@ -127,7 +127,7 @@ test('the migration never writes over newer state, finishes an interrupted move,
  assert.equal(warned.length,2);
  assert.match(warned[0],/both .*device-tokens\.json and .*app-tokens\.json exist/);assert.match(warned[0],/refused/);
  assert.match(warned[1],/both .*device-tokens-audit\.jsonl and .*app-tokens-audit\.jsonl exist/);
- assert.ok((await readdir(both)).includes('device-tokens.json'),'the 1.x file is left as it is');
+ assert.ok((await readdir(both)).includes('device-tokens.json'),'the legacy file is left as it is');
  assert.equal(reopened.verify(token),app.id);assert.equal(reopened.verify(OLD_TOKEN),null);assert.equal(JSON.parse(await readFile(path.join(both,'app-tokens.json'),'utf8')).tokens.length,1);
  assert.equal(JSON.parse(before).tokens[0].id,app.id);assert.match(await readFile(path.join(both,'app-tokens-audit.jsonl'),'utf8'),/"Current"/,'the newer audit file is kept');
  // Nothing to migrate: no file is created by reading.
@@ -135,7 +135,7 @@ test('the migration never writes over newer state, finishes an interrupted move,
  // A file from a later Home Hub is refused, not emptied and overwritten.
  const newer=await scratch();const later=JSON.stringify({schemaVersion:APP_TOKENS_SCHEMA+1,grants:[]});await writeFile(path.join(newer,'app-tokens.json'),later);
  assert.throws(()=>createAppTokens(newer),/schema 3/);assert.equal(await readFile(path.join(newer,'app-tokens.json'),'utf8'),later);
- // An old file that is not what 1.0.0 wrote is refused too, and stays where it is.
+ // An old file that is not legacy input is refused too, and stays where it is.
  const odd=await scratch();await writeFile(path.join(odd,'device-tokens.json'),JSON.stringify({schemaVersion:7,devices:[]}));
- assert.throws(()=>createAppTokens(odd),/not a 1\.0 token file/);assert.deepEqual(await readdir(odd),['device-tokens.json']);
+ assert.throws(()=>createAppTokens(odd),/not a supported legacy token file/);assert.deepEqual(await readdir(odd),['device-tokens.json']);
 });

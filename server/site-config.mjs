@@ -8,6 +8,8 @@
 // start-up error, never a silent fallback. Plugins keep their own settings under "plugins".<id>.
 import {readFileSync} from 'node:fs';
 import os from 'node:os';
+// Legacy field names; keep configuration validation independent of state storage.
+const V1={device:'machine',devices:'machines'};
 import {repoRoot} from './edition.mjs';
 import {resolvePaths} from './paths.mjs';
 
@@ -63,7 +65,7 @@ const loopback=host=>host==='localhost'||host==='[::1]'||(ipv4(host)!==null&&hos
 export function runtimeEndpoint(raw,{lanCidrs=[],where='runtime'}={}){
  const no=message=>{throw Object.assign(new Error(`${where}${message}`),{code:'invalid'});};
  if(!plain(raw))no(' must be an object');
- if(Object.hasOwn(raw,'machine'))no(`.machine ${RENAMED_IN_2}: the field is now "device"`);
+ if(Object.hasOwn(raw,V1.device))no(' has unsupported runtime field; use device');
  const extra=Object.keys(raw).filter(k=>!['id','device','kind','url','name'].includes(k));if(extra.length)no(` has unknown field(s): ${extra.join(', ')}`);
  if(typeof raw.device!=='string'||!DEVICE_ID.test(raw.device))no(`.device must be a device id`);
  const kind=raw.kind??'auto';if(!RUNTIME_KINDS.includes(kind))no(`.kind must be one of ${RUNTIME_KINDS.join(', ')}`);
@@ -119,11 +121,9 @@ function device(raw,i){
  let stack=null;if(raw.stack!==undefined&&raw.stack!==null){if(!plain(raw.stack)||!Array.isArray(raw.stack.layers)||!Array.isArray(raw.stack.cols)||!Array.isArray(raw.stack.blocks))fail(`${where}.stack needs layers, cols and blocks`);stack=raw.stack;}
  return {id:raw.id,name:str(raw.name??raw.id,60,`${where}.name`,{empty:false}),hostname:str(raw.hostname??'',253,`${where}.hostname`),ip,role,picture,thermoId,platform,hardware,ssh,stack,reach:reachOf(raw.reach,`${where}.reach`)};
 }
-// 1.x called a device a machine. The old key is refused by name, so a site file from 1.x says what to change
-// instead of "unknown field".
-const RENAMED_IN_2='was renamed in 2.0';
+// Reject legacy field names in configuration.
 export function validateSite(raw={}){
- if(plain(raw)&&Object.hasOwn(raw,'machines'))fail(`"machines" ${RENAMED_IN_2}: the key is now "devices" (and runtimes[].machine is runtimes[].device)`);
+ if(plain(raw)&&Object.hasOwn(raw,V1.devices))fail('unsupported device list field; use devices and runtimes[].device');
  keys(raw,['$comment','siteName','lanCidrs','timeZone','defaultLanguage','publicOrigin','devices','inventory','tracker','security','router','runtimes','runtimeClients','updates','strings','plugins'],'the file');
  const lanCidrs=list(raw.lanCidrs??[],16,'lanCidrs').map((c,i)=>parseCidr(c)?.text??fail(`lanCidrs[${i}] must be an IPv4 network such as 10.0.0.0/24`));
  const timeZone=raw.timeZone??null;

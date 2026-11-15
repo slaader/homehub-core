@@ -371,7 +371,7 @@ export const telemetryMeta=()=>({agent:TELEMETRY_AGENT_NAME,repoUrl:TELEMETRY_RE
 //   lastReportAt  the hub's receive time of the device's last report, null before one
 //   freshness     "never" (nothing received since the device's earliest such key was issued), "fresh" (a part is within receivedAt + 3 × interval
 //                 by the hub's clock) or "no-news" (none is). Never off: a quiet agent says nothing about the device, and
-//                 online is not derived from it (the owner's decision for 1.x)
+//                 online is not derived from it (the owner's decision for legacy)
 //   agentVersion  what the last report said; behind: it has a lower precedence than the hub's own (build metadata
 //                 ignored, so 1.6.0+dev is not behind 1.6.0), null when either is unknown
 //   specsDiffer   the agent's watch list (its SPECS digest) is not the hub's current list for the device; null when the

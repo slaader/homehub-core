@@ -12,7 +12,7 @@
 //   unavailable      the last attempt failed (the previous census is kept)
 //   stale            older than three minutes        ok
 // Included adapter: "unifi", a file drop. scripts/collect-router-unifi.py reads a UniFi gateway
-// (read-only) and writes data/router-observations.json; this module only reads that file. A file of a 1.x
+// (read-only) and writes data/router-observations.json; this module only reads that file. A file of a legacy
 // collector (`devices`, `unifiDevices`) is read forward on every read (forwardObservation, below).
 // Another router: a plugin provides "router.adapter" → {id, title, read} (docs/plugins.md), or writes
 // the same file from its own collector. site.json → router.adapter names the one in use.
@@ -29,10 +29,10 @@ export const ROUTER_CONNECTIONS=Object.freeze(['Wi-Fi · 2.4 GHz','Wi-Fi · 5 GH
 export const ROUTER_PRESENCE=Object.freeze(['associated','reachable','lease-only']);
 
 /**
- * The router observation (data/router-observations.json). 1.x called the router's network clients `devices` and
- * the UniFi collector wrote the network gear as `unifiDevices`; 2.0 names them `clients` and `hardware`. The file
+ * The router observation (data/router-observations.json). legacy called the router's network clients `devices` and
+ * the UniFi collector wrote the network gear as `unifiDevices`; current names them `clients` and `hardware`. The file
  * is written by a collector that may run on another host and be copied here, so the hub never rewrites it: a file
- * of a 1.x collector is read forward each time, and the 2.0 key wins when a file carries both.
+ * of a legacy collector is read forward each time, and the current key wins when a file carries both.
  */
 export const V1_ROUTER=Object.freeze({clients:'devices',hardware:'unifiDevices'});
 export function forwardObservation(raw){
@@ -41,7 +41,7 @@ export function forwardObservation(raw){
  for(const [now,old] of Object.entries(V1_ROUTER)){if(!Object.hasOwn(out,old))continue;if(!Object.hasOwn(out,now))out[now]=out[old];delete out[old];}
  return out;
 }
-// The file adapter's read: the snapshot a collector left in the data directory (in the 2.0 names), or null.
+// The file adapter's read: the snapshot a collector left in the data directory (in the current names), or null.
 export async function readObservationFile(directory){
  try{const raw=JSON.parse(await readFile(path.join(directory,ROUTER_FILE),'utf8'));return raw&&typeof raw==='object'&&!Array.isArray(raw)?forwardObservation(raw):null;}catch{return null;}
 }

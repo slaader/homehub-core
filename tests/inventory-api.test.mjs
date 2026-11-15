@@ -20,7 +20,7 @@ const service=(id,extra={})=>({id,kind:'runtime',device:'studio',name:id,address
 
 test('an entry hash is sha256 of the stored JSON and survives writes to its neighbours',async t=>{
  // Pinned literals: agents hold these hashes, so the function behind them must never change. (2.0 renamed the entry
- // field `machine` to `device`: the entries differ, so their hashes do; the function is the same.)
+ // field `device` to `device`: the entries differ, so their hashes do; the function is the same.)
  const gw={id:'gw',kind:'runtime',device:'mini',name:'Gateway',address:':8790',verified_at:'2026-11-01',secrets:[{what:'Voice token',store:'keychain:mini',ref:'local-ai.gateway.voice-token'}],depends_on:[{id:'sync',kind:'cert'}]};
  assert.equal(entryHash(gw),'0ee5670c899faad7c1fc9780fff30306632354dbdd6581e6b9afbcbdc37e06f1');
  const odd={id:'odd',kind:'tool',device:'mini',name:'Odd',address:null,data:null,verified_at:'2026-11-01'};

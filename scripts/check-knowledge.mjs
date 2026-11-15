@@ -29,7 +29,7 @@ export const check = (doc, options) => rules.check(doc, forSite(options));
 // The schema as data (inventory_describe, GET /api/inventory/schema).
 export const describe = (inventory = loadedSite().inventory, entries = []) => rules.describe(inventory, entries);
 
-// A file Home Hub 1.x wrote (schema 1) is read forward; this reader never writes.
+// A file legacy Home Hub wrote (schema 1) is read forward; this reader never writes.
 export async function load(file) {
   return rules.forwardInventory(JSON.parse(await readFile(file, 'utf8')));
 }

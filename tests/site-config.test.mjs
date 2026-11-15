@@ -37,10 +37,10 @@ test('a missing file is an empty generic site; a present but wrong file is an er
   [{devices:[{id:'aa',role:'toaster'}]},/role must be/],[{devices:[{id:'aa',ssh:{alias:'x',probe:'windows'}}]},/ssh\.probe/],[{devices:[{id:'aa',picture:'http://x/y.png'}]},/picture/],
   [{inventory:{secretStores:['Has Space']}},/secretStores\[0\]/],[{tracker:{projects:[{id:'x',key:'lower'}]}},/tracker\.projects\[0\]/],[{security:{order:['ghost']}},/security\.order\[0\]/]])
   await assert.rejects(async()=>loadSite({file:await write(bad)}),why,JSON.stringify(bad));
- // A site file of 1.x: the old key is refused by name and the message says what it is called now. No alias.
- await assert.rejects(async()=>loadSite({file:await write({siteName:'Home',machines:[{id:'box'}]})}),/site config: "machines" was renamed in 2\.0: the key is now "devices"/);
- await assert.rejects(async()=>loadSite({file:await write({machines:[],devices:[{id:'box'}]})}),/"machines" was renamed in 2\.0/,'also beside the new key');
- await assert.rejects(async()=>loadSite({file:await write({devices:[{id:'box'}],runtimes:[{machine:'box',url:'http://127.0.0.1:11434'}]})}),/\.machine was renamed in 2\.0: the field is now "device"/);
+ // A site file of legacy: the old key is refused by name and the message says what it is called now. No alias.
+ await assert.rejects(async()=>loadSite({file:await write({siteName:'Home',machines:[{id:'box'}]})}),/site config: unsupported device list field; use devices/);
+ await assert.rejects(async()=>loadSite({file:await write({machines:[],devices:[{id:'box'}]})}),/unsupported device list field/,'also beside the new key');
+ await assert.rejects(async()=>loadSite({file:await write({devices:[{id:'box'}],runtimes:[{machine:'box',url:'http://127.0.0.1:11434'}]})}),/unsupported runtime field; use device/);
  const ok=loadSite({file:await write({siteName:'Home',lanCidrs:['10.1.0.0/16'],devices:[{id:'box',thermoId:'box'},{id:'store',role:'nas',ssh:{alias:'store-admin',probe:'nas'}},{id:'gw',role:'router',ip:'10.1.0.1'}],plugins:{demo:{anything:true}}})});
  assert.ok(Object.isFrozen(ok)&&Object.isFrozen(ok.devices[0]));
  assert.deepEqual(ok.devices.map(deviceKind),['thermo','nas','router']);assert.equal(ok.devices[0].name,'box');

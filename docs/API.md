@@ -1049,7 +1049,7 @@ These screens show snapshots that read-only collectors write into the data direc
 | `node scripts/collect-systems.mjs` | `data/systems/snapshot.json`, `history.jsonl` | 6 h | `GET /api/systems` |
 | `node scripts/check-upstream.mjs` | `data/systems/upstream.json` | 12 h | `GET /api/systems` |
 | `node scripts/collect-security.mjs` | `data/security/ssh-keys.json`, `probes.json` | 24 h | `GET /api/security` |
-| `python3 scripts/collect-router-unifi.py` | `data/router-observations.json` (`schemaVersion: 2`: `clients`, `hardware`; a pre-1.0 file with `devices`, `unifiDevices` is still read) | 1 min | `GET /api/router`, `GET /api/home` |
+| `python3 scripts/collect-router-unifi.py` | `data/router-observations.json` (`schemaVersion: 2`: `clients`, `hardware`; a legacy file with `devices`, `unifiDevices` is still read) | 1 min | `GET /api/router`, `GET /api/home` |
 
 ### Collector state
 
@@ -1198,7 +1198,7 @@ One file, `data/knowledge.json`, is the source of truth for devices, services, t
 | Route | Who | |
 |---|---|---|
 | `GET /api/inventory` | read | `{"doc","gaps","hashes","provenance"}`: the checked document, the gaps (facts not recorded: a secret whose store is `unknown`, a runtime without an address) and one hash per entry id; `provenance` counts the entries by their `verified_by` stamp ([Provenance](#provenance)). `404 INVENTORY_MISSING` while there is no file; `500 INVENTORY_INVALID` when the file fails the checker |
-| `GET /api/inventory/export` | read | The file as a download (`home-inventory-<date>.json`): `{schema: 2, updated_at, entries}`. The import on the inventory page also takes a file exported by a pre-1.0 build (`schema: 1`) and reads it forward |
+| `GET /api/inventory/export` | read | The file as a download (`home-inventory-<date>.json`): `{schema: 2, updated_at, entries}`. The import on the inventory page also takes a file exported by a legacy build (`schema: 1`) and reads it forward |
 | `GET /api/inventory/schema` | read | How to fill it, as data: `entry.fields`, `kinds`, `categories`, `linkKinds`, `secrets.stores` (built-ins, this site's own from site.json → `inventory.secretStores`, and the prefix forms), `places` (site.json → `inventory.places`, then every device entry), `rules`, `limits`, `examples`, and `inventory: {entries, updatedAt}`: how many entries there are (`0` while there is no file, `null` when the file fails the checker). Never fails for a missing file, so ask here when you only need the count |
 | `GET /api/services` | read | `{"updatedAt","services","hashes","provenance"}`: the entries of kind `runtime` |
 | `POST /api/inventory/entries` | `inventory:write` | `{"entry":{…},"base"?}`: create or replace one whole entry → `{"ok","published","entry","hash"}`. The hub stamps `verified_at`, `verified_by` ("Home Hub API · <account>") and a default `confidence` |

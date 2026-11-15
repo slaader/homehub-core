@@ -90,7 +90,7 @@ export const BUILTIN_ROLES=Object.freeze([
  {id:'viewer',name:'Čtenář',description:'Jen čtení: vidí přehled, zařízení, inventář a tracker, nic nemění.',admin:false,assignable:true,grants:()=>['read']},
 ]);
 export const ROLE_ID=/^[a-z][a-z0-9-]{1,31}$/;
-// Ids a new custom role may not take: the built-in ones and the principal kinds. "app" joined them in 2.0;
+// Ids a new custom role may not take: the built-in ones and the principal kinds. "app" joined them;
 // a role that 1.0 stored under that id still loads (STORED_ROLE_IDS_KEPT, read by server/access-store.mjs).
 export const RESERVED_ROLE_IDS=Object.freeze([...BUILTIN_ROLES.map(r=>r.id),'api','app','service','none']);
 export const STORED_ROLE_IDS_KEPT=Object.freeze(['app']);

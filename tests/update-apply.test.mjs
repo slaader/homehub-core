@@ -371,7 +371,7 @@ test('an instance directory: core and a plugin source update in one transaction,
  await w.upstream.commit('2.0.0',tree('2.0.0'),{tag:'v2.0.0'});
  const p110=await w.pluginsUpstream.commit('1.1.0',{'package.json':JSON.stringify({name:'household',version:'1.1.0',homeHub:{core:'>=1.1.0 <2.0.0'}})+'\n','plugins/p-one/plugin.json':manifest('p-one','1.1.0',{core:'>=1.1.0 <2.0.0'}),
   'plugins/p-two/index.mjs':'export default {id:"p-two"};\n','plugins/p-two/plugin.json':manifest('p-two','0.3.0',{requires:{'p-one':'^1.1.0'}})},{tag:'v1.1.0'});
- // the plugins alone would need a newer core than the one installed; core alone to 2.0.0 is blocked by the plugin
+ // the plugins alone would need a newer core than the one installed; core alone to the current format.0 is blocked by the plugin
  await refused(preflight(inst,{core:null,plugins:{'*':'v1.1.0'}},w.ctx),/Plugin p-one 1\.1\.0 supports Home Hub >=1\.1\.0 <2\.0\.0; the target is 1\.0\.0/);
  await refused(preflight(inst,{core:'v2.0.0'},w.ctx),/Plugin p-one 1\.0\.0 supports Home Hub >=1\.0\.0 <2\.0\.0; the target is 2\.0\.0\. Update the plugins too/);
  await refused(preflight(inst,{core:'v1.1.0',plugins:{nope:'v1.1.0'}},w.ctx),/no plugin source "nope" \(there is household\)/);
@@ -447,7 +447,7 @@ test('the command line: arguments, status, and a rollback that remembers how the
  assert.deepEqual(w.svc.calls,['stop','start 1.1.0','stop','start 1.0.0']);
 });
 
-// The updater being tested lives outside these tiny 1.x installations. No old checkout needs to load new
+// The updater being tested lives outside these tiny legacy installations. No old checkout needs to load new
 // modules: the supported driver is the new update.mjs with --root pointing at the deployment checkout.
 async function siteWorld(t,{home=false}={}){
  const w=await world(t,{layout:home?'home':'checkout'});
@@ -461,7 +461,7 @@ async function siteWorld(t,{home=false}={}){
  return {...w,file,original,target};
 }
 
-test('1.x to 2.0 preflight checks a converted copy and never changes the live site, including on refusal',async t=>{
+test('legacy to the current format preflight checks a converted copy and never changes the live site, including on refusal',async t=>{
  const w=await siteWorld(t),inst=w.inst();
  const before=statSync(w.file).ino;
  const plan=await preflight(inst,{core:'v2.0.0'},w.ctx);
@@ -477,11 +477,11 @@ test('1.x to 2.0 preflight checks a converted copy and never changes the live si
  assert.equal(readFileSync(w.file,'utf8'),w.original);assert.equal(statSync(w.file).ino,before);
  assert.deepEqual(w.svc.calls,[]);assert.equal(readJournal(inst),null);
  writeFileSync(w.file,plan.siteChange.text);
- await refused(preflight(inst,{core:'v2.0.0'},w.ctx),/live 1\.x site already has 2\.0 keys/);
+ await refused(preflight(inst,{core:'v2.0.0'},w.ctx),/live legacy site already has current keys/);
  assert.deepEqual(w.svc.calls,[],'a configuration pre-converted outside the transaction is not accepted as a safe rollback baseline');
 });
 
-test('1.x to 2.0 saves original site bytes and restores them on later rollback, with and without an instance',async t=>{
+test('legacy to the current format saves original site bytes and restores them on later rollback, with and without an instance',async t=>{
  for(const home of [false,true])await t.test(home?'instance configuration':'external site, no instance',async t=>{
   const w=await siteWorld(t,{home}),inst=w.inst();
   const {journal}=await apply(inst,{core:'v2.0.0'},w.ctx);
@@ -499,7 +499,7 @@ test('1.x to 2.0 saves original site bytes and restores them on later rollback, 
  });
 });
 
-test('a failed 2.0 start automatically restores the original site before restarting 1.x',async t=>{
+test('a failed current start automatically restores the original site before restarting legacy',async t=>{
  const w=await siteWorld(t),inst=w.inst();
  await w.upstream.commit('2.0.1 crashes',tree('2.0.1',2,{STRICT_SITE:'',CRASH_AT_START:''}),{tag:'v2.0.1'});
  await refused(apply(inst,{core:'v2.0.1'},w.ctx),/health check failed[\s\S]*It was rolled back/);
@@ -598,7 +598,7 @@ test('an inactive plugin source joins only at the update switch; preflight and r
  assert.deepEqual(w.svc.calls,['stop','start 2.0.0','stop','start 1.0.0']);assert.ok(existsSync(w.added.root));
 });
 
-test('a failed start and an interrupted manifest replacement both recover without loading the new plugin on 1.x',async t=>{
+test('a failed start and an interrupted manifest replacement both recover without loading the new plugin on legacy',async t=>{
  const w=await sourceWorld(t),inst=w.inst();
  await w.upstream.commit('2.0.1 crash',tree('2.0.1',2,{STRICT_SITE:'',CRASH_AT_START:''}),{tag:'v2.0.1'});
  await refused(apply(inst,{...w.request,core:'v2.0.1'},w.ctx),/It was rolled back/);

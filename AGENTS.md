@@ -60,7 +60,7 @@ core     tests 1017  pass 1017  fail 0
 total    tests 1017  pass 1017  fail 0
 ```
 
-- **Core: 1017 tests in 123 files (2026-11-15). None may fail and none is skipped, on any computer.** One of them,
+- **Core: 1017 tests in 123 files (verified 2026-11-15). None may fail and none is skipped, on any computer.** One of them,
   `public edition: no overlay in the tree…`, fails in a checkout that has `local/site.json` or `local/plugins/`:
   develop core without them.
 - **Plugins test themselves.** A plugin source runs its tests against this core with
@@ -120,7 +120,7 @@ Rules:
 - Migrations are forward-only. Older code refuses newer state (`server/db.mjs`, `server/update-check.mjs`); it
   never "tries anyway". A store reads the form an earlier release wrote, writes its own in
   its place once (a whole file, then a rename), and has a test that starts from a literal file of that release
-  (`server/state-forward.mjs`, `tests/state-forward.test.mjs`: what 1.x wrote).
+  (`server/state-forward.mjs`, `tests/state-forward.test.mjs`: legacy stored formats).
 - The update check (`server/update-check.mjs`, core module `updates`) only tells. Nothing in the hub applies
   an update: no route, no button, no MCP tool. Where releases are published is one line,
   `package.json → homeHub.updates.repo`; nothing else in core names that repository.

@@ -21,15 +21,15 @@ const readJson=file=>{try{return JSON.parse(readFileSync(file,'utf8'));}catch(e)
 // start that was interrupted half way finishes the rest the next time and never overwrites newer state. The token
 // file is written whole under a temporary name and renamed into place before the old one goes: at every instant
 // one complete file exists, with the same ids and hashes, so every issued token keeps working.
-// Both names at once means a 1.x hub ran on this state after the move (a rollback without the archive) and wrote a
+// Both names at once means a legacy hub ran on this state after the move (a rollback without the archive) and wrote a
 // token file of its own: those tokens are not merged, and the warning says so at every start until one file goes.
 function migrate(directory,warn){
  const file=path.join(directory,FILE),oldFile=path.join(directory,LEGACY.file),audit=path.join(directory,AUDIT),oldAudit=path.join(directory,LEGACY.audit);
- if(existsSync(file)&&existsSync(oldFile))warn(`App tokens: both ${oldFile} and ${file} exist. Only ${FILE} is read: tokens in ${LEGACY.file} (issued by Home Hub 1.x after this state was moved forward) are refused, and the file is left as it is. Issue those apps new tokens, then remove ${LEGACY.file}.`);
+ if(existsSync(file)&&existsSync(oldFile))warn(`App tokens: both ${oldFile} and ${file} exist. Only ${FILE} is read: tokens in ${LEGACY.file} (issued by legacy Home Hub after this state was moved forward) are refused, and the file is left as it is. Issue those apps new tokens, then remove ${LEGACY.file}.`);
  if(existsSync(audit)&&existsSync(oldAudit))warn(`App tokens: both ${oldAudit} and ${audit} exist. Only ${AUDIT} is read; the lines in ${LEGACY.audit} are not shown.`);
  if(!existsSync(file)&&existsSync(oldFile)){
   const old=readJson(oldFile);
-  if(!old||old.schemaVersion!==LEGACY.schemaVersion||!Array.isArray(old[LEGACY.key]))throw new Error(`Invalid app token store: ${LEGACY.file} is not a 1.0 token file`);
+  if(!old||old.schemaVersion!==LEGACY.schemaVersion||!Array.isArray(old[LEGACY.key]))throw new Error(`Invalid app token store: ${LEGACY.file} is not a supported legacy token file`);
   mkdirSync(directory,{recursive:true,mode:0o700});
   writeFileSync(file+'.tmp',JSON.stringify({schemaVersion:APP_TOKENS_SCHEMA,tokens:sound(old[LEGACY.key])}),{mode:0o600});renameSync(file+'.tmp',file);rmSync(oldFile,{force:true});
  }

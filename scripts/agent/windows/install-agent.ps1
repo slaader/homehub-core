@@ -363,8 +363,9 @@ if ($KeyFile) {
   $masked = $keyText.Replace($token, $placeholder); $keyText = $null; $found = $null
   try { $k = ConvertFrom-Json -InputObject $masked } catch { $k = $null }
   $agentInfo = Get-Prop $k 'agent'
-  # A key file a 1.x hub wrote names the device under 1.x's key. The key in it still works, so it is read as it is.
+  # A key file a legacy hub wrote names the device under legacy's key. The key in it still works, so it is read as it is.
   $keyDevice = Get-Prop $agentInfo 'device'
+  # Legacy field name.
   if ($null -eq $keyDevice) { $keyDevice = Get-Prop $agentInfo 'machine' }
   if ((Get-Prop $k 'schema') -ne 1 -or (Get-Prop $k 'token') -cne $placeholder -or -not ($keyDevice -is [string])) { $token = $null; Stop-Install '-KeyFile is not an agent key file (schema 1, an hha_ token)' }
   $device = [string]$keyDevice; $agentId = [string](Get-Prop $agentInfo 'id')

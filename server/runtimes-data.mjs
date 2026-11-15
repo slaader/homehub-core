@@ -14,7 +14,7 @@ import {createReader,readRuntime,errorCode,KIND_NAMES} from './runtime-adapters.
 import {forwardKeys} from './state-forward.mjs';
 
 // <state>/runtimes-config.json: {schema: 2, endpoints: [{id, device, kind, url, name, addedAt, addedBy, updatedAt,
-// updatedBy, source}]}. Schema 1 is the same list as 1.x wrote it, each endpoint naming its device with 1.x's key
+// updatedBy, source}]}. Schema 1 is the same list as legacy wrote it, each endpoint naming its device with legacy's key
 // (server/state-forward.mjs); it is read once and written in this schema.
 export const RUNTIMES_CONFIG_SCHEMA=2;
 
@@ -38,7 +38,7 @@ export function createEndpointStore(file){
  const current=async()=>parse(await readJson(file).catch(()=>null));
  // For a change: the list as it is now, never a newer hub's.
  const mine=async()=>{const now=await current();if(now.newer)throw new Error('newer-state');return now.endpoints;};
- // The first read of a 1.x file writes it forward (in the queue, so it never crosses a change).
+ // The first read of a legacy file writes it forward (in the queue, so it never crosses a change).
  const read=async()=>{const now=await current();
   if(now.old)await queue(async()=>{const again=await current();if(again.old)await writeJson(file,{schema:RUNTIMES_CONFIG_SCHEMA,endpoints:again.endpoints});}).catch(()=>{});
   return now.endpoints;};

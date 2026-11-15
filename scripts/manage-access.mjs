@@ -31,7 +31,7 @@ import {site as loadedSite} from '../server/site-config.mjs';
 import {resolvePaths} from '../server/paths.mjs';
 import {renamedFlag} from '../server/state-forward.mjs';
 const args=process.argv.slice(2),command=args.shift();
-// A flag 1.x named otherwise is refused by name before anything is read (server/state-forward.mjs → V1_FLAGS).
+// A flag legacy named otherwise is refused by name before anything is read (server/state-forward.mjs → V1_FLAGS).
 const renamed=renamedFlag(args);if(renamed){console.error(`manage-access: ${renamed}`);process.exit(2);}
 function option(name){const i=args.indexOf('--'+name);return i<0?undefined:args[i+1];}
 const root=option('root')||path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),output=option('output');

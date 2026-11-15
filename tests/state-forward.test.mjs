@@ -1,7 +1,7 @@
-// State written by Home Hub 1.0.0 loads in 2.0 (AGENTS.md → Versioning: migrations are forward-only).
-// Every test starts from a literal of what 1.0.0 wrote (its own key for a device, its schema numbers), checks what
+// Legacy state loads (AGENTS.md → Versioning: migrations are forward-only).
+// Every test starts from a literal of legacy input (its own key for a device, its schema numbers), checks what
 // the store makes of it, and then starts a second time: the file is the same bytes in the same inode, so nothing
-// was written again. tests/fixtures/v1/ holds the two collector files as they were in the 1.0.0 tree.
+// was written again. tests/fixtures/v1/ holds the two collector files as they were in legacy storage.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,writeFile,readFile,readdir,rm,stat,utimes,chmod} from 'node:fs/promises';
@@ -35,9 +35,9 @@ const put=async(file,value)=>{await mkdir(path.dirname(file),{recursive:true});a
 const lines=list=>list.map(l=>JSON.stringify(l)).join('\n')+'\n';
 // What a file is now: its bytes and its inode. A file written again (a temporary name, then a rename) has another inode.
 const mark=async file=>{const s=await stat(file);return `${s.ino}:${createHash('sha256').update(await readFile(file)).digest('hex')}`;};
-const noOldWord=value=>assert.doesNotMatch(JSON.stringify(value),/machine/i,'nothing of the 1.0.0 name is left');
+const noOldWord=value=>assert.doesNotMatch(JSON.stringify(value),/machine/i,'nothing of the legacy field is left');
 
-// ---- what 1.0.0 wrote ---------------------------------------------------------------------------------------------
+// ---- legacy input ---------------------------------------------------------------------------------------------
 const TOKEN='hha_'+'7'.repeat(64),HASH=createHash('sha256').update(TOKEN).digest('hex');
 const AGENTS_V1={schemaVersion:1,agents:[
  {id:'00112233aabbccdd',machine:'studio',machineCreatedAt:null,name:'studio · 2026-10-01',prefix:TOKEN.slice(0,12),hash:HASH,createdAt:'2026-10-01T08:00:00.000Z',createdBy:'admin',revokedAt:null,revokedBy:null},
@@ -50,19 +50,19 @@ const TREND_V1=[{at:'2026-10-30T06:00:00.000Z',machines:{studio:{os:false,softwa
 const AGENT_AUDIT_V1=[{at:'2026-10-01T08:05:00.000Z',event:'agent-first-report',agent:'00112233aabbccdd',machine:'studio'},{at:'2026-10-02T08:05:00.000Z',event:'agent-refused',agent:'00112233aabbccdd',machine:'studio',code:'too-soon'}];
 const ACCESS_AUDIT_V1=[{at:'2026-10-01T08:00:00.000Z',event:'agent-key-created',id:'00112233aabbccdd',name:'studio · 2026-10-01',by:'admin',detail:'machine studio'},
  {at:'2026-09-20T08:00:00.000Z',event:'agent-key-revoked',id:'8899aabbccddeeff',name:'pi-hole',by:'machine-removed',detail:'machine pi-hole'},
- {at:'2026-09-19T08:00:00.000Z',event:'user-created',id:'u1',name:'machine operator',by:'admin',detail:'machine room'}];
+ {at:'2026-09-19T08:00:00.000Z',event:'user-created',id:'u1',name:'equipment operator',by:'admin',detail:'equipment room'}];
 const ENDPOINTS_V1={schema:1,endpoints:[{id:'studio-ollama',machine:'studio',kind:'ollama',url:'http://10.0.0.26:11434',name:'Ollama',addedAt:'2026-10-05T08:00:00.000Z',addedBy:'admin',updatedAt:'2026-10-05T08:00:00.000Z',updatedBy:'admin',source:'ui'}]};
 const requestV1=(at,metricId,more={})=>({machine:'studio',runtime:'llama-swap',model:'qwen',at,metricId,path:'/v1/chat/completions',status:200,inputTokens:10,outputTokens:20,cacheTokens:0,promptTps:100,generationTps:50,durationMs:900,client:'codex',...more});
 const INVENTORY_V1={schema:1,updated_at:'2026-10-20',about:'written by hand',entries:[
  {id:'studio',kind:'machine',name:'Mac Studio',verified_at:'2026-10-20'},
  {id:'studio-gateway',kind:'runtime',machine:'studio',name:'Gateway',address:':8790',verified_at:'2026-10-20',secrets:[{what:'Token',store:'keychain:studio',ref:'gateway.token'}],depends_on:[{id:'studio-sync',kind:'cert'}]},
- {id:'studio-sync',kind:'tool',machine:'studio',name:'Cert sync',notes:'runs on the machine itself',verified_at:'2026-10-20',verified_by:'user edit in Home Hub'},
+ {id:'studio-sync',kind:'tool',machine:'studio',name:'Cert sync',notes:'runs on the device itself',verified_at:'2026-10-20',verified_by:'user edit in Home Hub'},
  {id:'dns',kind:'external',name:'DNS provider',address:'https://dns.example.com',verified_at:'2026-10-20'}]};
 const PROBES_V1=at=>({schemaVersion:1,collectedAt:at,collectedFrom:'studio',probes:{studio:{error:'timeout'}},forgejo:null,extraMachines:[{id:'router',sshOpen:false,note:'SSH je na routeru vypnuté (port 22 zavřený).'}]});
 const DESCRIPTOR={schemaVersion:1,id:'studio',name:'Studio from its descriptor',hostname:'studio.example.lan',collectedAt:'2026-11-07T21:00:00Z',addresses:[{ip:'10.0.0.26'}],hardware:{cpu:'Apple M2 Max',ramGb:64}};
 
 // ---- the agent stores ---------------------------------------------------------------------------------------------
-test('agents.json of 1.0.0: schema 2 with the same ids, hashes and stamps; the key still verifies; a second start writes nothing',async t=>{
+test('agents.json from legacy storage: schema 2 with the same ids, hashes and stamps; the key still verifies; a second start writes nothing',async t=>{
  const dir=await temp(t),file=path.join(dir,'agents.json');await put(file,AGENTS_V1);
  const store=createAgentStore(dir),doc=await json(file);
  assert.equal(AGENTS_SCHEMA,2);assert.equal(doc.schemaVersion,2);noOldWord(doc);
@@ -78,7 +78,7 @@ test('agents.json of 1.0.0: schema 2 with the same ids, hashes and stamps; the k
  assert.equal(await mark(file),before,'the second start read schema 2 and wrote nothing');
 });
 
-test('agent/<id>.json of 1.0.0: schema 2 under the device key; a second start writes nothing; a file that names another id is not taken',async t=>{
+test('agent/<id>.json from legacy storage: schema 2 under the device key; a second start writes nothing; a file that names another id is not taken',async t=>{
  const dir=await temp(t),file=path.join(dir,'agent','studio.json');await put(file,REPORT_V1);
  await put(path.join(dir,'agent','mini.json'),{...REPORT_V1,machine:'studio'});
  const store=createReportStore(dir,{log:{}}),doc=await json(file);
@@ -93,7 +93,7 @@ test('agent/<id>.json of 1.0.0: schema 2 under the device key; a second start wr
  assert.equal(await mark(file),before);
 });
 
-test('the trend files of 1.0.0 (agent/history.jsonl, systems/history.jsonl): each line under devices, rewritten once',async t=>{
+test('the trend files from legacy storage (agent/history.jsonl, systems/history.jsonl): each line under devices, rewritten once',async t=>{
  const dir=await temp(t),file=path.join(dir,'history.jsonl');await put(file,lines(TREND_V1)+'not json\n');
  assert.equal(await forwardJsonl(file,forwardTrendLine),2);
  const text=await readFile(file,'utf8');
@@ -105,7 +105,7 @@ test('the trend files of 1.0.0 (agent/history.jsonl, systems/history.jsonl): eac
  assert.deepEqual((await readdir(dir)).sort(),['history.jsonl']);
 });
 
-test('the audit files of 1.0.0 are not rewritten and read in today\'s words',async t=>{
+test('the audit files from legacy storage are not rewritten and read in today\'s words',async t=>{
  const dir=await temp(t);
  await put(path.join(dir,'agent-audit.jsonl'),lines(AGENT_AUDIT_V1));await put(path.join(dir,'access-audit.jsonl'),lines(ACCESS_AUDIT_V1));
  const before=[await mark(path.join(dir,'agent-audit.jsonl')),await mark(path.join(dir,'access-audit.jsonl'))];
@@ -114,12 +114,12 @@ test('the audit files of 1.0.0 are not rewritten and read in today\'s words',asy
  const access=Object.fromEntries(events.filter(e=>e.kind==='access').map(e=>[e.event,e]));
  assert.deepEqual([access['agent-key-created'].detail,access['agent-key-created'].by],['device studio','admin']);
  assert.deepEqual([access['agent-key-revoked'].detail,access['agent-key-revoked'].by],['device pi-hole','device-removed']);
- assert.deepEqual([access['user-created'].detail,access['user-created'].subject],['machine room','machine operator'],'only what the hub wrote about an agent key is reworded, never a name a person chose');
+ assert.deepEqual([access['user-created'].detail,access['user-created'].subject],['equipment room','equipment operator'],'only what the hub wrote about an agent key is reworded, never a name a person chose');
  assert.deepEqual([await mark(path.join(dir,'agent-audit.jsonl')),await mark(path.join(dir,'access-audit.jsonl'))],before,'an audit file is append-only');
 });
 
 // ---- runtimes -----------------------------------------------------------------------------------------------------
-test('runtimes-config.json of 1.0.0: schema 2, each endpoint with its device; a second start writes nothing; a newer file is refused',async t=>{
+test('runtimes-config.json from legacy storage: schema 2, each endpoint with its device; a second start writes nothing; a newer file is refused',async t=>{
  const dir=await temp(t),file=path.join(dir,'runtimes-config.json');await put(file,ENDPOINTS_V1);
  const store=createEndpointStore(file),list=await store.list(),old=ENDPOINTS_V1.endpoints[0];
  const {machine,...rest}=old;
@@ -143,7 +143,7 @@ test('runtimes-config.json of 1.0.0: schema 2, each endpoint with its device; a 
  assert.equal(await readFile(file,'utf8'),newer,'never written over');
 });
 
-test('requests-YYYY-MM.jsonl of 1.0.0: read and rewritten under device and clientDevice; the same request is not taken twice',async t=>{
+test('requests-YYYY-MM.jsonl from legacy storage: read and rewritten under device and clientDevice; the same request is not taken twice',async t=>{
  const dir=await temp(t),now=Date.parse('2026-11-10T12:00:00Z'),file=path.join(dir,'runtimes','studio','requests-2026-11.jsonl');
  const old=[requestV1('2026-11-10T10:00:00.000Z',1,{clientMachine:'mini',clientAddress:'10.0.0.25'}),requestV1('2026-11-10T11:00:00.000Z',2)];
  await put(file,lines(old));
@@ -168,13 +168,13 @@ test('requests-YYYY-MM.jsonl of 1.0.0: read and rewritten under device and clien
 });
 
 // ---- the collectors' files ----------------------------------------------------------------------------------------
-test('systems/snapshot.json of 1.0.0: schema 2 with its devices, the file\'s time kept; a second read writes nothing; a newer one is refused',async t=>{
+test('systems/snapshot.json from legacy storage: schema 2 with its devices, the file\'s time kept; a second read writes nothing; a newer one is refused',async t=>{
  const dir=await temp(t),file=path.join(dir,'snapshot.json'),old=await json(path.join(V1_DIR,'snapshot.json'));
- assert.equal(old.schemaVersion,1);assert.ok(old.machines.studio&&!old.devices,'the fixture is what 1.0.0 wrote');
+ assert.equal(old.schemaVersion,1);assert.ok(old.machines.studio&&!old.devices,'the fixture is legacy input');
  await put(file,JSON.stringify(old,null,1)+'\n');const then=new Date('2026-11-08T12:00:05Z');await utimes(file,then,then);
  const doc=await readSnapshot(file);
  assert.equal(SYSTEMS_SCHEMA,2);
- assert.deepEqual(doc,await json(path.join(READERS_DIR,'snapshot.json')),'exactly the snapshot a 2.0 collector writes');
+ assert.deepEqual(doc,await json(path.join(READERS_DIR,'snapshot.json')),'exactly the snapshot a current collector writes');
  assert.deepEqual(Object.keys(doc),Object.keys(old).map(k=>k==='machines'?'devices':k));
  assert.deepEqual(await json(file),doc);assert.equal((await stat(file)).mtimeMs,then.getTime(),'the snapshot is as old as it was');
  assert.equal((await stat(file)).mode&0o777,0o600);assert.deepEqual(await readdir(dir),['snapshot.json']);
@@ -196,7 +196,7 @@ test('a directory the hub may not write: the 1.0.0 snapshot and key inventory ar
  }finally{for(const d of ['systems','security'])await chmod(path.join(dir,d),0o700);}
 });
 
-test('collect-systems after 1.0.0: carries the old snapshot\'s records over, writes schema 2 and forwards its trend file',async t=>{
+test('collect-systems with legacy input: carries the old snapshot\'s records over, writes schema 2 and forwards its trend file',async t=>{
  const dir=await temp(t),old=await json(path.join(V1_DIR,'snapshot.json'));
  await put(path.join(dir,'snapshot.json'),old);await put(path.join(dir,'history.jsonl'),lines(TREND_V1));
  const site={...SITE,devices:SITE.devices.filter(m=>m.id==='studio')};
@@ -215,17 +215,17 @@ test('collect-systems after 1.0.0: carries the old snapshot\'s records over, wri
  assert.equal(await readFile(path.join(dir,'snapshot.json'),'utf8'),newer);
 });
 
-test('security/ssh-keys.json and probes.json of 1.0.0: schema 2, every key and stored template forwarded; a second load writes nothing',async t=>{
+test('security/ssh-keys.json and probes.json from legacy storage: schema 2, every key and stored template forwarded; a second load writes nothing',async t=>{
  const dir=await temp(t),file=path.join(dir,'security','ssh-keys.json'),probes=path.join(dir,'security','probes.json');
  const old=await json(path.join(V1_DIR,'ssh-keys.json')),now=await json(path.join(READERS_DIR,'ssh-keys.json'));
- assert.equal(old.schemaVersion,1);assert.ok(Array.isArray(old.machines)&&!old.devices,'the fixture is what 1.0.0 wrote');
+ assert.equal(old.schemaVersion,1);assert.ok(Array.isArray(old.machines)&&!old.devices,'the fixture is legacy input');
  await put(file,JSON.stringify(old,null,1)+'\n');const then=new Date('2026-11-08T12:00:05Z');await utimes(file,then,then);
  const doc=await loadSecurity(dir,file,{site:SITE});
  assert.equal(SECURITY_SCHEMA,2);
- assert.deepEqual(doc,now,'exactly the document a 2.0 collector writes');
+ assert.deepEqual(doc,now,'exactly the document a current collector writes');
  assert.equal(JSON.stringify(doc),JSON.stringify(now),'with every key in its place');noOldWord(doc);
  // 1.0.0 stored its Czech wording ("stroj") in the findings' templates, which are keys of today's dictionary ("zařízení").
- assert.match(JSON.stringify(old),/na cílovém stroji\./,'the fixture has the wording of 1.0.0');
+ assert.match(JSON.stringify(old),/na cílovém stroji\./,'the fixture has the wording from legacy storage');
  assert.doesNotMatch(JSON.stringify(doc),/(?<![Nn]á)stroj/,'no finding keeps it');
  assert.ok(doc.findings.some(f=>f.detailT?.some(p=>p.key==='Kdo získá soubor klíče, je root na cílovém zařízení. Jde o záměr pro agenty, ochranu dělají jen from= a AllowUsers. {keys}')),'its template is today\'s');
  assert.ok(doc.findings.some(f=>f.titleT?.some(p=>p.key.includes('{device}')&&typeof p.params.device==='string')),'a finding\'s template is the one today\'s dictionary has');
@@ -250,7 +250,7 @@ test('security/ssh-keys.json and probes.json of 1.0.0: schema 2, every key and s
  assert.equal(await mark(probes),mark2);assert.equal(await mark(file),before);
 });
 
-test('data/machines of 1.0.0 becomes data/devices once; DEVICES_DIR is left alone; an existing data/devices is never replaced',async t=>{
+test('legacy descriptor directory becomes data/devices once; DEVICES_DIR is left alone; an existing data/devices is never replaced',async t=>{
  const dir=await temp(t);await put(path.join(dir,'machines','studio.json'),DESCRIPTOR);
  assert.equal(devicesDirectory(dir,{DEVICES_DIR:'/elsewhere'}),'/elsewhere');assert.ok(existsSync(path.join(dir,'machines')),'a directory named by DEVICES_DIR moves nothing');
  assert.equal(devicesDirectory(dir,{}),path.join(dir,'devices'));
@@ -264,15 +264,15 @@ test('data/machines of 1.0.0 becomes data/devices once; DEVICES_DIR is left alon
 });
 
 // ---- the inventory ------------------------------------------------------------------------------------------------
-test('knowledge.json of 1.0.0: schema 2, kind and field device, every other field as it was; hashes change only where the field did',async t=>{
+test('knowledge.json from legacy storage: schema 2, kind and field device, every other field as it was; hashes change only where the field did',async t=>{
  const next=forwardInventory(INVENTORY_V1);
  assert.equal(INVENTORY_SCHEMA,2);assert.equal(next.schema,2);assert.equal(next.about,'written by hand');assert.equal(next.updated_at,'2026-10-20');
  assert.deepEqual(next.entries.map(e=>[e.id,e.kind,e.device??null]),[['studio','device',null],['studio-gateway','runtime','studio'],['studio-sync','tool','studio'],['dns','external',null]]);
  assert.deepEqual(next.entries.map(e=>Object.keys(e)),INVENTORY_V1.entries.map(e=>Object.keys(e).map(k=>k==='machine'?'device':k)),'the keys keep their places');
- assert.equal(next.entries[2].notes,'runs on the machine itself','a person\'s own words are not touched');
+ assert.equal(next.entries[2].notes,'runs on the device itself','a person\'s own words are not touched');
  assert.equal(next.entries[1].secrets[0].store,'keychain:studio');assert.equal(next.entries[2].verified_by,'user edit in Home Hub');
  assert.deepEqual(validate(next,{secretStores:[]}).errors,[]);
- assert.ok(validate(INVENTORY_V1,{secretStores:[]}).errors.includes('schema must be 2'),'the 1.0.0 document itself is not a 2.0 document');
+ assert.ok(validate(INVENTORY_V1,{secretStores:[]}).errors.includes('schema must be 2'),'the 1.0.0 document itself is not a current document');
  assert.equal(entryHash(next.entries[3]),entryHash(INVENTORY_V1.entries[3]),'an entry without the field keeps its hash');
  assert.notEqual(entryHash(next.entries[1]),entryHash(INVENTORY_V1.entries[1]));
  assert.equal(forwardInventory(next),next,'a schema 2 document is left as it is');
@@ -294,7 +294,7 @@ test('knowledge.json of 1.0.0: schema 2, kind and field device, every other fiel
 // ---- a key file on another host -----------------------------------------------------------------------------------
 test('router-observations.json of a 1.0.0 collector: read forward as clients and hardware on every read, never rewritten',async t=>{
  const dir=await temp(t),file=path.join(dir,ROUTER_FILE);
- // What scripts/collect-router-unifi.py of 1.0.0 wrote (the collector may run on another host and be copied here).
+ // What scripts/collect-router-unifi.py from legacy storage wrote (the collector may run on another host and be copied here).
  const v1={schemaVersion:1,attemptedAt:'2026-11-08T11:59:30+00:00',source:'UniFi Network API',status:'ok',observedAt:'2026-11-08T11:59:30+00:00',error:null,
   devices:[{mac:'aa:bb:cc:dd:ee:01',ip:'10.0.0.151',name:'Desktop',connection:'Ethernet',presence:'reachable',connected:true,type:'WIRED',connectedAt:'',lastSeen:'2026-11-08T11:59:30+00:00',uplink:'Gateway'}],
   clientCounts:{wired:1,wireless:0,other:0},model:'UniFi Dream Router 7 (UDR7)',firmware:'4.3.6',routerMac:'a8:9c:6c:0e:8d:15',routerIp:'10.0.0.1',
@@ -302,7 +302,7 @@ test('router-observations.json of a 1.0.0 collector: read forward as clients and
   site:'Default',applicationVersion:'9.4.19',backend:'integration-api',routerBaseMac:'a8:9c:6c:0e:8d:15'};
  const forward=forwardObservation(v1);
  assert.deepEqual([forward.clients,forward.hardware],[v1.devices,v1.unifiDevices]);assert.ok(!('devices' in forward)&&!('unifiDevices' in forward));
- assert.equal(forwardObservation(forward),forward,'a 2.0 observation is returned as it is');
+ assert.equal(forwardObservation(forward),forward,'a current observation is returned as it is');
  await put(file,v1);const before=await mark(file);
  const router=await readRouter(dir,{lanCidrs:['10.0.0.0/24'],now:Date.parse('2026-11-08T12:00:00Z')});
  assert.equal(router.state,'ok');assert.deepEqual(router.clients.map(c=>c.name),['Desktop']);assert.equal(router.health.hardware[0].name,'Gateway');
@@ -313,14 +313,14 @@ test('router-observations.json of a 1.0.0 collector: read forward as clients and
 test('an agent key file downloaded from 1.0.0 is still an agent key file',()=>{
  const old=JSON.stringify({schema:1,agent:{id:'00112233aabbccdd',machine:'studio',name:'studio · 2026-10-01',prefix:TOKEN.slice(0,12),createdAt:'2026-10-01T08:00:00.000Z'},token:TOKEN});
  assert.deepEqual(readKeyFile(old),{token:TOKEN,agent:{id:'00112233aabbccdd',device:'studio',prefix:TOKEN.slice(0,12)}});
- assert.deepEqual(readKeyFile(old.replace('"machine"','"device"')),readKeyFile(old),'and reads as the one 2.0 writes');
+ assert.deepEqual(readKeyFile(old.replace('"machine"','"device"')),readKeyFile(old),'and reads as the current format');
  assert.throws(()=>readKeyFile(JSON.stringify({schema:1,agent:{id:'x'},token:TOKEN})),/not an agent key file/);
 });
 
 // ---- the whole hub ------------------------------------------------------------------------------------------------
 // A data and state directory as 1.0.0 left it, served by this hub: every page's answer comes out in today's names,
 // the agent's key still reports, and a restart finds nothing left to do.
-test('a hub started on the state of 1.0.0 serves it, forwards it once, and a restart changes nothing',async t=>{
+test('a hub started on the state from legacy storage serves it, forwards it once, and a restart changes nothing',async t=>{
  const dir=await temp(t),at=new Date(Date.now()-3600e3).toISOString(),month=at.slice(0,7);
  const golden=await json(path.join(READERS_DIR,'golden.json'));
  const requests=path.join(dir,'runtimes','studio',`requests-${month}.jsonl`);
@@ -349,8 +349,8 @@ test('a hub started on the state of 1.0.0 serves it, forwards it once, and a res
   return out;
  };
  const check=out=>{
-  assert.equal(JSON.stringify(out.systems),JSON.stringify(golden.systems.body),'/api/systems, byte for byte what a 2.0 snapshot answers');
-  assert.equal(JSON.stringify(out.security),JSON.stringify(golden.security.body),'/api/security, byte for byte what a 2.0 inventory answers');
+  assert.equal(JSON.stringify(out.systems),JSON.stringify(golden.systems.body),'/api/systems, byte for byte what a current snapshot answers');
+  assert.equal(JSON.stringify(out.security),JSON.stringify(golden.security.body),'/api/security, byte for byte what a current inventory answers');
   assert.deepEqual(out.agents.sort(),[['00112233aabbccdd','studio',null],['1122334455667788','mini','device-changed'],['8899aabbccddeeff','pi-hole','device-removed'],['99aabbccddeeff00','mini','alice']]);
   assert.deepEqual(out.audit.filter(e=>e[0]==='agent'),[['agent','agent-refused','studio','too-soon',null],['agent','agent-first-report','studio','',null]]);
   assert.ok(out.audit.some(e=>e[1]==='agent-key-revoked'&&e[3]==='device pi-hole'&&e[4]==='device-removed'));
@@ -367,7 +367,7 @@ test('a hub started on the state of 1.0.0 serves it, forwards it once, and a res
  // On disk: today's forms only, nothing temporary, the old directory gone. (The trend file is forwarded at start, beside the requests.)
  for(let i=0;i<200&&/machine/.test(await readFile(path.join(dir,'agent','history.jsonl'),'utf8'));i++)await new Promise(r=>setTimeout(r,10));
  const files=['agents.json','agent/studio.json','agent/history.jsonl','runtimes-config.json',`runtimes/studio/requests-${month}.jsonl`,'systems/snapshot.json','security/ssh-keys.json','knowledge.json'];
- for(const f of files)assert.doesNotMatch((await readFile(path.join(dir,f),'utf8')).replace('runs on the machine itself',''),/machine/i,f);
+ for(const f of files)assert.doesNotMatch((await readFile(path.join(dir,f),'utf8')).replace('runs on the device itself',''),/machine/i,f);
  assert.equal(existsSync(path.join(dir,'machines')),false);assert.deepEqual(await readdir(path.join(dir,'devices')),['studio.json']);
  assert.deepEqual([(await json(path.join(dir,'agents.json'))).schemaVersion,(await json(path.join(dir,'agent','studio.json'))).schemaVersion,(await json(path.join(dir,'runtimes-config.json'))).schema,
   (await json(path.join(dir,'systems','snapshot.json'))).schemaVersion,(await json(path.join(dir,'security','ssh-keys.json'))).schemaVersion,(await json(path.join(dir,'knowledge.json'))).schema],[2,2,2,2,2,2]);
@@ -382,7 +382,7 @@ test('a hub started on the state of 1.0.0 serves it, forwards it once, and a res
  assert.equal((await json(path.join(dir,'agent','studio.json'))).device,'studio');
 });
 
-test('a 1.x collector file is written forward only while it is still the file that was read',async t=>{
+test('a legacy collector file is written forward only while it is still the file that was read',async t=>{
  const dir=await mkdtemp(path.join(os.tmpdir(),'hub-forward-seen-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  const file=path.join(dir,'snapshot.json'),v1=JSON.stringify({schemaVersion:1,machines:{}});
  // Unchanged since it was read: written, and the time is kept.
@@ -406,7 +406,7 @@ test('a 1.x collector file is written forward only while it is still the file th
  const gone=await readJsonSeen(file);await rm(file);
  assert.equal(await writeJson(file,{schemaVersion:2,devices:{}},{seen:gone.seen}),false);
  assert.deepEqual(await readdir(dir),[]);
- // The readers that write a collector's file forward pass what they read, so a 1.x snapshot is still moved once.
+ // The readers that write a collector's file forward pass what they read, so a legacy snapshot is still moved once.
  await writeFile(file,v1);
  assert.equal((await readSnapshot(file)).schemaVersion,SYSTEMS_SCHEMA);
  assert.equal(JSON.parse(await readFile(file,'utf8')).schemaVersion,SYSTEMS_SCHEMA);

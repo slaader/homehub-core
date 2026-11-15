@@ -127,7 +127,7 @@ local/plugins/notes/
 
 An unknown field, a wrong value, a core range this core is outside of, an unmet `requires` or a missing required
 setting stops the start with the plugin's name (`node server/index.mjs --check` runs every one of these checks and
-exits, opening nothing). A plugin **without** `plugin.json` still loads in 1.x, with one warning line (an
+exits, opening nothing). A plugin **without** `plugin.json` still loads in this major version, with one warning line (an
 "unversioned plugin"); 2.0 will require it. The start-up line names every plugin with its version
 (`Home Hub 1.0.0 (… 9 plugin(s): compute 1.0.0, …)`), and so do `GET /api/ui/manifest → modules[]` and the footer's
 tooltip.
@@ -539,9 +539,7 @@ list as `clients` and the counts as `health.clientCounts: {connected, wired, wir
 folds the clients into the plugin's own network-device list, `inventory.devices` (each `{id, mac, ip, name, …}`,
 keyed by the MAC address without colons, with `routerMacs` for a device's other interfaces): a client it does not know
 is added as an unidentified entry to review. That list is the plugin's, not the hub's devices (`site.json → devices`
-and the overview's added devices). The census was `devices` before 1.0: an adapter that still returns `devices`
-reports no clients. Only the included file adapter still reads the old names, because its file may come from a
-pre-1.0 collector on another host (`docs/storage.md` → State written before 1.0).
+and the overview's added devices). Adapters return `clients`; the included file adapter also reads legacy collector fields (`docs/storage.md` → Stored-file compatibility).
 
 ### The browser side
 
@@ -622,45 +620,6 @@ For the deprecated in-tree `local/`, `npm test` in the core checkout runs them a
 `exact` is `true` on the release tag of `version`, `false` on any other git checkout (`label` is then
 `1.1.0+dev (4172c37)`), and `null` where there is no git checkout to tell.
 Under the test runner, front-end modules can be imported in Node with the same URL-style imports.
-
-## Upgrading a plugin from before 1.0
-
-Home Hub 1.0 calls a device what builds before it called a machine, an app token what they called a device token, and the
-router's network clients `clients` where they said `devices`, so that a device is only ever the household's. No old name
-is kept as an alias, so a plugin written for a pre-1.0 build changes these before 1.0 starts with it. The table below
-lists the HTTP routes, fields and error codes a plugin's page or script may call; this is the plugin contract.
-
-| Where | Before 1.0 | 1.0 |
-|---|---|---|
-| `plugin.json → core` (or the source's `homeHub.core`) | a range that does not hold 1.0.0, such as `>=2.0.0 <3.0.0` or one that ends below 1.0.0 | one that holds 1.x, such as `>=1.0.0 <2.0.0`. A plugin outside its range stops the start |
-| `site.json` | `machines[]`, `runtimes[].machine` | `devices[]`, `runtimes[].device`. A file with `machines` is refused, by name. `plugins.<id>.agents.<agent>.<device id>` keeps its shape |
-| The site object (`hub.site`, `site()`, `loadSite()`) | `site.machines` | `site.devices` |
-| Extension point | `machines.facets`: `(machines) => report`, a report's `machines: {[id]: entry}` | `devices.facets`: `(devices) => report`, a report's `devices: {[id]: entry}` |
-| Integration field | `machines: (state, hub) => [{machine, item}]` | `devices: (state, hub) => [{device, item}]` |
-| `runtimes.requests` items | `machine`, `clientMachine` | `device`, `clientDevice` |
-| Provenance (`provenance`, `collectorSource`) | `unit: 'machines'` | `unit: 'devices'` (an unknown unit is dropped) |
-| Route handler context | `c.device` (set for a device token) | `c.appToken` |
-| `principal` | `authKind: 'device'`, `username: 'Native device'` | `authKind: 'app'`, `username: 'Native app'` |
-| Page context (`(context) => Node`) | `context.machine` | `context.device` |
-| A host agent's `config` module | `({site, machine}) => object` | `({site, device}) => object` |
-| `home-hub/testing` | `machineKind`, `systemMachines`; `buildSystems({machines})`, `buildGraph(live, list, requests, {machines})`, `liveState(merged, machines)` | `deviceKind`, `systemDevices`; `buildSystems({devices})`, `buildGraph(live, list, requests, {devices})`, `liveState(merged, devices)`. What they return says `device` and `devices` too (`cleanRequest`: `device`, `clientDevice`), and `knowledge()` is a `schema: 2` document |
-| The inventory document (`createKnowledgeEditor`, `validateKnowledge`, `walkKnowledge`, `findKnowledge`, an `inventory.writer`) | `schema: 1`; entry kind `machine`, entry field `machine` | `schema: 2`; kind `device`, field `device`. `validateKnowledge` refuses `schema: 1`; the editor and `loadKnowledge` read a pre-1.0 file forward. `entryHash` covers the fields, so an entry of kind `device` and every entry placed on one has a new hash |
-| MCP tools named in `mcpInstructions`, prompts and docs | `machine_list`, `machine_upsert`, `machine_remove`; the argument `machine` | `device_list`, `device_upsert`, `device_remove`; the argument `device` (also in `runtime_publish`, `inventory_search`, `runtime_endpoint_upsert`) |
-| Routes a plugin's page or script calls | `/api/home/machines`, `/api/home/machines/remove`, `/api/admin/machines`, `/api/devices/tokens` | `/api/home/devices`, `/api/home/devices/remove`, `/api/admin/devices`, `/api/app-tokens`; the answers say `devices` and `device` |
-| Error codes | `MACHINE_…`, `AGENT_MACHINE_GONE`, `DEVICE_LIMIT` (tokens) | `DEVICE_…`, `AGENT_DEVICE_GONE`, `APP_TOKEN_LIMIT` (`DEVICE_LIMIT` now means the overview's 20 added devices) |
-| Links into core pages | `#integrations/machine/<id>` | `#integrations/device/<id>` (`#host-<id>` is unchanged) |
-| Commands and environment | `--machine`, `MACHINES_DIR`, `data/machines/` | `--device`, `DEVICES_DIR`, `data/devices/` |
-| Core's translatable texts (`tx` keys a plugin reuses from core) | the placeholder `{machine}` | `{device}` |
-| Core's Czech source strings (the dictionary keys a plugin's `strings` translates or reuses) | `stroj` and the words that agree with it (`Upravit stroj`, `Stroje`) | `zařízení` (`Upravit zařízení`, `Seznam zařízení`): about 380 keys changed, so a translation of an old key no longer applies |
-| `router.adapter` observation | `devices[]` (the router's network clients) | `clients[]`; `hardware[]` is unchanged. A `devices[]` is not read |
-| `readRouter`, `readRouterFor`, `mergeRouter`, `GET /api/router` | `router.devices`, `router.health.clients` (the counts) | `router.clients`, `router.health.clientCounts`; `GET /api/router` is `schemaVersion: 2` |
-
-Unchanged: `home.snapshots`, `home.services` and `home.runtimes` (keyed by device id, as before),
-`git-lfs.providers`, the scopes, the Czech source strings that do not name a device, and `/views.js`, `/ui.js` and
-`/i18n.js`. What a plugin
-stores for itself (`hub.pluginData(id)`) is its own: core migrates only core's files (`docs/storage.md` → State
-written before 1.0), so a plugin that wrote `machine` into its files reads them forward itself and raises its
-`dataEpoch`.
 
 ## Keeping household details out of core
 

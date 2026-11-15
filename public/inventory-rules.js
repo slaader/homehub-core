@@ -4,10 +4,10 @@
 //   browser the entry form runs the same check() while you type, so its messages are the server's
 // A document is {schema: 2, updated_at: 'YYYY-MM-DD', entries: [...]}. Nothing here knows a household:
 // the names of a site's own secret stores are passed in (site.json → inventory.secretStores).
-// Schema 1 is the document Home Hub 1.x wrote: the kind "device" and the field "device" had another name there
+// Schema 1 is the document legacy Home Hub wrote: the kind "device" and the field "device" had another name there
 // (forwardInventory, below). It is read forward once and never written again.
 export const INVENTORY_SCHEMA = 2;
-// What 1.x called a device, as a kind and as a field.
+// Legacy field name.
 const V1 = {word: 'machine'};
 /**
  * A schema 1 document → schema 2: each entry's kind and field renamed, in place in the key order, everything else

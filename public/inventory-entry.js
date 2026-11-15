@@ -320,7 +320,7 @@ export async function removeExamples(){
  }
 }
 
-// Reads an exported file: a whole document {entries: [...]} or a bare list of entries. A document Home Hub 1.x
+// Reads an exported file: a whole document {entries: [...]} or a bare list of entries. A document legacy Home Hub
 // exported (schema 1) is read forward, like the hub's own file.
 export function parseImport(text){
  let json;try{json=forwardInventory(JSON.parse(text));}catch{return {error:'Tohle není platný JSON.'};}

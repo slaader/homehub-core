@@ -21,13 +21,13 @@ import {readRun} from './collector-run.mjs';
 export {parseVersion,compareVersions,extractVersion};
 
 // The schema of GET /api/systems and of data/systems/snapshot.json: {schemaVersion, collectedAt, collectedFrom,
-// devices: {<id>: record}, run?}. Schema 1 is the snapshot as the 1.x collector wrote it, with its own key for the
+// devices: {<id>: record}, run?}. Schema 1 is the snapshot as the legacy collector wrote it, with its own key for the
 // devices (server/state-forward.mjs).
 export const SYSTEMS_SCHEMA=2;
-/** A snapshot as 1.x wrote it → this schema; anything else as it is. */
+/** A snapshot as legacy wrote it → this schema; anything else as it is. */
 export const forwardSnapshot=doc=>doc&&typeof doc==='object'&&!Array.isArray(doc)&&doc.schemaVersion===1?{...forwardKeys(doc,'devices'),schemaVersion:SYSTEMS_SCHEMA}:doc;
 /**
- * snapshot.json, parsed. A 1.x file is written forward in place, once (keeping its time: the hub reads the
+ * snapshot.json, parsed. A legacy file is written forward in place, once (keeping its time: the hub reads the
  * snapshot's age from it); when it cannot be written (the hub may not write the collector's directory) it is still
  * read forward, and the collector's next run writes this schema. Rejects as readFile and JSON.parse do, and with
  * code NEWER for a snapshot a newer collector wrote: older code refuses newer state.

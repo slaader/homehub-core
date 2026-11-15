@@ -62,7 +62,7 @@ export async function collectSystems({site=loadedSite(),hosts=sshHosts(site,m=>m
  collectedFrom=null,probesDir=path.join(root,'scripts','systems'),started=null}){
  const deviceList=systemDevices(site);
  const [macProbe,nasProbe]=await Promise.all(['mac-probe.sh','nas-probe.sh'].map(f=>readFile(path.join(probesDir,f),'utf8')));
- // The last snapshot, whose records are carried over for the devices that do not answer now. One a 1.x collector
+ // The last snapshot, whose records are carried over for the devices that do not answer now. One a legacy collector
  // wrote is read forward (this run writes today's schema); one from a newer collector is never written over.
  const previous=forwardSnapshot(await readFile(path.join(outDir,'snapshot.json'),'utf8').then(JSON.parse).catch(()=>null));
  if(Number.isInteger(previous?.schemaVersion)&&previous.schemaVersion>SYSTEMS_SCHEMA)throw new Error(`snapshot.json has schema ${previous.schemaVersion}; this collector writes ${SYSTEMS_SCHEMA}. Update Home Hub on this computer.`);
@@ -90,7 +90,7 @@ export async function collectSystems({site=loadedSite(),hosts=sshHosts(site,m=>m
  const doc=buildSystems({snapshot,upstream,registry,devices:deviceList});
  const line={at:snapshot.collectedAt,devices:Object.fromEntries(doc.devices.filter(m=>m.summary).map(m=>[m.id,historyEntry(m)]))};
  const histFile=path.join(outDir,'history.jsonl');
- // Lines a 1.x collector wrote are written forward first, once.
+ // Lines a legacy collector wrote are written forward first, once.
  await forwardJsonl(histFile,forwardTrendLine);
  const hist=(await readFile(histFile,'utf8').catch(()=>'')).split('\n').filter(Boolean);
  if(hist.length>=3000){const keep=hist.slice(-2999);await writeFile(histFile,keep.join('\n')+'\n'+JSON.stringify(line)+'\n',{mode:0o600});}
