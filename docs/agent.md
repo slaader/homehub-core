@@ -38,7 +38,7 @@ flowchart LR
 - **No probe field in `plugin.json`** in this series: an older core refuses a manifest field it does not know.
 - **Old paths keep working through this major version**: `plugin.json → hostAgents`, `scripts/install-host-agent.mjs --plugin`, the
   SSH collectors and the SSH and WinRM telemetry providers. They may be deprecated in a MINOR and are removed only in
-  2.0, after the owner agrees. No plugin manifest accepted today today is refused because of this design.
+  2.0, after the owner agrees. No plugin manifest accepted today is refused because of this design.
 - **Controls stay in plugins.** Core carries no start, stop or restart (see [Later: a mailbox](#later-a-mailbox)).
 
 **The invariant.** The hub never delivers code, probes, commands or agent configuration to a device. Everything
