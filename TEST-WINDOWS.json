@@ -9,10 +9,10 @@
         "npm test"
       ],
       "budget_seconds": 600,
-      "budget_approval": "Owner approved up to ten minutes per run for the updater release.",
+      "budget_approval": "Owner approved up to ten minutes per full-suite run for the wiki inventory release.",
       "last_run": {
-        "duration_seconds": 127.94,
-        "finished_at": "2026-11-19T12:18:25Z",
+        "duration_seconds": 125.49,
+        "finished_at": "2026-11-19T20:32:29Z",
         "result": "passed"
       }
     },
@@ -25,23 +25,22 @@
       "budget_seconds": 120,
       "budget_approval": null,
       "last_run": {
-        "duration_seconds": 0.09,
-        "finished_at": "2026-11-19T10:30:28Z",
+        "duration_seconds": 0.058,
+        "finished_at": "2026-11-19T20:30:24Z",
         "result": "passed"
       }
     },
     "wiki-browser": {
       "category": "ui-smoke",
-      "scope": "Project wiki setup, editing, tables, HTML frames, ticket links, viewer access and stale saves in an isolated Chrome profile",
+      "scope": "Project wiki editing, MCP inventory authoring, lazy media, subtree moves, pinned imports and stale saves in isolated Chrome",
       "commands": [
-        "mkdir -p data/wiki-smoke-evidence",
-        "node ~/.config/agent-workflows/studio/local-tests/home-hub/wiki-smoke.mjs"
+        "node ~/.config/agent-workflows/studio/local-tests/home-hub/wiki-inventory-smoke.mjs HEAD"
       ],
       "budget_seconds": 120,
       "budget_approval": null,
       "last_run": {
-        "duration_seconds": 2.446,
-        "finished_at": "2026-11-19T10:37:08.668Z",
+        "duration_seconds": 9.485,
+        "finished_at": "2026-11-19T20:30:33Z",
         "result": "passed"
       }
     },
