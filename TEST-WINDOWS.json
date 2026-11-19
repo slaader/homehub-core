@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "default_budget_seconds": 120,
+  "windows": {
+    "full": {
+      "category": "full",
+      "scope": "Core regression suite",
+      "commands": [
+        "npm test"
+      ],
+      "budget_seconds": 120,
+      "budget_approval": null,
+      "last_run": {
+        "duration_seconds": 165.81,
+        "finished_at": "2026-11-19T10:35:48Z",
+        "result": "passed"
+      }
+    },
+    "router-python": {
+      "category": "integration",
+      "scope": "Router collector fixtures",
+      "commands": [
+        "python3 tests/router_unifi_test.py"
+      ],
+      "budget_seconds": 120,
+      "budget_approval": null,
+      "last_run": {
+        "duration_seconds": 0.09,
+        "finished_at": "2026-11-19T10:30:28Z",
+        "result": "passed"
+      }
+    }
+  }
+}
