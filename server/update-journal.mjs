@@ -11,10 +11,18 @@ const absolute=p=>typeof p==='string'&&path.isAbsolute(p)&&!p.includes('\0')&&pa
 const hash=v=>typeof v==='string'&&/^[0-9a-f]{40}$/.test(v);
 export function validateJournal(j){
  if(!j||typeof j!=='object'||![1,2,JOURNAL_SCHEMA].includes(j.schemaVersion))throw new Error('unsupported/newer journal schema');
- const keys=['schemaVersion','id','startedAt','finishedAt','by','from','to','changes','epochRose','settings','step','started','backup','failure','stopRefused','quarantine','undoFrom','restored','failedState','rollbackError','site','instance','operations','targetMayHaveWritten','restoreRoots','package','driver','kind','previous',...(j.schemaVersion===3?['driverInfo','backupPolicy','trustFile']:[])];if(Object.keys(j).some(k=>!keys.includes(k)))throw new Error('unknown journal field');
+ const keys=['schemaVersion','id','startedAt','finishedAt','by','from','to','changes','epochRose','settings','step','started','backup','failure','stopRefused','quarantine','undoFrom','restored','failedState','rollbackError','site','instance','operations','targetMayHaveWritten','restoreRoots','package','driver','kind','previous',...(j.schemaVersion===3?['driverInfo','backupPolicy','trustFile','socketRestore']:[])];if(Object.keys(j).some(k=>!keys.includes(k)))throw new Error('unknown journal field');
  if(j.undoFrom!==undefined&&!STEPS.includes(j.undoFrom))throw new Error('invalid rollback origin');
  if(j.operations!==undefined&&(!Array.isArray(j.operations)||j.operations.length>100000||j.operations.some(o=>!/^op-\d+$/.test(o.id)||!['source-switch','source-restore'].includes(o.kind)||!['intent','complete'].includes(o.status))))throw new Error('invalid journal operations');
  if(j.restoreRoots!==undefined&&(!Array.isArray(j.restoreRoots)||j.restoreRoots.length>20000||j.restoreRoots.some(r=>![r.live,r.aside,r.staged,r.stageDir].every(absolute)||path.dirname(r.live)!==path.dirname(r.aside)||path.dirname(r.stageDir)!==path.dirname(r.live)||path.dirname(r.staged)!==r.stageDir||!['prepared','moving-old','old-moved','installing','installed',...(j.schemaVersion===3?['preparing']:[])].includes(r.status))))throw new Error('invalid restore path roles or state');
+ if(j.socketRestore!==undefined){
+  const layout=j.socketRestore;
+  if(!layout||!Array.isArray(layout.anchors)||!Array.isArray(layout.sockets)||!Array.isArray(layout.units)||
+   layout.anchors.length+layout.units.length>20000||layout.sockets.length>1000||
+   !layout.anchors.every(a=>a&&absolute(a.live))||!layout.sockets.every(id=>typeof id==='string')||
+   !layout.units.every(u=>u&&[u.live,u.aside,u.staged,u.stageDir].every(absolute)))
+   throw new Error('invalid socket restore layout');
+ }
  if(!STEPS.includes(j.step)||typeof j.id!=='string'||!/^[A-Za-z0-9-]{1,100}$/.test(j.id)||!Number.isFinite(Date.parse(j.startedAt)))throw new Error('invalid journal state or operation ID');
  for(const side of ['from','to'])if(!j[side]||typeof j[side].label!=='string'||typeof j[side].core?.version!=='string'||typeof j[side].expect?.version!=='string')throw new Error(`invalid journal ${side}`);
  if(!Array.isArray(j.changes)||j.changes.length>32||typeof j.epochRose!=='boolean')throw new Error('invalid source changes');
@@ -45,7 +53,7 @@ export function readUpdateJournal(file){
  }catch(e){if(e.code==='ENOENT')return null;throw new UpdateError(`Cannot read update journal ${file}: ${e.message}`);}
  try{return validateJournal(strictJson(bytes,{limit:16*1024*1024}));}catch(e){throw new UpdateError(`Update journal ${file} is corrupt or newer: ${e.message}. Preserve it and recover manually; mutation refused.`);}
 }
-export const writeUpdateJournal=(file,journal)=>{if(journal.schemaVersion===1)journal.schemaVersion=2;validateJournal(journal);durableWrite(file,JSON.stringify(journal,null,1)+'\n');};
+export const writeUpdateJournal=(file,journal)=>{if(journal.schemaVersion===1)journal.schemaVersion=2;validateJournal(journal);const data=JSON.stringify(journal,null,1)+'\n';if(Buffer.byteLength(data)>16*1024**2)throw new Error('journal exceeds its byte limit');durableWrite(file,data);};
 export const unfinished=journal=>Boolean(journal)&&!TERMINAL_STEPS.includes(journal.step);
 export function recordMutation(inst,journal,kind,detail,mutate){
  journal.operations??=[];const op={id:`op-${journal.operations.length+1}`,kind,...detail,status:'intent'};journal.operations.push(op);writeUpdateJournal(inst.files.journal,journal);

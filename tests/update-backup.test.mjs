@@ -2,10 +2,12 @@ import test from 'node:test';import assert from 'node:assert/strict';
 import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,symlinkSync,readlinkSync,lstatSync,existsSync,readdirSync,realpathSync,linkSync} from 'node:fs';import path from 'node:path';import os from 'node:os';
 import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
+import {createConnection,createServer} from 'node:net';
+import {once} from 'node:events';
 import {writeUpdateJournal} from '../server/update-journal.mjs';
 import {backupPlan,createBackup,restoreBackup} from '../server/update-backup.mjs';
 import {readUpdateJournal} from '../server/update-journal.mjs';
-function fixture(t){const dir=realpathSync(mkdtempSync(path.join(os.tmpdir(),'hub-backup-')));t.after(()=>rmSync(dir,{recursive:true,force:true}));const paths={data:path.join(dir,'data'),state:path.join(dir,'data','state'),private:path.join(dir,'private'),config:path.join(dir,'config'),authFile:path.join(dir,'external','auth.json'),siteConfig:path.join(dir,'config','site.json'),softwareWatch:path.join(dir,'config','software-watch.json')};for(const p of [paths.state,paths.private,paths.config,path.dirname(paths.authFile),path.join(dir,'backups'),path.join(dir,'staging')])mkdirSync(p,{recursive:true});writeFileSync(paths.authFile,'auth',{mode:0o600});writeFileSync(path.join(path.dirname(paths.authFile),'secret.key'),'key',{mode:0o600});writeFileSync(path.join(paths.data,'legitimate.tgz'),'archive bytes');writeFileSync(paths.siteConfig,'{}');const inst={home:dir,root:path.join(dir,'core'),paths,env:{},backups:path.join(dir,'backups'),staging:path.join(dir,'staging'),files:{journal:path.join(dir,'journal.json'),lock:path.join(dir,'update.lock')}};writeFileSync(path.join(dir,'instance.json'),'{}');return {dir,inst,ctx:{now:()=>0,log:()=>{},checkpoint:()=>{}}};}
+function fixture(t,temp=os.tmpdir()){const dir=realpathSync(mkdtempSync(path.join(temp,'hub-backup-')));t.after(()=>rmSync(dir,{recursive:true,force:true}));const paths={data:path.join(dir,'data'),state:path.join(dir,'data','state'),private:path.join(dir,'private'),config:path.join(dir,'config'),authFile:path.join(dir,'external','auth.json'),siteConfig:path.join(dir,'config','site.json'),softwareWatch:path.join(dir,'config','software-watch.json')};for(const p of [paths.state,paths.private,paths.config,path.dirname(paths.authFile),path.join(dir,'backups'),path.join(dir,'staging')])mkdirSync(p,{recursive:true});writeFileSync(paths.authFile,'auth',{mode:0o600});writeFileSync(path.join(path.dirname(paths.authFile),'secret.key'),'key',{mode:0o600});writeFileSync(path.join(paths.data,'legitimate.tgz'),'archive bytes');writeFileSync(paths.siteConfig,'{}');const inst={home:dir,root:path.join(dir,'core'),paths,env:{},backups:path.join(dir,'backups'),staging:path.join(dir,'staging'),files:{journal:path.join(dir,'journal.json'),lock:path.join(dir,'update.lock')}};writeFileSync(path.join(dir,'instance.json'),'{}');return {dir,inst,ctx:{now:()=>0,log:()=>{},checkpoint:()=>{}}};}
 function journal(inst,backup){const side={label:'1.0.0',core:{version:'1.0.0'},expect:{version:'1.0.0'}};return {schemaVersion:3,id:'restore-test',startedAt:new Date(0).toISOString(),step:'rolling-back',from:side,to:side,changes:[],epochRose:true,backup,settings:{root:inst.root,state:inst.paths.state,service:{stop:['true'],start:['true']},health:{url:'http://127.0.0.1:1/healthz',seconds:2}}};}
 test('backup: canonical coverage includes external auth/key, duplicate basenames, links and legitimate archives',async t=>{
  const {dir,inst,ctx}=fixture(t),external=path.join(dir,'physical-data');rmSync(inst.paths.data,{recursive:true});mkdirSync(external);writeFileSync(path.join(external,'legitimate.tgz'),'kept');symlinkSync(external,inst.paths.data);inst.paths.state=path.join(inst.paths.data,'state');mkdirSync(inst.paths.state);const other=path.join(dir,'other','private');mkdirSync(other,{recursive:true});writeFileSync(path.join(other,'one'),'one');inst.backupRoots=[other];symlinkSync('../external/auth.json',path.join(inst.paths.private,'auth-link'));
@@ -108,4 +110,94 @@ test('tagged v1.0.0 tar and sidecars remain readable and retain schema-2 journal
  const legacy={file,entries:[{parent:dir,name:'root-0001'}]};
  await restoreBackup(inst,ctx,legacy);
  assert.equal(readFileSync(path.join(dir,'root-0001','payload'),'utf8'),'archived by v1.0.0\n');
+});
+
+async function listen(t,file){
+ const server=createServer(connection=>connection.end('endpoint\n'));
+ server.listen(file);
+ await once(server,'listening');
+ t.after(()=>new Promise(resolve=>server.close(resolve)));
+ return lstatSync(file,{bigint:true}).ino;
+}
+
+async function reachable(file,expectedInode){
+ assert.equal(lstatSync(file,{bigint:true}).ino,expectedInode);
+ const connection=createConnection(file);
+ connection.setTimeout(3000,()=>connection.destroy(new Error('socket connection timed out')));
+ let reply='';
+ for await(const chunk of connection)reply+=chunk;
+ assert.equal(reply,'endpoint\n');
+}
+
+test('backup and rollback keep live UNIX sockets and journal durable children independently',async t=>{
+ for(const boundary of ['restore-old-renamed','restore-new-renamed','restore-cleaned'])await t.test(boundary,async t=>{
+  const {dir,inst,ctx}=fixture(t,'/tmp');
+  const socket=path.join(inst.paths.state,'service.sock'),endpoint=await listen(t,socket);
+  const standalone=path.join(dir,'standalone.sock'),standaloneInode=await listen(t,standalone);
+  inst.backupRoots=[standalone];
+  const value=path.join(inst.paths.state,'value'),cross=path.join(inst.paths.config,'linked-value');
+  writeFileSync(value,'before');linkSync(value,cross);
+  symlinkSync('service.sock',path.join(inst.paths.state,'socket-link'));
+  const ancestors=[inst.paths.data,inst.paths.state,inst.paths.private];
+  const ancestorInodes=ancestors.map(file=>lstatSync(file,{bigint:true}).ino);
+  const plan=backupPlan(inst);
+  assert.equal(plan.runtimeSockets.count,2);
+  const backup=await createBackup(inst,ctx,'sockets',{plan});
+  const archived=readFileSync(backup.manifest,'utf8').trim().split('\n').slice(1).map(line=>JSON.parse(line));
+  assert.ok(archived.some(e=>e.path.endsWith('/state/value')));
+  assert.ok(!archived.some(e=>e.path.endsWith('.sock')));
+  await reachable(socket,endpoint);
+  await reachable(standalone,standaloneInode);
+
+  writeFileSync(value,'after');rmSync(path.join(inst.paths.state,'socket-link'));
+  const newDir=path.join(inst.paths.private,'new'),newSocket=path.join(newDir,'new.sock');
+  mkdirSync(newDir);
+  const newEndpoint=await listen(t,newSocket),newDirInode=lstatSync(newDir,{bigint:true}).ino;
+  const newValue=path.join(newDir,'added');
+  writeFileSync(newValue,'created after backup');
+  const otherNew=path.join(inst.paths.state,'also-added');
+  mkdirSync(otherNew);writeFileSync(path.join(otherNew,'child'),'another addition');
+
+  const j=journal(inst,backup);writeUpdateJournal(inst.files.journal,j);
+  const script=`import {readUpdateJournal} from ${JSON.stringify(new URL('../server/update-journal.mjs',import.meta.url).href)};
+   import {restoreBackup} from ${JSON.stringify(new URL('../server/update-backup.mjs',import.meta.url).href)};
+   import {existsSync,readFileSync} from 'node:fs';
+   const inst=${JSON.stringify(inst)}, value=${JSON.stringify(value)}, j=readUpdateJournal(inst.files.journal);
+   await restoreBackup(inst,{now:()=>0,log:()=>{},checkpoint:p=>{
+    if(p===${JSON.stringify(boundary)}&&(${boundary==='restore-old-renamed'?"!existsSync(value)":"existsSync(value)&&readFileSync(value,'utf8')==='before'"}))process.exit(99);
+   }},j.backup,j);`;
+  const child=spawnSync(process.execPath,['--input-type=module','-e',script],{encoding:'utf8'});
+  assert.equal(child.status,99,child.stderr);
+  await reachable(socket,endpoint);
+  await reachable(newSocket,newEndpoint);
+  await reachable(standalone,standaloneInode);
+  const persisted=readUpdateJournal(inst.files.journal);
+  assert.ok(persisted.socketRestore.units.some(u=>u.live===value));
+  const index=await restoreBackup(inst,ctx,backup,persisted);
+  await reachable(socket,endpoint);
+  await reachable(newSocket,newEndpoint);
+  await reachable(standalone,standaloneInode);
+  assert.deepEqual(ancestors.map(file=>lstatSync(file,{bigint:true}).ino),ancestorInodes);
+  assert.equal(lstatSync(newDir,{bigint:true}).ino,newDirInode);
+  assert.equal(readFileSync(value,'utf8'),'before');
+  assert.equal(lstatSync(cross,{bigint:true}).ino,lstatSync(value,{bigint:true}).ino);
+  assert.equal(readlinkSync(path.join(inst.paths.state,'socket-link')),'service.sock');
+  const moved=new Map(JSON.parse(readFileSync(path.join(index,'roots.json'))).map(p=>[p.live,p.aside]));
+  assert.equal(readFileSync(moved.get(value),'utf8'),'after');
+  assert.equal(readFileSync(moved.get(newValue),'utf8'),'created after backup');
+  assert.equal(readFileSync(path.join(moved.get(otherNew),'child'),'utf8'),'another addition');
+  assert.ok(!existsSync(newValue)&&!existsSync(otherNew));
+  assert.equal(backupPlan(inst).runtimeSockets.count,3);
+ });
+});
+
+test('rollback refuses a socket at an archived durable pathname before changing live state',async t=>{
+ const {inst,ctx}=fixture(t,'/tmp');
+ const file=path.join(inst.paths.state,'conflict');
+ writeFileSync(file,'archived regular file');
+ const backup=await createBackup(inst,ctx,'conflict');
+ rmSync(file);const socket=await listen(t,file),j=journal(inst,backup);
+ await assert.rejects(restoreBackup(inst,ctx,backup,j),/would replace a UNIX socket/);
+ assert.equal(j.restoreRoots,undefined);
+ await reachable(file,socket);
 });

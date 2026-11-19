@@ -9,6 +9,8 @@ import {UpdateError} from './update-errors.mjs';
 import {BACKUP_SCHEMA,writeBackupArchive,walkBackup,writeAll,validateIntegrity} from './backup-archive.mjs';
 import {cleanAbsolute,withinPath as within} from './backup-policy.mjs';
 import {canonical,exists,stat,inode,exactIdentity,scanBackup,protectedPaths,protectedDirectories,filesystem,checkSpace,verifyCurrentCoverage} from './backup-scan.mjs';
+import {activeRestoreUnits,checkSocketEntry,entryPath,hasPayload,planSocketRestore,prepareSocketAsides,refuseSocketReplacement,
+ removeRestoreStage,scanRestoreSockets,validateSocketRestore} from './restore-sockets.mjs';
 export {BACKUP_SCHEMA,canonical,scanBackup};
 
 export function fileHash(file,expectedBytes=null){
@@ -36,6 +38,7 @@ export function backupPlan(inst,options){
 }
 export async function createBackup(inst,ctx,name,{plan=backupPlan(inst)}={}){
  if(!/^[A-Za-z0-9.-]+$/.test(name)||name==='.'||name==='..')throw new Error('invalid backup name');
+ if(plan.runtimeSockets.count)ctx.log(`  preserving ${plan.runtimeSockets.count} filesystem UNIX socket(s) in place, outside the archive`);
  mkdirSync(inst.backups,{recursive:true,mode:0o700});
  const file=path.join(inst.backups,name+'.tgz'),manifest=file+'.manifest.jsonl',integrity=file+'.integrity.json';
  if([file,manifest,integrity].some(exists))throw new Error(`archive already exists: ${file}`);
@@ -56,8 +59,16 @@ function validateRoots(inst,roots,progress=[],policyFile=null){
   if(canonical(path.dirname(e.canonical))!==path.dirname(e.canonical)||(exists(e.canonical)&&lstatSync(e.canonical).isSymbolicLink()))throw new Error('restore destination topology changed');
   // The live target can be temporarily absent after a journalled rename. Resolve the
   // link text without following the dangling link only for that recorded transition.
-  const pending=progress.find(p=>p.id===e.id&&p.live===e.canonical&&['moving-old','old-moved','installing'].includes(p.status)&&exists(p.aside)&&!exists(p.live));
-  const linkMatches=(logical,link,target)=>{if(!exists(logical)||!lstatSync(logical).isSymbolicLink()||readlinkSync(logical)!==link)return false;try{return canonical(logical)===target;}catch(err){if(!pending||err.code!=='ENOENT')throw err;return canonical(path.resolve(path.dirname(logical),link))===target;}};
+  const linkMatches=(logical,link,target)=>{
+   if(!exists(logical)||!lstatSync(logical).isSymbolicLink()||readlinkSync(logical)!==link)return false;
+   try{return canonical(logical)===target;}
+   catch(err){
+    const pending=err.code==='ENOENT'&&progress.some(p=>within(target,p.live)&&
+     ['moving-old','old-moved','installing'].includes(p.status)&&exists(p.aside)&&!exists(p.live));
+    if(!pending)throw err;
+    return canonical(path.resolve(path.dirname(logical),link))===target;
+   }
+  };
   for(const alias of e.aliases??[])if(alias.link!==null&&!linkMatches(alias.logical,alias.link,alias.canonical??e.canonical))throw new Error('restore alias topology changed');
   for(const protectedPath of protectedRoots)if(within(protectedPath,e.canonical))throw new Error('restore would replace recovery metadata or trust');
   if(e.role&&protectedDirs.some(p=>within(e.canonical,p)))throw new Error('restore would replace recovery metadata or trust');
@@ -93,6 +104,7 @@ async function restoreLegacy(inst,ctx,backup,journal,{manifest,legacy}){
    progress.push({id:r.id,live:r.canonical,staged,stageDir,aside:r.canonical+'.failed-'+randomUUID(),existed:r.existed,status:'prepared'});save();
   }
   if(manifest.files){for(const p of progress.filter(p=>p.status==='prepared'&&p.existed)){const staged=inventory([{id:p.id,existed:true,canonical:p.staged}]).map(({source,...e})=>e),expected=manifest.files.filter(f=>f.path===p.id||f.path.startsWith(p.id+'/'));if(JSON.stringify(staged)!==JSON.stringify(expected))throw new Error('destination staging validation failed');}}
+  validateRoots(inst,manifest.roots,progress);
   return installRoots(inst,ctx,manifest.roots,progress,aside,save);
  }finally{rmSync(scratch,{recursive:true,force:true});}
 }
@@ -134,7 +146,7 @@ function validateProgress(roots,progress,modern){
   const r=roots.find(r=>r.id===p.id);
   if(!r||ids.has(p.id)||p.live!==r.canonical||path.dirname(p.aside)!==path.dirname(p.live)||!p.aside.startsWith(p.live+'.failed-')||
    path.dirname(p.stageDir)!==path.dirname(p.live)||!path.basename(p.stageDir).startsWith('.hub-restore-')||
-   p.staged!==path.join(p.stageDir,'root')||p.existed!==r.existed||staging.has(p.stageDir)||asides.has(p.aside))throw new Error('restore progress does not match authenticated backup root roles');
+   p.staged!==path.join(p.stageDir,'root')||p.existed!==hasPayload(r)||staging.has(p.stageDir)||asides.has(p.aside))throw new Error('restore progress does not match authenticated backup root roles');
   ids.add(p.id);staging.add(p.stageDir);asides.add(p.aside);
   if(modern){
    if(!/^\.hub-restore-[a-f0-9-]{36}$/.test(path.basename(p.stageDir))||
@@ -149,7 +161,6 @@ function validateProgress(roots,progress,modern){
 }
 
 function installRoots(inst,ctx,roots,progress,aside,save){
- validateRoots(inst,roots,progress);
  const exact=new Map(roots.filter(r=>r.role==='exact-file').map(r=>[r.id,r]));
  for(const p of progress){
   if(p.status==='installed')continue;
@@ -162,14 +173,18 @@ function installRoots(inst,ctx,roots,progress,aside,save){
     if(exists(p.aside))throw new Error('ambiguous partial restore: both live and failed root exist');
     const r=exact.get(p.id),live=stat(p.live);
     if(r&&!exactIdentity(r,live))throw new Error(`exact alias identity changed: ${p.live}`);
+    refuseSocketReplacement(p.live);
     renameSync(p.live,p.aside);ctx.checkpoint?.('restore-old-renamed');
    }
-   syncDirectory(path.dirname(p.live));p.status='old-moved';save();
+   syncDirectory(path.dirname(p.live));
+   if(path.dirname(p.aside)!==path.dirname(p.live))syncDirectory(path.dirname(p.aside));
+   p.status='old-moved';save();
   }
   if(p.status==='old-moved'||p.status==='installing'){
    if(exists(p.live))throw new Error('unexpected live root during restore');
    p.status='installing';save();
-   if(p.existed){renameSync(p.staged,p.live);ctx.checkpoint?.('restore-new-renamed');}
+   if(exists(p.live))throw new Error('live root appeared while recording the restore intent');
+   if(p.existed){refuseSocketReplacement(p.staged);renameSync(p.staged,p.live);ctx.checkpoint?.('restore-new-renamed');}
    syncDirectory(path.dirname(p.live));syncDirectory(p.stageDir);p.status='installed';save();
   }
   if(!exact.has(p.id))ctx.log(`  restored ${p.live}; failed state preserved at ${p.aside}`);
@@ -180,9 +195,8 @@ function installRoots(inst,ctx,roots,progress,aside,save){
  return aside;
 }
 
-const localPath=(entry,root,base)=>entry.path===root.id?base:path.join(base,entry.path.slice(root.id.length+1));
 function validateLink(entry,root,roots){
- const target=path.resolve(path.dirname(localPath(entry,root,root.canonical)),entry.link);
+ const target=path.resolve(path.dirname(entryPath(entry,root,root.canonical)),entry.link);
  if(!roots.some(r=>r.existed&&[r.canonical,r.logical,...r.aliases.map(a=>a.logical)].some(p=>within(target,p))))
   throw new Error(`uncovered restore link target: ${entry.path}`);
 }
@@ -196,23 +210,33 @@ export async function assessRestore(inst,backup,journal=null){
  if(!description.integrity){
   validateProgress(description.manifest.roots,progress,false);
   validateRoots(inst,description.manifest.roots,progress);
+  for(const r of description.manifest.roots)refuseSocketReplacement(r.canonical);
   return description;
  }
  const {integrity}=description,devices=new Map(),filesystems=new Map(),policyFile=journal?.backupPolicy?.file??inst.backupPolicyFile;
- let roots;
+ let roots,liveSockets;
+ const socketRestore=journal?.socketRestore;
+ const units=activeRestoreUnits(socketRestore,progress);
  const cost=(root,bytes)=>{devices.get(root.id).restoreBytes+=Math.ceil(bytes/4096)*4096+4096;};
  const metadata=await walkBackup(null,backup.manifest,integrity,{
   header(m){
    roots=m.roots;
    if(JSON.stringify(roots)!==JSON.stringify(backup.entries))throw new Error('backup manifest differs from journal root roles');
    validateProgress(roots,progress,true);
-   validateRoots(inst,roots,progress,policyFile);
+   validateRoots(inst,roots,units,policyFile);
+   validateSocketRestore(socketRestore,roots,progress);
+   if(!socketRestore){
+    liveSockets=scanRestoreSockets(roots,m.budget.maxEntries);
+    if(liveSockets.sockets.size&&progress.some(p=>!['preparing','prepared'].includes(p.status)))
+     throw new Error('A UNIX socket appeared during whole-root restore; preserve the socket and reconcile the journal before retrying');
+   }
    for(const root of roots)devices.set(root.id,filesystem(filesystems,path.dirname(root.canonical)));
   },
-  directory(e,r){cost(r,0);},
-  openFile(e,r){cost(r,e.bytes);},
-  symlink(e,r){validateLink(e,r,roots);cost(r,0);},
+  directory(e,r){if(liveSockets?.sockets.size)checkSocketEntry(liveSockets,e,r);cost(r,0);},
+  openFile(e,r){if(liveSockets?.sockets.size)checkSocketEntry(liveSockets,e,r);cost(r,e.bytes);},
+  symlink(e,r){if(liveSockets?.sockets.size)checkSocketEntry(liveSockets,e,r);validateLink(e,r,roots);cost(r,0);},
   hardlink(e,r,leader,source){
+   if(liveSockets?.sockets.size)checkSocketEntry(liveSockets,e,r);
    if(devices.get(r.id).dev!==devices.get(source.id).dev)throw new Error('restore destinations for a hard-link group are on different filesystems');
    cost(r,0);
   }
@@ -220,19 +244,19 @@ export async function assessRestore(inst,backup,journal=null){
  if(!stat(backup.file)?.isFile()||stat(backup.file).size!==BigInt(integrity.archiveBytes)||
   fileHash(backup.file,integrity.archiveBytes)!==integrity.archiveSha256)throw new Error('backup archive integrity mismatch');
  if(needsStages(progress)){
-  verifyOldGraph(roots,progress);
+  verifyOldGraph(roots,units,socketRestore);
   // An interrupted preparation reclaims its staging allocation before the final check.
   if(!progress.length)ensureSpace(filesystems.values());
  }else{
-  verifyOldGraph(roots,progress);
-  await verifyStages(backup,integrity,progress);
+  verifyOldGraph(roots,units,socketRestore);
+  await verifyStages(backup,integrity,progress,socketRestore);
  }
  return {integrity,metadata,filesystems,policyFile};
 }
 
 function stageVisitor(ctx,progress){
  const stages=new Map(progress.map(p=>[p.id,p.staged]));
- const at=(e,r)=>localPath(e,r,stages.get(r.id));
+ const at=(e,r)=>entryPath(e,r,stages.get(r.id));
  let fd;
  return {
   directory(e,r){mkdirSync(at(e,r),{mode:0o700});},
@@ -264,28 +288,46 @@ function restoreLocation(p){
  return p.staged;
 }
 
-function verifyOldGraph(roots,progress){
- const active=new Map(progress.map(p=>[p.id,p]));
+function verifyOldGraph(roots,units,socketRestore){
+ const active=new Map(units.map(p=>[p.live,p]));
+ const split=new Set(socketRestore?.anchors.map(a=>a.id)??[]),sockets=new Set(socketRestore?.sockets??[]);
+ const originals=roots.flatMap(r=>sockets.has(r.id)?[]:split.has(r.id)?
+  units.filter(u=>u.id===r.id).map(u=>({...r,canonical:u.live})):[r]);
  const old=[];
- for(const r of roots){
-  const p=active.get(r.id);
+ for(const r of originals){
+  const p=active.get(r.canonical);
   if(p&&exists(p.aside))old.push({...r,canonical:p.aside});
   else if(!p||['preparing','prepared','moving-old'].includes(p.status))old.push(r);
  }
  verifyCurrentCoverage(old);
 }
 
-async function verifyStages(backup,integrity,progress){
- const locations=new Map(progress.map(p=>[p.id,restoreLocation(p)])),dirs=[],leaders=new Map();
+async function verifyStages(backup,integrity,progress,socketRestore){
+ const stageBases=new Map(progress.map(p=>[p.id,p.staged]));
+ const units=activeRestoreUnits(socketRestore,progress);
+ const locations=new Map(units.map(p=>[p.live,restoreLocation(p)]));
+ const dirs=[],leaders=new Map(),payloadRoots=new Set();
+ const finished=units.every(p=>p.status==='installed');
+ const retained=new Set(finished?socketRestore?.anchors.map(a=>a.live):[]);
+ const locate=(e,r)=>{
+  const live=entryPath(e,r,r.canonical);
+  if(retained.has(live))return live;
+  for(let p=live;within(p,r.canonical);p=path.dirname(p)){
+   if(locations.has(p))return path.join(locations.get(p),path.relative(p,live));
+  }
+  return entryPath(e,r,stageBases.get(r.id));
+ };
  const verify=(e,r,type)=>{
-  if(dirs.length&&dirs.at(-1).root===r)dirs.at(-1).count++;
-  const file=localPath(e,r,locations.get(r.id)),s=stat(file);
-  if(!s||!s[type]()||(e.mode!==undefined&&Number(s.mode&0o7777n)!==e.mode))throw new Error(`destination staging type or mode mismatch: ${file}`);
+  const file=locate(e,r);
+  if(dirs.length&&dirs.at(-1).root===r&&path.dirname(file)===dirs.at(-1).file)dirs.at(-1).count++;
+  if(e.path===r.id)payloadRoots.add(r.id);
+  const s=stat(file);
+  if(!s||!s[type]()||(!retained.has(file)&&e.mode!==undefined&&Number(s.mode&0o7777n)!==e.mode))throw new Error(`destination staging type or mode mismatch: ${file}`);
   return {s,file};
  };
  await walkBackup(null,backup.manifest,integrity,{
   directory(e,r){const {file}=verify(e,r,'isDirectory');dirs.push({file,root:r,count:0});},
-  leaveDirectory(){const {file,count}=dirs.pop();if(readdirSync(file).length!==count)throw new Error(`unexpected staged entries: ${file}`);},
+  leaveDirectory(){const {file,count}=dirs.pop();if(!retained.has(file)&&readdirSync(file).length!==count)throw new Error(`unexpected staged entries: ${file}`);},
   symlink(e,r){const {file}=verify(e,r,'isSymbolicLink');if(readlinkSync(file)!==e.link)throw new Error(`destination staging link mismatch: ${file}`);},
   openFile(e,r){
    const {s,file}=verify(e,r,'isFile');
@@ -297,6 +339,8 @@ async function verifyStages(backup,integrity,progress){
    if(inode(s)!==leaders.get(e.target))throw new Error(`destination staging hard-link target mismatch: ${file}`);
   }
  });
+ // An anchored, live-only directory has no payload or staging tree.
+ for(const p of progress)if(!payloadRoots.has(p.id)&&exists(p.staged))throw new Error('unexpected staged root');
 }
 
 export async function restoreBackup(inst,ctx,backup,journal=null,assessed=null){
@@ -306,24 +350,31 @@ export async function restoreBackup(inst,ctx,backup,journal=null,assessed=null){
   if(plan.legacy)ctx.log('  LEGACY archive: no integrity provenance; strict staged inspection required');
   return restoreLegacy(inst,ctx,backup,journal,plan);
  }
- const {metadata:{roots},integrity,policyFile}=plan;
+ const {metadata:{roots,budget},integrity,policyFile}=plan;
+ let socketRestore=journal?.socketRestore;
  const progress=journal?.restoreRoots??[];
  const namedAside=path.join(inst.backups,`failed-${new Date(ctx.now()).toISOString().replace(/[-:]/g,'').replace('T','-').slice(0,15)}`);
  const aside=journal?.failedState??(exists(namedAside)?namedAside+'-'+randomUUID():namedAside);
  if(path.dirname(aside)!==path.resolve(inst.backups)||!path.basename(aside).startsWith('failed-')||
    (stat(aside)&&!stat(aside).isDirectory()))throw new Error('invalid failed-state index path');
- const save=()=>{if(journal){journal.failedState=aside;journal.restoreRoots=progress;writeUpdateJournal(inst.files.journal,journal);}};
- validateProgress(roots,progress,true);validateRoots(inst,roots,progress,policyFile);
+ const save=()=>{if(journal){
+  journal.failedState=aside;journal.restoreRoots=progress;
+  if(socketRestore)journal.socketRestore=socketRestore;
+  writeUpdateJournal(inst.files.journal,journal);
+ }};
+ validateProgress(roots,progress,true);
+ validateRoots(inst,roots,activeRestoreUnits(socketRestore,progress),policyFile);
+ validateSocketRestore(socketRestore,roots,progress);
  try{
   if(needsStages(progress)){
-   verifyOldGraph(roots,progress);
+   verifyOldGraph(roots,progress,socketRestore);
    if(!progress.length){
     for(const r of roots){
      const stageDir=path.join(path.dirname(r.canonical),'.hub-restore-'+randomUUID());
-     progress.push({id:r.id,live:r.canonical,stageDir,staged:path.join(stageDir,'root'),aside:r.canonical+'.failed-'+randomUUID(),existed:r.existed,status:'preparing'});
+     progress.push({id:r.id,live:r.canonical,stageDir,staged:path.join(stageDir,'root'),aside:r.canonical+'.failed-'+randomUUID(),existed:hasPayload(r),status:'preparing'});
     }
     save();
-   }else for(const p of progress)rmSync(p.stageDir,{recursive:true,force:true});
+   }else for(const p of progress)removeRestoreStage(p.stageDir);
    ensureSpace(plan.filesystems.values());
    for(const p of progress){
     mkdirSync(path.dirname(p.live),{recursive:true,mode:0o700});
@@ -333,13 +384,23 @@ export async function restoreBackup(inst,ctx,backup,journal=null,assessed=null){
    for(const p of progress)syncDirectory(p.stageDir);
    await verifyStages(backup,integrity,progress);
    for(const p of progress)p.status='prepared';
+   socketRestore=planSocketRestore(roots,progress,scanRestoreSockets(roots,budget.maxEntries));
    save();ctx.checkpoint?.('restore-all-prepared');
+  }else if(!socketRestore&&progress.every(p=>p.status==='prepared')){
+   socketRestore=planSocketRestore(roots,progress,scanRestoreSockets(roots,budget.maxEntries));
+   if(socketRestore)save();
   }
-  verifyOldGraph(roots,progress);
-  const result=installRoots(inst,ctx,roots,progress,aside,save);
-  for(const p of progress)rmSync(p.stageDir,{recursive:true,force:true});
+  validateSocketRestore(socketRestore,roots,progress);
+  if(socketRestore?.anchors.length)ctx.log(`  preserving ${socketRestore.anchors.length} socket-containing directories during restore`);
+  const units=activeRestoreUnits(socketRestore,progress);
+  verifyOldGraph(roots,units,socketRestore);
+  prepareSocketAsides(socketRestore);
+  const result=installRoots(inst,ctx,roots,units,aside,save);
+  for(const p of progress)removeRestoreStage(p.stageDir);
+  ctx.checkpoint?.('restore-cleaned');
   return result;
  }finally{
-  if(!journal&&progress.every(p=>['preparing','prepared'].includes(p.status)))for(const p of progress)rmSync(p.stageDir,{recursive:true,force:true});
+  if(!journal&&activeRestoreUnits(socketRestore,progress).every(p=>['preparing','prepared'].includes(p.status)))
+   for(const p of progress)removeRestoreStage(p.stageDir);
  }
 }

@@ -41,6 +41,8 @@ test('diagnose discovers candidate aliases without enrolling names or writing an
  assert.equal(found.links.missingNames,1);
  assert.equal(found.links.unfoundNames,0);
  assert.deepEqual(found.links.candidateCoverFiles,[f.exact]);
+ assert.equal(found.candidatePolicy.schemaVersion,1);
+ assert.deepEqual(found.candidatePolicy.coverFiles,[f.exact]);
  assert.deepEqual(found.links.examples,[f.exact]);
  assert.deepEqual(found.links.parents,[{parent:f.legacy,names:1,bytes:8,extensions:{'.bin':1}}]);
  assert.deepEqual(f.snapshot(),before);
@@ -48,7 +50,7 @@ test('diagnose discovers candidate aliases without enrolling names or writing an
  assert.equal(unresolved.links.unfoundNames,1);
  assert.equal(unresolved.journal,null);
  assert.deepEqual(f.snapshot(),before);
- writeFileSync(f.policy,JSON.stringify({schemaVersion:1,coverFiles:[f.exact]}),{mode:0o600});
+ writeFileSync(f.policy,JSON.stringify(found.candidatePolicy),{mode:0o600});
  const chosen=f.snapshot(),preflight=await f.run(['preflight','--read-only'],0);
  assert.equal(preflight.links.missingNames,0);
  assert.equal(preflight.rootStats.filter(r=>r.role==='exact-file').length,1);
@@ -109,4 +111,5 @@ test('alias discovery identifies installed source aliases but omits them from en
  const report=await f.run(['backup-diagnose','--search-root',core,'--candidate-cover-files'],1);
  assert.equal(report.links.foundNames,1);
  assert.deepEqual(report.links.candidateCoverFiles,[]);
+ assert.equal(report.candidatePolicy,undefined);
 });

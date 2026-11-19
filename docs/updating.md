@@ -264,6 +264,58 @@ Rotation/revocation is an explicit local administrative edit: preserve revoked r
 and never replace the policy with an older copy. There is no automatic rotation protocol in package format 1.
 The updater never restores trust from its application archives.
 
+### Upgrade an installed v1.0.0 Git checkout
+
+Use a separate, verified checkout of the release that contains the socket-aware updater. The stock v1.0.0
+checkout stays on its original tag until the updater switches it. A source checkout works with both the default
+in-checkout layout and an instance directory. No package migration is needed for this Git upgrade.
+
+First obtain the target tag name, its full annotated tag object ID, the publisher's Git URL and approved SSH
+signer through an independently authenticated channel. Keep the operator trust file and the driver's new Git
+checkout in owner-controlled locations outside the installation. Import the Git signer with the stock updater
+and its independently supplied expected fingerprint as shown above. Create an OpenSSH allowed-signers file
+with the same authorized public key, on one line as `release namespaces="git" ssh-ed25519 KEY`.
+
+Populate the separate driver checkout from the release. Set `DRIVER` to a new empty directory, `PUBLISHER_URL` to
+the approved Git URL, `TARGET_TAG` and `TAG_OBJECT` to the authenticated release identifiers, and
+`ALLOWED_SIGNERS` to the absolute path of that local signer file. Run this in an operator shell with its normal
+Git executable and no repository overrides.
+
+```sh
+(
+  umask 077
+  export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_NO_REPLACE_OBJECTS=1
+  git init --quiet "$DRIVER" &&
+  git -C "$DRIVER" fetch --no-tags "$PUBLISHER_URL" "refs/tags/$TARGET_TAG:refs/tags/$TARGET_TAG" &&
+  test "$(git -C "$DRIVER" rev-parse "refs/tags/$TARGET_TAG")" = "$TAG_OBJECT" &&
+  git -C "$DRIVER" -c gpg.format=ssh -c gpg.ssh.program=/usr/bin/ssh-keygen \
+    -c "gpg.ssh.allowedSignersFile=$ALLOWED_SIGNERS" verify-tag "$TAG_OBJECT" &&
+  git -C "$DRIVER" -c core.hooksPath=/dev/null checkout --quiet --detach "$TAG_OBJECT^{commit}"
+)
+```
+
+After this block succeeds, run a single updater invocation against the installed instance. With an instance
+directory, use its existing service and health settings.
+
+```sh
+node "$DRIVER/scripts/update.mjs" apply "$TARGET_TAG" \
+  --root "$INSTALL" --home "$INSTANCE" --trust "$TRUST"
+```
+
+For the in-checkout layout, supply the same service, health address and path overrides the stock install used.
+
+```sh
+node "$DRIVER/scripts/update.mjs" apply "$TARGET_TAG" --root "$INSTALL" --trust "$TRUST" \
+  --service systemd:home-hub.service --health http://127.0.0.1:8781/healthz
+```
+
+The invocation performs preflight, verifies the installed repository's target tag under operator trust, checks
+backup coverage, and runs the target tests and startup check. Fetching reads Git metadata from the installed
+checkout's configured remote. An offline install can fetch the approved tag into its checkout ahead of time,
+compare the tag object to `TAG_OBJECT`, and pass `--no-fetch`. Keep the retained driver path printed by `apply`
+for later rollback. The disposable rehearsal in `tests/large/update-stock-sockets.mjs` uses the real stock tag,
+a locally signed candidate, the hub server and listening UNIX sockets.
+
 Run an **already trusted driver**, independently verified and retained through the rollback window. Downloading
 an updater and running it to verify its own package does not establish trust. Git and package transactions retain the executable driver under `<home>/update/drivers/<tree digest>/` (or
 `<backups>/drivers/` without an instance directory). The journal records its path, capabilities and tree digest.
@@ -346,7 +398,7 @@ Review retained drivers, failed roots, old core and abandoned partial backup fil
 
 A backup covers data, state, private files, configuration, `instance.json`, site/watch overrides, external
 `AUTH_FILE` and its sibling `secret.key`, and configured secret-key, integration-secret, GitHub-token and TLS
-files. The service stop must also stop external writers. Environment and Keychain keys appear as external
+files. Pause external writers to durable files during the transaction. Environment and Keychain keys appear as external
 prerequisites. Use `--backup-root PATH` for a plugin's external data or `coverFiles` for individual hard-link aliases.
 
 ```sh
@@ -396,6 +448,16 @@ capped at 128 MiB. Signed release packages keep their existing limits, including
 hard-linked payload once and budgeting sparse files at their apparent size. Existing archives consume disk
 space until pruning at the end of a successful update. Use local filesystems and leave space for the retained
 failed state. Mounted roots, unsupported special files/modes, unsafe links and paths outside USTAR limits are refused.
+
+Filesystem UNIX sockets in covered roots are reported separately and left in place. The archive contains durable
+files and the directory structure. During rollback the updater keeps every live directory leading to a socket
+at its existing path, with its current permissions and inode. It restores archived durable children individually
+and retains durable paths created since the backup in the failed-state index. Sockets created after backup also
+stay reachable. Leave the independent daemon running and keep its socket path topology stable during the update.
+If a socket or its containing directory occupies a pathname needed for a different archived entry, rollback
+refuses. The same applies when a new durable child appears in a retained directory after restore was journalled.
+Resolve the conflict without removing a listening endpoint before retrying. Package activation requires sockets
+outside the replaceable code directory. Legacy archive rollback refuses to move roots that contain sockets.
 
 Backup verification reads the gzip and compares header, payload and manifest digests without extracting.
 Rollback checks integrity and space before stopping the service. It creates all staged roots on their destination

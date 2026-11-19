@@ -109,7 +109,7 @@ function backupDiagnostics(inst,args,out){
  try{trustFile=selectTrustFile({home:inst.home,explicit:args.values.trust});}
  catch(e){throw new UpdateError(`Trust selection refused: ${e.message}`);}
  const scanned=scanBackup({...inst,trustFile:trustFile??inst.trustFile},args.scan);
- const report=Object.fromEntries(['rootStats','totals','links','filesystems','blockers','warnings','counts'].map(k=>[k,scanned[k]]));
+ const report=Object.fromEntries(['rootStats','totals','links','filesystems','blockers','warnings','counts','runtimeSockets','candidatePolicy'].map(k=>[k,scanned[k]]));
  if(scanned.policy)report.policy={file:scanned.policy.file,budget:scanned.policy.budget,exactFiles:scanned.policy.coverFiles.length};
  if(args.flags.has('read-only')){
   let journal;

@@ -48,6 +48,7 @@ import {identityMismatch,observeReadiness,healthSample} from './update-readiness
 import {contentFingerprint,pluginSourceFingerprint} from './runtime-identity.mjs';
 import {backupPlan,createBackup,restoreBackup,assessRestore,backupRootSummary} from './update-backup.mjs';
 import {UpdateError,RollbackFailed} from './update-errors.mjs';
+import {refuseSocketReplacement} from './restore-sockets.mjs';
 import {retainDriver,checkRetainedDriver} from './update-driver.mjs';
 import {acquireLock,acquireSourceLocks} from './update-lock.mjs';
 import {JOURNAL_SCHEMA,TERMINAL_STEPS,readUpdateJournal,writeUpdateJournal,unfinished,recordMutation} from './update-journal.mjs';
@@ -557,6 +558,7 @@ function packageLayout(inst,request){
  const st=lstatSync(inst.root),parent=statSync(path.dirname(inst.root));if(!st.isDirectory()||st.isSymbolicLink()||st.dev!==parent.dev)throw new UpdateError('Package core must be a regular replaceable directory on its parent filesystem; symlinks and mount-point swaps are unsupported.');
  if(existsSync(path.join(inst.root,'.git'))){if(!lstatSync(path.join(inst.root,'.git')).isDirectory())throw new UpdateError('Linked Git worktrees cannot migrate. Use an independent checkout.');if(!request.migrateFromGit)throw new UpdateError('Git migration requires explicit --migrate-from-git; the complete old checkout is retained.');}
  for(const file of [...Object.values(inst.paths).filter(v=>typeof v==='string'),...inst.sources.slice(1).map(s=>s.dir),path.join(inst.home,'instance.json')])if(within(path.resolve(file),inst.root))throw new UpdateError(`Mutable instance path is inside replaceable core: ${file}. Relocate it before using packages.`);
+ try{refuseSocketReplacement(inst.root);}catch(e){throw new UpdateError(`Package core cannot be replaced: ${e.message}`);}
  if(inst.sources[0].plugins.length)throw new UpdateError('Move in-tree household plugins to an external plugin source before package migration.');
  if(Object.keys(request.plugins??{}).length||(request.addPluginSources??[]).length)throw new UpdateError('Package activation keeps external plugin sources fixed. Update them in a separate Git transaction.');
 }
@@ -617,7 +619,7 @@ function backupPolicyRecord(coverage){
  return file?{backupPolicy:{file,digest}}:{};
 }
 function activatePackage(inst,journal,ctx){const p=journal.package;
- p.status='moving-old';writeJournal(inst,journal);renameSync(p.live,p.old);ctx.checkpoint('package-old-renamed');syncDirectory(path.dirname(p.live));p.status='old-moved';writeJournal(inst,journal);
+ p.status='moving-old';writeJournal(inst,journal);refuseSocketReplacement(p.live);renameSync(p.live,p.old);ctx.checkpoint('package-old-renamed');syncDirectory(path.dirname(p.live));p.status='old-moved';writeJournal(inst,journal);
  p.status='installing';writeJournal(inst,journal);renameSync(p.staged,p.live);ctx.checkpoint('package-new-renamed');syncDirectory(path.dirname(p.live));p.status='installed';writeJournal(inst,journal);
 }
 function restorePackage(inst,journal,ctx){const p=journal.package;
@@ -628,7 +630,7 @@ function restorePackage(inst,journal,ctx){const p=journal.package;
  if(!existsSync(p.old)){if(p.status==='restoring'&&existsSync(p.live)){p.status='restored';writeJournal(inst,journal);return;}throw new Error('Retained previous core is missing; manual recovery required');}
  if(existsSync(p.live)){
   verifyStagedTree(p.live,{files:p.files},{receipt:true});const receipt=packageReceipt(p.live);if(receipt?.manifestSha256!==p.manifestSha256)throw new Error('Core no longer matches the installed package; refusing to overwrite unrelated code');
-  p.failed??=p.live+'.failed-'+path.basename(p.staged);p.status='moving-failed';writeJournal(inst,journal);renameSync(p.live,p.failed);syncDirectory(path.dirname(p.live));
+  p.failed??=p.live+'.failed-'+path.basename(p.staged);p.status='moving-failed';writeJournal(inst,journal);refuseSocketReplacement(p.live);renameSync(p.live,p.failed);syncDirectory(path.dirname(p.live));
  }
  p.status='restoring';writeJournal(inst,journal);renameSync(p.old,p.live);syncDirectory(path.dirname(p.live));p.status='restored';writeJournal(inst,journal);
 }
@@ -637,10 +639,10 @@ function readJsonText(text){try{return JSON.parse(text);}catch{return null;}}
 // --- apply ---------------------------------------------------------------------------------------------
 const switchTo=(ctx,change,commit,{force=false,branch=null}={})=>{
  // Back onto the branch it was on when that branch still names the same commit; otherwise detached at the commit.
- if(branch&&git(ctx,change.dir,'rev-parse','-q','--verify',`refs/heads/${branch}^{commit}`)===commit)return gitDo(ctx,change.dir,'checkout','--quiet',...(force?['--force']:[]),branch);
- return gitDo(ctx,change.dir,'checkout','--quiet','--detach',...(force?['--force']:[]),commit);
+ if(branch&&git(ctx,change.dir,'rev-parse','-q','--verify',`refs/heads/${branch}^{commit}`)===commit)return gitDo(ctx,change.dir,'checkout','--quiet','--no-overwrite-ignore',...(force?['--force']:[]),branch);
+ return gitDo(ctx,change.dir,'checkout','--quiet','--no-overwrite-ignore','--detach',...(force?['--force']:[]),commit);
 };
-const pathsLine=(inst,journal)=>`  journal  ${inst.files.journal}\n  archive  ${journal.backup?.file??'(none was made)'}\n  history  ${inst.files.history}\n  driver   ${journal.driver??'retain this trusted driver checkout'}\n  failed   ${journal.package?.failed??journal.failedState??'(none)'}${(journal.restoreRoots??[]).map(r=>'\n  root     '+r.live+'; retained failed root '+r.aside).join('')}`;
+const pathsLine=(inst,journal)=>`  journal  ${inst.files.journal}\n  archive  ${journal.backup?.file??'(none was made)'}\n  history  ${inst.files.history}\n  driver   ${journal.driver??'retain this trusted driver checkout'}\n  failed   ${journal.package?.failed??journal.failedState??'(none)'}${[...(journal.restoreRoots??[]),...(journal.socketRestore?.units??[])].map(r=>'\n  root     '+r.live+'; retained failed root '+r.aside).join('')}`;
 
 /**
  * Puts the `from` side of a journal back: stop, switch the code back, restore the archive when the data epoch rose
@@ -651,6 +653,8 @@ async function undo(inst,ctx,journal){
  let assessed=null;
  try{
   checkRetainedDriver(journal);
+  if(journal.package&&journal.package.status!=='restored'&&existsSync(journal.package.old))
+   refuseSocketReplacement(journal.package.live);
   if(journal.epochRose&&journal.started&&!journal.restored){
    if(!journal.backup)throw new Error('the data epoch rose and the new version was started, but the journal names no archive');
    assessed=await assessRestore(inst,journal.backup,journal);

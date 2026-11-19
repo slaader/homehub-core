@@ -2,7 +2,7 @@ import {lstatSync,realpathSync,readlinkSync,opendirSync,readdirSync,statfsSync} 
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {archivePath,header} from './release-archive.mjs';
-import {backupPolicy,cleanAbsolute,withinPath,MANIFEST_HEADER_LIMIT,MANIFEST_ENTRY_LIMIT,MANIFEST_LIMIT} from './backup-policy.mjs';
+import {backupPolicy,cleanAbsolute,withinPath,MAX_BACKUP_ROOTS,POLICY_SCHEMA,MANIFEST_HEADER_LIMIT,MANIFEST_ENTRY_LIMIT,MANIFEST_LIMIT} from './backup-policy.mjs';
 
 export const stat=p=>{try{return lstatSync(p,{bigint:true});}catch(e){if(e.code==='ENOENT')return null;throw e;}};
 export const exists=p=>stat(p)!==null;
@@ -41,7 +41,8 @@ function buildRoots(inst,policy,issue){
   try{
    const s=stat(logical),resolved=canonical(logical);
    if(!cleanAbsolute(resolved)){issue('UNSAFE_ROOT',`refusing filesystem-root or unsafe backup path: ${logical}`);continue;}
-   candidates.push({logical,canonical:resolved,existed:!!s,link:s?.isSymbolicLink()?readlinkSync(logical):null,role:(inst.backupRoots??[]).includes(logical)?'extra':'instance'});
+   const runtimeSocket=stat(resolved)?.isSocket();
+   candidates.push({logical,canonical:resolved,existed:!!s,...(runtimeSocket?{runtimeSocket:true}:{}),link:s?.isSymbolicLink()?readlinkSync(logical):null,role:(inst.backupRoots??[]).includes(logical)?'extra':'instance'});
   }catch(e){issue('UNREADABLE',`cannot resolve backup root ${logical}: ${e.message}`);}
  }
  const roots=[];
@@ -81,7 +82,7 @@ function buildRoots(inst,policy,issue){
  return roots;
 }
 
-function* children(source,sorted){
+export function* children(source,sorted=false){
  const dir=opendirSync(source);
  try{
   let item;
@@ -96,12 +97,13 @@ function* children(source,sorted){
 }
 
 // The traversal and ordering are shared by the stat-only scan and the archive writer.
-export function* walkRoot(root,issue,{archive=true}={}){
+export function* walkRoot(root,issue,{archive=true,includeSockets=false}={}){
  function* walk(source,name,dev){
   try{
    const st=stat(source);
    if(!st)throw new Error('file disappeared');
    if(st.dev!==dev){issue('MOUNT_INSIDE_ROOT',`mounted filesystem inside backup root: ${source}`);return;}
+   if(st.isSocket()){if(includeSockets)yield {source,st,socket:true};return;}
    let type;
    if(st.isFile())type='file';
    else if(st.isDirectory())type='directory';
@@ -182,7 +184,8 @@ export function scanBackup(inst,{searchRoots=[],searchMaxEntries=2000000,example
  try{roots=buildRoots(inst,policy,issue);}
  catch(e){issue('UNREADABLE',e.message);return {blockers,warnings,counts};}
  const {budget}=policy,groups=new Map(),filesystems=new Map(),rootStats=[];
- const totals={entries:0,bytes:0,expanded:1024,groups:0};
+ const totals={entries:0,bytes:0,expanded:1024,groups:0},runtimeSockets={count:0,examples:[]};
+ let visited=0;
  const managed=new Set([inst.files.history,inst.files.updates,inst.files.run].filter(Boolean).map(canonical));
  const digest=createHash('sha256');
  let manifestBytes=Buffer.byteLength(JSON.stringify(roots))+8192;
@@ -192,10 +195,16 @@ export function scanBackup(inst,{searchRoots=[],searchMaxEntries=2000000,example
   const dest=filesystem(filesystems,path.dirname(root.canonical));
   const info={id:root.id,logical:root.logical,canonical:root.canonical,role:root.role,dev:dest.dev,files:0,directories:0,symlinks:0,apparentBytes:0,allocatedBytes:0,largestFileBytes:0,longestPathBytes:0};
   rootStats.push(info);
-  for(const item of walkRoot(root,issue)){
+  for(const item of walkRoot(root,issue,{includeSockets:true})){
+   if(++visited>budget.maxEntries)break scan;
    const {source,entry:e,st}=item;
+   if(item.socket){
+    runtimeSockets.count++;
+    if(runtimeSockets.examples.length<examples)runtimeSockets.examples.push(source);
+    continue;
+   }
    digest.update(JSON.stringify([e,signature(st)])+'\n');
-   if(++totals.entries>budget.maxEntries){issue('OVER_BUDGET_ENTRIES',`backup exceeds maxEntries (${budget.maxEntries})`);break scan;}
+   totals.entries++;
    let bytes=e.bytes,hardlink=false;
    info.longestPathBytes=Math.max(info.longestPathBytes,Buffer.byteLength(e.path));
    if(e.type==='file'){
@@ -228,6 +237,7 @@ export function scanBackup(inst,{searchRoots=[],searchMaxEntries=2000000,example
    manifestBytes+=Buffer.byteLength(JSON.stringify(e))+256;
   }
  }
+ if(visited>budget.maxEntries)issue('OVER_BUDGET_ENTRIES',`backup exceeds maxEntries (${budget.maxEntries})`);
  totals.groups=groups.size;
  if(totals.bytes>budget.maxBytes)issue('OVER_BUDGET_BYTES',`backup exceeds maxBytes (${budget.maxBytes})`);
  if(manifestBytes>MANIFEST_LIMIT)issue('MANIFEST_TOO_LARGE','backup exceeds manifest byte limit');
@@ -238,7 +248,10 @@ export function scanBackup(inst,{searchRoots=[],searchMaxEntries=2000000,example
  const missingNames=[...groups.values()].reduce((n,g)=>n+Math.max(0,g.expected-g.count),0);
  const {found,scanned}=discover(groups,roots,searchRoots,searchMaxEntries,warn),byParent=new Map();
  const excluded=[...protectedPaths(inst,policy.file),...[inst.root,...(inst.sources??[]).map(s=>s.dir)].filter(Boolean).map(canonical)];
- const eligible=candidates?[...found.keys()].filter(file=>!excluded.some(p=>withinPath(file,p))).sort():[];
+ const eligible=candidates?[...found.keys()].filter(file=>cleanAbsolute(file)&&!excluded.some(p=>withinPath(file,p))).sort():[];
+ const proposedRoots=roots.length+eligible.length;
+ const candidatePolicy=eligible.length&&eligible.length===missingNames&&eligible.length===found.size&&proposedRoots<=MAX_BACKUP_ROOTS?
+  {schemaVersion:POLICY_SCHEMA,budget:{...budget,maxRoots:Math.max(budget.maxRoots,proposedRoots)},coverFiles:[...policy.coverFiles,...eligible].sort()}:undefined;
  for(const [file,key] of found){
   const parent=path.dirname(file),extension=path.extname(file)||'(none)';
   if(!byParent.has(parent))byParent.set(parent,{parent,names:0,bytes:0,extensions:{}});
@@ -257,7 +270,7 @@ export function scanBackup(inst,{searchRoots=[],searchMaxEntries=2000000,example
  const prerequisites=[...(inst.env.HOME_HUB_SECRET_KEY?['HOME_HUB_SECRET_KEY from the service secret store']:[]),
   ...(inst.env.HOME_HUB_SECRET_KEYCHAIN==='1'?['macOS login Keychain secret-key']:[])];
  return {roots,rootStats,policy,totals,groups,manifestBytes,scanDigest:digest.digest('hex'),
-  prerequisites,exclusions:[],limitations:['All external writers must be stopped by the configured service adapter.'],
+  prerequisites,runtimeSockets,candidatePolicy,
   filesystems:[...filesystems.values()],blockers,warnings,counts,
   links:{groups:groups.size,crossRoot:[...groups.values()].filter(g=>g.crossRoot).length,missingNames,
    foundNames:found.size,unfoundNames:Math.max(0,missingNames-found.size),searchedEntries:scanned,parents:[...byParent.values()],

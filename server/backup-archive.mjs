@@ -28,7 +28,7 @@ export function writeAll(fd,bytes){
 
 export async function writeBackupArchive(file,manifest,plan){
  const manifestFd=openSync(manifest,'wx',0o600),manifestHash=hash(),archiveHash=hash(),seen=hash(),seenAfter=hash();
- const requires=['backup-v2',...(plan.groups.size?['hardlinks']:[])];
+ const requires=['backup-v2','socket-aware',...(plan.groups.size?['hardlinks']:[])];
  const metadata={schemaVersion:BACKUP_SCHEMA,roots:plan.roots,budget:plan.policy.budget,requires,totals:plan.totals,prerequisites:plan.prerequisites};
  let manifestBytes=0,archiveBytes=0;
  const line=(value,limit=MANIFEST_ENTRY_LIMIT)=>{
@@ -97,10 +97,11 @@ function parseMetadata(raw){
  const budget=backupBudget(raw.budget);
  if(!Array.isArray(raw.roots)||!raw.roots.length||raw.roots.length>budget.maxRoots)throw new Error('invalid backup root count');
  for(const [index,r] of raw.roots.entries()){
-  fields(r,['id','name','parent','logical','canonical','existed','link','aliases','role','originalInode','originalBirthtime'],'backup root');
+  fields(r,['id','name','parent','logical','canonical','existed','link','aliases','role','originalInode','originalBirthtime','runtimeSocket'],'backup root');
   if(r.id!==`root-${String(index+1).padStart(4,'0')}`||!cleanAbsolute(r.canonical)||!cleanAbsolute(r.logical)||
     r.name!==pathBasename(r.logical)||r.parent!==pathDirname(r.logical)||typeof r.existed!=='boolean'||
     !(r.link===null||validLink(r.link,4096))||!Array.isArray(r.aliases)||!['instance','extra','exact-file'].includes(r.role))throw new Error('invalid backup root roles');
+  if(r.runtimeSocket!==undefined&&(r.runtimeSocket!==true||!r.existed||r.role==='exact-file'||!raw.requires.includes('socket-aware')))throw new Error('invalid runtime socket root');
   for(const a of r.aliases){
    fields(a,['logical','canonical','link'],'backup alias');
    if(!cleanAbsolute(a.logical)||!cleanAbsolute(a.canonical)||!validLink(a.link,4096))throw new Error('invalid backup alias');
@@ -167,7 +168,7 @@ export async function walkBackup(file,manifest,integrity,visitor={}){
   };
   for await(const raw of lines(manifest,integrity)){
    if(!metadata){
-    metadata=parseMetadata(raw);present=metadata.roots.filter(r=>r.existed);
+    metadata=parseMetadata(raw);present=metadata.roots.filter(r=>r.existed&&!r.runtimeSocket);
     if(integrity.archiveBytes>compressedBound(metadata.totals.expanded))throw new Error('compressed backup exceeds its format bound');
     visitor.header?.(metadata);
     continue;

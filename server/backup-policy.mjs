@@ -5,9 +5,10 @@ import {fields,strictJson,trustDestination,sha256} from './release-trust.mjs';
 
 const MiB=1024**2,GiB=1024**3;
 export const POLICY_SCHEMA=1;
-export const DRIVER_CAPABILITIES=Object.freeze(['backup-v1','backup-v2','hardlinks','budget','journal-3','staged-fsync']);
+export const DRIVER_CAPABILITIES=Object.freeze(['backup-v1','backup-v2','hardlinks','budget','journal-3','staged-fsync','socket-aware']);
 export const DEFAULT_BUDGET=Object.freeze({maxBytes:ARCHIVE_LIMITS.expanded,maxEntries:ARCHIVE_LIMITS.entries,maxFileBytes:ARCHIVE_LIMITS.file,maxRoots:64,gzipLevel:1});
-const MAX_BUDGET={maxBytes:64*GiB,maxEntries:200000,maxFileBytes:8*GiB-1,maxRoots:1000,gzipLevel:9};
+export const MAX_BACKUP_ROOTS=1000;
+const MAX_BUDGET={maxBytes:64*GiB,maxEntries:200000,maxFileBytes:8*GiB-1,maxRoots:MAX_BACKUP_ROOTS,gzipLevel:9};
 export const MANIFEST_LIMIT=128*MiB;
 export const MANIFEST_HEADER_LIMIT=4*MiB;
 export const MANIFEST_ENTRY_LIMIT=8192;

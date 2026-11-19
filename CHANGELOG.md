@@ -14,6 +14,9 @@ until the release gives it its number: a change to the public surface adds its l
   external hard-link candidates, limits and free space. `preflight --read-only` checks backup readiness without
   staging a release. Exact file coverage preserves hard-link groups across restore roots. See
   [updating.md](docs/updating.md#backup-coverage-and-budgets).
+- Backups leave filesystem UNIX sockets in place. Rollback preserves listening endpoints and journals
+  the durable children of their containing directories separately.
+- Documented the verified separate driver for [upgrading a stock v1.0.0 checkout](docs/updating.md#upgrade-an-installed-v100-git-checkout).
 
 ### Data
 
