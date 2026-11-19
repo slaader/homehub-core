@@ -285,6 +285,8 @@ the driver, fetch the tag into both checkouts and compare both IDs before execut
     test "$(git -C "$checkout" rev-parse "refs/tags/$TARGET_TAG^{commit}")" = "$TARGET_COMMIT"
   done
   git -C "$DRIVER" -c core.hooksPath=/dev/null checkout --quiet --detach "$TARGET_COMMIT"
+  # The v1.2.0 preflight tests expect the standard file creation mask.
+  umask 022
   node "$DRIVER/scripts/update.mjs" apply "$TARGET_TAG" --no-fetch --root "$INSTALL" --home "$INSTANCE"
 )
 ```
