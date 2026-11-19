@@ -158,7 +158,7 @@ function chooseAsset(context,onAsset){
    }).catch(error=>{if(selector.value==='existing')area.replaceChildren(el('p',{role:'alert'},error.message));});
    return;
   }
-  const file=el('input',{type:'file'}),message=alert(),progress=el('progress',{max:1,value:0,hidden:''});
+  const file=el('input',{type:'file'}),message=alert(),progress=el('progress',{'aria-label':t('Průběh nahrávání'),max:1,value:0,hidden:''});
   const upload=button(t('Nahrát nebo pokračovat'),()=>{
    if(!file.files[0]){message.textContent=t('Nejprve vyber soubor.');return;}
    pick(()=>uploadFile(project,file.files[0],(done,size)=>{progress.hidden=false;progress.value=done/size;},controller.signal),upload,message);

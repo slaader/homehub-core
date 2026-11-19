@@ -1,4 +1,5 @@
 export default {
+ 'Průběh nahrávání':'Upload progress',
  'Založit wiki':'Set up wiki',
  'Název stránky':'Page title',
  'Nová stránka':'New page',

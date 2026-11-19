@@ -59,7 +59,7 @@ Expose the same validation and transactions to the UI and MCP. The [API referenc
 | wiki_asset_import | Accept an authorized Git LFS repo/ref/path or Review variant ID and return project assetId plus resolved provenance. |
 | wiki_attachment_add | Attach assetId to a page group or specific table/row/column with label, caption, position and expected page rev. Return updated page rev. |
 
-Require retry-safe request IDs for creates and attachment additions. Return structured errors for stale revisions, invalid targets, denied access, expired uploads and size limits. A client may also use authenticated raw chunk uploads for throughput. The entire authoring flow must work through MCP alone, including local media when LFS and Reviews are absent. Clients supply file bytes; the Hub server never resolves a caller-supplied local filesystem path.
+Require retry-safe request IDs for creates and attachment additions. The hub retains retry receipts for at least seven days. Return structured errors for stale revisions, invalid targets, denied access, expired uploads and size limits. A client may also use authenticated raw chunk uploads for throughput. The entire authoring flow must work through MCP alone, including local media when LFS and Reviews are absent. Clients supply file bytes; the Hub server never resolves a caller-supplied local filesystem path.
 
 ## Delivery and acceptance
 

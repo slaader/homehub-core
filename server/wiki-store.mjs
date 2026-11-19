@@ -62,8 +62,9 @@ function replay({receipts},fingerprint){
  return {...receipt.result,replayed:true};
 }
 
+const RECEIPT_LIFETIME=7*24*60*60*1000;
 function remember(data,key,fingerprint,page){
- if(key)data.receipts.push({key,fingerprint,result:projection(page)});
+ if(key)data.receipts.push({key,fingerprint,expiresAt:Date.now()+RECEIPT_LIFETIME,result:projection(page)});
 }
 
 function record(data,page){
@@ -312,5 +313,14 @@ export function createWikiStore(db,tickets){
    .sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)||a.title.localeCompare(b.title)||a.id.localeCompare(b.id));
  }
 
- return {projectOf,list,get,withAssets,setup,create,update,move,attach,backlinks};
+ async function pruneReceipts(){
+  const cutoff=Date.now();
+  const expiry=receipt=>receipt.expiresAt??Date.parse(receipt.result.updatedAt)+RECEIPT_LIFETIME;
+  const keys=(await store.list('receipts')).filter(receipt=>expiry(receipt)<=cutoff).map(receipt=>receipt.key);
+  if(keys.length)await store.change({receipts:keys},data=>{
+   data.receipts=data.receipts.filter(receipt=>expiry(receipt)>cutoff);
+  });
+ }
+
+ return {projectOf,list,get,withAssets,setup,create,update,move,attach,backlinks,pruneReceipts};
 }

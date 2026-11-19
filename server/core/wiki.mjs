@@ -98,7 +98,7 @@ export default {
  mcpTools:wikiTools,
  mcpInstructions:'wiki_list, wiki_get.',
  pollers:[{id:'wiki-media-cleanup',start(state){
-  const sweep=()=>state.assets.sweep().catch(()=>console.error('Wiki media cleanup could not finish.'));
+  const sweep=()=>Promise.all([state.assets.sweep(),state.wiki.pruneReceipts()]).catch(()=>console.error('Wiki media cleanup could not finish.'));
   state.timer=setInterval(sweep,3600000);
   state.timer.unref();
   return sweep();
