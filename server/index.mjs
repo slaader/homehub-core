@@ -177,7 +177,18 @@ export function createHandler(options) {
         if(req.headers.origin&&!origins.includes(req.headers.origin))return error(403,'ORIGIN_REJECTED','Request not allowed.');
         if(principal?.authKind!=='api-key'){res.setHeader('WWW-Authenticate','Bearer realm="home-hub"');return error(401,'AUTH_REQUIRED','Use a service-account key: Authorization: Bearer hhk_…');}
         if(!/^application\/json\b/.test(req.headers['content-type']||''))return error(415,'UNSUPPORTED_MEDIA_TYPE','Send JSON-RPC as application/json.');
-        req.setEncoding('utf8');let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>65536)return error(413,'TOO_LARGE','Request too large.');}
+        req.setEncoding('utf8');
+        let raw='',size=0;
+        for await(const chunk of req.iterator({destroyOnReturn:false})){
+          size+=Buffer.byteLength(chunk);
+          if(size>65536){
+            // Let the client finish reading the refusal before retiring this connection.
+            res.setHeader('Connection','close');
+            req.resume();
+            return error(413,'TOO_LARGE','Request too large.');
+          }
+          raw+=chunk;
+        }
         const out=await mcp(raw,principal);res.writeHead(out.status,out.headers||{});return res.end(out.body||'');
       }
       // People and app tokens are held to the route's scope like keys are: a role is a set of scopes (server/scopes.mjs).

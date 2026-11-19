@@ -128,7 +128,7 @@ test('thumbnail requests use the original access check for uploaded and imported
   const thumb=await get(thumbnail(asset.url),reader,{headers:{Range:'bytes=0-7'}});
   assert.equal(thumb.status,200);
   assert.equal(thumb.headers.get('content-type'),'image/png');
-  assert.equal(thumb.headers.get('cache-control'),'private, no-store');
+  assert.equal(thumb.headers.get('cache-control'),'private, no-cache');
   assert.equal(thumb.headers.get('x-content-type-options'),'nosniff');
   assert.equal(thumb.headers.get('content-range'),null);
   const bytes=Buffer.from(await thumb.arrayBuffer());
@@ -138,6 +138,8 @@ test('thumbnail requests use the original access check for uploaded and imported
   assert.equal(head.status,200);
   assert.equal(Number(head.headers.get('content-length')),bytes.length);
   assert.equal((await head.arrayBuffer()).byteLength,0);
+  const conditional=await get(thumbnail(asset.url),reader,{headers:{'If-None-Match':head.headers.get('etag')}});
+  assert.equal(conditional.status,304);
   const range=await get(asset.url,reader,{headers:{Range:'bytes=16-23'}});
   assert.equal(range.status,206);
   assert.deepEqual(Buffer.from(await range.arrayBuffer()),original.subarray(16,24));
@@ -192,6 +194,9 @@ test('thumbnail cache evicts old entries and leaves downloads usable when the he
  for(let index=0;index<128;index++)await generator.get(entry(index));
  assert.equal(generator.get(entry(0)),bytes);
  await generator.get(entry(128));
+ assert.equal(generator.info(entry(1)).size,bytes.length);
+ assert.equal(generator.info(entry(1)).digest,sha(bytes));
+ assert.equal(renders,129);
  assert.equal(generator.get(entry(0)),bytes);
  await generator.get(entry(1));
  assert.equal(renders,130);

@@ -5,10 +5,12 @@ import path from 'node:path';
 import {ASSET_ID,exactKeys,normalizeDoc,WIKI_LIMITS} from '../public/wiki-doc.js';
 import {LIMITS,matchesReviewMedia,SHA} from './review-store.mjs';
 import {wikiAssetView,wikiCollection,wikiKey} from './wiki-store.mjs';
+import {assetPage,wikiArchiveMember} from './wiki-authoring.mjs';
 
 export const UPLOAD_ID=/^u[a-f0-9]{32}$/;
 export const MCP_CHUNK=32*1024;
 export const RAW_CHUNK=LIMITS.chunk;
+export const MANIFEST_FILES=50;
 export const UPLOAD_TTL=24*60*60*1000;
 export const ASSET_GRACE=7*UPLOAD_TTL;
 const DEFAULT_BUDGET=20*1024**3;
@@ -125,6 +127,14 @@ function uploadView(upload,nextOffset){
   ...(assetId?{assetId}:{}),...(purpose==='document'&&finished?{documentUploadId:uploadId}:{})};
 }
 
+function reservationError(bytes,reserved,owned,size,maxBytes){
+ if(bytes+size>maxBytes)return 'disk-limit';
+ if(reserved>=MAX_SESSIONS||owned>=MAX_PER_OWNER)return 'upload-limit';
+}
+
+const sameFile=(a,b)=>a.digest===b.digest&&a.size===b.size&&a.type===b.type;
+const sameSource=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+
 function checkUpload(upload,actor,now){
  if(!upload||upload.expiresAt<=now)fail('upload-expired');
  if(upload.owner!==actor)fail('denied');
@@ -193,15 +203,15 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
   syncDirectory(path.dirname(root));
  }
 
- async function begin(input,actor){
+ async function beginUpload(input,actor,{importing=false}={}){
   const info=uploadInfo(input),{id:project}=await wiki.projectOf(input.project);
   if(!(await store.get('wikis',project)))fail('not-found');
-  const upload={...info,id:id('u'),project,owner:actor,expiresAt:now()+UPLOAD_TTL};
+  const upload={...info,id:id('u'),project,owner:actor,expiresAt:now()+UPLOAD_TTL,...(importing?{importing}:{})};
   const accept=()=>store.change({uploads:null,blobs:null},data=>{
    const reserved=data.uploads.filter(session=>!session.assetId);
    const bytes=data.blobs.reduce((total,blob)=>total+blob.size,0)+reserved.reduce((total,session)=>total+session.size,0);
-   if(bytes+upload.size>maxBytes)fail('disk-limit');
-   if(reserved.length>=MAX_SESSIONS||reserved.filter(session=>session.owner===actor).length>=MAX_PER_OWNER)fail('upload-limit');
+   const problem=reservationError(bytes,reserved.length,reserved.filter(session=>session.owner===actor).length,upload.size,maxBytes);
+   if(problem)fail(problem);
    data.uploads.push(upload);
    return uploadView(upload,0);
   },{durable:true});
@@ -211,6 +221,59 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
    await sweep();
    return accept();
   }
+ }
+
+ const begin=(input,actor)=>beginUpload(input,actor);
+
+ async function manifest(input,actor){
+  if(!exactKeys(input,['project','files'])||!Array.isArray(input.files)||!input.files.length||input.files.length>MANIFEST_FILES)fail('invalid');
+  const files=input.files.map(file=>{
+   if(!exactKeys(file,['name','size','digest','type','archiveMember']))fail('invalid');
+   const {archiveMember,...fields}=file;
+   return {...uploadInfo(fields),...(archiveMember===undefined?{}:{source:wikiArchiveMember(archiveMember)})};
+  });
+  const {id:project}=await wiki.projectOf(input.project);
+  const time=now();
+  if((await store.list('uploads')).some(session=>!session.assetId&&session.expiresAt<=time))await sweep();
+  return store.change({wikis:[project],assets:project+'/',uploads:null,blobs:null},data=>{
+   if(!data.wikis.length)fail('not-found');
+   const reserved=data.uploads.filter(session=>!session.assetId);
+   let bytes=data.blobs.reduce((total,blob)=>total+blob.size,0)+reserved.reduce((total,session)=>total+session.size,0);
+   let slots=reserved.length,owned=reserved.filter(session=>session.owner===actor).length;
+   const projectSessions=reserved.filter(session=>session.project===project&&session.purpose==='asset'&&session.expiresAt>time);
+   let projectSlots=data.assets.length+projectSessions.length;
+   const sessions=projectSessions.filter(session=>session.owner===actor&&!session.importing);
+   const reusable=data.assets.filter(asset=>canUse(asset,actor))
+    .sort((a,b)=>Number(b.owner===actor)-Number(a.owner===actor));
+   const results=files.map(info=>{
+    const result={name:info.name,digest:info.digest};
+    // Keep returning a live session even if another writer publishes the same file meanwhile.
+    // The caller may already be transferring bytes or relying on that reservation after a lost response.
+    const existing=sessions.find(session=>sameFile(session,info)&&sameSource(session.source,info.source));
+    if(existing){
+     const nextOffset=existsSize(part(existing.id));
+     if(nextOffset)syncPublication(parts);
+     return {...result,state:'resumable',...uploadView(existing,nextOffset)};
+    }
+    const asset=reusable.find(a=>sameFile(a,info)&&(!info.source||sameSource(a.source,info.source))&&
+     existsSync(payload(a.digest))&&existsSize(payload(a.digest))===a.size);
+    if(asset)return {...result,state:'uploaded',assetId:asset.id};
+    const reason=projectSlots>=MAX_PROJECT_ASSETS?'asset-limit':reservationError(bytes,slots,owned,info.size,maxBytes);
+    if(reason)return {...result,state:'deferred',reason};
+    const session={...info,id:id('u'),project,owner:actor,expiresAt:time+UPLOAD_TTL};
+    data.uploads.push(session);
+    sessions.push(session);
+    slots++;
+    owned++;
+    projectSlots++;
+    bytes+=info.size;
+    return {...result,state:'new',...uploadView(session,0)};
+   });
+   return {project,files:results,transport:{
+    http:{method:'PUT',path:'/api/wiki/uploads/<uploadId>?offset=<nextOffset>',contentType:FILE_TYPE,maxBytes:RAW_CHUNK},
+    mcp:{tool:'wiki_upload_chunk',maxBytes:MCP_CHUNK},
+   }};
+  },{durable:true});
  }
 
  async function getUpload(id,actor){
@@ -307,8 +370,9 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
    blob.references++;
    if(!data.blobs.length)data.blobs.push(blob);
    const {project,name,type,size,digest,owner}=current;
+   const provenance=source??current.source;
    const asset={id:(current.assetId=makeAssetId(data.assets)),project,name,type,size,digest,owner,references:0,published:false,orphanedAt:now(),
-    ...(source?{source}:{})};
+    ...(provenance?{source:provenance}:{})};
    data.assets.push(asset);
    return {...uploadView(current,size),asset:wikiAssetView(asset)};
   },{durable:true});
@@ -339,7 +403,7 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
  }
 
  async function ingest(project,{name,type,size,digest,body,source},actor,grant){
-  const {uploadId}=await begin({project,name,type,size,digest},actor);
+  const {uploadId}=await beginUpload({project,name,type,size,digest},actor,{importing:true});
   let offset=0,buffered=0,pending=[];
   async function flush(){
    const block=Buffer.concat(pending,buffered);
@@ -369,6 +433,11 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
  async function list(project,actor){
   await wiki.projectOf(project);
   return (await store.list('assets',project+'/')).filter(asset=>canUse(asset,actor)).map(wikiAssetView);
+ }
+ async function find(input,actor){
+  const {id:project}=await wiki.projectOf(input.project);
+  const items=(await store.list('assets',project+'/')).filter(asset=>canUse(asset,actor));
+  return {project,...assetPage(items,input,wikiAssetView)};
  }
  async function media(project,id,actor){
   if(typeof id!=='string'||!ASSET_ID.test(id))fail('not-found');
@@ -410,5 +479,5 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
   });
  }
 
- return {begin,status,chunk,finish,document,ingest,list,media,sweep};
+ return {begin,manifest,status,chunk,finish,document,ingest,list,find,media,sweep};
 }

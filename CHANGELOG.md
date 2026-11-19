@@ -6,6 +6,24 @@ Home Hub core, newest first. One section per release; the section is the text of
 number promises is in `AGENTS.md` → Versioning. The top section is the release being prepared, `## Unreleased`
 until the release gives it its number: a change to the public surface adds its line there in the same commit.
 
+## 1.4.0
+
+### Added
+
+- Enabled project wikis appear in the sidebar and the authenticated `GET /api/wiki` index. Expand a project to browse its pages while keeping the article at full width.
+- Inventory cells group artwork, recordings and videos. The image gallery supports keyboard navigation and a thumbnail filmstrip.
+- Wiki authors can select a display copy and an initial animation for a 3D model. Video previews can use a compatible display copy when the browser cannot play the original. With FFmpeg configured, the media endpoint can generate a WebM fallback with `?preview=webm`.
+- MCP authors can discover wiki assets and approved sources, resume a batch of file uploads, read selected inventory cells and apply revision-checked changes. Review imports include the decision context for the selected media.
+
+### Fixed
+
+- MCP clients can continue after a request exceeds the inline body limit. Interrupted wiki saves preserve the browser draft.
+- Published wiki media supports private conditional revalidation after access checks. Repeat opens can reuse the browser’s copy of an unchanged model.
+
+### Data
+
+- Data epoch 9 adds wiki media display references and source context. Existing pages and their media remain readable. Rolling back to an epoch-8 release requires restoring the backup from before the upgrade.
+
 ## 1.3.0
 
 ### Added

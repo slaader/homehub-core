@@ -190,18 +190,28 @@ async function importTreeEntry(get,tree,name,github){
  }
 }
 
-// Walk only the selected commit's trees, then request its exact blob by ID. Provider-supplied URLs
-// are never followed. Check the entry mode so a symlink or submodule cannot change the selected path.
-export async function resolveImportPointer(ctx,repo,ref,file,{github=false}={}){
- if(!validFullName(repo.fullName)||!validImportRef(ref)||!validImportPath(file))throw new ProviderError('invalid-ref');
+function importReader(ctx,repo){
+ if(!validFullName(repo.fullName))throw new ProviderError('invalid-ref');
  const url=`${ctx.api}/repos/${repo.fullName}/git`;
  const budget={remaining:IMPORT_METADATA_BYTES},signal=AbortSignal.timeout(30000);
  let requests=0;
- async function get(route,maxBytes=IMPORT_ENTRY_BYTES){
+ return async (route,maxBytes=IMPORT_ENTRY_BYTES)=>{
   if(++requests>IMPORT_REQUESTS||budget.remaining<=0)throw new ProviderError('too-large');
   const {data}=await apiRequest(ctx,'GET',url+route,{maxBytes,signal,budget});
   return data;
- }
+ };
+}
+
+// A forge credential may read the repository description without permission to read its Git refs.
+export async function verifyImportBrowseAccess(ctx,repo,{github=false}={}){
+ await importRef(importReader(ctx,repo),repo,'HEAD',github);
+}
+
+// Walk only the selected commit's trees, then request its exact blob by ID. Provider-supplied URLs
+// are never followed. Check the entry mode so a symlink or submodule cannot change the selected path.
+export async function resolveImportPointer(ctx,repo,ref,file,{github=false}={}){
+ if(!validImportRef(ref)||!validImportPath(file))throw new ProviderError('invalid-ref');
+ const get=importReader(ctx,repo);
  const reference=await importRef(get,repo,ref,github);
  const {sha:commit,tree}=await importCommit(get,reference,github);
  const segments=file.split('/'),base=segments.pop();

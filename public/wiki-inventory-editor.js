@@ -1,6 +1,6 @@
 import {el} from './views.js';
 import {t} from './i18n.js';
-import {normalizeDoc,WIKI_LIMITS} from './wiki-doc.js';
+import {normalizeDoc,WIKI_LIMITS,wikiDisplayType} from './wiki-doc.js';
 import {wikiApi,wikiRequest} from './wiki-content.js';
 import {wikiFileSize} from './wiki-media.js';
 import {wikiInventory} from './wiki-inventory.js';
@@ -57,14 +57,17 @@ function reviewSource(project,set,area,pick){
  const message=alert(),options=el('select',{disabled:''});
  const use=button(t('Zkopírovat variantu'),()=>{
   const selection=choices[Number(options.value)];
-  if(selection)pick(()=>wikiApi('/api/wiki/assets/import',{project,source:selection.source}).then(value=>value.asset),use,message);
+  if(selection)pick(async()=>{
+   const {asset,captionSuggestion}=await wikiApi('/api/wiki/assets/import',{project,source:selection.source});
+   return {...asset,captionSuggestion};
+  },use,message);
  },{disabled:''});
  const choices=[];
  area.replaceChildren(label('Soubor varianty',options),use,message);
  wikiApi('/api/review/sets/'+set).then(review=>{
   for(const round of [...review.rounds].reverse())for(const item of round.items)for(const variant of item.variants){
    for(const [media,file] of variant.media.entries())choices.push({
-    label:`#${round.n} · ${item.title} · ${variant.label} · ${file.name||file.type}`,
+    label:`#${round.n} · ${item.title} · ${variant.title||variant.label} · ${file.name||file.type}`,
     source:{kind:'review',set,round:round.n,item:item.id,variant:variant.id,media},
    });
   }
@@ -114,7 +117,7 @@ function sourcePicker(project,area,pick){
  }).catch(error=>area.replaceChildren(el('p',{role:'alert'},error.message)));
 }
 
-function chooseAsset(context,onAsset){
+function chooseAsset(context,onAsset,accept=()=>true){
  const {project,dialog,assets}=context;
  const modes=[['local','Nahrát soubor'],['existing','Použít přílohu projektu'],['source','Importovat ze zdroje']];
  const area=el('div',{class:'wiki-form'}),controller=new AbortController();
@@ -129,6 +132,7 @@ function chooseAsset(context,onAsset){
   try{
    const asset=await load();
    if(!d.open)return;
+   if(!accept(asset))throw new Error(t('Vyber kompatibilní náhledový soubor.'));
    assets.set(asset.id,asset);
    d.close();
    onAsset(asset);
@@ -147,14 +151,15 @@ function chooseAsset(context,onAsset){
    area.replaceChildren(note('Načítám přílohy…'));
    wikiApi('/api/wiki/'+project+'/assets').then(data=>{
     if(selector.value!=='existing')return;
-    const options=el('select',{},data.assets.map(asset=>option(asset.id,assetText(asset))));
+    const eligible=data.assets.filter(accept);
+    const options=el('select',{},eligible.map(asset=>option(asset.id,assetText(asset))));
     const use=button(t('Použít přílohu'),()=>{
-     const asset=data.assets.find(asset=>asset.id===options.value);
+     const asset=eligible.find(asset=>asset.id===options.value);
      if(asset)pick(()=>asset,use,message);
     });
     const message=alert();
-    area.replaceChildren(data.assets.length?label('Příloha',options):note('Projekt zatím nemá dostupné přílohy.'),
-     data.assets.length?use:null,message);
+    area.replaceChildren(eligible.length?label('Příloha',options):note('Projekt zatím nemá dostupné přílohy.'),
+     eligible.length?use:null,message);
    }).catch(error=>{if(selector.value==='existing')area.replaceChildren(el('p',{role:'alert'},error.message));});
    return;
   }
@@ -186,12 +191,32 @@ function groupEditor(initial,context){
  function draw(focus){
   list.replaceChildren(...refs.map((ref,index)=>{
    const asset=context.assets.get(ref.assetId);
+   const display=context.assets.get(ref.displayAssetId);
+   const acceptsPreview=next=>next.id!==ref.assetId&&wikiDisplayType(asset?.type,next.type);
+   const replace=button(t('Nahradit soubor'),()=>chooseAsset(context,next=>{
+    ref.assetId=next.id;
+    if(display&&(display.id===next.id||!wikiDisplayType(next.type,display.type)))delete ref.displayAssetId;
+    if(next.type!=='model/gltf-binary')delete ref.initialClip;
+    draw(index);
+   }));
    const name=input(ref.label,WIKI_LIMITS.label,e=>{ref.label=e.target.value;});
    const caption=el('textarea',{rows:2,maxlength:WIKI_LIMITS.caption,oninput:e=>{ref.caption=e.target.value;}},ref.caption);
+   const useReviewCaption=asset?.captionSuggestion?button(t('Použít popis z Review'),()=>{
+    caption.value=ref.caption=asset.captionSuggestion;
+    caption.focus();
+   }):null;
+   const preview=wikiDisplayType(asset?.type,asset?.type)?el('div',{class:'wiki-form'},
+    display?el('span',{},t('Náhledový soubor: {name}',{name:assetText(display)})):null,
+    actions(button(t(display?'Změnit náhledový soubor':'Přidat náhledový soubor'),()=>chooseAsset(context,next=>{
+     ref.displayAssetId=next.id;
+     draw(index);
+    },acceptsPreview)),display?button(t('Odebrat náhledový soubor'),()=>{delete ref.displayAssetId;draw(index);}):null)):null;
+   const clip=asset?.type==='model/gltf-binary'?label('Počáteční animace (volitelné)',input(ref.initialClip??'',WIKI_LIMITS.clip,e=>{
+    if(e.target.value)ref.initialClip=e.target.value;
+    else delete ref.initialClip;
+   })):null;
    return el('fieldset',{class:'wiki-form'},el('legend',{},asset?.name??t('Příloha')),
-    label('Popisek přílohy',name),label('Titulek přílohy',caption),
-    actions(button(t('Nahradit soubor'),()=>chooseAsset(context,next=>{ref.assetId=next.id;draw(index);})),
-     arrange(refs,index,draw)));
+    label('Popisek přílohy',name),label('Titulek přílohy',caption),useReviewCaption,preview,clip,actions(replace,arrange(refs,index,draw)));
   }));
   add.disabled=refs.length>=WIKI_LIMITS.attachments;
   if(focus!==undefined)(list.children[focus]?.querySelector('input')??add).focus();

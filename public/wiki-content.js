@@ -1,6 +1,6 @@
 import {el} from './views.js';
 import {t} from './i18n.js';
-import {authGuard} from './session-cache.js';
+import {authGuard,onSessionReset} from './session-cache.js';
 import {wikiInventory} from './wiki-inventory.js';
 
 export const wikiHref=(project,id)=>`#wiki/${project}${id?'/'+id:''}`;
@@ -18,10 +18,27 @@ export async function wikiRequest(url,options){
  const lost=authGuard();
  const response=await fetch(url,options);
  lost(response);
- const result=await response.json().catch(()=>({}));
- if(!response.ok)throw Object.assign(new Error(result.error?.message?t(result.error.message):t('Požadavek selhal.')),
+ if(response.ok)return response.json();
+ const result=await response.json().catch(()=>null)??{};
+ throw Object.assign(new Error(result.error?.message?t(result.error.message):t('Požadavek selhal.')),
   {status:response.status,current:result.current,reason:result.error?.reason,nextOffset:result.nextOffset});
- return result;
+}
+
+const treeRequests=new Map();
+onSessionReset(()=>treeRequests.clear());
+export function readWikiTree(project){
+ if(!treeRequests.has(project)){
+  const request=wikiApi(wikiApiPath(project)).finally(()=>{
+   if(treeRequests.get(project)===request)treeRequests.delete(project);
+  });
+  treeRequests.set(project,request);
+ }
+ return treeRequests.get(project);
+}
+
+export function notifyWikiNavigation(project,index=false){
+ treeRequests.delete(project);
+ globalThis.dispatchEvent?.(new CustomEvent('wikinavchange',{detail:{project,index}}));
 }
 
 export function setupWikiAction(project,onError){
@@ -31,6 +48,7 @@ export function setupWikiAction(project,onError){
   button.disabled=true;
   try{
    const {home}=await wikiApi('/api/wiki/setup',{project});
+   notifyWikiNavigation(project,true);
    if(button.isConnected)location.hash=editWikiHref(project,home);
   }catch(error){if(button.isConnected){onError(error);button.disabled=false;}}
  }};
@@ -89,7 +107,7 @@ export function wikiBlocks(doc,context){
    case 'hr':return el('hr',{contenteditable:context.editing?'false':null});
    case 'table':return tableNode(block,context);
    case 'html':return context.htmlCard?.(block)??htmlFrame(blockFrame(context.page,block.id),block.label,block.height);
-   case 'inventory':return context.inventoryCard?.(block)??wikiInventory(block,{inline,group:context.media});
+   case 'inventory':return context.inventoryCard?.(block)??wikiInventory(block,{inline,group:context.inventoryMedia??context.media});
    case 'attachments':return context.inventoryCard?.(block)??context.media(block.attachments);
   }
  });

@@ -14,7 +14,7 @@ import {el,leaveView} from './views.js';
 import {refreshHome,setPollInterval} from './home-view.js';
 import {roleLabel} from './settings-view.js';
 import {setIdentity,setupScreen} from './access.js';
-import {setPrincipal,setPages,pageAllowed,pageOf,HOME_PAGE} from './session-cache.js';
+import {onSessionReset,setPrincipal,setPages,pageAllowed,pageOf,HOME_PAGE} from './session-cache.js';
 import {t,tp,locale,getLang,setLang,setDefaultLang,addStrings,LANGS} from './i18n.js';
 import {site,setSite,timeZone,zoneName} from './site.js';
 import {emptyState,errorState,banner,segmented,themeSwitch,toast,startLoading,icon} from './ui.js';
@@ -24,6 +24,7 @@ import {createPalette} from './palette.js';
 import {watchNetwork,pingHub,hubState} from './net.js';
 import {loadOnboarding,offersOnboarding,isDismissed} from './onboarding.js';
 import {loadUpdates,footerHint} from './updates-view.js';
+import {createWikiNavigation} from './wiki-navigation.js';
 const root=document.querySelector('#root');
 let me=null,loginMessage='',manifest={pages:[],nav:[]},knownDevices=[];
 const WELCOME='welcome';
@@ -67,7 +68,7 @@ async function logout(){try{await fetch('/api/logout',{method:'POST',headers:{'C
 // checklist and Odhlásit (Escape or a click outside closes it).
 let closeProfile=()=>{};
 addEventListener('click',()=>closeProfile());
-addEventListener('keydown',e=>{if(e.key==='Escape'){closeProfile(true);setDrawer(false);}});
+addEventListener('keydown',e=>{if(e.key==='Escape'&&!e.defaultPrevented){closeProfile(true);setDrawer(false,{refocus:true});}});
 function profileMenu(page){
  const name=me.name||me.username,initials=name.replace(/[^\p{L}\p{N}]+/gu,' ').trim().split(/\s+/).map(w=>w[0]).join('').slice(0,2).toUpperCase()||'?';
  const item=(hash,mark,label)=>el('a',{href:`#${hash}`,role:'menuitem',class:page===hash?'on':'',onclick:()=>closeProfile()},icon(mark),label);
@@ -99,7 +100,13 @@ function profileMenu(page){
 // Collapsed (desktop) it is a rail of icons; on a phone it is a drawer opened from the top bar.
 const labelOf=x=>x.labelKey?t(x.labelKey):x.label||'';
 let railed=pref.get('hh-sidebar')==='rail',drawer=false,navScroll=0;
-function setRail(next){railed=next;pref.set('hh-sidebar',next?'rail':'full');root.querySelector('.hh-shell')?.classList.toggle('rail',next);paintCollapse();}
+const desktop=matchMedia('(min-width:901px)');
+const wikiNav=createWikiNavigation({isRail:()=>railed&&desktop.matches,expandSidebar:()=>setRail(false)});
+onSessionReset(wikiNav.reset);
+desktop.addEventListener('change',wikiNav.layout);
+addEventListener('focus',wikiNav.revalidate);
+addEventListener('wikinavchange',event=>{if(me)wikiNav.invalidate(event.detail);});
+function setRail(next){railed=next;pref.set('hh-sidebar',next?'rail':'full');root.querySelector('.hh-shell')?.classList.toggle('rail',next);paintCollapse();wikiNav.layout();}
 function paintCollapse(){
  const button=root.querySelector('.hh-collapse');if(!button)return;
  const label=railed?t('Rozbalit postranní panel'):t('Sbalit postranní panel');
@@ -125,7 +132,9 @@ function paintStart(){
 }
 function sidebar(device,page){
  const current=device?HOME_PAGE:page||HOME_PAGE;
- const link=item=>{const label=labelOf(item);return item.soon?el('a',{class:'soon','aria-disabled':'true',title:label},navIcon({...item,label}),el('span',{class:'hh-nav-label'},label))
+ const link=item=>{
+  if(item.hash==='wiki'&&item.module==='wiki')return wikiNav.mount(location.hash);
+  const label=labelOf(item);return item.soon?el('a',{class:'soon','aria-disabled':'true',title:label},navIcon({...item,label}),el('span',{class:'hh-nav-label'},label))
   :el('a',{href:`#${item.hash}`,class:item.hash===current?'on':'',title:label,'aria-current':item.hash===current&&!device?'page':null},navIcon({...item,label}),el('span',{class:'hh-nav-label'},label));};
  const group=g=>{const title=labelOf(g);return g.items.length?el('div',{class:'hh-nav-group',role:'group','aria-label':title},el('div',{class:'hh-nav-h','aria-hidden':'true'},title),...g.items.map(link)):null;};
  const nav=el('nav',{class:'hh-nav','aria-label':t('Hlavní navigace')},...manifest.nav.map(group));
@@ -182,7 +191,7 @@ async function render(){
  if(turn!==drawn||!me)return;
  leaveView();// the page being replaced lets go of its document/window listeners and timers
  let main;
- try{main=typeof view==='function'?view({me,page:page||HOME_PAGE,sub:location.hash.slice(1).split('/')[1]||null,device,site:site()})
+ try{main=typeof view==='function'?view({me,page:page||HOME_PAGE,sub:location.hash.slice(1).split('/')[1]||null,device,site:site(),onWikiTree:wikiNav.observe})
   :failed||entry
    ?errorState({title:t('Stránku se nepodařilo načíst'),body:t('Modul téhle stránky se nenačetl. Zkus ji otevřít znovu.'),retry:()=>render()})
    :emptyState({icon:'box',title:t('Tady zatím nic není'),body:t('Tenhle Home Hub nemá žádnou úvodní stránku. Zkontroluj, které moduly server načetl.')});}
@@ -194,7 +203,7 @@ async function render(){
 // After the shell is drawn again: the sidebar keeps its scroll position, a new page starts at its top with
 // the keyboard at the content, and the tab title names it.
 function afterDraw(device,page){
- const key=device?`host-${device}`:page||HOME_PAGE,moved=shownPage!==null&&shownPage!==key;shownPage=key;
+ const key=device?`host-${device}`:page==='wiki'?location.hash.split('?')[0]:page||HOME_PAGE,moved=shownPage!==null&&shownPage!==key;shownPage=key;
  drawer=false;document.documentElement.classList.remove('hh-lock');
  const nav=root.querySelector('.hh-nav');if(nav)nav.scrollTop=navScroll;
  paintCollapse();paintRefresh();paintFresh();paintBanner();
@@ -282,7 +291,7 @@ watchNetwork();
 // and full-text search when the hub has it.
 const palette=createPalette({
  pages:()=>{
-  const listed=manifest.nav.flatMap(g=>g.items.filter(i=>i.hash).map(i=>({hash:i.hash,label:labelOf(i),group:labelOf(g),icon:i.icon})));
+  const listed=manifest.nav.flatMap(g=>g.items.filter(i=>i.hash&&i.hash!=='wiki').map(i=>({hash:i.hash,label:labelOf(i),group:labelOf(g),icon:i.icon})));
   const extra=[['settings',t('Nastavení')],[WELCOME,t('První kroky')]].filter(([hash])=>manifest.pages.some(p=>p.hash===hash)&&!listed.some(i=>i.hash===hash)).map(([hash,label])=>({hash,label,group:'Home Hub'}));
   return [...listed,...extra];
  },

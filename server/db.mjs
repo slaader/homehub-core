@@ -9,7 +9,7 @@ import {mkdirSync,chmodSync,existsSync} from 'node:fs';
 import {readFile,rename} from 'node:fs/promises';
 import path from 'node:path';
 
-const SCHEMA=3,SEARCH_VERSION=1;
+const SCHEMA=4,SEARCH_VERSION=1;
 // The schema version of hub.db, for the data-epoch table (tests/data-epoch.test.mjs).
 export const DB_SCHEMA=SCHEMA;
 const open=new Map();
@@ -57,7 +57,14 @@ function migrate(db){
      WHERE page.kind='wiki' AND page.coll IN ('pages','summaries');
      UPDATE meta SET doc=json_set(doc,'$.schema',2) WHERE kind='wiki';`);
    }
-   db.exec('PRAGMA user_version=3');
+  }
+  if(from<4){
+   const wiki=db.prepare("SELECT doc FROM meta WHERE kind='wiki'").get();
+   if(wiki){
+    if(JSON.parse(wiki.doc).schema!==2)throw new Error('Unsupported wiki schema');
+    db.exec("UPDATE meta SET doc=json_set(doc,'$.schema',3) WHERE kind='wiki';");
+   }
+   db.exec('PRAGMA user_version=4');
   }
   db.exec('COMMIT');
  }catch(error){db.exec('ROLLBACK');throw error;}

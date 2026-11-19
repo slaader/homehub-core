@@ -3,7 +3,7 @@ import {t,locale} from './i18n.js';
 import {timeZone} from './site.js';
 import {banner,emptyState,errorState,loadingState,pageHeader} from './ui.js';
 import {normalizeDoc,PAGE_ID,WIKI_LIMITS,wikiTitle} from './wiki-doc.js';
-import {canWriteWiki,editWikiHref,setupWikiAction,ticketChip,wikiApi,wikiApiPath,wikiBlocks,wikiHref} from './wiki-content.js';
+import {canWriteWiki,editWikiHref,notifyWikiNavigation,readWikiTree,setupWikiAction,ticketChip,wikiApi,wikiApiPath,wikiBlocks,wikiHref} from './wiki-content.js';
 import {wikiEditor,wikiValidationMessage} from './wiki-editor.js';
 import {manageWikiSources,newWikiItemId} from './wiki-inventory-editor.js';
 import {wikiMedia} from './wiki-media.js';
@@ -12,6 +12,11 @@ const drafts=new Map();
 const date=value=>new Intl.DateTimeFormat(locale(),{dateStyle:'medium',timeStyle:'short',timeZone:timeZone()}).format(new Date(value));
 const button=(label,onclick,attrs={})=>el('button',{class:'acc-btn',type:'button',onclick,...attrs},label);
 const status=()=>el('p',{class:'acc-status error',role:'alert'});
+
+function confirmPage(page,project,id){
+ if(page?.project!==project||!PAGE_ID.test(page.id)||(id&&page.id!==id)||
+  !Number.isSafeInteger(page.rev)||page.rev<1||page.doc?.v!==1||!Array.isArray(page.doc.blocks))throw new Error('Incomplete page response');
+}
 
 function draftKey(me,page){
  return 'wiki-draft:'+JSON.stringify([me.authKind,me.id??me.username,page.project,page.id]);
@@ -33,7 +38,7 @@ function storeDraft(key,draft){
  }catch{}
 }
 
-export function wikiPage({me,sub:project}){
+export function wikiPage({me,sub:project,onWikiTree}){
  const root=el('section',{class:'sec tk wiki'},loadingState());
  const [, , selected]=location.hash.split('?')[0].split('/');
  const wantsEdit=location.hash.endsWith('?edit');
@@ -52,8 +57,8 @@ export function wikiPage({me,sub:project}){
   root.replaceChildren(errorState({title:missing?t('Stránka nebo wiki neexistuje.'):t('Wiki teď nejde načíst ani uložit.'),
    body:error.message,actions:[back],retry:missing?null:load}));
  }
- function dialog(title,children,{closeButton=true,className=''}={}){
-  const opener=document.activeElement,x=window.scrollX,y=window.scrollY;
+ function dialog(title,children,{closeButton=true,className='',opener=document.activeElement}={}){
+  const x=window.scrollX,y=window.scrollY;
   const titleId=newWikiItemId('wiki-dialog-title');
   const d=el('dialog',{class:'wiki-dialog '+className,'aria-labelledby':titleId},
    el('h2',{id:titleId},title),...children,closeButton?button(t('Zavřít'),()=>d.close()):null);
@@ -76,12 +81,13 @@ export function wikiPage({me,sub:project}){
    if(!/^[a-z][a-z0-9-]{1,39}$/.test(project??'')||(selected&&!PAGE_ID.test(selected)))
     throw Object.assign(new Error(t('Stránka nebo wiki neexistuje.')),{status:404});
    const [meta,tracker]=await Promise.all([
-    wikiApi(wikiApiPath(project)),
+    readWikiTree(project),
     wikiApi('/api/tickets?project='+project).catch(()=>null),
    ]);
    if(!live)return;
    const projectName=tracker?.projects.find(p=>p.id===project)?.name??project;
    const tickets=new Map((tracker?.tickets??[]).map(ticket=>[ticket.id,ticket]));
+   onWikiTree?.(project,meta,projectName);
    if(!meta.enabled){
     root.replaceChildren(emptyState({icon:'box',title:t('Wiki projektu zatím není založena.'),
      actions:[writable?setupWikiAction(project,fail):null,{label:projectName,href:'#projects/'+project}]}));
@@ -131,6 +137,8 @@ export function wikiPage({me,sub:project}){
     message.textContent='';
     try{
      const result=await wikiApi('/api/wiki/pages',{project,parentId:page.id,title:wikiTitle(title.value),requestId});
+     confirmPage(result,project);
+     notifyWikiNavigation(project);
      if(live&&d.open){d.close();location.hash=editWikiHref(project,result.id);}
     }catch(error){message.textContent=wikiValidationMessage(error);}
     finally{submit.disabled=false;}
@@ -163,6 +171,8 @@ export function wikiPage({me,sub:project}){
     submit.disabled=true;
     try{
      const saved=await wikiApi('/api/wiki/pages/move',{project,id:page.id,rev:page.rev,parentId:select.value});
+     confirmPage(saved,project,page.id);
+     notifyWikiNavigation(project);
      if(live&&d.open){d.close();redraw(saved);}
     }catch(error){message.textContent=wikiValidationMessage(error);}
     finally{submit.disabled=false;}
@@ -170,12 +180,6 @@ export function wikiPage({me,sub:project}){
    const d=dialog(t('Přesunout stránku'),[form]);
   }
 
-  function tree(id){
-   const list=children.get(id);
-   return list?.length?el('ul',{},list.map(entry=>el('li',{},el('a',{href:wikiHref(project,entry.id),
-    'aria-current':entry.id===page.id?'page':null},entry.title),tree(entry.id)))):null;
-  }
-  const nav=el('details',{class:'wiki-pages',open:''},el('summary',{},t('Stránky')),tree(null));
   const content=el('div',{class:'wiki-body'});
   const edit=()=>show(meta,page,context,true);
   const actions=writable&&!editing?[{label:t('Upravit'),primary:true,onclick:edit},{label:t('Nová podstránka'),onclick:makePage},
@@ -187,12 +191,14 @@ export function wikiPage({me,sub:project}){
    el('a',{href:wikiHref(project)},'Wiki'),sep(),
    branch.map(entry=>[el('a',{href:wikiHref(project,entry.id)},entry.title),sep()]),el('b',{},page.title)),
    pageHeader({title:page.title,lead:desc,provenance:page.provenance,actions}),
-   el('div',{class:'wiki-layout'},nav,content));
+   content);
 
   if(!editing){
    const linked=page.links.tickets;
    content.append(page.doc.blocks.length?
-    el('article',{class:'acc-card wiki-article'},wikiBlocks(page.doc,{page,tickets,media:refs=>media.group(refs,assets)})):
+    el('article',{class:'acc-card wiki-article'},wikiBlocks(page.doc,{
+     page,tickets,media:refs=>media.group(refs,assets),inventoryMedia:refs=>media.inventory(refs,assets),
+    })):
     emptyState({icon:'box',compact:true,title:t('Tahle stránka je prázdná.'),
      actions:writable?[{label:t('Upravit'),primary:true,onclick:edit}]:[]}));
    const subpages=children.get(page.id)??[];
@@ -270,7 +276,9 @@ export function wikiPage({me,sub:project}){
    form.inert=true;
    try{
     const latest=await wikiApi(wikiApiPath(project,page.id));
+    confirmPage(latest,project,page.id);
     if(disposed)return;
+    notifyWikiNavigation(project);
     finish();
     redraw(latest);
    }catch(error){editor.error.textContent=wikiValidationMessage(error);}
@@ -297,6 +305,8 @@ export function wikiPage({me,sub:project}){
    form.inert=true;
    try{
     const saved=await wikiApi(copy?'/api/wiki/pages':'/api/wiki/pages/update',input);
+    confirmPage(saved,project,copy?undefined:page.id);
+    notifyWikiNavigation(project);
     if(disposed){if(JSON.stringify(savedDraft(key))===snapshot)storeDraft(key,null);return;}
     finish();
     if(copy)location.hash=wikiHref(project,saved.id);

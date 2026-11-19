@@ -20,7 +20,8 @@ import {mkdir,writeFile,rename,rm,appendFile} from 'node:fs/promises';
 import {randomBytes} from 'node:crypto';
 import path from 'node:path';
 import {syncMirror,scanMirror,remoteRefsHash,usageView,runGit,hashOf,OID,GitError} from './git-lfs-git.mjs';
-import {BUILTIN_PROVIDERS,validProvider,providerView,contextFor,checkObjects,downloadObject,resolveImportPointer,validFullName,validName,ProviderError} from './git-lfs-providers.mjs';
+import {BUILTIN_PROVIDERS,validProvider,providerView,contextFor,checkObjects,downloadObject,resolveImportPointer,validFullName,validName,ProviderError,
+ verifyImportBrowseAccess} from './git-lfs-providers.mjs';
 import {secretIn} from './home-devices.mjs';
 
 // Seven days, as Gitea's own LFS garbage collection waits. GIT_LFS_GRACE_HOURS (server environment) changes it.
@@ -111,6 +112,33 @@ export function createGitLfsStore({stateDirectory,tokenFile,providers:extra=()=>
   const {commit,oid,size}=pointer;
   return {name:file.split('/').at(-1),size,digest:oid,body:()=>downloadObject(ctx,repo,pointer,grant.downloadOrigin),
    source:{kind:'lfs',connection:id,repo:fullName,commit,path:file,oid}};
+ }
+ function importRepo({connection:id,repo,identity}){
+  const c=connection(id),p=c&&provider(c.provider);
+  if(!validFullName(repo)||!identity||importIdentity(id)!==identity||!isEnabled()||!tokenOf(id))return null;
+  return {browseUrl:`${p.endpoints(c.baseUrl).web}/${repo}`};
+ }
+ async function browseImport(grant,{offset,limit,query}){
+  const location=importRepo(grant);
+  if(!location)fail('disabled');
+  const c=connection(grant.connection),p=provider(c.provider),ctx=ctxOf(c,p);
+  // Catalogs can outlive a host token's access. Verify the exact repository before exposing cached paths.
+  const repo=await p.getRepo(ctx,grant.repo);
+  if(!validRepo(repo)||repo.fullName!==grant.repo)fail('unavailable');
+  const entry=catalogOf(grant.connection).repos[grant.repo];
+  if(entry?.items?.length)await verifyImportBrowseAccess(ctx,repo,{github:p.id==='github'});
+  if(!importRepo(grant)||tokenOf(c.id)!==ctx.token)fail('unavailable');
+  const needle=query?.trim().toLowerCase();
+  const items=(entry?.items??[]).filter(item=>item.commits&&(!needle||
+   [item.oid,...item.paths,...item.refs].some(value=>value.toLowerCase().includes(needle))));
+  const page=items.slice(offset,offset+limit).map(item=>({
+   oid:item.oid,size:item.size,paths:item.paths.slice(0,8),pathCount:item.pathCount,
+   currentPaths:item.currentPaths.slice(0,8),refs:item.refs.slice(0,8),refCount:item.refCount,
+   lastCommit:item.lastCommit??null,
+  }));
+  return {...location,catalogState:entry?.state??'unscanned',scannedAt:entry?.scannedAt??null,
+   defaultRef:repo.defaultBranch?'refs/heads/'+repo.defaultBranch:null,
+   items:page,total:items.length,offset,limit,nextOffset:offset+page.length<items.length?offset+page.length:null};
  }
 
  async function gitCheck(){
@@ -547,7 +575,7 @@ const errorCode=e=>e instanceof GitError||e instanceof ProviderError?e.code:/^[a
  }
  function due(t=now()){return connections.filter(c=>!running.has(c.id)&&!deleting.has(c.id)&&tokenOf(c.id)&&t-(ms(catalogOf(c.id).fullFinishedAt)||0)>=REFRESH_MINUTES*60000).map(c=>c.id);}
 
- return {overview,list,test,repoChoices,save,remove,refresh,startRefresh,preview,removeObjects,readAudit,status,due,provider,connection,importIdentity,importPointer,
+ return {overview,list,test,repoChoices,save,remove,refresh,startRefresh,preview,removeObjects,readAudit,status,due,provider,connection,importIdentity,importPointer,importRepo,browseImport,
   files:{connectionsFile,auditFile,tokenFile,base}};
 }
 

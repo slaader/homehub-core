@@ -1,8 +1,8 @@
 import {createHash,randomBytes} from 'node:crypto';
-import {exactKeys,extractLinks,normalizeDoc,PAGE_ID,WIKI_LIMITS,wikiTitle,wikiAssetIds,wikiAttachment} from '../public/wiki-doc.js';
+import {exactKeys,extractLinks,normalizeDoc,PAGE_ID,WIKI_LIMITS,wikiTitle,wikiAssetIds,wikiAttachment,wikiAttachmentRefs,wikiDisplayType} from '../public/wiki-doc.js';
 import {PROJECT_ID,TICKET_ID} from './tickets-store.mjs';
 
-export const WIKI_SCHEMA=2;
+export const WIKI_SCHEMA=3;
 const ALPHABET='abcdefghijklmnopqrstuvwxyz234567';
 const fail=code=>{throw new Error(code);};
 const pageId=()=> 'w'+Array.from(randomBytes(11),byte=>ALPHABET[byte&31]).join('');
@@ -37,7 +37,7 @@ export function wikiCollection(db){
  });
 }
 
-function checkRevision(page,rev){
+export function checkRevision(page,rev){
  if(!page)fail('not-found');
  if(page.rev!==rev){
   const {rev,updatedAt,updatedBy}=page;
@@ -92,18 +92,32 @@ function makePage(project,id,parentId,title,doc,by,at){
   history:[{at,by,rev:1,field:'created'}]};
 }
 
+function usableAsset(assets,id,actor){
+ const asset=assets.get(id);
+ if(!asset||asset.references===0&&asset.owner!==actor)fail('invalid-asset');
+ return asset;
+}
+
+function checkAttachment(ref,assets,actor){
+ const asset=usableAsset(assets,ref.assetId,actor);
+ if(ref.initialClip&&asset.type!=='model/gltf-binary')fail('invalid-asset');
+ if(ref.displayAssetId&&!wikiDisplayType(asset.type,usableAsset(assets,ref.displayAssetId,actor).type))fail('invalid-asset');
+}
+
+function publishAsset(asset){
+ asset.references++;
+ asset.published=true;
+ asset.orphanedAt=null;
+}
+
 function updateAssets(data,doc,previous,actor){
  const before=new Set(previous?wikiAssetIds(previous):[]),after=new Set(wikiAssetIds(doc));
  const assets=new Map(data.assets.map(asset=>[asset.id,asset]));
- const at=Date.now();
+ for(const ref of wikiAttachmentRefs(doc))checkAttachment(ref,assets,actor);
  for(const id of after){
-  const asset=assets.get(id);
-  if(!asset||asset.references===0&&asset.owner!==actor)fail('invalid-asset');
-  if(before.has(id))continue;
-  asset.references++;
-  asset.published=true;
-  asset.orphanedAt=null;
+  if(!before.has(id))publishAsset(assets.get(id));
  }
+ const at=Date.now();
  for(const id of before){
   if(after.has(id))continue;
   const asset=assets.get(id);
@@ -146,6 +160,12 @@ export function createWikiStore(db,tickets){
   const wiki=await store.get('wikis',project);
   if(!wiki)return {enabled:false};
   return {enabled:true,home:wiki.home,pages:orderedTree(await store.list('summaries',project+'/'))};
+ }
+
+ async function index(){
+  const [projects,wikis]=await Promise.all([tickets.projects(),store.list('wikis')]);
+  const homes=new Map(wikis.map(({project,home})=>[project,home]));
+  return projects.filter(({id})=>homes.has(id)).map(({id,name})=>({id,name,home:homes.get(id)}));
  }
 
  async function summaries(){
@@ -267,21 +287,23 @@ export function createWikiStore(db,tickets){
  }
 
  async function attach(input,by,actor=by){
-  if(!exactKeys(input,['project','id','rev','requestId','assetId','label','caption','position','groupId','tableId','rowId','columnId']))fail('invalid');
+  if(!exactKeys(input,['project','id','rev','requestId','assetId','label','caption','displayAssetId','initialClip','position','groupId','tableId','rowId','columnId']))fail('invalid');
   checkedIdentity(input);
   const {groupId,tableId,rowId,columnId,position}=input;
   if(groupId===undefined?[tableId,rowId,columnId].some(id=>typeof id!=='string'):[tableId,rowId,columnId].some(id=>id!==undefined))fail('invalid-target');
-  const ref=wikiAttachment({assetId:input.assetId,label:input.label,caption:input.caption});
+  const {assetId,label,caption,displayAssetId,initialClip}=input;
+  const ref=wikiAttachment({assetId,label,caption,displayAssetId,initialClip});
+  const ids=ref.displayAssetId?[assetId,ref.displayAssetId]:[assetId];
   const project=await projectOf(input.project),key=wikiKey(project.id,input.id);
   const receipt=retryKey(project.id,'attach',input.requestId,actor,true),fingerprint=hash([input.id,input.rev,groupId,tableId,rowId,columnId,position,ref]);
-  return store.change({pages:[key],summaries:[key],assets:[wikiKey(project.id,ref.assetId)],receipts:[receipt]},data=>{
+  return store.change({pages:[key],summaries:[key],assets:ids.map(id=>wikiKey(project.id,id)),receipts:[receipt]},data=>{
    const prior=replay(data,fingerprint);
    if(prior)return prior;
    const page=data.pages[0];
    checkRevision(page,input.rev);
-   const asset=data.assets[0];
-   if(!asset||asset.references===0&&asset.owner!==actor)fail('invalid-asset');
-   const previous=wikiAssetIds(page.doc).includes(ref.assetId);
+   const assets=new Map(data.assets.map(asset=>[asset.id,asset]));
+   checkAttachment(ref,assets,actor);
+   const previous=new Set(wikiAssetIds(page.doc));
    let target;
    if(groupId!==undefined)target=page.doc.blocks.find(block=>block.t==='attachments'&&block.id===groupId);
    else{
@@ -297,7 +319,7 @@ export function createWikiStore(db,tickets){
    if(!Number.isSafeInteger(index)||index<0||index>group.length)fail('invalid-target');
    group.splice(index,0,ref);
    page.doc=normalizeDoc(page.doc);
-   if(!previous){asset.references++;asset.published=true;asset.orphanedAt=null;}
+   for(const id of ids)if(!previous.has(id))publishAsset(assets.get(id));
    changePage(data,page,by,['content']);
    remember(data,receipt,fingerprint,page);
    return page;
@@ -322,5 +344,5 @@ export function createWikiStore(db,tickets){
   });
  }
 
- return {projectOf,list,get,withAssets,setup,create,update,move,attach,backlinks,pruneReceipts};
+ return {projectOf,index,list,get,withAssets,setup,create,update,move,attach,backlinks,pruneReceipts};
 }

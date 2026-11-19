@@ -4,6 +4,7 @@ import {pipeline} from 'node:stream/promises';
 import {createWikiStore} from '../wiki-store.mjs';
 import {createWikiAssets,RAW_CHUNK,UPLOAD_ID,readWikiChunk} from '../wiki-assets.mjs';
 import {createWikiThumbnails} from '../wiki-thumbnails.mjs';
+import {createWikiVideos,WIKI_VIDEO_BUSY} from '../wiki-video.mjs';
 import {createWikiSources} from '../wiki-sources.mjs';
 import {createWikiPreviews,staticWikiHtml,WIKI_FRAME_CSP} from '../wiki-frame.mjs';
 import {wikiProblem} from '../wiki-errors.mjs';
@@ -57,31 +58,67 @@ function disposition(name,inline){
  return `${inline?'inline':'attachment'}; filename="${fallback}"; filename*=UTF-8''${encoded}`;
 }
 
+function matchesETag(value,etag){
+ if(value==='*')return true;
+ return typeof value==='string'&&[...value.matchAll(/(?:^|,)\s*(?:W\/)?("[\x21\x23-\x7e\x80-\xff]*")\s*(?=,|$)/g)]
+  .some(([,tag])=>tag===etag);
+}
+
 async function media(c){
  const {params,req,res,state}=c;
- const thumbnail=c.query.thumbnail==='1';
- if(thumbnail)res.setHeader('Cache-Control','private, no-store');
- const file=await state.assets.media(params[1],params[2],canDraft(c)?wikiActor(c):null);
- if(thumbnail){
-  const bytes=await state.thumbnails.get(file);
-  if(!bytes)return c.error(404,'WIKI_THUMBNAIL_UNAVAILABLE','Image thumbnail unavailable.');
-  res.writeHead(200,{'Content-Type':'image/png','Content-Length':bytes.length,
-   'Content-Security-Policy':"sandbox; default-src 'none'"});
-  return res.end(req.method==='HEAD'?undefined:bytes);
+ const thumbnail=c.query.thumbnail==='1',webm=!thumbnail&&c.query.preview==='webm';
+ res.setHeader('Cache-Control','private, no-store');
+ const load=()=>state.assets.media(params[1],params[2],canDraft(c)?wikiActor(c):null);
+ let file=await load(),bytes;
+ const kind=thumbnail?'thumbnail':webm?'webm':'asset';
+ const service=thumbnail?state.thumbnails:webm?state.videos:null;
+ let view=service?service.info(file):file;
+ const validator=()=>view&&!file.draft?`"${kind}-${view.digest}"`:null;
+ const headers=etag=>({'Content-Security-Policy':"sandbox; default-src 'none'",
+  ...(etag?{'Cache-Control':'private, no-cache',ETag:etag}:{})});
+ function revalidated(){
+  const etag=validator();
+  if(!etag||!matchesETag(req.headers['if-none-match'],etag))return false;
+  res.writeHead(304,headers(etag));
+  res.end();
+  return true;
  }
+ if(revalidated())return;
+ if(service&&(!view||req.method!=='HEAD')){
+  if(thumbnail){
+   bytes=await state.thumbnails.get(file);
+   if(!bytes)return c.error(404,'WIKI_THUMBNAIL_UNAVAILABLE','Image thumbnail unavailable.');
+   view=state.thumbnails.info(file);
+  }else{
+   view=await state.videos.get(file);
+   if(view===WIKI_VIDEO_BUSY){
+    res.setHeader('Retry-After','5');
+    return c.error(503,'WIKI_VIDEO_PREVIEW_BUSY','Video preview is busy. Try again or download the original.');
+   }
+   if(!view)return c.error(404,'WIKI_VIDEO_PREVIEW_UNAVAILABLE','Video preview unavailable. Download the original or attach a WebM preview.');
+   bytes=view.bytes;
+  }
+  if(res.destroyed)return;
+  file=await load(); // A derivation can outlive the edit that made the original private.
+  if(revalidated())return;
+ }
+ if(res.destroyed)return;
+ const {size}=view,etag=validator();
+ const type=thumbnail?'image/png':webm?'video/webm':file.type;
+ const name=webm?file.name.replace(/\.[^.]+$/,'')+'.webm':file.name;
+ const rangeHeader=thumbnail||req.headers['if-range']!==undefined&&req.headers['if-range']!==etag?null:req.headers.range;
  let range;
- try{range=byteRange(req.headers.range,file.size);}
+ try{range=byteRange(rangeHeader,size);}
  catch{
-  res.setHeader('Content-Range',`bytes */${file.size}`);
+  res.setHeader('Content-Range',`bytes */${size}`);
   return c.error(416,'INVALID_RANGE','Invalid media range.');
  }
- const inline=c.query.download!=='1'&&file.type!=='application/octet-stream';
- res.setHeader('Content-Security-Policy',"sandbox; default-src 'none'");
- res.setHeader('Cache-Control','private, no-store');
- res.writeHead(range.status,{'Content-Type':file.type,'Accept-Ranges':'bytes','Content-Length':range.end-range.start+1,
-  'Content-Disposition':disposition(file.name,inline),
-  ...(range.status===206?{'Content-Range':`bytes ${range.start}-${range.end}/${file.size}`}:{})});
- if(req.method==='HEAD'||file.size===0)return res.end();
+ const inline=c.query.download!=='1'&&type!=='application/octet-stream';
+ res.writeHead(range.status,{...headers(etag),'Content-Type':type,'Content-Length':range.end-range.start+1,
+  ...(!thumbnail?{'Accept-Ranges':'bytes','Content-Disposition':disposition(name,inline)}:{}),
+  ...(range.status===206?{'Content-Range':`bytes ${range.start}-${range.end}/${size}`}:{})});
+ if(req.method==='HEAD'||size===0)return res.end();
+ if(bytes)return res.end(bytes.subarray(range.start,range.end+1));
  try{await pipeline(createReadStream(file.file,{start:range.start,end:range.end}),res);}
  catch{res.destroy();}
 }
@@ -97,13 +134,13 @@ function uploadResult(status,run){
 export default {
  id:'wiki',title:'Wiki',
  assets:['wiki-doc.js','wiki-view.js','wiki-editor.js','wiki-content.js','wiki-inventory.js','wiki-inventory-editor.js',
-  'wiki-media.js','wiki.css','i18n-en-wiki.js'],
- nav:[{hash:'wiki',label:'Wiki',view:'wiki-view.js#wikiPage',hidden:true}],
+  'wiki-media.js','wiki-navigation.js','wiki.css','i18n-en-wiki.js'],
+ nav:[{group:'Project Tracker',hash:'wiki',label:'Wiki',view:'wiki-view.js#wikiPage',order:43}],
  setup:hub=>{
   const wiki=createWikiStore(hub.db,hub.state('tracker').tickets);
   const assets=createWikiAssets(hub.db,path.join(hub.stateDirectory,'wiki'),wiki,hub.options.wikiAssets);
   const sources=createWikiSources(hub.db,wiki,assets,{lfs:()=>hub.state('git-lfs')?.store,review:()=>hub.state('review')?.review});
-  return {wiki,assets,sources,thumbnails:createWikiThumbnails(hub.options.wikiThumbnails),previews:createWikiPreviews()};
+  return {wiki,assets,sources,thumbnails:createWikiThumbnails(hub.options.wikiThumbnails),videos:createWikiVideos(hub.options.wikiVideos),previews:createWikiPreviews()};
  },
  mcpTools:wikiTools,
  mcpInstructions:'wiki_list, wiki_get.',
@@ -114,6 +151,7 @@ export default {
   return sweep();
  },stop(state){clearInterval(state.timer);}}],
  routes:[
+  route('GET','/api/wiki',async c=>c.json(200,{projects:await c.state.wiki.index()})),
   route('GET',new RegExp(`^/api/wiki/tickets/(${ticket})/backlinks$`),async c=>
    c.json(200,{pages:await c.state.wiki.backlinks(c.params[1])})),
   route('GET',new RegExp(`^/api/wiki/(${project})$`),async c=>c.json(200,await c.state.wiki.list(c.params[1]))),
@@ -167,6 +205,7 @@ export default {
   route('GET',/^\/api\/wiki\/frame\/preview\/([A-Za-z0-9_-]{32})$/,c=>frame(c,c.state.previews.get(wikiActor(c),c.params[1]))),
  ],
  apiDocs:[{title:'Wiki',routes:[
+  ['GET','/api/wiki','read','Projekty se založenou wiki a ID jejich domovské stránky.'],
   ['GET','/api/wiki/<project>','read','Seznam stránek projektové wiki a jejich rodiče.'],
   ['GET','/api/wiki/<project>/pages/<id>','read','Obsah, revize a přílohy stránky wiki.'],
   ['GET','/api/wiki/tickets/<ID>/backlinks','read','Stránky wiki odkazující na ticket.'],
@@ -180,7 +219,7 @@ export default {
   ['PUT','/api/wiki/uploads/<uploadId>?offset=','tickets:write','Nahrání souboru po částech (max. 8 MiB).'],
   ['POST','/api/wiki/uploads/finish','tickets:write','Ověření a dokončení nahrávky {uploadId}.'],
   ['GET','/api/wiki/<project>/assets','read','Přílohy dostupné v projektu.'],
-  ['GET','/api/wiki/<project>/assets/<assetId>','read','Příloha projektu s podporou rozsahů nebo náhled obrázku s ?thumbnail=1.'],
+  ['GET','/api/wiki/<project>/assets/<assetId>','read','Příloha projektu s podporou rozsahů, náhled obrázku s ?thumbnail=1 nebo video s ?preview=webm.'],
   ['GET','/api/wiki/<project>/sources','tickets:write','Povolené repozitáře a sady Review pro import.'],
   ['POST','/api/wiki/assets/import','tickets:write','Kopie povoleného souboru z Git LFS nebo Review {project, source}.'],
   ['POST','/api/admin/wiki/sources','admin','Povolení nebo odebrání zdroje pro cílový projekt.'],

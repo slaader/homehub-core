@@ -1,7 +1,9 @@
 # Project wiki
 
 Open a project in **Projects** and choose **Set up wiki**. Setup opens **Home** for editing. On later
-visits, choose **Wiki** in the project toolbar and select a page from **Pages**. Anyone with read access
+visits, expand **Wiki** under **Project Tracker** in the sidebar, then choose a project and a page.
+The sidebar lists projects once their wiki is set up. Expand the control next to **Home** or any parent
+to see its child pages. The project toolbar also opens **Home** directly. Anyone with read access
 can open an enabled wiki. A person or API key with `tickets:write` can set up a wiki and save changes.
 
 Choose **New child page** on Home or any other page. Use the page tree, the breadcrumb or the
@@ -29,15 +31,22 @@ navigate away.
 In the editor choose **Inventory table**, name the columns, and add rows. Use the arrows to reorder
 columns or rows. Open **Edit cell** to add rich text, ticket links, ordered stats or attachments.
 Each stat has a name, a value and an optional unit. Each inventory table can use different columns.
-Choose **Attachment group** to insert the same media controls outside a table.
+Cells show the first four stats. Open **All stats** for the rest or **Cell text** to expand a longer description.
+Use the table's scroll region to see additional columns on a narrow screen. Choose **Attachment group**
+to include media outside a table.
 
 In either group choose **Add attachment** to upload a file, reuse an asset from the project, or import
 from an approved source. Fill in an optional display label and caption. You can move, replace or
 remove one attachment at a time. **Apply changes** updates the draft. **Save** publishes its references
 and lets project readers access the bytes.
 
-Choose an image to open its group at that image. Use the arrow buttons or Left and Right keys to
-browse images in that group. Audio has inline native controls and only one track plays at a time.
+In an inventory cell, a single image opens from a small portrait. An image folder opens a gallery
+with a thumbnail strip. Choose a thumbnail, use the arrow buttons or Left and Right keys to browse,
+or press Home or End to jump to the first or last image. Audio and video open as lists. Select a file
+to play it, and select another to switch.
+
+In a standalone attachment group, choose an image to open its gallery at that image. Use the arrow
+buttons or Left and Right keys to browse. Audio has inline native controls and one track plays at a time.
 Select a video to open its native player, including sound and fullscreen. Open a GLB to orbit and
 zoom, or pick and play an embedded animation. For GLB models, embed all buffers and textures and
 use a model the bundled viewer can decode without fetching resources from another host. Escape or
@@ -53,6 +62,30 @@ Browser file uploads require HTTPS or localhost for SHA-256. If an upload is int
 and resume after losing a response. Uploads expire after 24 hours, and unreferenced assets are kept
 for seven days so a draft can still be recovered.
 
+### Playback copies and animation
+
+When editing a GLB or video attachment, choose **Add preview file** to pair it with a lighter copy.
+Use a self-contained GLB for a model or an MP4 or WebM for a video. **Download original** always
+opens the original attachment. For a GLB, optionally enter the exact name of its **Initial animation**.
+The viewer selects that available animation, an Idle animation if present, or the first available one.
+
+For videos, the player tries the paired copy first and then the original. When the browser cannot play
+an MP4, the hub can prepare a 960×540-or-smaller WebM with VP8 video and Opus audio. The hub uses
+`HOME_HUB_WIKI_FFMPEG` with a build that includes the `libvpx` and `libopus` encoders. It processes
+one MP4 at a time, queues up to two other files, and limits the source to 64 MiB, conversion to
+20 seconds, and output to 16 MiB.
+For longer or larger videos, attach a compatible playback copy. If playback fails, download the original.
+
+`displayAssetId` and `initialClip` are optional on attachment references and on `wiki_attachment_add`.
+Both assets must be available to the author in the destination project. A saved page publishes both
+references. `initialClip` is available for GLB attachments and accepts up to 200 characters.
+
+Original bytes, image thumbnails, and `?preview=webm` are served after authorizing the original
+asset. Each published representation has a private cache entry that must revalidate, with
+`If-None-Match` returning `304` when the current representation matches. Drafts use `no-store`.
+The originals and WebM previews accept a single byte range. `If-Range` must match the current
+strong ETag for a partial response.
+
 ## Source imports
 
 Open **Wiki import sources** as an administrator to approve a Git LFS connection and repository
@@ -66,6 +99,41 @@ a branch, tag or commit and the file's repository path. For Review, pick the rou
 and media file. The hub verifies and keeps its own copy and provenance. All project readers can see
 the copy once the page is saved. An upstream change, unavailable source or revoked grant leaves
 existing saved copies playable. Choose **Replace file** to bring in a newer revision.
+
+### Versioned Git LFS archives
+
+Use `wiki_sources_list` with the granted connection and repository to find repository paths and refs
+from the hub's latest catalog. Open the returned repository URL to browse an unscanned repository or
+verify the exact ref and path directly on the forge.
+
+For an individual file stored inside an LFS archive, use a checkout of the repository on your computer.
+Resolve the ref to a full commit with `git rev-parse --verify '<ref>^{commit}'` and inspect the archive's
+pointer with `git show '<commit>:<archive-path>'`. Record the 64-digit SHA-256 after `oid sha256:`.
+Fetch and check out the LFS archive at that commit. Verify its downloaded SHA-256 against the pointer,
+list the archive entries and extract only the selected member to a file. Hash the original extracted
+member before making a preview or other derived version.
+
+Include `archiveMember:{connection,repo,commit,archivePath,archiveOid,memberPath,originalDigest}` in the
+member's entry in `wiki_upload_manifest`. Use the actual upload's size and digest in the outer entry.
+For an unchanged member, the upload digest equals the original digest. For a derived preview, the
+original digest identifies the input and the upload digest identifies the preview. The asset records
+this source as `kind:"lfs-member"` with `verification:"author-reported"`. The hub verifies the uploaded
+bytes against the upload digest. The author's supplied archive metadata records the extraction lineage.
+
+### Review choices and captions
+
+Call `wiki_sources_list` with `project` to find authorized sets, add `set` to list its rounds, and add
+`round` to list media with its import arguments. Filter by item and variant to find specific media.
+Discovery and the import receipt include the set, numbered round and notes, item and variant titles,
+the recorded decision and note, and the selected variant's role and status. A reference is comparison
+material and can represent the production baseline or an earlier version. An item-wide rejection
+applies to its candidates. The reference keeps its comparison role, and an undecided candidate stays
+pending. A decision with `scope:"unset"` indicates that no feedback has been saved.
+
+Copy or edit the receipt's `captionSuggestion` when adding the attachment. The caption is published
+with the page and is editable independently of Review. The pinned source in the asset metadata records
+the exact Review file that was copied. Use `wiki_assets_list` with its digest or `sourceKind:"review"` to
+find an existing copy before importing it again.
 
 ## Document format
 
@@ -81,7 +149,7 @@ Each block uses one of these shapes.
 | Divider | `{t:"hr"}` |
 | Table | `{t:"table", header:boolean, rows:[[[inline]]]}`, where rows have the same number of cells |
 | Inventory | `{t:"inventory", id, columns:[{id,label}], rows:[{id,cells:{[columnId]:{c?,stats?,attachments?}}}]}` |
-| Attachment group | `{t:"attachments", id, attachments:[{assetId,label?,caption?}]}` |
+| Attachment group | `{t:"attachments", id, attachments:[{assetId,label?,caption?,displayAssetId?,initialClip?}]}` |
 | HTML | `{t:"html", id, label, height, source}`, where the id is `h` and eight lowercase base32 characters, unique within the page |
 
 Inline runs are `{t:"text", text, m?:["b"|"i"|"s"|"code"]}`, `{t:"link", href, c:[text run]}` or
@@ -134,13 +202,51 @@ This version 1 document has one inventory row and an attachment group:
 2. Save the document with `wiki_page_save` and the page's revision. For a document above the 64 KiB
    request limit, stage its UTF-8 bytes via `wiki_upload_begin` with `purpose:"document"`,
    `wiki_upload_chunk` and `wiki_upload_finish`. Save with the returned `documentUploadId`.
-3. For each local file, call `wiki_upload_begin` with its name, size and digest. Send base64 chunks of
-   up to 32 KiB and call `wiki_upload_finish` for the asset ID. For approved Git LFS or Review media,
-   use `wiki_asset_import` to get the pinned asset ID.
+3. For local files, call `wiki_upload_manifest` with a list of filenames, byte sizes and lowercase
+   SHA-256 digests. Reuse entries with an asset ID. For new and resumable entries, send bytes starting
+   at `nextOffset` and call `wiki_upload_finish`. If a response goes missing, submit the same manifest
+   to recover the current session IDs and offsets. Retry deferred entries as prior uploads finish.
+   For approved Git LFS or Review media, use `wiki_asset_import` to get the pinned asset ID.
 4. Call `wiki_attachment_add` with the asset ID, expected page revision and a request ID. Use
    `groupId:"downloads"` for the standalone group above, or `tableId:"units", rowId:"scout",
    columnId:"unit"` for its cell. Use the returned revision for the next edit.
-5. Call `wiki_get` to confirm the stored order, read the asset metadata or open the page URL. Retry a
-   create or attachment with the same request ID and unchanged arguments if its response is lost.
+5. Call `wiki_get` with `mode:"inventory"`, `tableId` and optional `rowIds` and `columnIds` to verify
+   only the relevant cells. Use `mode:"summary"` to find IDs and `mode:"assets"` to page through
+   referenced metadata. Retry a create or attachment with the same request ID and unchanged arguments
+   if its response is lost.
 
 See [the API reference](API.md#project-wiki) for tool inputs, errors and raw uploads.
+
+### Fast local transfer
+
+Use the manifest's HTTP transport with the same authenticated principal as MCP. Send
+`application/octet-stream` with PUT to `/api/wiki/uploads/<uploadId>?offset=<nextOffset>`.
+Each body can hold up to 8 MiB. Slice the local file at the returned offset and continue with each
+response's `nextOffset`. After an interruption, recover the offset with `wiki_upload_status` or
+resubmit the manifest after the in-flight transfer has settled. Call `wiki_upload_finish` after
+the last chunk to verify size, digest and the file's preview format. MCP-only clients can send
+up to 32 KiB of bytes in each base64 `wiki_upload_chunk` call.
+
+### Patch one inventory cell
+
+Use the revision returned by a selective read. For example, pass this to `wiki_page_save` to replace
+the `stats` cell of the `scout` row.
+
+```json
+{
+  "project": "example-game",
+  "pageId": "wabcdefghijk",
+  "rev": 4,
+  "patch": {
+    "tableId": "units",
+    "rowId": "scout",
+    "cells": {
+      "stats": {"stats": [{"name": "Speed", "value": 8, "unit": "m/s"}]}
+    }
+  }
+}
+```
+
+Include several columns in the same patch to update a row, or set a cell to null to remove it.
+The response includes the new revision and saved cells. If the revision is stale, read the relevant
+cells again and reapply the intended edit against the current revision.

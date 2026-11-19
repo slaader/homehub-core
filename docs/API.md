@@ -8,7 +8,7 @@ This document covers the core. A plugin documents its own routes (see `docs/plug
 
 - Home Hub is meant for a home network: put it behind a reverse proxy that only answers your LAN or VPN.
 - Every request has ten seconds to arrive. The exception is a raw `PUT` upload (a ticket attachment, a review chunk, a device picture, a plugin's `raw` route) once its sign-in, origin and scope checks have passed: 20 minutes at most. POST bodies are limited to 16 KB (64 KB for review publish and feedback, 512 KiB for an agent report).
-- Responses are `Cache-Control: no-store`.
+- Responses use `Cache-Control: no-store` by default. Published wiki media uses private revalidation. See [inventory and media](wiki.md#inventory-and-media).
 ## Authentication
 
 Two ways to be signed in. Each one works on every `/api/*` route unless a route below says otherwise.
@@ -1006,13 +1006,15 @@ See [optional provider configuration](configuration.md).
 
 ### Project wiki
 
-The project toolbar opens the wiki at `#wiki/<project>`. Tracker readers can open pages and backlinks.
+The project toolbar opens the wiki at `#wiki/<project>`. The Project Tracker navigation lists projects with a wiki.
+Tracker readers can open pages and backlinks.
 Writes use `tickets:write`. Home has `parentId:null`. The tree uses stable page IDs of `w` and 11 lowercase
 base32 characters and returns parents before their alphabetically ordered children. A project can have
 500 pages including Home. Titles are trimmed and contain 1–120 characters.
 
 | Request | Response |
 |---|---|
+| `GET /api/wiki` | `{projects:[{id, name, home}]}` for projects with a wiki |
 | `GET /api/wiki/<project>` | `{enabled:false}` or `{enabled:true, home, pages:[{id, project, parentId, title, rev, updatedAt, updatedBy, links}]}` |
 | `POST /api/wiki/setup` with `{project}` | `201 {created:true, home}` on setup and `200 {created:false, home}` on repeat |
 | `GET /api/wiki/<project>/pages/<id>` | Page including its document, asset metadata and provenance |
@@ -1044,7 +1046,7 @@ JSON write bodies may be up to 512 KiB.
 | `PUT /api/wiki/uploads/<uploadId>?offset=<bytes>` | `200` upload state. Send up to 8 MiB of bytes as `application/octet-stream` |
 | `POST /api/wiki/uploads/finish` with `{uploadId}` | `200` upload state and `{assetId, asset}`, or `documentUploadId` for a staged document |
 | `GET /api/wiki/<project>/assets` | `{assets:[…]}`, including published attachments and the writer's private assets |
-| `GET\|HEAD /api/wiki/<project>/assets/<assetId>` | Authorized bytes with single-range support. Pass `?download=1` to request download disposition or `?thumbnail=1` for a bounded image preview |
+| `GET\|HEAD /api/wiki/<project>/assets/<assetId>` | Authorized bytes with single-range support. Pass `?download=1` to request download disposition, `?thumbnail=1` for a bounded image preview, or `?preview=webm` for a compatible MP4 playback copy |
 | `GET /api/wiki/<project>/sources` | With `tickets:write`, authorized repository and Review choices and the destination audience |
 | `POST /api/wiki/assets/import` with `{project, source}` | `201` upload result with a verified, pinned asset and source provenance |
 | `POST /api/admin/wiki/sources` | Authorize or revoke a source for a destination project. Requires an administrator's password session |
@@ -1085,24 +1087,70 @@ copies stay available according to their saved wiki references. See [the wiki gu
 
 #### MCP wiki authoring
 
-MCP uses the same validation and transactions as HTTP. The read tools require `read`. All other tools below
-require `tickets:write`. Page mutations return `pageId`, `parentId`, `rev` and a page `url`. Errors include
+MCP uses the same validation and transactions as HTTP. `wiki_list`, `wiki_get` and `wiki_assets_list` require
+`read`. Source discovery and mutations require `tickets:write`. Page mutations return `pageId`, `parentId`,
+`rev` and a page `url`. Errors include
 `structuredContent.error` for store validation, with `current` on a stale save and `nextOffset` when available.
 
 | Tool | Arguments and result |
 |---|---|
 | `wiki_list` | `{project}` reads the tree |
-| `wiki_get` | `{project, pageId?}` reads the page, document and media metadata. Omit `pageId` for Home |
+| `wiki_get` | `{project, pageId?, mode?, tableId?, rowIds?, columnIds?, offset?, limit?}`. Omit `pageId` for Home. Default `mode:"full"` preserves the complete response |
 | `wiki_setup` | `{project}` enables the wiki idempotently and returns Home |
 | `wiki_page_create` | `{project, parentId?, title, doc?, requestId}` |
 | `wiki_page_move` | `{project, pageId, rev, parentId}` |
-| `wiki_page_save` | `{project, pageId, rev, title?, doc?, documentUploadId?}` |
+| `wiki_page_save` | `{project, pageId, rev, title?, doc?, documentUploadId?, patch?}`. Use one of `doc`, `documentUploadId` or `patch` to edit content |
+| `wiki_upload_manifest` | `{project, files:[{name, size, digest, type?, archiveMember?}]}` plans or recovers up to 50 asset uploads |
 | `wiki_upload_begin` | `{project, name, size, digest, type?, purpose?}` returns a private expiring session |
 | `wiki_upload_status` | `{uploadId}` returns the current offset and expiry |
 | `wiki_upload_chunk` | `{uploadId, offset, data}`, where `data` is canonical padded base64 for at most 32 KiB of bytes |
 | `wiki_upload_finish` | `{uploadId}` verifies the upload and returns an asset ID or a document upload ID |
-| `wiki_asset_import` | `{project, source}` returns an asset ID, URL and resolved provenance |
-| `wiki_attachment_add` | `{project, pageId, rev, assetId, requestId, groupId?, tableId?, rowId?, columnId?, label?, caption?, position?}` |
+| `wiki_sources_list` | `{project, kind?, connection?, repo?, set?, round?, item?, variant?, query?, offset?, limit?}` pages through approved sources or files within an approved source |
+| `wiki_assets_list` | `{project, query?, digest?, type?, sourceKind?, minSize?, maxSize?, offset?, limit?}` pages through accessible project asset metadata |
+| `wiki_asset_import` | `{project, source}` returns an asset ID, URL and resolved provenance. Review imports also return a context snapshot and caption suggestion |
+| `wiki_attachment_add` | `{project, pageId, rev, assetId, requestId, groupId?, tableId?, rowId?, columnId?, displayAssetId?, initialClip?, label?, caption?, position?}` |
+
+In `wiki_get`, `summary` returns block, ticket and asset counts and the IDs and sizes of inventory
+tables and attachment groups. `inventory` requires `tableId` and returns column definitions and rows in
+page order. Optionally select existing `rowIds` or `columnIds`. It defaults to 10 rows, allows up to 20
+and returns up to 48 KiB of serialized rows per call. Narrow the column selection if a single row exceeds
+the limit. `assets` pages through the distinct referenced assets in document order, including display assets.
+Both modes return `total`, `offset`, `limit` and `nextOffset` (null on the last page). For a consistent
+multi-call read, check that each result reports the same page `rev`. Selective responses include only
+the requested material in `structuredContent` and as compact JSON for text-only MCP clients.
+
+To update an existing row, supply `patch:{tableId,rowId,cells:{[columnId]:cell|null}}` and the page revision.
+A cell uses the regular inventory cell shape and replaces the saved cell. Null removes the cell. Unspecified
+columns are left alone. A single column applies a one-cell patch. The successful result includes the new
+revision and the normalized patch, including nulls for removed cells. A stale revision returns `current`
+even when another editor changed a different cell.
+
+Manifest results correspond to the input order. Each reports `name`, `digest` and `state`. An `uploaded`
+entry includes `assetId` for a matching asset with the same digest, size and media type. Matches include
+assets referenced by a saved page in the project and the caller's private assets. `resumable` and `new`
+entries include the caller's `uploadId`, `nextOffset` and expiry. An existing session stays resumable
+if another author publishes matching bytes while the transfer is in progress. `deferred` includes a capacity reason.
+Finish completed transfers before resubmitting deferred entries. Retrying the same manifest recovers current
+state even after a lost response. Concurrent transfers share the existing limit of 16 reserved upload sessions
+per principal and 128 overall. Active asset sessions count against the project asset limit when allocating
+new manifest sessions. Each plan advertises the raw HTTP and MCP chunk routes and their byte limits.
+Asset manifests accept `archiveMember` for uploads extracted on the author's computer. See the
+[versioned archive workflow](wiki.md#versioned-git-lfs-archives).
+
+Source discovery returns `audience:"project-readers"` with `items`, `total`, `offset`, `limit` and
+`nextOffset`. It defaults to 10 entries (maximum 20). Select a Git repository with `connection` and `repo`
+to verify repository access and get its browse URL, catalog state, scan time, default ref and recent cached
+LFS refs, paths and commits. Before selection, configured Git entries represent stored grants.
+Refs and paths are browse hints. Import resolves the chosen ref and exact path again and pins the resulting
+commit and digest. Select a Review `set` to get its rounds, and pass `round` to select media with usable
+`source` arguments, decisions, sizes, MIME types and digests. Use `item` and optional `variant` to narrow
+the selection. Explicit discovery requests for an unapproved source return `source-not-granted`. An approved connection
+or set that is inaccessible returns `source-unavailable`.
+
+Asset discovery matches `query` against the name, ID, digest or source path. `digest` and `type` are exact
+filters and size limits are inclusive. `sourceKind` accepts `lfs`, `review` and `lfs-member`. Results include
+`assets` and the same pagination fields, default to 20 and allow up to 100. The caller needs destination
+write permission to see their own unreferenced assets.
 
 The MCP HTTP request limit remains 64 KiB. For a larger document, create the page first, upload the
 UTF-8 JSON with `purpose:"document"`, then save with `documentUploadId` and the expected page revision.

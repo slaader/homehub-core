@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {hub} from './hub-helper.mjs';
 import {gitHost,pointer,workTree} from './support/git-host.mjs';
-import {openDb} from '../server/db.mjs';
+import {DB_SCHEMA,openDb} from '../server/db.mjs';
 import {createTicketStore} from '../server/tickets-store.mjs';
 import {createWikiStore} from '../server/wiki-store.mjs';
 import {ASSET_GRACE,createWikiAssets,MCP_CHUNK,UPLOAD_TTL} from '../server/wiki-assets.mjs';
@@ -111,7 +111,7 @@ test('wiki epoch 8 upgrades real 1.2.0 flat records and an updater backup restor
   assert.deepEqual(list.pages.map(({id,parentId})=>[id,parentId]),
    [[fixture.home,null],[fixture.inventory,fixture.home],[fixture.units,fixture.home]]);
   assert.equal((await wiki.backlinks(fixture.ticket))[0].id,fixture.units);
-  assert.equal(db.db.prepare('PRAGMA user_version').get().user_version,3);
+  assert.equal(db.db.prepare('PRAGMA user_version').get().user_version,DB_SCHEMA);
   await wiki.move({project:'example-app',id:fixture.units,rev:saved.rev,parentId:fixture.inventory},'alice');
  }finally{db.close();}
  await restoreBackup(inst,ctx,backup,journal(backup));
@@ -298,10 +298,26 @@ test('wiki pins authorized LFS and Review bytes, with explicit destination audie
  const connection=await git.save({provider:'gitea',name:'Fixture Git',baseUrl:host.origin,token:host.token,repoMode:'all'},'alice');
  const {pageId,rev}=await rpc(h,writer,'setup',{project});
  const source={kind:'lfs',connection:connection.id,repo:repository,ref:'main',path:file};
+ const browseArgs={project,connection:connection.id,repo:repository};
  await rpc(h,writer,'asset_import',{project,source},'denied');
+ await rpc(h,writer,'sources_list',browseArgs,'source-not-granted');
  const grant={project,kind:'lfs',connection:connection.id,repo:repository,enabled:true};
  await body(h.post('/api/admin/wiki/sources',grant,writer.headers),403);
  assert.equal((await body(h.post('/api/admin/wiki/sources',grant,h.admin),200)).audience,'project-readers');
+ await git.refresh(connection.id);
+ const found=await rpc(h,writer,'sources_list',{...browseArgs,query:file,limit:1});
+ assert.equal(found.browseUrl,host.origin+'/'+repository);
+ assert.equal(found.catalogState,'ok');
+ assert.equal(found.items[0].lastCommit.sha,first);
+ assert.equal(found.items[0].oid,sha(png));
+ assert.deepEqual(found.items[0].currentPaths,[file]);
+ assert.deepEqual(found.items[0].refs,['refs/heads/main']);
+ assert.doesNotMatch(JSON.stringify(found),new RegExp(host.token));
+ const gitRefs='/api/v1/repos/'+repository+'/git/refs/';
+ host.fail[gitRefs]=403;
+ await rpc(h,writer,'sources_list',browseArgs,'source-unavailable');
+ delete host.fail[gitRefs];
+ await rpc(h,writer,'sources_list',{...browseArgs,project:'home-hub'},'source-not-granted');
  const lfs=await rpc(h,writer,'asset_import',{project,source});
  assert.deepEqual(lfs.source,{kind:'lfs',connection:connection.id,repo:repository,commit:first,path:file,oid:sha(png)});
  assert.doesNotMatch(JSON.stringify(lfs),new RegExp(host.token));

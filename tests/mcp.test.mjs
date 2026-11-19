@@ -24,6 +24,11 @@ test('MCP handshake, auth and transport rules',async t=>{
  assert.equal((await rpc(h,{...agent.headers,Origin:'https://evil.example'},'tools/list')).status,403);
  const batch=await fetch(h.origin+'/mcp',{method:'POST',headers:{'Content-Type':'application/json',...agent.headers},body:JSON.stringify([{jsonrpc:'2.0',id:1,method:'ping'}])});
  assert.equal(batch.status,400);
+ const oversized=await rpc(h,agent.headers,'tools/call',{name:'wiki_page_save',arguments:{title:'x'.repeat(96000)}});
+ assert.equal(oversized.status,413);
+ assert.equal(oversized.headers.get('connection'),'close');
+ assert.equal((await oversized.json()).error.code,'TOO_LARGE');
+ assert.deepEqual((await (await rpc(h,agent.headers,'ping')).json()).result,{});
  const bad=await fetch(h.origin+'/mcp',{method:'POST',headers:{'Content-Type':'application/json',...agent.headers},body:'{'});
  assert.equal((await bad.json()).error.code,-32700);
 });
@@ -32,8 +37,8 @@ test('MCP tools follow scopes; inventory_update is hash-checked, secret-proof an
  const h=await hub(t);
  const agent=await h.account('agent-studio',['inventory:write']),reader=await h.account('reader-mini',[]);
  const names=async hd=>(await (await rpc(h,hd,'tools/list')).json()).result.tools.map(x=>x.name).sort();
- assert.deepEqual(await names(agent.headers),['backup_jobs_list','device_list','home_status','hub_version','integrations_status','inventory_bulk_upsert','inventory_delete','inventory_describe','inventory_get','inventory_search','inventory_update','models_overview','projects_list','review_get','review_list','runtime_endpoints_list','search','service_register','ticket_attachment_get','ticket_get','ticket_hybrid_search','ticket_search','ticket_search_status','tickets_list','whoami','wiki_get','wiki_list']);
- assert.deepEqual(await names(reader.headers),['backup_jobs_list','device_list','home_status','hub_version','integrations_status','inventory_describe','inventory_get','inventory_search','models_overview','projects_list','review_get','review_list','runtime_endpoints_list','search','ticket_attachment_get','ticket_get','ticket_hybrid_search','ticket_search','ticket_search_status','tickets_list','whoami','wiki_get','wiki_list']);
+ assert.deepEqual(await names(agent.headers),['backup_jobs_list','device_list','home_status','hub_version','integrations_status','inventory_bulk_upsert','inventory_delete','inventory_describe','inventory_get','inventory_search','inventory_update','models_overview','projects_list','review_get','review_list','runtime_endpoints_list','search','service_register','ticket_attachment_get','ticket_get','ticket_hybrid_search','ticket_search','ticket_search_status','tickets_list','whoami','wiki_assets_list','wiki_get','wiki_list']);
+ assert.deepEqual(await names(reader.headers),['backup_jobs_list','device_list','home_status','hub_version','integrations_status','inventory_describe','inventory_get','inventory_search','models_overview','projects_list','review_get','review_list','runtime_endpoints_list','search','ticket_attachment_get','ticket_get','ticket_hybrid_search','ticket_search','ticket_search_status','tickets_list','whoami','wiki_assets_list','wiki_get','wiki_list']);
  const tools=(await (await rpc(h,agent.headers,'tools/list')).json()).result.tools;
  assert.ok(tools.every(x=>x.inputSchema?.type==='object'&&typeof x.description==='string'&&!('scope'in x)));
 

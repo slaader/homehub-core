@@ -6,7 +6,7 @@ export const WIKI_ITEM_ID=/^[a-z][a-z0-9-]{0,39}$/;
 export const WIKI_LIMITS=Object.freeze({
  title:120,pages:500,docBytes:256*1024,blocks:1000,rows:100,columns:20,cell:2000,
  htmlBlocks:10,htmlBytes:64*1024,label:120,minHeight:80,maxHeight:2000,bodyBytes:512*1024,
- attachments:50,stats:50,caption:1000,
+ attachments:50,stats:50,caption:1000,clip:200,
 });
 export const WIKI_MARKS=Object.freeze(['b','i','s','code']);
 
@@ -102,8 +102,17 @@ function boundedText(value,max,required=false){
 }
 
 export function wikiAttachment(ref){
- if(!exactKeys(ref,['assetId','label','caption'])||typeof ref.assetId!=='string'||!ASSET_ID.test(ref.assetId))invalid();
- return {assetId:ref.assetId,label:boundedText(ref.label??'',WIKI_LIMITS.label),caption:boundedText(ref.caption??'',WIKI_LIMITS.caption)};
+ if(!exactKeys(ref,['assetId','label','caption','displayAssetId','initialClip'])||typeof ref.assetId!=='string'||!ASSET_ID.test(ref.assetId))invalid();
+ const {displayAssetId}=ref;
+ if(displayAssetId!==undefined&&(typeof displayAssetId!=='string'||!ASSET_ID.test(displayAssetId)||displayAssetId===ref.assetId))invalid();
+ const initialClip=ref.initialClip===undefined?'':string(ref.initialClip);
+ if(initialClip.length>WIKI_LIMITS.clip)fail('limit');
+ return {assetId:ref.assetId,label:boundedText(ref.label??'',WIKI_LIMITS.label),caption:boundedText(ref.caption??'',WIKI_LIMITS.caption),
+  ...(displayAssetId===undefined?{}:{displayAssetId}),...(initialClip?{initialClip}:{})};
+}
+
+export function wikiDisplayType(original,preview){
+ return original==='model/gltf-binary'?preview===original:Boolean(original?.startsWith('video/')&&preview?.startsWith('video/'));
 }
 
 function group(value){
@@ -209,12 +218,18 @@ export function extractLinks(doc){
  return {tickets:[...tickets]};
 }
 
+export function* wikiAttachmentRefs(doc){
+ for(const block of doc.blocks){
+  if(block.t==='attachments')yield* block.attachments;
+  if(block.t==='inventory')for(const row of block.rows)for(const cell of Object.values(row.cells))yield* cell.attachments??[];
+ }
+}
+
 export function wikiAssetIds(doc){
  const ids=new Set();
- const visit=refs=>{for(const ref of refs??[])ids.add(ref.assetId);};
- for(const block of doc.blocks){
-  if(block.t==='attachments')visit(block.attachments);
-  if(block.t==='inventory')for(const row of block.rows)for(const cell of Object.values(row.cells))visit(cell.attachments);
+ for(const ref of wikiAttachmentRefs(doc)){
+  ids.add(ref.assetId);
+  if(ref.displayAssetId)ids.add(ref.displayAssetId);
  }
  return [...ids];
 }

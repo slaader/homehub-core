@@ -1,4 +1,5 @@
 import {execFile} from 'node:child_process';
+import {createHash} from 'node:crypto';
 import {createReadStream} from 'node:fs';
 import path from 'node:path';
 import {pipeline} from 'node:stream/promises';
@@ -6,6 +7,7 @@ import {pipeline} from 'node:stream/promises';
 const EDGE=384;
 const MAX_INPUT=32*1024**2,MAX_PIXELS=24_000_000,MAX_OUTPUT=640*1024;
 const CACHE_BYTES=8*1024**2,CACHE_ENTRIES=128,WORKERS=2,MAX_WAITING=12;
+const DESCRIPTIONS=2048;
 const PNG=Buffer.from('89504e470d0a1a0a','hex');
 const formats=new Map([
  ['image/png',['png_pipe','png']],
@@ -39,8 +41,14 @@ function validPreview(bytes){
 }
 
 export function createWikiThumbnails({binary=process.env.HOME_HUB_WIKI_FFMPEG,render=renderThumbnail}={}){
- const cache=new Map(),pending=new Map(),waiting=[];
+ const cache=new Map(),descriptions=new Map(),pending=new Map(),waiting=[];
  let active=0,cachedBytes=0;
+
+ function keyFor(file){
+  if(!binary||!path.isAbsolute(binary)||!formats.has(file.type)||
+   !Number.isSafeInteger(file.size)||file.size<1||file.size>MAX_INPUT)return null;
+  return file.type+':'+file.digest;
+ }
 
  function remember(key,bytes){
   while(cache.size>=CACHE_ENTRIES||cachedBytes+bytes.length>CACHE_BYTES){
@@ -50,6 +58,9 @@ export function createWikiThumbnails({binary=process.env.HOME_HUB_WIKI_FFMPEG,re
   }
   cache.set(key,bytes);
   cachedBytes+=bytes.length;
+  descriptions.delete(key);
+  if(descriptions.size>=DESCRIPTIONS)descriptions.delete(descriptions.keys().next().value);
+  descriptions.set(key,{size:bytes.length,digest:createHash('sha256').update(bytes).digest('hex')});
  }
 
  async function run(key,file,resolve){
@@ -60,8 +71,8 @@ export function createWikiThumbnails({binary=process.env.HOME_HUB_WIKI_FFMPEG,re
    if(validPreview(bytes)){
     remember(key,bytes);
     result=bytes;
-   }
-  }catch{/* A gallery can still open the original. */}
+   }else descriptions.delete(key);
+  }catch{descriptions.delete(key);}
   pending.delete(key);
   active--;
   resolve(result);
@@ -69,10 +80,10 @@ export function createWikiThumbnails({binary=process.env.HOME_HUB_WIKI_FFMPEG,re
  }
 
  return {
+  info(file){return descriptions.get(keyFor(file))??null;},
   get(file){
-   if(!binary||!path.isAbsolute(binary)||!formats.has(file.type)||
-    !Number.isSafeInteger(file.size)||file.size<1||file.size>MAX_INPUT)return null;
-   const key=file.type+':'+file.digest;
+   const key=keyFor(file);
+   if(!key)return null;
    const cached=cache.get(key);
    if(cached){
     cache.delete(key);

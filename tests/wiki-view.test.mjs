@@ -52,12 +52,13 @@ function editorDom(){
 test('wiki editor opens directly, retains title and rich text after a stale save and restores the draft',async t=>{
  editorDom();
  t.after(leaveView);
- let saved=page('Home',1,'Original text'),posted=null;
+ let saved=page('Home',1,'Original text'),posted=null,interrupted=null;
  globalThis.fetch=async(url,options={})=>{
   if(options.method==='POST'){
    assert.equal(url,'/api/wiki/pages/update');
    posted=JSON.parse(options.body);
    assert.equal(posted.rev,1);
+   if(interrupted)return new Response(interrupted);
    return Response.json({error:{message:'Stránka se mezitím změnila.'},
     current:{rev:saved.rev,updatedAt:saved.updatedAt,updatedBy:saved.updatedBy}},{status:409});
   }
@@ -89,6 +90,14 @@ test('wiki editor opens directly, retains title and rich text after a stale save
  edit(initial).replaceChildren(paragraph);
  fire(edit(initial),'input');
 
+ for(interrupted of ['{"id":','{}']){
+  fire(form(initial),'submit');
+  await nextTurn();
+  assert.equal(title(initial).value,'Local title');
+  assert.match(edit(initial).textContent,/Local content/);
+  assert.match(initial.textContent,/Request failed/);
+ }
+ interrupted=null;
  saved={...page('Saved by another editor',2,'Remote text'),updatedBy:'bob'};
  fire(form(initial),'submit');
  await nextTurn();

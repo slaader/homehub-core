@@ -4,8 +4,8 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {hub} from './hub-helper.mjs';
-import {openDb} from '../server/db.mjs';
-import {createWikiStore} from '../server/wiki-store.mjs';
+import {DB_SCHEMA,openDb} from '../server/db.mjs';
+import {WIKI_SCHEMA,createWikiStore} from '../server/wiki-store.mjs';
 import {createTicketStore} from '../server/tickets-store.mjs';
 import {createWikiPreviews,staticWikiHtml,WIKI_FRAME_CSP} from '../server/wiki-frame.mjs';
 import {extractLinks,normalizeDoc,PAGE_ID,WIKI_LIMITS} from '../public/wiki-doc.js';
@@ -85,6 +85,8 @@ test('wiki HTTP setup is atomic and idempotent, and writes require the tracker s
  assert.equal(canWriteWiki({canWrite:true,scopes:['read','tickets:write']}),true);
  assert.equal(canWriteWiki({canWrite:true,scopes:['read','review:write']}),false);
  assert.equal(canWriteWiki({canWrite:false,scopes:['read']}),false);
+ assert.deepEqual(await response(get(h,wiki,reader.headers),200),{projects:[]});
+ await response(get(h,wiki,{}),401);
  assert.deepEqual(await response(get(h,list,reader.headers),200),{enabled:false});
  await response(get(h,list,{}),401);
  await response(get(h,wiki+'/unknown-project'),404);
@@ -96,6 +98,7 @@ test('wiki HTTP setup is atomic and idempotent, and writes require the tracker s
  assert.equal(homes.size,1);
  const [home]=homes;
  assert.match(home,PAGE_ID);
+ assert.deepEqual(await response(get(h,wiki,reader.headers),200),{projects:[{id:project,name:'Home Hub',home}]});
  assert.equal(results.filter(reply=>reply.created).length,1);
  const meta=await response(get(h,list,reader.headers),200);
  assert.equal(meta.home,home);
@@ -112,7 +115,7 @@ test('wiki HTTP setup is atomic and idempotent, and writes require the tracker s
  assert.deepEqual((await response(get(h,pageUrl(home)),200)).doc,page.doc);
  const manifest=await response(get(h,'/api/ui/manifest'),200);
  assert.deepEqual(manifest.pages.find(page=>page.hash==='wiki')?.view,{url:'/wiki-view.js',export:'wikiPage'});
- assert.ok(manifest.nav.every(group=>group.items.every(item=>item.hash!=='wiki')));
+ assert.ok(manifest.nav.find(group=>group.label==='Project Tracker').items.some(item=>item.hash==='wiki'));
  assert.equal((await get(h,'/wiki-view.js',{})).status,200);
 });
 
@@ -154,7 +157,7 @@ test('wiki page and projection survive reopening the existing tracker database',
  db.db.exec('PRAGMA user_version=1');
  db.close();
  db=openDb(file);
- assert.equal(db.db.prepare('PRAGMA user_version').get().user_version,3);
+ assert.equal(db.db.prepare('PRAGMA user_version').get().user_version,DB_SCHEMA);
  tickets=createTicketStore(dir,{db});
  let store=createWikiStore(db,tickets);
  assert.deepEqual(await store.list('example-app'),{enabled:false});
@@ -176,7 +179,7 @@ test('wiki page and projection survive reopening the existing tracker database',
  assert.equal(meta.pages[0].title,saved.title);
  assert.equal(meta.pages[0].doc,undefined);
  assert.equal((await store.backlinks(old.id))[0].id,home);
- db.db.exec("UPDATE meta SET doc=json_set(doc,'$.schema',3) WHERE kind='wiki'");
+ db.db.exec(`UPDATE meta SET doc=json_set(doc,'$.schema',${WIKI_SCHEMA+1}) WHERE kind='wiki'`);
  await assert.rejects(store.list('example-app'),/Unsupported wiki schema/);
  await assert.rejects(store.update({project:'example-app',id:home,rev:2,title:'Unsupported'},'alice'),/Unsupported wiki schema/);
 });
