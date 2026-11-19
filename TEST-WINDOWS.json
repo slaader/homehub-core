@@ -11,8 +11,8 @@
       "budget_seconds": 120,
       "budget_approval": null,
       "last_run": {
-        "duration_seconds": 118.61,
-        "finished_at": "2026-11-19T11:35:27Z",
+        "duration_seconds": 102.22,
+        "finished_at": "2026-11-19T11:57:21Z",
         "result": "passed"
       }
     },
@@ -42,6 +42,34 @@
       "last_run": {
         "duration_seconds": 2.446,
         "finished_at": "2026-11-19T10:37:08.668Z",
+        "result": "passed"
+      }
+    },
+    "backup-large": {
+      "category": "integration",
+      "scope": "Dense compressed backup above 2 GiB, exact alias preservation and interrupted rollback",
+      "commands": [
+        "node tests/large/backup-large.mjs --dense --interrupt=restore-new-renamed"
+      ],
+      "budget_seconds": 120,
+      "budget_approval": null,
+      "last_run": {
+        "duration_seconds": 94.75,
+        "finished_at": "2026-11-19T11:58:54Z",
+        "result": "passed"
+      }
+    },
+    "stock-upgrade-sockets": {
+      "category": "ui-smoke",
+      "scope": "Upgrade stock core with listening sockets and reviewed aliases, write a wiki page and recover the previous instance",
+      "commands": [
+        "node tests/large/update-stock-sockets.mjs --aliases"
+      ],
+      "budget_seconds": 120,
+      "budget_approval": null,
+      "last_run": {
+        "duration_seconds": 33.75,
+        "finished_at": "2026-11-19T11:56:12Z",
         "result": "passed"
       }
     }

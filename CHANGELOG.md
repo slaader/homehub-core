@@ -6,7 +6,7 @@ Home Hub core, newest first. One section per release; the section is the text of
 number promises is in `AGENTS.md` → Versioning. The top section is the release being prepared, `## Unreleased`
 until the release gives it its number: a change to the public surface adds its line there in the same commit.
 
-## Unreleased
+## 1.2.0
 
 ### Added
 
@@ -23,6 +23,13 @@ until the release gives it its number: a change to the public surface adds its l
 - Data epoch 7 introduces journal schema 3 and backup manifest schema 2. A rollback across the epoch restores the
   pre-update backup. Use the retained updater driver with schema-3 journals, including when the installed release
   is v1.0.0 or v1.1.0 after rollback. Use it for subsequent backups and updates as well. The driver also reads older journals and archives.
+
+### Upgrade notes
+
+- Projects gain the optional wiki introduced in 1.1.0. Open a project and choose **Set up wiki** to enable it.
+- From a stock 1.0.0 Git installation, the installed updater can apply the release when its backup checks pass.
+  For large instances, linked media, or live UNIX sockets, use the separate driver described in
+  [the upgrade guide](docs/updating.md#upgrade-an-installed-v100-git-checkout) so the backup uses the new format.
 
 ## 1.1.0
 
