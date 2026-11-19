@@ -15,7 +15,8 @@ export const RELEASE_STATUSES=Object.freeze(['planned','released']);
 export const PROJECT_TYPES=Object.freeze(['app','game','other']);
 export const CLOSED=Object.freeze(['done','cancelled']);
 export const TICKET_ID=/^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,5}$/;
-const PROJECT_ID=/^[a-z][a-z0-9-]{1,39}$/,PROJECT_KEY=/^[A-Z][A-Z0-9]{1,9}$/,VERSION=/^(?!none$)[A-Za-z0-9][A-Za-z0-9._+-]{0,39}$/,LABEL=/^[a-z0-9][a-z0-9-]{0,29}$/,DAY=/^\d{4}-\d{2}-\d{2}$/;
+export const PROJECT_ID=/^[a-z][a-z0-9-]{1,39}$/;
+const PROJECT_KEY=/^[A-Z][A-Z0-9]{1,9}$/,VERSION=/^(?!none$)[A-Za-z0-9][A-Za-z0-9._+-]{0,39}$/,LABEL=/^[a-z0-9][a-z0-9-]{0,29}$/,DAY=/^\d{4}-\d{2}-\d{2}$/;
 // How many files one ticket holds. The upload route asks before it stores a file (server/core/tracker.mjs).
 export const TICKET_ATTACHMENTS=20;
 const LIMITS={projects:50,releases:500,tickets:5000,comments:200,history:200,labels:10,refs:20,attachments:TICKET_ATTACHMENTS};

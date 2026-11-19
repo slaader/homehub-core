@@ -1,0 +1,279 @@
+import {el,onLeave} from './views.js';
+import {t,locale} from './i18n.js';
+import {timeZone} from './site.js';
+import {banner,emptyState,errorState,loadingState,pageHeader} from './ui.js';
+import {normalizeDoc,PAGE_ID,WIKI_LIMITS,wikiTitle} from './wiki-doc.js';
+import {canWriteWiki,editWikiHref,ticketChip,wikiApi,wikiApiPath,wikiBlocks,wikiHref} from './wiki-content.js';
+import {wikiEditor,wikiValidationMessage} from './wiki-editor.js';
+
+const drafts=new Map();
+const date=value=>new Intl.DateTimeFormat(locale(),{dateStyle:'medium',timeStyle:'short',timeZone:timeZone()}).format(new Date(value));
+const button=(label,onclick,attrs={})=>el('button',{class:'acc-btn',type:'button',onclick,...attrs},label);
+const status=()=>el('p',{class:'acc-status error',role:'alert'});
+
+function draftKey(me,page){
+ return 'wiki-draft:'+JSON.stringify([me.authKind,me.id??me.username,page.project,page.id]);
+}
+function savedDraft(key){
+ if(drafts.has(key))return drafts.get(key);
+ try{
+  const value=JSON.parse(sessionStorage.getItem(key));
+  if(Number.isSafeInteger(value?.rev)&&typeof value.title==='string'&&value.doc?.v===1&&Array.isArray(value.doc.blocks))return value;
+ }catch{}
+ return null;
+}
+function storeDraft(key,draft){
+ if(draft)drafts.set(key,draft);
+ else drafts.delete(key);
+ try{
+  if(draft)sessionStorage.setItem(key,JSON.stringify(draft));
+  else sessionStorage.removeItem(key);
+ }catch{}
+}
+
+export function wikiPage({me,sub:project}){
+ const root=el('section',{class:'sec tk wiki'},loadingState());
+ const [, , selected]=location.hash.split('?')[0].split('/');
+ const wantsEdit=location.hash.endsWith('?edit');
+ const writable=canWriteWiki(me);
+ let live=true,disposeEdit=null,openDialog=null;
+ onLeave(()=>{
+  live=false;
+  disposeEdit?.();
+  openDialog?.close();
+ });
+ const back={label:t('Projekty'),href:'#projects'};
+ function fail(error){
+  const missing=error.status===404;
+  root.replaceChildren(errorState({title:missing?t('Stránka nebo wiki neexistuje.'):t('Wiki teď nejde načíst ani uložit.'),
+   body:error.message,actions:[back],retry:missing?null:load}));
+ }
+ function dialog(title,children,{closeButton=true}={}){
+  const d=el('dialog',{class:'wiki-dialog','aria-labelledby':'wiki-dialog-title'},
+   el('h2',{id:'wiki-dialog-title'},title),...children,closeButton?button(t('Zavřít'),()=>d.close()):null);
+  d.addEventListener('close',()=>{
+   if(openDialog===d)openDialog=null;
+   d.remove();
+  });
+  openDialog?.close();
+  openDialog=d;
+  document.body.append(d);
+  d.showModal();
+  return d;
+ }
+
+ async function load(){
+  root.replaceChildren(loadingState());
+  try{
+   if(!/^[a-z][a-z0-9-]{1,39}$/.test(project??'')||(selected&&!PAGE_ID.test(selected)))
+    throw Object.assign(new Error(t('Stránka nebo wiki neexistuje.')),{status:404});
+   const [meta,tracker]=await Promise.all([
+    wikiApi(wikiApiPath(project)),
+    wikiApi('/api/tickets?project='+project).catch(()=>null),
+   ]);
+   if(!live)return;
+   const projectName=tracker?.projects.find(p=>p.id===project)?.name??project;
+   const tickets=new Map((tracker?.tickets??[]).map(ticket=>[ticket.id,ticket]));
+   if(!meta.enabled){
+    root.replaceChildren(emptyState({icon:'box',title:t('Wiki projektu zatím není založena.'),
+     actions:[{label:projectName,href:'#projects/'+project}]}));
+    return;
+   }
+   const page=await wikiApi(wikiApiPath(project,selected||meta.home));
+   if(!live)return;
+   show(meta,page,{projectName,tickets},writable&&(wantsEdit||Boolean(savedDraft(draftKey(me,page)))));
+  }catch(error){if(live)fail(error);}
+ }
+
+ function show(meta,page,context,editing=false){
+  disposeEdit?.();
+  disposeEdit=null;
+  const {projectName,tickets}=context,desc=t('Upravil(a) {who} · {when}',{who:page.updatedBy,when:date(page.updatedAt)});
+  const key=draftKey(me,page);
+  const currentHref=wikiHref(project,page.id);
+  const clearEditHash=()=>{if(location.hash===editWikiHref(project,page.id))history.replaceState(history.state,'',currentHref);};
+  const redraw=(next,edit=false)=>{
+   const list=meta.pages.map(entry=>entry.id===next.id?next:entry);
+   if(!list.some(entry=>entry.id===next.id))list.push(next);
+   list.sort((a,b)=>Number(b.id===meta.home)-Number(a.id===meta.home)||a.title.localeCompare(b.title,locale())||a.id.localeCompare(b.id));
+   show({...meta,pages:list},next,context,edit);
+  };
+
+  function makePage(){
+   const title=el('input',{required:'',maxlength:WIKI_LIMITS.title,autofocus:''});
+   const message=status();
+   const submit=el('button',{class:'acc-btn primary'},t('Vytvořit stránku'));
+   const form=el('form',{class:'wiki-form',onsubmit:async event=>{
+    event.preventDefault();
+    submit.disabled=true;
+    message.textContent='';
+    try{
+     const result=await wikiApi('/api/wiki/pages',{project,title:wikiTitle(title.value)});
+     if(live&&d.open){d.close();location.hash=editWikiHref(project,result.id);}
+    }catch(error){message.textContent=wikiValidationMessage(error);}
+    finally{submit.disabled=false;}
+   }},el('label',{},t('Název stránky'),title),message,
+    el('div',{class:'wiki-actions'},submit,button(t('Zrušit'),()=>d.close())));
+   const d=dialog(t('Nová stránka'),[form],{closeButton:false});
+  }
+
+  const nav=el('details',{class:'wiki-pages',open:''},el('summary',{},t('Stránky')),
+   el('ul',{},meta.pages.map(entry=>el('li',{},el('a',{href:wikiHref(project,entry.id),
+    'aria-current':entry.id===page.id?'page':null},entry.title)))));
+  const content=el('div',{class:'wiki-body'});
+  const edit=()=>show(meta,page,context,true);
+  const actions=writable&&!editing?[{label:t('Upravit'),primary:true,onclick:edit},{label:t('Nová stránka'),onclick:makePage}]:[];
+  const sep=()=>el('span',{class:'tk-dim'},'/');
+  root.replaceChildren(el('nav',{class:'tk-crumbs','aria-label':t('Drobečková navigace')},
+   el('a',{href:'#projects'},t('Projekty')),sep(),el('a',{href:'#projects/'+project},projectName),sep(),
+   el('a',{href:wikiHref(project)},'Wiki'),sep(),el('b',{},page.title)),
+   pageHeader({title:page.title,lead:desc,provenance:page.provenance,actions}),
+   el('div',{class:'wiki-layout'},nav,content));
+
+  if(!editing){
+   const linked=page.links.tickets;
+   content.append(page.doc.blocks.length?
+    el('article',{class:'acc-card wiki-article'},wikiBlocks(page.doc,{page,tickets})):
+    emptyState({icon:'box',compact:true,title:t('Tahle stránka je prázdná.'),
+     actions:writable?[{label:t('Upravit'),primary:true,onclick:edit}]:[]}));
+   if(linked.length)content.append(el('section',{class:'acc-card wiki-linked'},
+    el('h2',{},t('Propojené tickety')),el('ul',{},linked.map(id=>el('li',{},ticketChip(id,tickets.get(id)))))));
+   if(writable){
+    const keydown=event=>{
+     if(event.key==='e'&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&!event.defaultPrevented&&
+        !event.target.closest?.('input,select,textarea,[contenteditable],dialog')){
+      event.preventDefault();edit();
+     }
+    };
+    document.addEventListener('keydown',keydown);
+    disposeEdit=()=>document.removeEventListener('keydown',keydown);
+   }
+   return;
+  }
+
+  const draft=savedDraft(key);
+  const rev=draft?.rev??page.rev;
+  const title=el('input',{required:'',maxlength:WIKI_LIMITS.title,value:draft?.title??page.title});
+  let conflict=rev!==page.rev?page:null,busy=false,dirty=Boolean(draft),disposed=false;
+  const conflictNotice=el('div',{});
+  const editor=wikiEditor({page,doc:draft?.doc??page.doc,tickets,api:wikiApi,dialog,changed});
+  const read=()=>({rev,title:title.value,doc:editor.read()});
+  const original=draft?null:JSON.stringify(read());
+  const saveButton=el('button',{class:'acc-btn primary'},t('Uložit'));
+  const cancelButton=button(t('Zrušit'),cancel);
+  const form=el('form',{class:'wiki-form',onsubmit:event=>{event.preventDefault();save();}},
+   el('label',{},t('Název stránky'),title),editor.node,el('div',{class:'wiki-actions'},saveButton,cancelButton));
+  title.addEventListener('input',changed);
+  content.append(conflictNotice,form);
+
+  function changed(){
+   if(disposed)return;
+   const value=read();
+   dirty=JSON.stringify(value)!==original;
+   storeDraft(key,dirty?value:null);
+  }
+
+  function displayConflict(){
+   conflictNotice.replaceChildren();
+   saveButton.disabled=Boolean(conflict);
+   if(!conflict)return;
+   conflictNotice.append(banner({tone:'warn',title:t('Stránka se mezitím změnila.'),
+    body:t('Poslední změna od {who} · {when}. Tvůj koncept je zachován.',
+     {who:conflict.updatedBy,when:date(conflict.updatedAt)}),
+    actions:[{label:t('Načíst uloženou verzi'),onclick:reload},{label:t('Uložit jako novou stránku'),onclick:()=>save(true)}]}));
+  }
+
+  function finish(){
+   dirty=false;
+   disposeEdit?.();
+   disposeEdit=null;
+   storeDraft(key,null);
+   clearEditHash();
+  }
+
+  function discard(){
+   return !dirty||confirm(t('Zahodit neuložené změny?'));
+  }
+
+  function cancel(){
+   if(busy||!discard())return;
+   finish();
+   redraw(page);
+  }
+
+  async function reload(){
+   if(busy||!discard())return;
+   busy=true;
+   form.inert=true;
+   try{
+    const latest=await wikiApi(wikiApiPath(project,page.id));
+    if(disposed)return;
+    finish();
+    redraw(latest);
+   }catch(error){editor.error.textContent=wikiValidationMessage(error);}
+   finally{busy=false;form.inert=false;}
+  }
+
+  async function save(copy=false){
+   if(busy||(conflict&&!copy))return;
+   editor.error.textContent='';
+   let input,snapshot;
+   try{
+    const value=read();
+    snapshot=JSON.stringify(value);
+    let name=wikiTitle(value.title);
+    if(copy){
+     const suffix=t(' (kopie)');
+     name=name.slice(0,WIKI_LIMITS.title-suffix.length).trimEnd()+suffix;
+    }
+    input={project,title:name,doc:normalizeDoc(value.doc),...(copy?{}:{id:page.id,rev})};
+   }catch(error){editor.error.textContent=wikiValidationMessage(error);return;}
+   busy=true;
+   form.inert=true;
+   try{
+    const saved=await wikiApi(copy?'/api/wiki/pages':'/api/wiki/pages/update',input);
+    if(disposed){if(JSON.stringify(savedDraft(key))===snapshot)storeDraft(key,null);return;}
+    finish();
+    if(copy)location.hash=wikiHref(project,saved.id);
+    else redraw(saved);
+   }catch(error){
+    if(disposed)return;
+    if(error.status===409&&error.current){
+     conflict=error.current;
+     changed();
+     displayConflict();
+     return;
+    }
+    editor.error.textContent=wikiValidationMessage(error);
+   }finally{busy=false;form.inert=false;}
+  }
+
+  const beforeUnload=event=>{if(dirty){event.preventDefault();event.returnValue='';}};
+  const leaveClick=event=>{
+   const link=event.target.closest?.('a[href^="#"]');
+   if(!dirty||!link||link.hash===location.hash||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
+   if(!confirm(t('Opustit stránku? Koncept zůstane v této kartě.'))){event.preventDefault();event.stopImmediatePropagation();}
+  };
+  const keydown=event=>{
+   if(openDialog?.open)return;
+   if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='s'){event.preventDefault();if(!conflict)save();}
+   else if(event.key==='Escape'&&!event.defaultPrevented){event.preventDefault();cancel();}
+  };
+  addEventListener('beforeunload',beforeUnload);
+  document.addEventListener('click',leaveClick,true);
+  document.addEventListener('keydown',keydown);
+  disposeEdit=()=>{
+   if(dirty)changed();
+   disposed=true;
+   editor.stop();
+   removeEventListener('beforeunload',beforeUnload);
+   document.removeEventListener('click',leaveClick,true);
+   document.removeEventListener('keydown',keydown);
+  };
+  displayConflict();
+  editor.focus();
+ }
+
+ load();
+ return root;
+}

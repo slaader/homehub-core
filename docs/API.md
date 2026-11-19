@@ -1004,6 +1004,32 @@ long question a lexical match. Hybrid search explicitly reports its actual mode 
 readiness when embeddings are unavailable or warming; semantic-only never downgrades.
 See [optional provider configuration](configuration.md).
 
+### Project wiki
+
+The project toolbar opens the wiki at `#wiki/<project>`. Signed-in readers can open pages and backlinks.
+Writes use `tickets:write`. A project can have up to 500 pages including Home. Titles are trimmed and
+contain 1–120 characters. Each page has a stable id of `w` and 11 lowercase base32 characters.
+
+| Request | Response |
+|---|---|
+| `GET /api/wiki/<project>` | `{enabled:false}` or `{enabled:true, home, pages:[{id, project, title, rev, updatedAt, updatedBy, links}]}` |
+| `POST /api/wiki/setup` with `{project}` | `201 {created:true, home}` on setup and `200 {created:false, home}` on repeat |
+| `GET /api/wiki/<project>/pages/<id>` | Page including its structured document and provenance |
+| `POST /api/wiki/pages` with `{project, title, doc?}` | `201` page. Omit `doc` to start with an empty page |
+| `POST /api/wiki/pages/update` with `{project, id, rev, title?, doc?}` | `200` page. Supply at least one of `title` and `doc` |
+| `GET /api/wiki/tickets/<ID>/backlinks` | `{pages:[{project, id, title, updatedAt}]}` derived from saved content |
+| `POST /api/wiki/preview` with `{source}` | `200 {token}` for a draft HTML preview. The token expires in 10 minutes and is bound to its author |
+| `GET /api/wiki/frame/<project>/<id>/<block>` | Sandboxed static HTML block |
+| `GET /api/wiki/frame/preview/<token>` | Sandboxed static HTML preview |
+
+The page response carries `{id, project, title, doc, links, rev, createdAt, createdBy, updatedAt,
+updatedBy, history, provenance}`. The server derives `links:{tickets:[…]}` and retains up to 50 metadata
+entries in `history`. A stale update responds `409 WIKI_FAILED` with
+`current:{rev, updatedAt, updatedBy}`. Read the saved page again to obtain the latest revision. Unknown
+projects, pages or preview tokens return `404`. Invalid fields, unsafe hyperlink schemes or ticket
+references outside the project's existing tickets return `400`. Wiki limits return `409`. JSON
+write bodies may be up to 512 KiB. See [the wiki guide](wiki.md) for the document format and other limits.
+
 ### Review
 
 Variants agents propose for a project (HTML mockups, images, 3D models as `.glb`, clips as `.mp4`/`.webm`, audio tracks), decided in `#review`. The full contract is in

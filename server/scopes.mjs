@@ -12,7 +12,7 @@ export const CORE_SCOPES=Object.freeze({
  'read':{label:'Čtení',desc:'Číst přehled, zařízení, inventář, služby, zálohy, modely a paměť. Každý servisní účet ho má.',readOnly:true},
  'inventory:write':{label:'Inventář – zápis',desc:'Zakládat a měnit záznamy inventáře a služeb (s kontrolou otisku a bez tajemství).'},
  'home:settings':{label:'Nastavení přehledu',desc:'Měnit interval čtení Thermo.'},
- 'tickets:write':{label:'Tickety – zápis',desc:'Zakládat a měnit tickety, komentáře, releasy a projekty vývoje.'},
+ 'tickets:write':{label:'Tickety – zápis',desc:'Zakládat a měnit tickety, komentáře, releasy, projekty a jejich wiki.'},
  'review:write':{label:'Review – zápis',desc:'Nahrávat varianty k posouzení (mockupy, rendery) a ukládat rozhodnutí a připomínky.'},
  'security:read':{label:'Bezpečnost – čtení',desc:'Číst inventář SSH klíčů, verze systémů a ochranu zařízení.',readOnly:true,legacy:false},
 

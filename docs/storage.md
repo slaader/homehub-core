@@ -30,7 +30,7 @@ code directory.
 
 | Where | What | Format |
 |---|---|---|
-| `state/hub.db` (+ `-wal`, `-shm`) | Tickets (projects, releases, tickets with comments and history), the review index (sets → rounds → items → feedback, blob metadata), browser sign-in sessions, the full-text search index | SQLite, `node:sqlite` built into Node, no npm package |
+| `state/hub.db` (+ `-wal`, `-shm`) | Tickets (projects, releases, tickets with comments and history), project wiki pages and their summaries, the review index (sets → rounds → items → feedback, blob metadata), browser sign-in sessions, the full-text search index | SQLite, `node:sqlite` built into Node, no npm package |
 | `state/review/blobs/` | Review files (mockups, images, `.glb`), content-addressed by sha256 | files |
 | `state/access.json`, `state/app-tokens.json` | Users and their roles, custom roles, service accounts, API keys, per-account preferences, app tokens (hashes only; `{schemaVersion: 2, tokens}`). Legacy `device-tokens.json` and `device-tokens-audit.jsonl` files are moved to `app-tokens.json` and `app-tokens-audit.jsonl` once, at startup | JSON |
 | `state/agents.json`, `state/agent/` | Push agent keys (hashes only, each bound to one device; `schemaVersion: 2`), and per device (`agent/<device>.json`, `schemaVersion: 2`) the latest copy of each part its agent reported, with the hub's receive time (0600, directory 0700); `agent/history.jsonl`, the agents' trend (one line per device at most every six hours, at most 3000 lines) | JSON / JSONL |
@@ -52,7 +52,7 @@ code directory.
 
 `server/db.mjs` opens one connection per process (WAL mode, `0600`). The stores keep their document model:
 
-- `docs(kind, coll, id, doc)`: one JSON document per ticket, release, project, review set or blob, plus
+- `docs(kind, coll, id, doc)`: one JSON document per ticket, release, project, wiki, wiki page, wiki page summary, review set or blob, plus
   `meta(kind, doc)` for the counters (`revision`, `next`). A write runs the store's validation on the loaded
   document, then saves **only the rows that changed** and their search entries in one transaction. A
   validation error writes nothing. Optimistic `rev` checks and the per-store write queue are unchanged.

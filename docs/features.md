@@ -68,7 +68,7 @@ inventory, and the first write creates it.
   `inventory_update`, `inventory_bulk_upsert` and `inventory_delete`. A change to an existing entry takes the
   hash of what was read. Details in [docs/API.md](API.md).
 
-## Project tracker, review and search
+## Project tracker, wiki, review and search
 
 - **Tracker** (`#projects`, `#items`, `#releases`): projects with a ticket prefix, releases, and tickets with
   comments, attachments, labels and a change history, as a table or a board. A change takes the `rev` of what
@@ -77,6 +77,9 @@ inventory, and the first write creates it.
   each. A screenshot pasted into the description or a comment stays in the text as a chip (`![name]`); under the
   description the files are tiles with a preview, and a click opens one: a picture, a player for audio and
   video, text, or the download.
+- **Project wiki** (`#wiki/<project>`): open the project and set up its editable Home page. Create or rename
+  pages, format text, edit tables, add static HTML and link existing tickets from the project. A ticket shows
+  the wiki pages linking to it. See [docs/wiki.md](wiki.md).
 - **Review** (`#review`): an agent publishes variants (HTML mockups, images, 3D models, video and audio clips) for a person to
   compare side by side, pin comments on and decide; the next round answers the comments.
   [docs/review.md](review.md) has the details.
@@ -306,7 +309,7 @@ Home Hub is meant for a home network. It is not hardened for the open internet: 
   | `inventory:write` | Create and change inventory and service entries |
   | `home:write` | Add, change and remove devices on the overview; publish a device's runtime stack; add and remove LLM runtime endpoints |
   | `home:settings` | The telemetry read interval |
-  | `tickets:write` | Tickets, comments, releases, projects |
+  | `tickets:write` | Tickets, comments, releases, projects and wikis |
   | `review:write` | Publish review sets and store decisions |
   | `software:write` | Read and change the software watch list |
   | `security:read` | SSH key inventory, versions, host protection |
@@ -446,7 +449,7 @@ Home Hub is meant for a home network, not the open internet: keep it on your LAN
   | `inventory:write` | Create and change inventory and service entries |
   | `home:write` | Devices on the overview, their runtime stacks, LLM runtime endpoints |
   | `home:settings` | The telemetry read interval |
-  | `tickets:write` | Tickets, comments, releases, projects |
+  | `tickets:write` | Tickets, comments, releases, projects and wikis |
   | `review:write` | Publish review sets and store decisions |
   | `software:write` | The software watch list |
   | `security:read` | SSH key inventory, versions, host protection |

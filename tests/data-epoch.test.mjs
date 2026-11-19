@@ -16,6 +16,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readPackage} from '../server/version.mjs';
 import {DB_SCHEMA} from '../server/db.mjs';
+import {WIKI_SCHEMA} from '../server/wiki-store.mjs';
 import {INTEGRATIONS_SCHEMA,INTEGRATION_SECRETS_SCHEMA} from '../server/integrations.mjs';
 import {WATCH_SCHEMA} from '../server/software-watch.mjs';
 import {SYSTEMS_SCHEMA} from '../server/systems-data.mjs';
@@ -27,8 +28,8 @@ import {APP_TOKENS_SCHEMA} from '../server/app-tokens.mjs';
 import {RUNTIMES_CONFIG_SCHEMA} from '../server/runtimes-data.mjs';
 import {INVENTORY_SCHEMA} from '../public/inventory-rules.js';
 
-const TABLE={epoch:5,schemas:{trustRequirement:1,releasePackage:1,packageReceipt:1,releaseTrust:1,updateJournal:2,updateBackup:1,platformSearch:1,ticketSearch:1,db:1,integrations:1,integrationSecrets:2,watch:1,systems:2,security:2,upstreamCache:2,updates:2,agents:2,agentReports:2,securityProbes:2,appTokens:2,runtimesConfig:2,inventory:2}};
-const NOW={trustRequirement:TRUST_REQUIREMENT_SCHEMA,releasePackage:PACKAGE_SCHEMA,packageReceipt:RECEIPT_SCHEMA,releaseTrust:TRUST_SCHEMA,updateJournal:JOURNAL_SCHEMA,updateBackup:BACKUP_SCHEMA,platformSearch:PLATFORM_SEARCH_SCHEMA,ticketSearch:TICKET_SEARCH_SCHEMA,db:DB_SCHEMA,integrations:INTEGRATIONS_SCHEMA,integrationSecrets:INTEGRATION_SECRETS_SCHEMA,watch:WATCH_SCHEMA,systems:SYSTEMS_SCHEMA,security:SECURITY_SCHEMA,upstreamCache:UPSTREAM_CACHE_VERSION,updates:UPDATES_SCHEMA,agents:AGENTS_SCHEMA,agentReports:AGENT_REPORTS_SCHEMA,securityProbes:SECURITY_PROBES_SCHEMA,appTokens:APP_TOKENS_SCHEMA,runtimesConfig:RUNTIMES_CONFIG_SCHEMA,inventory:INVENTORY_SCHEMA};
+const TABLE={epoch:6,schemas:{trustRequirement:1,releasePackage:1,packageReceipt:1,releaseTrust:1,updateJournal:2,updateBackup:1,platformSearch:1,ticketSearch:1,db:1,wiki:1,integrations:1,integrationSecrets:2,watch:1,systems:2,security:2,upstreamCache:2,updates:2,agents:2,agentReports:2,securityProbes:2,appTokens:2,runtimesConfig:2,inventory:2}};
+const NOW={trustRequirement:TRUST_REQUIREMENT_SCHEMA,releasePackage:PACKAGE_SCHEMA,packageReceipt:RECEIPT_SCHEMA,releaseTrust:TRUST_SCHEMA,updateJournal:JOURNAL_SCHEMA,updateBackup:BACKUP_SCHEMA,platformSearch:PLATFORM_SEARCH_SCHEMA,ticketSearch:TICKET_SEARCH_SCHEMA,db:DB_SCHEMA,wiki:WIKI_SCHEMA,integrations:INTEGRATIONS_SCHEMA,integrationSecrets:INTEGRATION_SECRETS_SCHEMA,watch:WATCH_SCHEMA,systems:SYSTEMS_SCHEMA,security:SECURITY_SCHEMA,upstreamCache:UPSTREAM_CACHE_VERSION,updates:UPDATES_SCHEMA,agents:AGENTS_SCHEMA,agentReports:AGENT_REPORTS_SCHEMA,securityProbes:SECURITY_PROBES_SCHEMA,appTokens:APP_TOKENS_SCHEMA,runtimesConfig:RUNTIMES_CONFIG_SCHEMA,inventory:INVENTORY_SCHEMA};
 
 test('a changed on-disk format raises the data epoch',()=>{
  const epoch=readPackage().dataEpoch;

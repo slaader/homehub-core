@@ -652,3 +652,36 @@ test('tickets: summary view invalidates for imports and another SQLite connectio
   assert.equal((await s.list()).tickets[0].title,'External');
  }finally{other.close();}
 });
+
+test('project tracker opens Home in edit mode after setup and shows readers only the wiki link',async t=>{
+ dom(t);
+ const {s}=await store(t),data=await s.list(),home='wabcdefghijk';
+ let enabled=false,posts=0;
+ globalThis.fetch=async(url,options={})=>{
+  if(url==='/api/tickets?project=home-hub')return Response.json(data);
+  if(url==='/api/wiki/home-hub')return Response.json({enabled,home});
+  assert.equal(url,'/api/wiki/setup');
+  assert.deepEqual(JSON.parse(options.body),{project:'home-hub'});
+  posts++;
+  enabled=true;
+  return Response.json({created:false,home});
+ };
+ const reader={canWrite:false,scopes:['read']},editor={canWrite:true,scopes:['read','tickets:write']};
+ const showProject=async me=>{
+  const root=trackerView(me,'projects','home-hub');
+  document.body.replaceChildren(root);
+  await flush();
+  return root;
+ };
+ const initial=await showProject(reader);
+ assert.equal(buttonText(initial,'Set up wiki'),undefined);
+ const write=await showProject(editor),setup=buttonText(write,'Set up wiki');
+ assert.ok(setup);
+ await setup.listeners.click({currentTarget:setup});
+ assert.equal(posts,1);
+ assert.equal(location.hash,'#wiki/home-hub/'+home+'?edit');
+
+ const reopened=await showProject(reader);
+ assert.equal(buttonText(reopened,'Set up wiki'),undefined);
+ assert.ok(nodes(reopened,node=>node.tag==='a'&&node.attrs.href==='#wiki/home-hub').length);
+});

@@ -6,6 +6,21 @@ Home Hub core, newest first. One section per release; the section is the text of
 number promises is in `AGENTS.md` → Versioning. The top section is the release being prepared, `## Unreleased`
 until the release gives it its number: a change to the public surface adds its line there in the same commit.
 
+## Unreleased
+
+### Added
+
+- **Project wiki.** Set up an editable Home page from a project. Write and rename pages with rich text, editable
+  tables, static HTML blocks and links to existing project tickets. Ticket details show the pages that link to
+  them. A save checks its revision and keeps the draft in the editor if another writer saved first.
+  See [docs/wiki.md](docs/wiki.md) and [the HTTP API](docs/API.md#project-wiki).
+
+### Data
+
+- Data epoch 6 adds the wiki collection to `hub.db` using the existing SQLite tables. Home Hub 1.0.x ignores
+  these records. Use the pre-update backup when rolling back to restore the previous state and remove the
+  wiki collection.
+
 ## 1.0.0
 
 The first release of Home Hub core: one hub for a household's devices, services, software and work, with an HTTP

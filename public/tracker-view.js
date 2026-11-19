@@ -19,6 +19,7 @@ import {FILE_MAX,FILES_MAX,fileToken,attachmentName,savedFile,pendingFile,releas
 import {timeZone} from './site.js';
 import {t,tp,locale} from './i18n.js';
 import {pageHeader,emptyState,provenanceBadge} from './ui.js';
+import {canWriteWiki,editWikiHref,wikiApi,wikiApiPath,wikiHref} from './wiki-content.js';
 
 // Label lists are functions: t() has to run when the page is drawn, in the language active then.
 const TYPES=()=>[['bug',t('Chyba'),'crit'],['feature',t('Funkce'),'ok'],['task',t('Úkol'),'']];
@@ -131,7 +132,7 @@ const keysHint=(...keys)=>el('p',{class:'tk-keys','aria-label':t('Klávesové zk
 export const TRACKER_PAGES=Object.freeze(['projects','items','releases']);
 export function trackerView(me,page,sub){
  const wrap=el('section',{class:'sec tk'},el('p',{class:'sec-dim',role:'status'},t('Načítám…')));
- const ctx={canWrite:me?.canWrite===true,user:typeof me?.username==='string'?me.username:'',id:sub};
+ const ctx={canWrite:me?.canWrite===true,canWriteWiki:canWriteWiki(me),user:typeof me?.username==='string'?me.username:'',id:sub};
  const draw=page==='projects'?(sub?projectPage:projectsPage):page==='releases'?releasesPage:sub?ticketPage:listPage;
  // A failed load says what failed and offers the way out: try again, or back to the list.
  const run=()=>draw(wrap,ctx).catch(e=>show(wrap,emptyState({icon:'⚠',
@@ -402,7 +403,14 @@ async function ticketPage(wrap,ctx){
  // ended after its page was left) is said here, once.
  // It waits for a page of that item that is on the screen: a view the user already left does not use it up.
  const [tk,meta,people,reviews]=result,mine=wrap.isConnected&&prefs.notices.has(tk.id),notice=mine?{notice:prefs.notices.get(tk.id),noticeError:true}:{};if(mine)prefs.notices.delete(tk.id);
- renderTicket(wrap,{...ctx,meta,reviews:Array.isArray(reviews?.sets)?reviews:null,people:peopleNames(people)},tk,{fields:{},comment:'',...notice});
+ const wikiLinks=el('section',{class:'acc-card',hidden:''});
+ renderTicket(wrap,{...ctx,meta,wikiLinks,reviews:Array.isArray(reviews?.sets)?reviews:null,people:peopleNames(people)},tk,{fields:{},comment:'',...notice});
+ wikiApi('/api/wiki/tickets/'+encodeURIComponent(tk.id)+'/backlinks').then(data=>{
+  if(!wrap.isConnected||!data.pages?.length)return;
+  wikiLinks.replaceChildren(el('h3',{},'Wiki'),...data.pages.map(page=>
+   el('p',{},el('a',{href:wikiHref(page.project,page.id)},page.title))));
+  wikiLinks.hidden=false;
+ }).catch(()=>{});
 }
 // Unsaved input on a ticket page: the comment box and every edit-form field that differs from what was rendered,
 // whether the edit form is open, and which field the keyboard is in (and where). A write re-renders from
@@ -561,7 +569,7 @@ function renderTicket(wrap,ctx,tk,keep){
    el('div',{class:'tk-quick'},quick)),
   msg,
   el('div',{class:'tk-detail'},
-   el('div',{class:'acc-stack'},main,el('section',{class:'acc-card'},el('h3',{},'Review'+(ctx.reviews?' ('+ctx.reviews.sets.length+')':'')),ctx.reviews?ctx.reviews.sets.map(s=>el('p',{},el('a',{href:'#review/'+s.id},s.id+' · '+s.title),s.feedbackPending?el('span',{class:'sec-pill warn'},'Review feedback available'):null)):el('p',{},'Review links could not be loaded. Reopen this ticket to retry.'),canWrite?el('button',{type:'button',class:'acc-btn',onclick:()=>reviewDialog({project:tk.project,ticket:tk})},'Request review · agent publishing instructions'):el('p',{},'Publishing requires review write access.')),comments,timeline(tk)),
+   el('div',{class:'acc-stack'},main,el('section',{class:'acc-card'},el('h3',{},'Review'+(ctx.reviews?' ('+ctx.reviews.sets.length+')':'')),ctx.reviews?ctx.reviews.sets.map(s=>el('p',{},el('a',{href:'#review/'+s.id},s.id+' · '+s.title),s.feedbackPending?el('span',{class:'sec-pill warn'},'Review feedback available'):null)):el('p',{},'Review links could not be loaded. Reopen this ticket to retry.'),canWrite?el('button',{type:'button',class:'acc-btn',onclick:()=>reviewDialog({project:tk.project,ticket:tk})},'Request review · agent publishing instructions'):el('p',{},'Publishing requires review write access.')),ctx.wikiLinks,comments,timeline(tk)),
    el('div',{class:'acc-stack'},
     el('section',{class:'acc-card'},el('h3',{},t('Údaje')),el('dl',{class:'acc-dl'},
      fact('Release',tk.release?el('a',{class:'sys-link',href:'#releases',onclick:()=>{filters.project=tk.project;}},tk.release):'—'),fact(t('Řeší'),el('span',{class:'tk-fact-row'},tk.assignee?[el('span',{class:'tk-avatar','aria-hidden':'true'},initials(tk.assignee)),tk.assignee]:'—',assignMe)),fact(t('Nahlásil'),tk.reporter||'—'),
@@ -742,16 +750,32 @@ async function projectsPage(wrap,ctx){
 }
 // One project: health, activity and next release on top, then a board of its items.
 async function projectPage(wrap,ctx){
- const {canWrite,id}=ctx,data=await load(wrap,api('/api/tickets?project='+encodeURIComponent(id)).catch(e=>{if(e.status===400)e.status=404;throw e;}));if(!data)return;
+ const {canWrite,id}=ctx,encoded=encodeURIComponent(id);
+ const result=await load(wrap,Promise.all([
+  api('/api/tickets?project='+encoded).catch(e=>{if(e.status===400)e.status=404;throw e;}),
+  wikiApi(wikiApiPath(encoded)).catch(()=>null),
+ ]));if(!result)return;
+ const [data,wiki]=result;
  const p=data.projects.find(x=>x.id===id);
  if(!p){const e=new Error(t('Projekt „{id}“ v trackeru není.',{id}));e.status=404;throw e;}
  const msg=status(),redraw=()=>projectPage(wrap,ctx).catch(e=>fail(msg,e));
  const mine=data.tickets.filter(x=>x.project===id);
  const to=hash=>()=>{Object.assign(filters,defaults,{project:id});location.hash=hash;};
  const add=canWrite?{label:t('+ Nová položka'),primary:true,onclick:()=>newTicket(data.projects,id,ctx)}:null;
+ const wikiAction=wiki?.enabled===true?{label:'Wiki →',href:wikiHref(id)}:
+  wiki?.enabled===false&&ctx.canWriteWiki?{label:t('Založit wiki'),onclick:async event=>{
+   const button=event.currentTarget;
+   if(button.disabled)return;
+   button.disabled=true;
+   msg.textContent='';
+   try{
+    const {home}=await wikiApi('/api/wiki/setup',{project:id});
+    if(button.isConnected)location.hash=editWikiHref(id,home);
+   }catch(error){if(button.isConnected){fail(msg,error);button.disabled=false;}}
+  }}:null;
  show(wrap,
   el('nav',{class:'tk-crumbs','aria-label':t('Drobečková navigace')},el('a',{href:'#projects'},t('Projekty')),el('span',{class:'tk-dim'},'/'),el('b',{},p.name),el('span',{class:'sec-pill'},p.key),p.type?el('span',{class:'sec-pill'},label(PROJECT_TYPES(),p.type)):null),
-  pageHeader({title:p.name,lead:p.description||undefined,provenance:data.provenance,actions:[canWrite?{label:t('Upravit'),onclick:()=>editProject(p,redraw)}:null,{label:`${t('Tabulka')} →`,onclick:to('#items')},{label:`${t('Releasy')} →`,onclick:to('#releases')},{label:'Review →',href:'#review/'+id},add].filter(Boolean)}),
+  pageHeader({title:p.name,lead:p.description||undefined,provenance:data.provenance,actions:[canWrite?{label:t('Upravit'),onclick:()=>editProject(p,redraw)}:null,{label:`${t('Tabulka')} →`,onclick:to('#items')},{label:`${t('Releasy')} →`,onclick:to('#releases')},{label:'Review →',href:'#review/'+id},wikiAction,add].filter(Boolean)}),
   msg,
   mine.length?el('div',{class:'acc-card tk-hero-row'},health(mine),activity(mine,4),nextBlock(data.releases,id)):null,
   mine.length?boardView(mine,{canWrite,msg,redraw,projects:data.projects,showProject:false})
