@@ -93,3 +93,12 @@ test('space checks reserve the backup and one payload per inode on the destinati
  assert.ok(result.filesystems[0].restoreBytes<71*1024**2);
  assert.ok(result.filesystems[0].backupBytes>70*1024**2);
 });
+
+test('read-only preflight reports a corrupt journal alongside coverage blockers',async t=>{
+ const f=fixture(t),journal=path.join(f.home,'update-journal.json');
+ writeFileSync(journal,'{invalid');
+ const before=f.snapshot(),report=await f.run(['preflight','--read-only'],1);
+ assert.equal(report.counts.JOURNAL_UNREADABLE,1);
+ assert.equal(report.counts.HARDLINK_UNACCOUNTED,1);
+ assert.deepEqual(f.snapshot(),before);
+});

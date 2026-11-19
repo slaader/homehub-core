@@ -329,7 +329,7 @@ cause a safe refusal instead of a forced checkout.
 
 New transactions use journal schema 3. The updaters shipped in v1.0.0 and v1.1.0 refuse that journal
 before stopping the service, changing the checkout or restoring files. Use the retained driver path printed by
-`apply` for `status`, `rollback` and recovery. Supply the original `--root`, `--home` and any path overrides,
+`apply` for `status`, `rollback` and recovery. After rolling back to v1.0.0 or v1.1.0, continue using that driver for subsequent backups and updates while the schema-3 journal is present. Supply the original `--root`, `--home` and any path overrides,
 especially when the installed checkout has its data inside it.
 
 ```sh

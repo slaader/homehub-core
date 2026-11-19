@@ -112,7 +112,12 @@ function backupDiagnostics(inst,args,out){
  const report=Object.fromEntries(['rootStats','totals','links','filesystems','blockers','warnings','counts'].map(k=>[k,scanned[k]]));
  if(scanned.policy)report.policy={file:scanned.policy.file,budget:scanned.policy.budget,exactFiles:scanned.policy.coverFiles.length};
  if(args.flags.has('read-only')){
-  const journal=readJournal(inst);
+  let journal;
+  try{journal=readJournal(inst);}
+  catch(error){
+   report.blockers.push({code:'JOURNAL_UNREADABLE',message:error.message});
+   report.counts.JOURNAL_UNREADABLE=1;
+  }
   report.journal=journal?.step??null;
   if(journal&&!['done','rolled-back','aborted'].includes(journal.step)){
    report.blockers.push({code:'UNFINISHED_UPDATE',message:`Recover transaction ${journal.id} before applying another update`});
@@ -130,12 +135,13 @@ export async function main(argv,{env=process.env,ctx=null,out=line=>console.log(
  // A lost session or Ctrl-C must not leave the hub stopped: the signal is noted and the next step puts things back.
  let signal=null;
  const note=name=>{signal=name;};
- const signals=['SIGINT','SIGTERM','SIGHUP'];
+ const diagnostic=args.command==='backup-diagnose'||args.flags.has('read-only');
+ const signals=diagnostic?[]:['SIGINT','SIGTERM','SIGHUP'];
  if(!ctx)for(const name of signals)process.on(name,note);
  const world=ctx??realContext({log:out,checkpoint:()=>{if(signal)throw Object.assign(new Error(`interrupted (${signal})`),{interrupted:true});}});
  try{
   const inst=instanceFor(args,env);
-  if(args.command==='backup-diagnose'||args.flags.has('read-only'))return backupDiagnostics(inst,args,out);
+  if(diagnostic)return backupDiagnostics(inst,args,out);
   const request={core:args.tag,plugins:args.plugins,addPluginSources:args.addPluginSources,siteConfig:args.values['site-config'],fetch:!args.flags.has('no-fetch'),skipTests:args.flags.has('skip-tests'),allowUnsigned:args.flags.has('allow-unsigned'),package:args.values.package,manifestDigest:args.values['manifest-sha256'],migrateFromGit:args.flags.has('migrate-from-git'),trust:args.values.trust,force:args.flags.has('force')};
   const repository=existsSync(path.join(inst.root,'package.json'))?JSON.parse(readFileSync(path.join(inst.root,'package.json'),'utf8')).homeHub?.updates?.repo:null;
   const trustFile=['verify-package','download','trust-import'].includes(args.command)?selectTrustFile({home:inst.home,explicit:args.values.trust})??(args.command==='trust-import'?inst.trustFile:null):args.values.trust??inst.trustFile;
