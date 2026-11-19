@@ -210,7 +210,10 @@ test('wiki MCP authors a 100-row inventory with streamed media, atomic moves and
  const results=await Promise.all(['First edit','Second edit'].map(title=>h.post('/api/wiki/pages/update',{project,id:units.pageId,rev,title,doc:doc(rowGroup)},writer.headers)));
  assert.deepEqual(results.map(res=>res.status).sort(),[200,409]);
  assert.equal((await get(h,pngAsset.url,reader.headers)).status,200);
- await rpc(h,writer,'page_save',{project,pageId:duplicate.pageId,rev:duplicate.rev,doc:doc()});
+ const emptied=await rpc(h,writer,'page_save',{project,pageId:duplicate.pageId,rev:duplicate.rev,doc:doc(rowGroup)});
+ const target={project,pageId:duplicate.pageId,rev:emptied.rev};
+ await rpc(h,another,'attachment_add',{...target,groupId:'downloads',assetId:pngAsset.id,requestId:'reattach'},'invalid-asset');
+ await rpc(h,another,'page_save',{...target,doc:doc({...rowGroup,attachments:[{assetId:pngAsset.id}]})},'invalid-asset');
  assert.equal((await get(h,pngAsset.url,reader.headers)).status,404);
 });
 

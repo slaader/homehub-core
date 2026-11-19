@@ -97,7 +97,7 @@ function updateAssets(data,doc,previous,actor){
  const at=Date.now();
  for(const id of after){
   const asset=assets.get(id);
-  if(!asset||!asset.published&&asset.owner!==actor)fail('invalid-asset');
+  if(!asset||asset.references===0&&asset.owner!==actor)fail('invalid-asset');
   if(before.has(id))continue;
   asset.references++;
   asset.published=true;
@@ -279,7 +279,7 @@ export function createWikiStore(db,tickets){
    const page=data.pages[0];
    checkRevision(page,input.rev);
    const asset=data.assets[0];
-   if(!asset||!asset.published&&asset.owner!==actor)fail('invalid-asset');
+   if(!asset||asset.references===0&&asset.owner!==actor)fail('invalid-asset');
    const previous=wikiAssetIds(page.doc).includes(ref.assetId);
    let target;
    if(groupId!==undefined)target=page.doc.blocks.find(block=>block.t==='attachments'&&block.id===groupId);
