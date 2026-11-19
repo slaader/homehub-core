@@ -61,6 +61,13 @@ test('wiki syncs staging and blob directory entries on publication and retries',
  assert.deepEqual(paths.splice(0),[blobs,root,state]);
  assert.deepEqual(await readFile((await assets.media(project,assetId,owner)).file),bytes);
  await assert.rejects(stat(path.join(uploads,uploadId)),{code:'ENOENT'});
+ const partial=(await begin(bytes)).uploadId;
+ failAt=root;
+ await assert.rejects(assets.chunk(partial,0,bytes.subarray(0,3),owner),/directory sync failed/);
+ await assert.rejects(assets.finish(partial,owner),/directory sync failed/);
+ await assert.rejects(assets.chunk(partial,4,bytes.subarray(4),owner),/directory sync failed/);
+ failAt=undefined;
+ await assert.rejects(assets.finish(partial,owner),{message:'upload-offset',nextOffset:3});
  const empty=await stage(Buffer.alloc(0));
  const finished=await assets.finish(empty,owner);
  assert.equal((await stat((await assets.media(project,finished.assetId,owner)).file)).size,0);

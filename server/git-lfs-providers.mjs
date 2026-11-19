@@ -177,7 +177,9 @@ async function importCommit(get,reference,github){
 async function importTreeEntry(get,tree,name,github){
  for(let page=1;;page++){
   const data=await get('/trees/'+tree+(github?'':`?page=${page}&per_page=1000`),IMPORT_TREE_BYTES);
-  if(data?.sha!==tree||!Array.isArray(data.tree)&&!(data.tree==null&&data.total_count===0))throw new ProviderError('bad-response');
+  if(data?.sha!==tree)throw new ProviderError('bad-response');
+  if(!github&&data.tree===null&&Number.isSafeInteger(data.total_count)&&data.total_count>=0&&(page>1||data.total_count===0))throw new ProviderError('not-found');
+  if(!Array.isArray(data.tree))throw new ProviderError('bad-response');
   const entry=data.tree?.find(entry=>entry?.path===name);
   if(entry){
    if(!validSha(entry.sha))throw new ProviderError('bad-response');

@@ -131,8 +131,9 @@ export async function gitHost(t,{kind='gitea',token='test-token-123456',login='a
      });
      if(kind==='github')return json(res,200,{sha:name,tree:entries,truncated:false});
      const page=Number(url.searchParams.get('page'))||1,perPage=Math.min(maxPage,Number(url.searchParams.get('per_page'))||1000);
-     return json(res,200,{sha:name,tree:entries.slice((page-1)*perPage,page*perPage),
-      total_count:entries.length,truncated:page*perPage<entries.length});
+     const selected=entries.slice((page-1)*perPage,page*perPage);
+     return json(res,200,{sha:name,tree:selected.length?selected:null,
+      total_count:entries.length,truncated:selected.length===perPage});
     }else if(route==='blobs'){
      const bytes=gitBytes(dir,'cat-file','blob',name);
      return json(res,200,{sha:name,size:bytes.length,encoding:'base64',content:bytes.toString('base64')});

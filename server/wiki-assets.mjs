@@ -131,11 +131,11 @@ function checkUpload(upload,actor,now){
  return upload;
 }
 
-function writeChunk(file,offset,bytes,size){
+function writeChunk(file,offset,bytes,size,offsetError){
  const have=existsSize(file);
  const end=offset+bytes.length;
  if(end>size)fail('too-large');
- if(offset>have||offset<have&&end>have)throw Object.assign(new Error('upload-offset'),{nextOffset:have});
+ if(offset>have||offset<have&&end>have)throw offsetError(have);
  const fd=openPart(file);
  try{
   if(offset<have){
@@ -146,7 +146,7 @@ function writeChunk(file,offset,bytes,size){
     if(!next)fail('upload-offset');
     count+=next;
    }
-   if(!old.equals(bytes))throw Object.assign(new Error('upload-offset'),{nextOffset:have});
+   if(!old.equals(bytes))throw offsetError(have);
    fsyncSync(fd);
    return have;
   }
@@ -218,6 +218,11 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
   return checkUpload(await store.get('uploads',id),actor,now());
  }
 
+ function offsetError(have){
+  if(have)syncPublication(parts);
+  return Object.assign(new Error('upload-offset'),{nextOffset:have});
+ }
+
  async function status(id,actor){
   const upload=await getUpload(id,actor);
   if(upload.finished)return uploadView(upload,upload.size);
@@ -245,7 +250,7 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
    }
    folder(root);
    folder(parts);
-   const nextOffset=writeChunk(part(id),offset,bytes,upload.size);
+   const nextOffset=writeChunk(part(id),offset,bytes,upload.size,offsetError);
    syncPublication(parts);
    return uploadView(upload,nextOffset);
   });
@@ -261,7 +266,7 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
   }
   if(upload.finished)return uploadView(upload,upload.size);
   const file=part(id),have=existsSize(file);
-  if(have!==upload.size)throw Object.assign(new Error('upload-offset'),{nextOffset:have});
+  if(have!==upload.size)throw offsetError(have);
   try{await verify(file,upload);}
   catch(error){
    const current=await getUpload(id,actor);
