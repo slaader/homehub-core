@@ -314,7 +314,14 @@ backup coverage, and runs the target tests and startup check. Fetching reads Git
 checkout's configured remote. An offline install can fetch the approved tag into its checkout ahead of time,
 compare the tag object to `TAG_OBJECT`, and pass `--no-fetch`. Keep the retained driver path printed by `apply`
 for later rollback. The disposable rehearsal in `tests/large/update-stock-sockets.mjs` uses the real stock tag,
-a locally signed candidate, the hub server and listening UNIX sockets.
+a locally signed candidate, the hub server and listening UNIX sockets. Run it with no options to create that
+candidate. Add `--aliases` to exercise review and enrollment of an external hard link. To rehearse the exact
+signed release already present in the repository, supply the authenticated release identifiers instead.
+
+```sh
+node tests/large/update-stock-sockets.mjs --tag "$TARGET_TAG" --tag-object "$TAG_OBJECT" \
+  --public-key "$PUBLISHER_PUBLIC_KEY" --fingerprint "$PUBLISHER_FINGERPRINT"
+```
 
 Run an **already trusted driver**, independently verified and retained through the rollback window. Downloading
 an updater and running it to verify its own package does not establish trust. Git and package transactions retain the executable driver under `<home>/update/drivers/<tree digest>/` (or

@@ -28,7 +28,8 @@ export function fileHash(file,expectedBytes=null){
  return h.digest('hex');
 }
 export function backupRootSummary(roots){
- const names=roots.filter(r=>r.role!=='exact-file').map(r=>r.name),aliases=roots.length-names.length;
+ const names=roots.filter(r=>r.role!=='exact-file'&&!r.runtimeSocket).map(r=>r.name);
+ const aliases=roots.filter(r=>r.role==='exact-file').length;
  return [...names,...(aliases?[`${aliases} exact alias paths`]:[])].join(', ');
 }
 export function backupPlan(inst,options){
@@ -306,16 +307,20 @@ async function verifyStages(backup,integrity,progress,socketRestore){
  const stageBases=new Map(progress.map(p=>[p.id,p.staged]));
  const units=activeRestoreUnits(socketRestore,progress);
  const locations=new Map(units.map(p=>[p.live,restoreLocation(p)]));
+ const awaitingPayload=new Set(units.filter(p=>p.existed).map(p=>p.live));
+ const anchorPaths=new Set(socketRestore?.anchors.map(a=>a.live));
  const dirs=[],leaders=new Map(),payloadRoots=new Set();
  const finished=units.every(p=>p.status==='installed');
- const retained=new Set(finished?socketRestore?.anchors.map(a=>a.live):[]);
+ const retained=finished?anchorPaths:new Set();
  const locate=(e,r)=>{
   const live=entryPath(e,r,r.canonical);
-  if(retained.has(live))return live;
+  if(anchorPaths.has(live))return retained.has(live)?live:entryPath(e,r,stageBases.get(r.id));
+  awaitingPayload.delete(live);
   for(let p=live;within(p,r.canonical);p=path.dirname(p)){
    if(locations.has(p))return path.join(locations.get(p),path.relative(p,live));
+   if(anchorPaths.has(p))break;
   }
-  return entryPath(e,r,stageBases.get(r.id));
+  throw new Error(`Archive entry has no journalled restore unit: ${live}`);
  };
  const verify=(e,r,type)=>{
   const file=locate(e,r);
@@ -339,6 +344,7 @@ async function verifyStages(backup,integrity,progress,socketRestore){
    if(inode(s)!==leaders.get(e.target))throw new Error(`destination staging hard-link target mismatch: ${file}`);
   }
  });
+ if(awaitingPayload.size)throw new Error('restore unit has no matching archive entry');
  // An anchored, live-only directory has no payload or staging tree.
  for(const p of progress)if(!payloadRoots.has(p.id)&&exists(p.staged))throw new Error('unexpected staged root');
 }

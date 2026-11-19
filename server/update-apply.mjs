@@ -327,9 +327,21 @@ export const makeArchive=(inst,ctx,name,options)=>createBackup(inst,ctx,name,opt
 export const restoreArchive=(inst,ctx,backup,journal,assessed)=>restoreBackup(inst,ctx,backup,journal,assessed);
 function pruneArchives(inst,ctx,keepFile){
  try{
-  const old=readdirSync(inst.backups).filter(n=>/^pre-.*\.tgz$/.test(n)).map(n=>({file:path.join(inst.backups,n),at:statSync(path.join(inst.backups,n)).mtimeMs})).sort((a,b)=>b.at-a.at).slice(inst.keep).filter(a=>a.file!==keepFile);
+  const regular=file=>{
+   try{const st=lstatSync(file);return st.isFile()?st:null;}catch(e){if(e.code==='ENOENT')return null;throw e;}
+  };
+  const old=readdirSync(inst.backups).filter(n=>/^pre-.*\.tgz$/.test(n)).flatMap(n=>{
+   const file=path.join(inst.backups,n),st=regular(file);
+   return st?[{file,at:st.mtimeMs}]:[];
+  }).sort((a,b)=>b.at-a.at).slice(inst.keep).filter(a=>a.file!==keepFile);
   const active=readJournal(inst);
-  for(const a of old){if(active?.backup?.file===a.file)continue;for(const suffix of ['.manifest.json','.manifest.jsonl','.integrity.json'])rmSync(a.file+suffix,{force:true});rmSync(a.file,{force:true});for(const key of ['site','instance'])rmSync(a.file+`.${key}.json`,{force:true});ctx.log(`  removed the old archive ${a.file}`);}
+  for(const a of old){
+   if(active?.backup?.file===a.file||!regular(a.file))continue;
+   for(const suffix of ['.manifest.json','.manifest.jsonl','.integrity.json','.site.json','.instance.json'])
+    if(regular(a.file+suffix))rmSync(a.file+suffix);
+   rmSync(a.file);
+   ctx.log(`  removed the old archive ${a.file}`);
+  }
  }catch{}
 }
 
