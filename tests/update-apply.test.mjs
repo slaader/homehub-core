@@ -498,7 +498,7 @@ test('legacy to the current format saves original site bytes and restores them o
   assert.equal(statSync(w.file).mode&0o777,0o640);
   assert.deepEqual(JSON.parse(readFileSync(w.file,'utf8')).devices,[{id:'alpha'}]);
   assert.deepEqual(w.svc.calls,['stop','start 2.0.0']);
-  if(home){const saved=execFileSync('tar',['-xOf',journal.backup.file,journal.backup.entries.find(e=>e.name==='config').id+'/site.json'],{encoding:'utf8'});assert.equal(saved,w.original,'the archive predates conversion');}
+  if(home){const saved=execFileSync('tar',['-xOf',journal.backup.file,journal.backup.entries.find(e=>e.name==='config').id+'/site.json'],{encoding:'utf8'});assert.equal(saved,w.original,'the archive predates conversion');await rm(journal.site.backup);}
   else assert.ok(!tarList(journal.backup.file).some(n=>n.endsWith('/site.json')),'the site sidecar covers paths outside the ordinary archive');
   const {journal:back}=await rollback(inst,w.ctx,{yes:true});
   assert.equal(back.site.status,'restored');assert.equal(w.svc.running,true);

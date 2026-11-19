@@ -46,7 +46,7 @@ import {packageReceipt} from './build-info.mjs';
 import {within,syncDirectory} from './release-trust.mjs';
 import {identityMismatch,observeReadiness,healthSample} from './update-readiness.mjs';
 import {contentFingerprint,pluginSourceFingerprint} from './runtime-identity.mjs';
-import {backupPlan,createBackup,restoreBackup,assessRestore,backupRootSummary} from './update-backup.mjs';
+import {backupPlan,createBackup,restoreBackup,assessRestore,recheckRestore,backupRootSummary} from './update-backup.mjs';
 import {UpdateError,RollbackFailed} from './update-errors.mjs';
 import {refuseSocketReplacement} from './restore-sockets.mjs';
 import {retainDriver,checkRetainedDriver} from './update-driver.mjs';
@@ -102,14 +102,28 @@ function checkSiteUnchanged(site){
  return bytes;
 }
 const replaceSite=(file,bytes,mode)=>durableWrite(file,bytes,mode);
+const currentSiteMatches=site=>hashOf(siteBytes(site.file))===site.baseHash&&(statSync(site.file).mode&0o777)===site.mode;
+function verifyConfigurationRecovery(journal,assessed){
+ for(const key of ['site','instance']){
+  const site=journal[key];
+  if(!site||!['applying','applied'].includes(site.status)||site.baseHash===null)continue;
+  if(assessed?.restorableSettings?.has(site.file))continue;
+  if(assessed?.manifest?.files?.some(e=>{
+   const r=assessed.manifest.roots.find(r=>e.path===r.id||e.path.startsWith(r.id+'/'));
+   return r&&path.join(r.canonical,e.path.slice(r.id.length+1))===site.file&&e.sha256===site.baseHash&&e.mode===site.mode;
+  }))continue;
+  if(!assessed&&currentSiteMatches(site))continue;
+  if(hashOf(siteBytes(site.backup))!==site.baseHash)throw new Error(`the original ${key} configuration is missing or changed: ${site.backup}`);
+ }
+}
 function restoreSite(inst,journal,key='site'){
  const site=journal[key];
  if(!site||!['applying','applied'].includes(site.status))return;
  if(site.baseHash===null)rmSync(site.file,{force:true});
- else{
+ else if(!currentSiteMatches(site)){
   const bytes=siteBytes(site.backup);
   if(bytes===null||hashOf(bytes)!==site.baseHash)throw new Error(`the original ${key} configuration is missing or changed: ${site.backup}`);
-  if(!journal.restored||hashOf(siteBytes(site.file))!==site.baseHash||(statSync(site.file).mode&0o777)!==site.mode)replaceSite(site.file,bytes,site.mode);
+  replaceSite(site.file,bytes,site.mode);
  }
  site.status='restored';writeJournal(inst,journal);
 }
@@ -671,6 +685,7 @@ async function undo(inst,ctx,journal){
    if(!journal.backup)throw new Error('the data epoch rose and the new version was started, but the journal names no archive');
    assessed=await assessRestore(inst,journal.backup,journal);
   }
+  verifyConfigurationRecovery(journal,assessed);
  }catch(e){throw new UpdateError(`Rollback assessment refused before stopping the service: ${e.message}\n${pathsLine(inst,journal)}`);}
  const switched=!['stopping','backup','backup-verified'].includes(journal.undoFrom??journal.step);
  if(journal.step!=='rolling-back'&&journal.step!=='rollback-failed')journal.undoFrom=journal.step;
@@ -684,6 +699,8 @@ async function undo(inst,ctx,journal){
   if(untouched)ctx.log('  the hub still runs as it did; nothing was changed. Check the service\'s stop command before trying again.');
   if(!untouched){
    await stopService(inst,ctx,readRun(inst)?.pid??null);
+   if(assessed)await recheckRestore(assessed,journal.backup,journal);
+   verifyConfigurationRecovery(journal,assessed);
    if(journal.package)restorePackage(inst,journal,ctx);
    for(const c of journal.changes)if(head(c)!==c.from||c.branch){ctx.log(`  ${c.id}: back to ${short(c.from)}${c.branch?` (${c.branch})`:''}`);if(inspectSource(ctx,c).dirty.length)throw new Error(`Unrelated tracked edits in ${c.dir}; refusing forced rollback`);const current=head(c);if(current!==c.from&&current!==c.to)throw new Error(`Unexpected source identity in ${c.dir}; manual recovery required`);recordMutation(inst,journal,'source-restore',{source:c.id,from:current,to:c.from},()=>switchTo(ctx,c,c.from,{branch:c.branch}));}
    if(assessed){

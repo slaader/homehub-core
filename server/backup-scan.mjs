@@ -278,6 +278,11 @@ export function scanBackup(inst,{searchRoots=[],searchMaxEntries=2000000,example
    ...(candidates?{candidateCoverFiles:eligible}: {})}};
 }
 
+export function verifyBackupRoots(inst,plan){
+ const roots=buildRoots(inst,plan.policy,(_,message)=>{throw new Error(message);});
+ if(JSON.stringify(roots)!==JSON.stringify(plan.roots))throw new Error('backup root topology changed');
+}
+
 export function verifyCurrentCoverage(roots){
  const groups=new Map();
  const issue=(_,message)=>{throw new Error(message);};
