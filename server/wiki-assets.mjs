@@ -2,7 +2,7 @@ import {createHash,randomBytes} from 'node:crypto';
 import {closeSync,createReadStream,existsSync,fsyncSync,linkSync,mkdirSync,openSync,readSync,statSync,unlinkSync,writeSync,ftruncateSync} from 'node:fs';
 import {open,readdir} from 'node:fs/promises';
 import path from 'node:path';
-import {ASSET_ID,exactKeys,WIKI_LIMITS} from '../public/wiki-doc.js';
+import {ASSET_ID,exactKeys,normalizeDoc,WIKI_LIMITS} from '../public/wiki-doc.js';
 import {LIMITS,matchesReviewMedia,SHA} from './review-store.mjs';
 import {wikiAssetView,wikiCollection,wikiKey} from './wiki-store.mjs';
 
@@ -28,9 +28,12 @@ function existsSize(file){
 }
 const remove=file=>{try{unlinkSync(file);}catch(error){if(error.code!=='ENOENT')throw error;}};
 const openPart=file=>openSync(file,existsSync(file)?'r+':'wx+',0o600);
-const folder=dir=>mkdirSync(dir,{mode:0o700,recursive:true});
-function syncFolder(dir){
- const fd=openSync(dir,'r');
+function folder(dir){
+ try{mkdirSync(dir,{mode:0o700});}
+ catch(error){if(error.code!=='EEXIST'||!statSync(dir).isDirectory())throw error;}
+}
+function syncFile(file){
+ const fd=openSync(file,'r');
  try{fsyncSync(fd);}finally{closeSync(fd);}
 }
 
@@ -106,12 +109,14 @@ async function verify(file,upload){
 async function readDoc(file,size){
  if(size===0)fail('invalid');
  const handle=await open(file,'r');
+ let parsed;
  try{
   const bytes=Buffer.alloc(size);
   if((await handle.read(bytes,0,size,0)).bytesRead!==size)fail('invalid');
-  return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));
+  parsed=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));
  }catch{fail('invalid');}
  finally{await handle.close();}
+ return normalizeDoc(parsed);
 }
 
 function uploadView(upload,nextOffset){
@@ -142,6 +147,7 @@ function writeChunk(file,offset,bytes,size){
     count+=next;
    }
    if(!old.equals(bytes))throw Object.assign(new Error('upload-offset'),{nextOffset:have});
+   fsyncSync(fd);
    return have;
   }
   try{
@@ -174,10 +180,18 @@ export async function readWikiChunk(stream,max=RAW_CHUNK){
  return Buffer.concat(chunks,length);
 }
 
-export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(process.env.WIKI_MAX_BYTES||process.env.REVIEW_MAX_BYTES)||DEFAULT_BUDGET}={}){
+export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(process.env.WIKI_MAX_BYTES||process.env.REVIEW_MAX_BYTES)||DEFAULT_BUDGET,
+ syncDirectory=syncFile}={}){
  const store=wikiCollection(db),parts=path.join(root,'uploads'),payloads=path.join(root,'blobs');
  const part=id=>path.join(parts,id);
  const payload=digest=>path.join(payloads,digest);
+ // The state directory is provisioned by the database. Flush each entry below it even on retry:
+ // a failed sync can leave an entry visible in memory without making it durable.
+ function syncPublication(dir){
+  syncDirectory(dir);
+  syncDirectory(root);
+  syncDirectory(path.dirname(root));
+ }
 
  async function begin(input,actor){
   const info=uploadInfo(input),{id:project}=await wiki.projectOf(input.project);
@@ -185,13 +199,12 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
   const upload={...info,id:id('u'),project,owner:actor,expiresAt:now()+UPLOAD_TTL};
   const accept=()=>store.change({uploads:null,blobs:null},data=>{
    const reserved=data.uploads.filter(session=>!session.assetId);
-   const pending=reserved.filter(session=>!session.finished);
    const bytes=data.blobs.reduce((total,blob)=>total+blob.size,0)+reserved.reduce((total,session)=>total+session.size,0);
    if(bytes+upload.size>maxBytes)fail('disk-limit');
-   if(pending.length>=MAX_SESSIONS||pending.filter(session=>session.owner===actor).length>=MAX_PER_OWNER)fail('upload-limit');
+   if(reserved.length>=MAX_SESSIONS||reserved.filter(session=>session.owner===actor).length>=MAX_PER_OWNER)fail('upload-limit');
    data.uploads.push(upload);
    return uploadView(upload,0);
-  });
+  },{durable:true});
   try{return await accept();}
   catch(error){
    if(!['disk-limit','upload-limit'].includes(error.message))throw error;
@@ -207,7 +220,10 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
 
  async function status(id,actor){
   const upload=await getUpload(id,actor);
-  return uploadView(upload,upload.finished?upload.size:existsSize(part(id)));
+  if(upload.finished)return uploadView(upload,upload.size);
+  const nextOffset=existsSize(part(id));
+  if(nextOffset)syncPublication(parts);
+  return uploadView(upload,nextOffset);
  }
 
  async function chunk(id,offset,bytes,actor){
@@ -227,8 +243,10 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
     }finally{closeSync(fd);}
     return uploadView(upload,upload.size);
    }
+   folder(root);
    folder(parts);
    const nextOffset=writeChunk(part(id),offset,bytes,upload.size);
+   syncPublication(parts);
    return uploadView(upload,nextOffset);
   });
  }
@@ -248,7 +266,7 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
   catch(error){
    const current=await getUpload(id,actor);
    if(current.assetId||current.finished)return finish(id,actor,{source,grant});
-   if(['digest-mismatch','invalid-media','invalid'].includes(error.message))await abandon(id,actor);
+   if(['digest-mismatch','invalid-media','invalid','limit'].includes(error.message))await abandon(id,actor);
    throw error;
   }
   const result=await store.change({uploads:[id],assets:upload.project+'/',blobs:[upload.digest],grants:grant?[grant.key]:[]},data=>{
@@ -261,20 +279,26 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
    if(current.finished)return uploadView(current,current.size);
    if(grant&&JSON.stringify(data.grants[0])!==JSON.stringify(grant))fail('denied');
    current.finished=true;
-   if(current.purpose==='document')return uploadView(current,current.size);
+   if(current.purpose==='document'){
+    syncFile(file);
+    syncPublication(parts);
+    return uploadView(current,current.size);
+   }
    if(data.assets.length>=MAX_PROJECT_ASSETS)fail('asset-limit');
    const blob=data.blobs[0]??{digest:current.digest,size:current.size,references:0};
    if(blob.size!==current.size)fail('digest-mismatch');
    const target=payload(current.digest);
+   folder(root);
    folder(payloads);
    if(!existsSync(target)){
     if(!current.size){
      folder(parts);
      closeSync(openPart(file));
     }
+    syncFile(file);
     linkSync(file,target);
-    syncFolder(payloads);
    }
+   syncPublication(payloads);
    blob.references++;
    if(!data.blobs.length)data.blobs.push(blob);
    const {project,name,type,size,digest,owner}=current;
@@ -282,7 +306,7 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
     ...(source?{source}:{})};
    data.assets.push(asset);
    return {...uploadView(current,size),asset:wikiAssetView(asset)};
-  });
+  },{durable:true});
   if(result.assetId)remove(file);
   return result;
  }
@@ -300,13 +324,13 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
  }
 
  async function abandon(id,actor){
-  return store.change({uploads:[id]},data=>{
+  const abandoned=await store.change({uploads:[id]},data=>{
    const upload=data.uploads[0];
-   if(upload?.owner===actor&&!upload.finished){
-    remove(part(id));
-    data.uploads.pop();
-   }
-  });
+   if(upload?.owner!==actor||upload.finished)return false;
+   data.uploads.pop();
+   return true;
+  },{durable:true});
+  if(abandoned)remove(part(id));
  }
 
  async function ingest(project,{name,type,size,digest,body,source},actor,grant){
@@ -354,13 +378,10 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
   const time=now();
   const candidates=(await store.list('assets')).filter(asset=>asset.references===0&&time-asset.orphanedAt>=ASSET_GRACE);
   const expired=(await store.list('uploads')).filter(upload=>upload.expiresAt<=time);
-  await store.change({uploads:expired.map(upload=>upload.id),assets:candidates.map(page=>wikiKey(page.project,page.id)),
-   blobs:candidates.map(asset=>asset.digest)},data=>{
-   data.uploads=data.uploads.filter(upload=>{
-    if(upload.expiresAt>time)return true;
-    remove(part(upload.id));
-    return false;
-   });
+  const emptyBlobs=(await store.list('blobs')).filter(blob=>!blob.references);
+  await store.change({uploads:expired.map(upload=>upload.id),assets:candidates.map(asset=>wikiKey(asset.project,asset.id)),
+   blobs:[...candidates.map(asset=>asset.digest),...emptyBlobs.map(blob=>blob.digest)]},data=>{
+   data.uploads=data.uploads.filter(upload=>upload.expiresAt>time);
    const blobs=new Map(data.blobs.map(blob=>[blob.digest,blob]));
    data.assets=data.assets.filter(asset=>{
     if(asset.references||time-asset.orphanedAt<ASSET_GRACE)return true;
@@ -368,19 +389,17 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
     if(blob)blob.references--;
     return false;
    });
-  });
-  // File deletion runs with the same SQLite writer lock as publication and only after metadata stopped referencing it.
-  const names=await readdir(payloads).catch(error=>{if(error.code==='ENOENT')return [];throw error;});
-  const blobs=await store.list('blobs'),known=new Map(blobs.map(blob=>[blob.digest,blob]));
-  const obsolete=[...new Set([...blobs.filter(blob=>!blob.references).map(blob=>blob.digest),...names.filter(name=>SHA.test(name)&&!known.has(name))])];
-  if(obsolete.length)await store.change({blobs:obsolete},data=>{
-   const pinned=new Set(data.blobs.filter(blob=>blob.references).map(blob=>blob.digest));
-   for(const digest of obsolete)if(!pinned.has(digest))remove(payload(digest));
    data.blobs=data.blobs.filter(blob=>blob.references);
-  });
-  const staged=await readdir(parts).catch(error=>{if(error.code==='ENOENT')return [];throw error;});
-  const unused=staged.filter(name=>UPLOAD_ID.test(name));
-  if(unused.length)await store.change({uploads:unused},data=>{
+  },{durable:true});
+  // A checkpoint also flushes earlier NORMAL commits when a previous sweep stopped before unlinking.
+  db.flushWal();
+  const listing=dir=>readdir(dir).catch(error=>{if(error.code==='ENOENT')return [];throw error;});
+  const [names,staged]=await Promise.all([listing(payloads),listing(parts)]);
+  const obsolete=names.filter(name=>SHA.test(name)),unused=staged.filter(name=>UPLOAD_ID.test(name));
+  if(obsolete.length||unused.length)await store.change({blobs:obsolete,uploads:unused},data=>{
+   // Publication and cleanup take the same writer lock. Recheck each name after acquiring it.
+   const pinned=new Set(data.blobs.map(blob=>blob.digest));
+   for(const digest of obsolete)if(!pinned.has(digest))remove(payload(digest));
    const active=new Set(data.uploads.filter(upload=>!upload.assetId).map(upload=>upload.id));
    for(const name of unused)if(!active.has(name))remove(part(name));
   });

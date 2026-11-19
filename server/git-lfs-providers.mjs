@@ -19,6 +19,9 @@
 // All of them serve the Git LFS batch API, which says whether the host still stores a given object. So the
 // built-in providers are read-only: listRepos + checkObjects. A plugin may add a provider that can list and
 // delete (through the module extension point "git-lfs.providers"); the deletion path honours only that.
+import {createHash} from 'node:crypto';
+import {parsePointer,POINTER_LIMIT,validImportPath,validImportRef,validSha} from './git-lfs-git.mjs';
+
 export const CAPABILITIES=Object.freeze(['listRepos','checkObjects','listObjects','deleteObjects','tokenScopes']);
 const NAME=/^[A-Za-z0-9_.-]{1,100}$/;
 export const validName=s=>typeof s==='string'&&NAME.test(s)&&s!=='.'&&s!=='..'&&!s.endsWith('.git');
@@ -40,17 +43,23 @@ export function cleanBaseUrl(input,{strip=[]}={}){
 }
 
 // One JSON request to the host's API. Redirects are not followed (a token must not travel to another host).
-export async function apiRequest(ctx,method,url,{body,headers={},timeoutMs=20000,auth}={}){
+export async function apiRequest(ctx,method,url,{body,headers={},timeoutMs=20000,auth,maxBytes=MAX_BODY,signal,budget}={}){
  if(!url.startsWith(ctx.api+'/')&&!url.startsWith(ctx.web+'/'))throw new ProviderError('invalid-url');
  // The integration was switched off mid-scan: no further request leaves the hub.
  if(ctx.stopped?.())throw new ProviderError('disabled');
- let res;
+ const controller=new AbortController();
+ const signals=[AbortSignal.timeout(timeoutMs),controller.signal];
+ if(signal)signals.push(signal);
+ let res,text;
  try{
-  res=await (ctx.fetch||fetch)(url,{method,redirect:'manual',signal:AbortSignal.timeout(timeoutMs),
+  res=await (ctx.fetch||fetch)(url,{method,redirect:'manual',signal:AbortSignal.any(signals),
    headers:{Accept:'application/json','User-Agent':'home-hub-git-lfs',...(auth??{Authorization:ctx.authHeader}),...(body!==undefined?{'Content-Type':'application/json'}:{}),...headers},
    ...(body!==undefined?{body:typeof body==='string'?body:JSON.stringify(body)}:{})});
- }catch(e){throw new ProviderError(e?.name==='TimeoutError'?'timeout':'network');}
- const text=await readLimited(res);
+  text=await readLimited(res,maxBytes,controller,budget);
+ }catch(e){
+  if(e instanceof ProviderError)throw e;
+  throw new ProviderError(e?.name==='TimeoutError'?'timeout':'network');
+ }
  if(res.status===401)throw new ProviderError('auth',401);
  // Gitea and Forgejo name what a token lacks: "token does not have at least one of required scope(s): [read:repository]".
  if(res.status===403)throw new ProviderError(/rate limit/i.test(text)?'rate-limited':/required scope\(s\)[^\[]*\[[^\]]*read:repository/i.test(text)?'missing-scope':'forbidden',403);
@@ -61,11 +70,31 @@ export async function apiRequest(ctx,method,url,{body,headers={},timeoutMs=20000
  let data=null;if(text){try{data=JSON.parse(text);}catch{throw new ProviderError('bad-response',res.status);}}
  return {data,headers:res.headers,status:res.status};
 }
-async function readLimited(res){
+async function readLimited(res,maxBytes,controller,budget){
  if(!res.body)return '';
- const reader=res.body.getReader(),chunks=[];let size=0;
- for(;;){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>MAX_BODY){reader.cancel().catch(()=>{});throw new ProviderError('too-large');}chunks.push(value);}
- return Buffer.concat(chunks.map(c=>Buffer.from(c))).toString('utf8');
+ const limit=Math.min(maxBytes,budget?.remaining??maxBytes);
+ if(Number(res.headers.get('content-length'))>limit){
+  controller.abort();
+  res.body.cancel().catch(()=>{});
+  throw new ProviderError('too-large');
+ }
+ const reader=res.body.getReader(),chunks=[];
+ let size=0;
+ try{
+  for(;;){
+   const {done,value}=await reader.read();
+   if(done)break;
+   size+=value.length;
+   if(budget)budget.remaining-=value.length;
+   if(size>limit){
+    controller.abort();
+    reader.cancel().catch(()=>{});
+    throw new ProviderError('too-large');
+   }
+   chunks.push(Buffer.from(value));
+  }
+ }finally{reader.releaseLock();}
+ return Buffer.concat(chunks,size).toString('utf8');
 }
 const bool=v=>v===true;
 const repoOf=(r,branchKey='default_branch')=>{
@@ -89,6 +118,110 @@ async function pages(ctx,first,{perPage,param='per_page'}){
   if(data.length<perPage)return out;
  }
  throw new ProviderError('too-many');
+}
+
+const encodePath=value=>value.split('/').map(encodeURIComponent).join('/');
+const IMPORT_METADATA_BYTES=8*1024*1024;
+const IMPORT_REQUESTS=64;
+const IMPORT_ENTRY_BYTES=128*1024;
+const IMPORT_TREE_BYTES=2*1024*1024;
+
+async function importRef(get,repo,ref,github){
+ if(validSha(ref))return {sha:ref};
+ const refs=ref==='HEAD'?[repo.defaultBranch&&'refs/heads/'+repo.defaultBranch]:
+  ref.startsWith('refs/')?[ref]:['refs/heads/'+ref,'refs/tags/'+ref];
+ const matches=[];
+ for(const name of refs){
+  if(!validImportRef(name)||!name.slice(5).includes('/'))throw new ProviderError('invalid-ref');
+  const route=github?'ref':'refs';
+  const data=await get(`/${route}/${encodePath(name.slice(5))}`).catch(error=>{
+   if(error.code!=='not-found')throw error;
+   return [];
+  });
+  const returned=Array.isArray(data)?data:[data];
+  if(returned.some(entry=>typeof entry?.ref!=='string'||!validSha(entry.object?.sha)))
+   throw new ProviderError('bad-response');
+  matches.push(...returned.filter(entry=>entry.ref===name));
+ }
+ if(matches.length!==1)throw new ProviderError('invalid-ref');
+ const {ref:name,object}=matches[0];
+ return {sha:object.sha,type:object.type,...(ref==='HEAD'?{}:{ref:name})};
+}
+
+async function importCommit(get,reference,github){
+ let {sha,type}=reference;
+ if(type!==undefined&&!['tag','commit'].includes(type))throw new ProviderError('invalid-ref');
+ if(github){
+  // GitHub exposes annotated tag objects separately. Peel only through their immutable IDs.
+  let commit=type==='tag'?null:await get('/commits/'+sha).catch(error=>{
+   if(type||error.code!=='not-found')throw error;
+   return null;
+  });
+  while(!commit){
+   const tag=await get('/tags/'+sha);
+   if(tag?.sha!==sha||!validSha(tag.object?.sha))throw new ProviderError('bad-response');
+   ({sha,type}=tag.object);
+   if(type==='commit')commit=await get('/commits/'+sha);
+   else if(type!=='tag')throw new ProviderError('invalid-ref');
+  }
+  if(commit.sha!==sha||!validSha(commit.tree?.sha))throw new ProviderError('bad-response');
+  return {sha,tree:commit.tree.sha};
+ }
+ // Gitea and Forgejo peel annotated tag objects when resolving a commit by object ID.
+ const commit=await get('/commits/'+sha+'?stat=false&verification=false&files=false');
+ const tree=commit?.commit?.tree?.sha;
+ if(!validSha(commit?.sha)||!validSha(tree)||type==='commit'&&commit.sha!==sha)throw new ProviderError('bad-response');
+ return {sha:commit.sha,tree};
+}
+
+async function importTreeEntry(get,tree,name,github){
+ for(let page=1;;page++){
+  const data=await get('/trees/'+tree+(github?'':`?page=${page}&per_page=1000`),IMPORT_TREE_BYTES);
+  if(data?.sha!==tree||!Array.isArray(data.tree)&&!(data.tree==null&&data.total_count===0))throw new ProviderError('bad-response');
+  const entry=data.tree?.find(entry=>entry?.path===name);
+  if(entry){
+   if(!validSha(entry.sha))throw new ProviderError('bad-response');
+   return entry;
+  }
+  if(!data.truncated)throw new ProviderError('not-found');
+  if(github)throw new ProviderError('too-large');
+ }
+}
+
+// Walk only the selected commit's trees, then request its exact blob by ID. Provider-supplied URLs
+// are never followed. Check the entry mode so a symlink or submodule cannot change the selected path.
+export async function resolveImportPointer(ctx,repo,ref,file,{github=false}={}){
+ if(!validFullName(repo.fullName)||!validImportRef(ref)||!validImportPath(file))throw new ProviderError('invalid-ref');
+ const url=`${ctx.api}/repos/${repo.fullName}/git`;
+ const budget={remaining:IMPORT_METADATA_BYTES},signal=AbortSignal.timeout(30000);
+ let requests=0;
+ async function get(route,maxBytes=IMPORT_ENTRY_BYTES){
+  if(++requests>IMPORT_REQUESTS||budget.remaining<=0)throw new ProviderError('too-large');
+  const {data}=await apiRequest(ctx,'GET',url+route,{maxBytes,signal,budget});
+  return data;
+ }
+ const reference=await importRef(get,repo,ref,github);
+ const {sha:commit,tree}=await importCommit(get,reference,github);
+ const segments=file.split('/'),base=segments.pop();
+ let directory=tree;
+ for(const segment of segments){
+  const entry=await importTreeEntry(get,directory,segment,github);
+  if(entry.mode!=='040000'||entry.type!=='tree')throw new ProviderError('invalid-pointer');
+  directory=entry.sha;
+ }
+ const entry=await importTreeEntry(get,directory,base,github);
+ if(!['100644','100755'].includes(entry.mode)||entry.type!=='blob')throw new ProviderError('invalid-pointer');
+ if(!Number.isSafeInteger(entry.size)||entry.size<0)throw new ProviderError('bad-response');
+ if(entry.size>=POINTER_LIMIT)throw new ProviderError('too-large');
+ const blob=await get('/blobs/'+entry.sha,8192);
+ if(blob?.sha!==entry.sha||blob.size!==entry.size||blob.encoding!=='base64'||typeof blob.content!=='string')
+  throw new ProviderError('bad-response');
+ const content=blob.content.replace(/[\r\n]/g,''),bytes=Buffer.from(content,'base64');
+ const digest=createHash(entry.sha.length===40?'sha1':'sha256').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+ if(bytes.length!==entry.size||bytes.toString('base64')!==content||digest!==entry.sha)throw new ProviderError('bad-response');
+ const pointer=parsePointer(bytes);
+ if(!pointer||pointer.loose)throw new ProviderError('invalid-pointer');
+ return {commit,...pointer,...(reference.ref?{ref:reference.ref}:{})};
 }
 
 // The Git LFS batch API (https://github.com/git-lfs/git-lfs/blob/main/docs/api/batch.md), "download":

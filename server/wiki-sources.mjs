@@ -12,6 +12,7 @@ const isConnection=id=>typeof id==='string'&&/^c[a-f0-9]{10}$/.test(id);
 const isReview=set=>typeof set==='string'&&REVIEW_ID.test(set);
 const canRead=principal=>principal?.scopes?.includes('read')===true;
 const audience='project-readers';
+const MAX_LFS_IMPORTS=4;
 
 function externalOrigin(value){
  if(value===undefined||value==='')return undefined;
@@ -23,6 +24,7 @@ function externalOrigin(value){
 
 export function createWikiSources(db,wiki,assets,{lfs,review}){
  const store=wikiCollection(db);
+ let activeLfsImports=0;
 
  async function setGrant(input){
   if(!exactKeys(input,['project','kind','connection','repo','set','downloadOrigin','enabled'])||typeof input.enabled!=='boolean')fail('invalid');
@@ -74,12 +76,16 @@ export function createWikiSources(db,wiki,assets,{lfs,review}){
    const grant=await store.get('grants',lfsKey(project,source.connection,source.repo));
    const git=lfs();
    if(!grant||!git||git.importIdentity(source.connection)!==grant.identity)fail('denied');
-   let pinned;
-   try{pinned=await git.importPointer(source,grant);}
-   catch(error){throw sourceError(error);}
-   const download=pinned.body;
-   pinned.body=async()=>{try{return await download();}catch(error){throw sourceError(error);}};
-   return assets.ingest(project,pinned,actor,grant);
+   if(activeLfsImports>=MAX_LFS_IMPORTS)fail('source-busy');
+   activeLfsImports++;
+   try{
+    let pinned;
+    try{pinned=await git.importPointer(source,grant);}
+    catch(error){throw sourceError(error);}
+    const download=pinned.body;
+    pinned.body=async()=>{try{return await download();}catch(error){throw sourceError(error);}};
+    return await assets.ingest(project,pinned,actor,grant);
+   }finally{activeLfsImports--;}
   }
   if(source?.kind!=='review'||!exactKeys(source,['kind','set','round','item','variant','media'])||
    !isReview(source.set)||!Number.isSafeInteger(source.round)||source.round<1||

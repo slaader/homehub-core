@@ -15,6 +15,14 @@ until the release gives it its number: a change to the public surface adds its l
   and use the wiki MCP tools for the entire authoring flow. See [the wiki guide](docs/wiki.md)
   and [the API reference](docs/API.md#project-wiki).
 
+### Fixed
+
+- Sync wiki upload files and their directory entries before publishing them, and commit cleanup metadata
+  durably before removing files. Retained staging documents count against the upload limits and must
+  pass the wiki document validator.
+- Wiki Git LFS imports pin paths through bounded Git object API requests on GitHub, Gitea and Forgejo
+  and allow up to four imports at a time.
+
 ### Data
 
 - Data epoch 8 upgrades `hub.db` to schema 3 and the wiki collection to schema 2. Existing pages become

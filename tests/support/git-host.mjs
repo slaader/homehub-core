@@ -9,7 +9,8 @@ import os from 'node:os';
 import path from 'node:path';
 
 const GIT_ENV={...process.env,GIT_CONFIG_NOSYSTEM:'1',GIT_CONFIG_GLOBAL:'/dev/null',GIT_AUTHOR_NAME:'Test',GIT_AUTHOR_EMAIL:'test@example.lan',GIT_COMMITTER_NAME:'Test',GIT_COMMITTER_EMAIL:'test@example.lan'};
-export const git=(cwd,...args)=>execFileSync('git',args,{cwd,env:GIT_ENV,stdio:['ignore','pipe','pipe']}).toString().trim();
+const gitBytes=(cwd,...args)=>execFileSync('git',args,{cwd,env:GIT_ENV,stdio:['ignore','pipe','pipe']});
+export const git=(cwd,...args)=>gitBytes(cwd,...args).toString().trim();
 export const oid=ch=>ch.repeat(64);
 export const pointer=(o,size)=>`version https://git-lfs.github.com/spec/v1\noid sha256:${o}\nsize ${size}\n`;
 
@@ -104,6 +105,41 @@ export async function gitHost(t,{kind='gitea',token='test-token-123456',login='a
   if(m){const list=[...repos].filter(([f])=>f.startsWith(m[1]+'/'));return list.length?page(list.map(([f,r])=>repoJson(f,r))):json(res,404,{message:'not found'});}
   m=/^\/repos\/([^/]+\/[^/]+)$/.exec(sub);
   if(m)return repos.has(m[1])?json(res,200,repoJson(m[1],repos.get(m[1]))):json(res,404,{message:'not found'});
+  m=/^\/repos\/([^/]+\/[^/]+)\/git\/(ref|refs|commits|tags|trees|blobs)\/(.+)$/.exec(sub);
+  if(m&&req.method==='GET'&&repos.has(m[1])){
+   const [,repo,route,value]=m,dir=barePath(repo),name=decodeURIComponent(value);
+   try{
+    if(route==='ref'||route==='refs'){
+     const ref='refs/'+name;
+     const refs=git(dir,'for-each-ref','--format=%(refname) %(objecttype) %(objectname)').split('\n')
+      .map(line=>line.split(' ')).filter(([key])=>route==='ref'?key===ref:key.startsWith(ref))
+      .map(([ref,type,sha])=>({ref,object:{type,sha}}));
+     if(refs.length)return json(res,200,refs.length===1&&refs[0].ref===ref?refs[0]:refs);
+    }else if(route==='commits'){
+     const sha=git(dir,'rev-parse','--verify',name+'^{commit}');
+     if(kind!=='github'||sha===name){
+      const tree={sha:git(dir,'rev-parse','--verify',sha+'^{tree}')};
+      return json(res,200,kind==='github'?{sha,tree}:{sha,commit:{tree}});
+     }
+    }else if(route==='tags'){
+     const contents=git(dir,'cat-file','tag',name),[object,type]=contents.split('\n');
+     return json(res,200,{sha:name,object:{sha:object.slice(7),type:type.slice(5)}});
+    }else if(route==='trees'){
+     const entries=git(dir,'ls-tree','-zl',name).split('\0').filter(Boolean).map(line=>{
+      const tab=line.indexOf('\t'),[mode,type,sha,size]=line.slice(0,tab).split(/ +/);
+      return {mode,type,sha,size:Number(size)||0,path:line.slice(tab+1)};
+     });
+     if(kind==='github')return json(res,200,{sha:name,tree:entries,truncated:false});
+     const page=Number(url.searchParams.get('page'))||1,perPage=Math.min(maxPage,Number(url.searchParams.get('per_page'))||1000);
+     return json(res,200,{sha:name,tree:entries.slice((page-1)*perPage,page*perPage),
+      total_count:entries.length,truncated:page*perPage<entries.length});
+    }else if(route==='blobs'){
+     const bytes=gitBytes(dir,'cat-file','blob',name);
+     return json(res,200,{sha:name,size:bytes.length,encoding:'base64',content:bytes.toString('base64')});
+    }
+   }catch{}
+   return json(res,404,{message:'git object not found'});
+  }
   // The test-only list/delete API.
   m=/^\/api\/fake\/repos\/([^/]+\/[^/]+)\/lfs(?:\/([a-f0-9]{64}))?$/.exec(p);
   if(m){

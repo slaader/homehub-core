@@ -19,8 +19,8 @@ import {readFileSync} from 'node:fs';
 import {mkdir,writeFile,rename,rm,appendFile} from 'node:fs/promises';
 import {randomBytes} from 'node:crypto';
 import path from 'node:path';
-import {syncMirror,scanMirror,remoteRefsHash,usageView,runGit,hashOf,OID,GitError,resolveImportPointer} from './git-lfs-git.mjs';
-import {BUILTIN_PROVIDERS,validProvider,providerView,contextFor,checkObjects,downloadObject,validFullName,validName,ProviderError} from './git-lfs-providers.mjs';
+import {syncMirror,scanMirror,remoteRefsHash,usageView,runGit,hashOf,OID,GitError} from './git-lfs-git.mjs';
+import {BUILTIN_PROVIDERS,validProvider,providerView,contextFor,checkObjects,downloadObject,resolveImportPointer,validFullName,validName,ProviderError} from './git-lfs-providers.mjs';
 import {secretIn} from './home-devices.mjs';
 
 // Seven days, as Gitea's own LFS garbage collection waits. GIT_LFS_GRACE_HOURS (server environment) changes it.
@@ -98,16 +98,16 @@ export function createGitLfsStore({stateDirectory,tokenFile,providers:extra=()=>
  const validRepo=r=>plain(r)&&validName(r.owner)&&validName(r.name)&&r.fullName===`${r.owner}/${r.name}`;
  const importIdentity=id=>{
   const c=connection(id),p=c&&provider(c.provider);
-  return p&&hashOf([c.provider,normalBase(p,c.baseUrl)]);
+  return p?.kind==='builtin'?hashOf([c.provider,normalBase(p,c.baseUrl)]):null;
  };
  async function importPointer({connection:id,repo:fullName,ref,path:file},grant){
   if(!isEnabled())fail('disabled');
   const c=connection(id),p=c&&provider(c.provider);
-  if(!p||!tokenOf(id)||!validFullName(fullName)||importIdentity(id)!==grant.identity)fail('denied');
+  if(p?.kind!=='builtin'||!tokenOf(id)||!validFullName(fullName)||importIdentity(id)!==grant.identity)fail('denied');
   const ctx=ctxOf(c,p),repo=await p.getRepo(ctx,fullName);
   if(!validRepo(repo)||repo.fullName!==fullName)fail('denied');
   if(!isEnabled())fail('disabled');
-  const pointer=await resolveImportPointer(`${ctx.web}/${repo.owner}/${repo.name}.git`,{header:ctx.gitAuthHeader},ref,file,{git});
+  const pointer=await resolveImportPointer(ctx,repo,ref,file,{github:p.id==='github'});
   const {commit,oid,size}=pointer;
   return {name:file.split('/').at(-1),size,digest:oid,body:()=>downloadObject(ctx,repo,pointer,grant.downloadOrigin),
    source:{kind:'lfs',connection:id,repo:fullName,commit,path:file,oid}};

@@ -80,6 +80,15 @@ function wrap(db,file){
   indexVersion:q('SELECT version FROM search_version WHERE kind=?'),setIndexVersion:q('INSERT OR REPLACE INTO search_version(kind,version) VALUES(?,?)'),
  };
  function tx(fn){db.exec('BEGIN IMMEDIATE');try{const r=fn();db.exec('COMMIT');return r;}catch(e){try{db.exec('ROLLBACK');}catch{}throw e;}}
+ // A FULL commit flushes the WAL before a caller can discard a file that the old rows needed.
+ function durableTx(fn){
+  db.exec('PRAGMA synchronous=FULL');
+  try{return tx(fn);}finally{db.exec('PRAGMA synchronous=NORMAL');}
+ }
+ function flushWal(){
+  const {busy,log,checkpointed}=db.prepare('PRAGMA wal_checkpoint(FULL)').get();
+  if(busy||log!==checkpointed)throw new Error('Could not flush database WAL');
+ }
 
  // A document store. split(data) → {meta, colls:{name:[[id,doc],…]}}; join(meta, colls) → data.
  // search(coll, doc) → {kind,id,project,updated,title,body} | null decides what goes into the search index.
@@ -142,8 +151,8 @@ function wrap(db,file){
    async list(coll,prefix){await ensure();const rows=prefix===undefined?st.coll.all(kind,coll):st.range.all(kind,coll,prefix,prefix+'\uffff');return rows.map(r=>JSON.parse(r.doc));},
    // Selected read-modify-write in one synchronous transaction. null selects a whole subcollection;
    // an id array selects only those rows. Other rows are never loaded, rewritten or removed.
-   async change(selection,fn){
-    await ensure();return tx(()=>{
+   async change(selection,fn,{durable=false}={}){
+    await ensure();return (durable?durableTx:tx)(()=>{
      const colls={},previous=new Map();
      for(const [coll,ids] of Object.entries(selection)){
       const rows=ids===null?st.coll.all(kind,coll):typeof ids==='string'?st.range.all(kind,coll,ids,ids+'\uffff'):
@@ -196,5 +205,5 @@ function wrap(db,file){
  // How many documents of each kind the index holds: lets a client tell "nothing to search yet" from "no match".
  const indexed=q('SELECT kind,count(*) n FROM search GROUP BY kind');
  function searchStats(){const out=Object.fromEntries(KINDS.map(k=>[k,0]));for(const r of indexed.all())if(Object.hasOwn(out,r.kind))out[r.kind]=Number(r.n);return out;}
- return {file,db,collection,sessions,search,searchStats,close(){open.delete(file);db.close();}};
+ return {file,db,collection,sessions,search,searchStats,flushWal,close(){open.delete(file);db.close();}};
 }
