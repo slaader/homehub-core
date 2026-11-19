@@ -29,6 +29,21 @@
         "finished_at": "2026-11-19T10:30:28Z",
         "result": "passed"
       }
+    },
+    "wiki-browser": {
+      "category": "ui-smoke",
+      "scope": "Project wiki setup, editing, tables, HTML frames, ticket links, viewer access and stale saves in an isolated Chrome profile",
+      "commands": [
+        "mkdir -p data/wiki-smoke-evidence",
+        "node ~/.config/agent-workflows/studio/local-tests/home-hub/wiki-smoke.mjs"
+      ],
+      "budget_seconds": 120,
+      "budget_approval": null,
+      "last_run": {
+        "duration_seconds": 2.446,
+        "finished_at": "2026-11-19T10:37:08.668Z",
+        "result": "passed"
+      }
     }
   }
 }
