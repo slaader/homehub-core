@@ -3,7 +3,7 @@ import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,symlinkSync,read
 import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {writeUpdateJournal} from '../server/update-journal.mjs';
-import {backupPlan,createBackup,restoreBackup} from '../server/update-backup.mjs';
+import {backupPlan,createBackup,restoreBackup,assessRestore} from '../server/update-backup.mjs';
 import {readUpdateJournal} from '../server/update-journal.mjs';
 function fixture(t){const dir=realpathSync(mkdtempSync(path.join(os.tmpdir(),'hub-backup-')));t.after(()=>rmSync(dir,{recursive:true,force:true}));const paths={data:path.join(dir,'data'),state:path.join(dir,'data','state'),private:path.join(dir,'private'),config:path.join(dir,'config'),authFile:path.join(dir,'external','auth.json'),siteConfig:path.join(dir,'config','site.json'),softwareWatch:path.join(dir,'config','software-watch.json')};for(const p of [paths.state,paths.private,paths.config,path.dirname(paths.authFile),path.join(dir,'backups'),path.join(dir,'staging')])mkdirSync(p,{recursive:true});writeFileSync(paths.authFile,'auth',{mode:0o600});writeFileSync(path.join(path.dirname(paths.authFile),'secret.key'),'key',{mode:0o600});writeFileSync(path.join(paths.data,'legitimate.tgz'),'archive bytes');writeFileSync(paths.siteConfig,'{}');const inst={home:dir,root:path.join(dir,'core'),paths,env:{},backups:path.join(dir,'backups'),staging:path.join(dir,'staging'),files:{journal:path.join(dir,'journal.json'),lock:path.join(dir,'update.lock')}};writeFileSync(path.join(dir,'instance.json'),'{}');return {dir,inst,ctx:{now:()=>0,log:()=>{},checkpoint:()=>{}}};}
 function journal(inst,backup){const side={label:'1.0.0',core:{version:'1.0.0'},expect:{version:'1.0.0'}};return {schemaVersion:3,id:'restore-test',startedAt:new Date(0).toISOString(),step:'rolling-back',from:side,to:side,changes:[],epochRose:true,backup,settings:{root:inst.root,state:inst.paths.state,service:{stop:['true'],start:['true']},health:{url:'http://127.0.0.1:1/healthz',seconds:2}}};}
@@ -98,6 +98,10 @@ test('tagged v1.0.0 tar and sidecars remain readable and retain schema-2 journal
  const j={...journal(inst,backup),schemaVersion:2};
  writeUpdateJournal(inst.files.journal,j);
  const loaded=readUpdateJournal(inst.files.journal);
+ const outside=path.join(dir,'outside-legacy');
+ linkSync(path.join(inst.paths.data,'legitimate.tgz'),outside);
+ await assert.rejects(assessRestore(inst,loaded.backup,loaded),/HARDLINK_UNACCOUNTED/);
+ rmSync(outside);
  await restoreBackup(inst,ctx,loaded.backup,loaded);
  assert.equal(readUpdateJournal(inst.files.journal).schemaVersion,2);
  const restored=path.join(inst.paths.data,'payload');
@@ -108,4 +112,38 @@ test('tagged v1.0.0 tar and sidecars remain readable and retain schema-2 journal
  const legacy={file,entries:[{parent:dir,name:'root-0001'}]};
  await restoreBackup(inst,ctx,legacy);
  assert.equal(readFileSync(path.join(dir,'root-0001','payload'),'utf8'),'archived by v1.0.0\n');
+});
+
+test('backup refuses an absent root that appeared after planning',async t=>{
+ const {inst,ctx,dir}=fixture(t),extra=path.join(dir,'extra');
+ inst.backupRoots=[extra];
+ const plan=backupPlan(inst);
+ writeFileSync(extra,'appeared');
+ await assert.rejects(createBackup(inst,ctx,'raced',{plan}),/root topology changed/);
+ assert.deepEqual(readdirSync(inst.backups),[]);
+});
+
+test('resume validates embedded aliases while their owning root is moved aside',async t=>{
+ const {inst,ctx}=fixture(t);
+ inst.paths.authFile=path.join(inst.paths.data,'auth-link');
+ symlinkSync('legitimate.tgz',inst.paths.authFile);
+ const backup=await createBackup(inst,ctx,'embedded'),j=journal(inst,backup);
+ await assert.rejects(restoreBackup(inst,{...ctx,checkpoint:name=>{
+  if(name==='restore-old-renamed')throw new Error('interruption');
+ }},backup,j),/interruption/);
+ await restoreBackup(inst,ctx,backup,readUpdateJournal(inst.files.journal));
+ assert.equal(readlinkSync(inst.paths.authFile),'legitimate.tgz');
+ assert.equal(readFileSync(inst.paths.authFile,'utf8'),'archive bytes');
+});
+
+test('resume rejects a shutdown write to an already installed root',async t=>{
+ const {inst,ctx}=fixture(t),backup=await createBackup(inst,ctx,'shutdown-write'),j=journal(inst,backup);
+ await assert.rejects(restoreBackup(inst,{...ctx,checkpoint:name=>{
+  if(name==='restore-new-renamed')throw new Error('interruption');
+ }},backup,j),/interruption/);
+ const persisted=readUpdateJournal(inst.files.journal);
+ const assessed=await assessRestore(inst,backup,persisted);
+ writeFileSync(path.join(inst.paths.data,'legitimate.tgz'),'shutdown write');
+ await assert.rejects(restoreBackup(inst,ctx,backup,persisted,assessed),/staging content/);
+ assert.equal(readFileSync(path.join(inst.paths.data,'legitimate.tgz'),'utf8'),'shutdown write');
 });

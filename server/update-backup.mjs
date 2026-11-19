@@ -8,7 +8,7 @@ import {writeUpdateJournal} from './update-journal.mjs';
 import {UpdateError} from './update-errors.mjs';
 import {BACKUP_SCHEMA,writeBackupArchive,walkBackup,writeAll,validateIntegrity} from './backup-archive.mjs';
 import {cleanAbsolute,withinPath as within} from './backup-policy.mjs';
-import {canonical,exists,stat,inode,exactIdentity,scanBackup,protectedPaths,protectedDirectories,filesystem,checkSpace,verifyCurrentCoverage} from './backup-scan.mjs';
+import {canonical,exists,stat,inode,exactIdentity,scanBackup,protectedPaths,protectedDirectories,filesystem,checkSpace,verifyBackupRoots,verifyCurrentCoverage} from './backup-scan.mjs';
 export {BACKUP_SCHEMA,canonical,scanBackup};
 
 export function fileHash(file,expectedBytes=null){
@@ -41,10 +41,12 @@ export async function createBackup(inst,ctx,name,{plan=backupPlan(inst)}={}){
  if([file,manifest,integrity].some(exists))throw new Error(`archive already exists: ${file}`);
  const temp=file+'.'+randomUUID()+'.tmp',tempManifest=temp+'.jsonl';
  try{
+  verifyBackupRoots(inst,plan);
   const data=await writeBackupArchive(temp,tempManifest,plan);
   await walkBackup(temp,tempManifest,data);
   const fd=openSync(temp,'r');try{fsyncSync(fd);}finally{closeSync(fd);}
   const description=JSON.stringify(data)+'\n';
+  verifyBackupRoots(inst,plan);
   renameSync(tempManifest,manifest);durableWrite(integrity,description);renameSync(temp,file);syncDirectory(inst.backups);
   return {schemaVersion:BACKUP_SCHEMA,file,manifest,integrity,integritySha256:sha256(description),entries:plan.roots,
    bytes:data.archiveBytes,files:plan.totals.entries,verified:true};
@@ -56,8 +58,17 @@ function validateRoots(inst,roots,progress=[],policyFile=null){
   if(canonical(path.dirname(e.canonical))!==path.dirname(e.canonical)||(exists(e.canonical)&&lstatSync(e.canonical).isSymbolicLink()))throw new Error('restore destination topology changed');
   // The live target can be temporarily absent after a journalled rename. Resolve the
   // link text without following the dangling link only for that recorded transition.
-  const pending=progress.find(p=>p.id===e.id&&p.live===e.canonical&&['moving-old','old-moved','installing'].includes(p.status)&&exists(p.aside)&&!exists(p.live));
-  const linkMatches=(logical,link,target)=>{if(!exists(logical)||!lstatSync(logical).isSymbolicLink()||readlinkSync(logical)!==link)return false;try{return canonical(logical)===target;}catch(err){if(!pending||err.code!=='ENOENT')throw err;return canonical(path.resolve(path.dirname(logical),link))===target;}};
+  const duringRename=p=>{
+   const owner=progress.find(row=>['moving-old','old-moved','installing'].includes(row.status)&&
+    within(p,row.live)&&!exists(row.live)&&exists(row.aside));
+   return owner?path.join(owner.aside,path.relative(owner.live,p)):p;
+  };
+  const linkMatches=(logical,link,target)=>{
+   const present=duringRename(logical);
+   if(!stat(present)?.isSymbolicLink()||readlinkSync(present)!==link)return false;
+   const lexical=path.resolve(path.dirname(logical),link);
+   return canonical(duringRename(lexical))===canonical(duringRename(target));
+  };
   for(const alias of e.aliases??[])if(alias.link!==null&&!linkMatches(alias.logical,alias.link,alias.canonical??e.canonical))throw new Error('restore alias topology changed');
   for(const protectedPath of protectedRoots)if(within(protectedPath,e.canonical))throw new Error('restore would replace recovery metadata or trust');
   if(e.role&&protectedDirs.some(p=>within(e.canonical,p)))throw new Error('restore would replace recovery metadata or trust');
@@ -93,6 +104,7 @@ async function restoreLegacy(inst,ctx,backup,journal,{manifest,legacy}){
    progress.push({id:r.id,live:r.canonical,staged,stageDir,aside:r.canonical+'.failed-'+randomUUID(),existed:r.existed,status:'prepared'});save();
   }
   if(manifest.files){for(const p of progress.filter(p=>p.status==='prepared'&&p.existed)){const staged=inventory([{id:p.id,existed:true,canonical:p.staged}]).map(({source,...e})=>e),expected=manifest.files.filter(f=>f.path===p.id||f.path.startsWith(p.id+'/'));if(JSON.stringify(staged)!==JSON.stringify(expected))throw new Error('destination staging validation failed');}}
+  verifyOldGraph(manifest.roots,progress);
   return installRoots(inst,ctx,manifest.roots,progress,aside,save);
  }finally{rmSync(scratch,{recursive:true,force:true});}
 }
@@ -196,10 +208,17 @@ export async function assessRestore(inst,backup,journal=null){
  if(!description.integrity){
   validateProgress(description.manifest.roots,progress,false);
   validateRoots(inst,description.manifest.roots,progress);
+  verifyOldGraph(description.manifest.roots,progress);
   return description;
  }
  const {integrity}=description,devices=new Map(),filesystems=new Map(),policyFile=journal?.backupPolicy?.file??inst.backupPolicyFile;
  let roots;
+ const restorableSettings=new Set();
+ const settings=['site','instance'].map(k=>journal?.[k]).filter(Boolean);
+ const checkSetting=(e,r,record=e)=>{
+  const file=localPath(e,r,r.canonical);
+  if(settings.some(s=>s.file===file&&s.baseHash===record.sha256&&s.mode===record.mode))restorableSettings.add(file);
+ };
  const cost=(root,bytes)=>{devices.get(root.id).restoreBytes+=Math.ceil(bytes/4096)*4096+4096;};
  const metadata=await walkBackup(null,backup.manifest,integrity,{
   header(m){
@@ -210,9 +229,10 @@ export async function assessRestore(inst,backup,journal=null){
    for(const root of roots)devices.set(root.id,filesystem(filesystems,path.dirname(root.canonical)));
   },
   directory(e,r){cost(r,0);},
-  openFile(e,r){cost(r,e.bytes);},
+  openFile(e,r){cost(r,e.bytes);checkSetting(e,r);},
   symlink(e,r){validateLink(e,r,roots);cost(r,0);},
   hardlink(e,r,leader,source){
+   checkSetting(e,r,leader);
    if(devices.get(r.id).dev!==devices.get(source.id).dev)throw new Error('restore destinations for a hard-link group are on different filesystems');
    cost(r,0);
   }
@@ -227,7 +247,7 @@ export async function assessRestore(inst,backup,journal=null){
   verifyOldGraph(roots,progress);
   await verifyStages(backup,integrity,progress);
  }
- return {integrity,metadata,filesystems,policyFile};
+ return {integrity,metadata,filesystems,policyFile,restorableSettings};
 }
 
 function stageVisitor(ctx,progress){
@@ -299,8 +319,16 @@ async function verifyStages(backup,integrity,progress){
  });
 }
 
+export async function recheckRestore(plan,backup,journal){
+ const progress=journal?.restoreRoots??[];
+ const roots=plan.integrity?plan.metadata.roots:plan.manifest.roots;
+ verifyOldGraph(roots,progress);
+ if(plan.integrity&&!needsStages(progress))await verifyStages(backup,plan.integrity,progress);
+}
+
 export async function restoreBackup(inst,ctx,backup,journal=null,assessed=null){
  const plan=assessed??await assessRestore(inst,backup,journal);
+ if(assessed)await recheckRestore(plan,backup,journal);
  if(journal?.driver)inst={...inst,driver:journal.driver};
  if(!plan.integrity){
   if(plan.legacy)ctx.log('  LEGACY archive: no integrity provenance; strict staged inspection required');
