@@ -63,7 +63,7 @@ export function serializeWiki(root,htmlBlocks){
    }
    if(!BLOCKS.has(tag)){pending.push(node);continue;}
    flush();
-   if(tag==='DIV'&&Array.from(node.children).some(child=>BLOCKS.has(child.tagName)||htmlBlocks.has(child)||child.classList.contains('wiki-table'))){
+   if((tag==='DIV'||tag==='P')&&Array.from(node.children).some(child=>BLOCKS.has(child.tagName)||htmlBlocks.has(child)||child.classList.contains('wiki-table'))){
     collect(node);
    }else if(tag==='P'||tag==='DIV'){
     blocks.push({t:'p',c:inlineBlocks(node)});

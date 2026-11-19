@@ -57,6 +57,11 @@ test('wiki editor serialization preserves marked text, ticket chips, table rows 
   return {nodeType:1,tagName,childNodes,children:childNodes.filter(child=>child.nodeType===1),dataset:attrs.dataset??{},classList,
    style:{textDecorationLine:''},getAttribute:name=>attrs[name]??null,querySelector:()=>attrs.table};
  };
+ for(const tag of ['OL','UL']){
+  const list=element(tag,[element('LI',[txt('List item')])]);
+  const wrapped=element('DIV',[element('P',[list])]);
+  assert.deepEqual(serializeWiki(wrapped,new WeakMap()),doc({t:tag.toLowerCase(),items:[[text('List item')]]}));
+ }
  const chip=element('SPAN',[txt('Display text')],{dataset:{ticket:'APP-1'}});
  const heading=element('H2',[element('B',[txt('Title')])]);
  const url=element('A',[txt('Guide')],{href:'https://example.com/'});
