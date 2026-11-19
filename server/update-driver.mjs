@@ -31,8 +31,8 @@ function digestTree(root,destination=null){
 
 export function retainDriver(inst,journal,source,{version,commit}){
  const parent=inst.home?path.join(inst.home,'update','drivers'):path.join(inst.backups,'drivers');
- const driver=path.join(parent,journal.id+'-'+randomUUID()),temp=driver+'.tmp';
- const resolved=canonical(driver),driverSource=canonical(source);
+ const temp=path.join(parent,'.copy-'+randomUUID());
+ const resolved=canonical(parent),driverSource=canonical(source);
  if(withinPath(resolved,driverSource)&&closure.some(name=>withinPath(resolved,path.join(driverSource,name))))throw new Error('driver retention overlaps the executable tree');
  mkdirSync(parent,{recursive:true,mode:0o700});
  const parentStat=lstatSync(parent);
@@ -41,7 +41,15 @@ export function retainDriver(inst,journal,source,{version,commit}){
  try{
   const treeSha256=digestTree(driverSource,temp);
   if(treeSha256!==digestTree(temp))throw new Error('retained driver differs from its source');
-  syncDirectory(temp);renameSync(temp,driver);syncDirectory(parent);
+  const driver=path.join(parent,treeSha256);
+  try{
+   const st=lstatSync(driver);
+   if(!st.isDirectory()||st.uid!==process.getuid()||st.mode&0o077||digestTree(driver)!==treeSha256)
+    throw new Error('existing retained updater differs from its digest');
+  }catch(error){
+   if(error.code!=='ENOENT')throw error;
+   syncDirectory(temp);renameSync(temp,driver);syncDirectory(parent);
+  }
   journal.driver=driver;
   journal.driverInfo={version,commit,treeSha256,capabilities:[...DRIVER_CAPABILITIES]};
  }finally{rmSync(temp,{recursive:true,force:true});}

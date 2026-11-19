@@ -102,3 +102,11 @@ test('read-only preflight reports a corrupt journal alongside coverage blockers'
  assert.equal(report.counts.HARDLINK_UNACCOUNTED,1);
  assert.deepEqual(f.snapshot(),before);
 });
+
+test('alias discovery identifies installed source aliases but omits them from enrollment candidates',async t=>{
+ const f=fixture(t),core=path.join(f.home,'core');
+ linkSync(f.media,path.join(core,'existing.bin'));
+ const report=await f.run(['backup-diagnose','--search-root',core,'--candidate-cover-files'],1);
+ assert.equal(report.links.foundNames,1);
+ assert.deepEqual(report.links.candidateCoverFiles,[]);
+});

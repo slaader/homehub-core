@@ -265,7 +265,7 @@ and never replace the policy with an older copy. There is no automatic rotation 
 The updater never restores trust from its application archives.
 
 Run an **already trusted driver**, independently verified and retained through the rollback window. Downloading
-an updater and running it to verify its own package does not establish trust. Git and package transactions retain the executable driver under `<home>/update/drivers/<transaction>/` (or
+an updater and running it to verify its own package does not establish trust. Git and package transactions retain the executable driver under `<home>/update/drivers/<tree digest>/` (or
 `<backups>/drivers/` without an instance directory). The journal records its path, capabilities and tree digest.
 When obtaining a driver from a release package, use the already trusted installed updater's `verify-package`
 with operator trust before invoking any code from the new package. Target tests and `--check` execute under
@@ -333,8 +333,8 @@ before stopping the service, changing the checkout or restoring files. Use the r
 especially when the installed checkout has its data inside it.
 
 ```sh
-node /srv/home-hub/update/drivers/TRANSACTION/scripts/update.mjs status --home /srv/home-hub
-node /srv/home-hub/update/drivers/TRANSACTION/scripts/update.mjs rollback --home /srv/home-hub --yes
+node /srv/home-hub/update/drivers/TREE_DIGEST/scripts/update.mjs status --home /srv/home-hub
+node /srv/home-hub/update/drivers/TREE_DIGEST/scripts/update.mjs rollback --home /srv/home-hub --yes
 ```
 
 The driver reads schema-1 and schema-2 journals and restores both schema-1 manifests and older archives without

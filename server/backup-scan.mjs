@@ -237,6 +237,8 @@ export function scanBackup(inst,{searchRoots=[],searchMaxEntries=2000000,example
  }
  const missingNames=[...groups.values()].reduce((n,g)=>n+Math.max(0,g.expected-g.count),0);
  const {found,scanned}=discover(groups,roots,searchRoots,searchMaxEntries,warn),byParent=new Map();
+ const excluded=[...protectedPaths(inst,policy.file),...[inst.root,...(inst.sources??[]).map(s=>s.dir)].filter(Boolean).map(canonical)];
+ const eligible=candidates?[...found.keys()].filter(file=>!excluded.some(p=>withinPath(file,p))).sort():[];
  for(const [file,key] of found){
   const parent=path.dirname(file),extension=path.extname(file)||'(none)';
   if(!byParent.has(parent))byParent.set(parent,{parent,names:0,bytes:0,extensions:{}});
@@ -260,7 +262,7 @@ export function scanBackup(inst,{searchRoots=[],searchMaxEntries=2000000,example
   links:{groups:groups.size,crossRoot:[...groups.values()].filter(g=>g.crossRoot).length,missingNames,
    foundNames:found.size,unfoundNames:Math.max(0,missingNames-found.size),searchedEntries:scanned,parents:[...byParent.values()],
    ...(examples?{examples:[...found.keys()].sort().slice(0,examples)}:{}),
-   ...(candidates?{candidateCoverFiles:[...found.keys()].sort()}: {})}};
+   ...(candidates?{candidateCoverFiles:eligible}: {})}};
 }
 
 export function verifyCurrentCoverage(roots){
