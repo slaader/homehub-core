@@ -8,11 +8,11 @@
       "commands": [
         "npm test"
       ],
-      "budget_seconds": 120,
-      "budget_approval": null,
+      "budget_seconds": 600,
+      "budget_approval": "Owner approved up to ten minutes per run for the updater release.",
       "last_run": {
-        "duration_seconds": 102.22,
-        "finished_at": "2026-11-19T11:57:21Z",
+        "duration_seconds": 127.94,
+        "finished_at": "2026-11-19T12:18:25Z",
         "result": "passed"
       }
     },
@@ -51,11 +51,11 @@
       "commands": [
         "node tests/large/backup-large.mjs --dense --interrupt=restore-new-renamed"
       ],
-      "budget_seconds": 120,
-      "budget_approval": null,
+      "budget_seconds": 600,
+      "budget_approval": "Owner approved up to ten minutes per run for the updater release.",
       "last_run": {
-        "duration_seconds": 94.75,
-        "finished_at": "2026-11-19T11:58:54Z",
+        "duration_seconds": 107.08,
+        "finished_at": "2026-11-19T12:18:25Z",
         "result": "passed"
       }
     },
