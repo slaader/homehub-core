@@ -10,8 +10,9 @@ import {packageFixture} from './package-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,writeFile,readFile,rm,realpath} from 'node:fs/promises';
-import {existsSync,readFileSync,readdirSync,writeFileSync,statSync,chmodSync} from 'node:fs';
+import {existsSync,readFileSync,readdirSync,writeFileSync,statSync,chmodSync,rmSync,symlinkSync} from 'node:fs';
 import {execFileSync,spawnSync} from 'node:child_process';
+import {createConnection,createServer} from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -60,8 +61,8 @@ function clone(from,to){execFileSync('git',['clone','-q',from,to],{stdio:'ignore
  * as STATE_DIR puts it). layout 'home': <home>/core, <home>/household (a plugin source of its own), config/, data/,
  * private/ and instance.json. upstream has v1.0.0; the test adds what it needs.
  */
-async function world(t,{layout='checkout',instance={}}={}){
- const dir=await realpath(await mkdtemp(path.join(os.tmpdir(),'hub-update-')));t.after(()=>rm(dir,{recursive:true,force:true}));
+async function world(t,{layout='checkout',instance={},temp=os.tmpdir()}={}){
+ const dir=await realpath(await mkdtemp(path.join(temp,'hub-update-')));t.after(()=>rm(dir,{recursive:true,force:true}));
  const upstream=await init(path.join(dir,'upstream'));
  const v100=await upstream.commit('1.0.0',tree('1.0.0'),{tag:'v1.0.0'});
  const home=layout==='home'?path.join(dir,'home'):null,root=home?path.join(home,'core'):path.join(dir,'hub');
@@ -275,6 +276,106 @@ test('a release that does not come up is rolled back: the old code, the old bran
  w.svc.onStart=version=>{if(version==='1.2.0')writeFileSync(path.join(w.state,'run.json'),JSON.stringify({version:'1.0.0',pid:w.svc.pid,startedAt:new Date(w.ctx.now()).toISOString(),plugins:[]}));};
  await refused(apply(inst,{core:'v1.2.0'},w.ctx),/health check failed: the hub that wrote run\.json is 1\.0\.0, not 1\.2\.0/);
  assert.equal(w.hub.git('rev-parse','HEAD'),w.v100);
+});
+
+function socketFixture(t,file){
+ const server=createServer(connection=>connection.end('listening'));
+ const close=()=>new Promise(resolve=>server.close(resolve));
+ t.after(close);
+ return {bind:()=>server.listen(file),close,async verify(address=file){
+  const connection=createConnection(address);
+  connection.setTimeout(3000,()=>connection.destroy(new Error('socket connection timed out')));
+  let body='';
+  for await(const chunk of connection)body+=chunk;
+  assert.equal(body,'listening');
+ }};
+}
+
+test('rollback rechecks configuration socket conflicts before stop, after stop, and before writing',async t=>{
+ for(const epoch of [1,2])for(const hadSite of [false,true])await t.test(`epoch ${epoch}, ${hadSite?'replace':'unlink'} configuration`,async t=>{
+  const w=await world(t,{temp:'/tmp'}),site=path.join(w.state,'site.json');
+  w.env.HOME_HUB_SITE_CONFIG=site;
+  const original='{"siteName":"Original"}';
+  if(hadSite)writeFileSync(site,original);
+  const inst=w.inst(),candidate=path.join(w.dir,'site-candidate.json');
+  writeFileSync(candidate,'{"siteName":"Example"}');
+  const v110=await w.upstream.commit('1.1.0',tree('1.1.0',epoch),{tag:'v1.1.0'});
+  await apply(inst,{core:'v1.1.0',siteConfig:candidate},w.ctx);
+  assert.equal(readJournal(inst).site.baseHash===null,!hadSite);
+  rmSync(site);
+  const before=socketFixture(t,site);
+  before.bind();
+  w.svc.calls.length=0;
+  await refused(rollback(inst,w.ctx,{yes:true}),/Rollback assessment refused before stopping.*UNIX socket/);
+  await before.verify();
+  assert.deepEqual(w.svc.calls,[]);
+  assert.equal(w.svc.running,true);
+  assert.equal(w.hub.git('rev-parse','HEAD'),v110);
+  await before.close();
+
+  const after=socketFixture(t,path.join(w.dir,'endpoint'));
+  const exec=w.ctx.exec;
+  w.ctx.exec=(cmd,args,options)=>{
+   const result=exec(cmd,args,options);
+   if(cmd==='svc'&&args[0]==='stop'){
+    after.bind();symlinkSync(path.join(w.dir,'endpoint'),site);
+   }
+   return result;
+  };
+  await assert.rejects(rollback(inst,w.ctx,{yes:true}),e=>e instanceof RollbackFailed&&/UNIX socket/.test(e.message));
+  assert.deepEqual(w.svc.calls,['stop']);
+  assert.equal(w.hub.git('rev-parse','HEAD'),v110);
+  assert.ok(!readJournal(inst).operations.some(o=>o.kind==='source-restore'));
+  await after.verify(site);
+  rmSync(site);await after.close();
+
+  const late=socketFixture(t,site);
+  const bindLate=()=>{rmSync(site,{force:true});late.bind();};
+  w.ctx.exec=(cmd,args,options)=>{
+   const result=exec(cmd,args,options);
+   if(epoch===1&&cmd==='git'&&args.includes('checkout'))bindLate();
+   return result;
+  };
+  if(epoch===2)w.ctx.checkpoint=name=>{if(name==='restore-cleaned')bindLate();};
+  await assert.rejects(rollback(inst,w.ctx,{yes:true}),e=>e instanceof RollbackFailed&&/UNIX socket/.test(e.message));
+  await late.verify();
+  assert.equal(w.hub.git('rev-parse','HEAD'),w.v100);
+  assert.equal(w.svc.running,false);
+  await late.close();
+  w.ctx.exec=exec;w.ctx.checkpoint=()=>{};
+  await rollback(inst,w.ctx,{yes:true});
+  assert.equal(w.svc.calls.at(-1),'start 1.0.0');
+  assert.equal(w.svc.running,true);
+  if(hadSite)assert.equal(readFileSync(site,'utf8'),original);
+  else assert.ok(!existsSync(site));
+ });
+});
+
+test('rollback refuses to replace an archived file when the stop command binds a socket there',async t=>{
+ const w=await world(t,{temp:'/tmp'}),inst=w.inst();
+ const file=path.join(w.state,'hub.db'),socket=socketFixture(t,file);
+ const v110=await w.upstream.commit('1.1.0',tree('1.1.0',2),{tag:'v1.1.0'});
+ w.svc.onStart=version=>{if(version==='1.1.0')writeFileSync(file,'migrated');};
+ await apply(inst,{core:'v1.1.0'},w.ctx);
+ const exec=w.ctx.exec;
+ w.ctx.exec=(cmd,args,options)=>{
+  const result=exec(cmd,args,options);
+  if(cmd==='svc'&&args[0]==='stop'){
+   rmSync(file);socket.bind();
+  }
+  return result;
+ };
+ w.svc.calls.length=0;
+ await assert.rejects(rollback(inst,w.ctx,{yes:true}),e=>e instanceof RollbackFailed&&/UNIX socket.*hub\.db/.test(e.message));
+ await socket.verify();
+ assert.deepEqual(w.svc.calls,['stop']);
+ assert.equal(w.hub.git('rev-parse','HEAD'),v110);
+ assert.ok(!readJournal(inst).operations.some(o=>o.kind==='source-restore'));
+ await socket.close();w.ctx.exec=exec;
+ await rollback(inst,w.ctx,{yes:true});
+ assert.equal(readFileSync(file,'utf8'),'written by 1.0.0\n');
+ assert.equal(w.svc.calls.at(-1),'start 1.0.0');
+ assert.equal(w.svc.running,true);
 });
 
 test('the data epoch: when it rises, going back restores the archive, and what was there is moved aside',async t=>{

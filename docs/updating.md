@@ -480,12 +480,13 @@ space until pruning at the end of a successful update. Use local filesystems and
 failed state. Mounted roots, unsupported special files/modes, unsafe links and paths outside USTAR limits are refused.
 
 Filesystem UNIX sockets in covered roots are reported separately and left in place. The archive contains durable
-files and the directory structure. During rollback the updater keeps every live directory leading to a socket
-at its existing path, with its current permissions and inode. It restores archived durable children individually
+files and the directory structure. During rollback the updater keeps directories leading to sockets and
+unchanged socket aliases at their existing paths and inodes. It restores archived durable children individually
 and retains durable paths created since the backup in the failed-state index. Sockets created after backup also
 stay reachable. Leave the independent daemon running and keep its socket path topology stable during the update.
-If a socket or its containing directory occupies a pathname needed for a different archived entry, rollback
-refuses. The same applies when a new durable child appears in a retained directory after restore was journalled.
+Rollback refuses if a live socket, socket alias, or directory needed to reach one conflicts with the archive.
+It checks again after stopping the service, before switching code. It also refuses if a new durable child
+appears in a retained directory after restore was journalled.
 Resolve the conflict without removing a listening endpoint before retrying. Package activation requires sockets
 outside the replaceable code directory. Legacy archive rollback refuses to move roots that contain sockets.
 

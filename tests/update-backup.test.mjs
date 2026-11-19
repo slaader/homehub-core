@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,symlinkSync,readlinkSync,lstatSync,existsSync,readdirSync,realpathSync,linkSync} from 'node:fs';import path from 'node:path';import os from 'node:os';
+import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,symlinkSync,readlinkSync,lstatSync,existsSync,readdirSync,realpathSync,linkSync,renameSync} from 'node:fs';import path from 'node:path';import os from 'node:os';
 import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {createConnection,createServer} from 'node:net';
@@ -142,7 +142,25 @@ test('backup and rollback keep live UNIX sockets and journal durable children in
   const value=path.join(inst.paths.state,'value'),cross=path.join(inst.paths.config,'linked-value');
   writeFileSync(value,'before');linkSync(value,cross);
   symlinkSync('service.sock',path.join(inst.paths.state,'socket-link'));
-  const ancestors=[inst.paths.data,inst.paths.state,inst.paths.private];
+  const addresses=path.join(inst.paths.private,'addresses'),front=path.join(addresses,'front');
+  const middle=path.join(inst.paths.state,'middle'),byDir=path.join(addresses,'by-dir');
+  const jump=path.join(addresses,'jump'),detour=path.join(inst.paths.state,'detour');
+  const forward=path.join(inst.paths.config,'forward');
+  mkdirSync(addresses);mkdirSync(detour);
+  symlinkSync('service.sock',middle);
+  symlinkSync('../../data/state/detour',jump);
+  symlinkSync('jump/../middle',front);
+  symlinkSync('../../data/state',byDir);
+  symlinkSync('../private/addresses',forward);
+  const aliasPaths=[front,middle,byDir,jump,forward],aliasInodes=aliasPaths.map(file=>lstatSync(file,{bigint:true}).ino);
+  const checkAliases=async()=>{
+   await reachable(front,aliasInodes[0]);
+   await reachable(middle,aliasInodes[1]);
+   await reachable(path.join(byDir,'service.sock'),endpoint);
+   await reachable(path.join(forward,'front'),aliasInodes[0]);
+   assert.deepEqual(aliasPaths.map(file=>lstatSync(file,{bigint:true}).ino),aliasInodes);
+  };
+  const ancestors=[inst.paths.data,inst.paths.state,inst.paths.private,addresses,detour];
   const ancestorInodes=ancestors.map(file=>lstatSync(file,{bigint:true}).ino);
   const plan=backupPlan(inst);
   assert.equal(plan.runtimeSockets.count,2);
@@ -175,12 +193,14 @@ test('backup and rollback keep live UNIX sockets and journal durable children in
   await reachable(socket,endpoint);
   await reachable(newSocket,newEndpoint);
   await reachable(standalone,standaloneInode);
+  await checkAliases();
   const persisted=readUpdateJournal(inst.files.journal);
   assert.ok(persisted.socketRestore.units.some(u=>u.live===value));
   const index=await restoreBackup(inst,ctx,backup,persisted);
   await reachable(socket,endpoint);
   await reachable(newSocket,newEndpoint);
   await reachable(standalone,standaloneInode);
+  await checkAliases();
   assert.deepEqual(ancestors.map(file=>lstatSync(file,{bigint:true}).ino),ancestorInodes);
   assert.equal(lstatSync(newDir,{bigint:true}).ino,newDirInode);
   assert.equal(readFileSync(value,'utf8'),'before');
@@ -215,17 +235,72 @@ test('backup refuses an absent root that appeared after planning',async t=>{
  assert.deepEqual(readdirSync(inst.backups),[]);
 });
 
-test('resume validates embedded aliases while their owning root is moved aside',async t=>{
- const {inst,ctx}=fixture(t);
- inst.paths.authFile=path.join(inst.paths.data,'auth-link');
- symlinkSync('legitimate.tgz',inst.paths.authFile);
- const backup=await createBackup(inst,ctx,'embedded'),j=journal(inst,backup);
- await assert.rejects(restoreBackup(inst,{...ctx,checkpoint:name=>{
-  if(name==='restore-old-renamed')throw new Error('interruption');
- }},backup,j),/interruption/);
- await restoreBackup(inst,ctx,backup,readUpdateJournal(inst.files.journal));
- assert.equal(readlinkSync(inst.paths.authFile),'legitimate.tgz');
+test('resume resolves each component of aliases through moved roots and children',async t=>{
+ for(const split of [false,true])await t.test(split?'journalled child':'whole root',async t=>{
+  const {dir,inst,ctx}=fixture(t,'/tmp');
+  const links=path.join(inst.paths.data,'chain'),hop=path.join(links,'hop');
+  mkdirSync(links);
+  mkdirSync(path.join(inst.paths.data,'landing','sub'),{recursive:true});
+  writeFileSync(path.join(inst.paths.data,'landing','legitimate.tgz'),'via hop');
+  symlinkSync('hop/../legitimate.tgz',path.join(links,'entry'));
+  symlinkSync('../landing/sub',hop);
+  inst.paths.authFile=path.join(dir,'external','auth-link');
+  symlinkSync('../data/chain/entry',inst.paths.authFile);
+  const socket=path.join(inst.paths.state,'service.sock'),endpoint=split?await listen(t,socket):null;
+  const backup=await createBackup(inst,ctx,'embedded'),j=journal(inst,backup);
+  await assert.rejects(restoreBackup(inst,{...ctx,checkpoint:name=>{
+   if(name==='restore-old-renamed'&&!existsSync(links))throw new Error('interruption');
+  }},backup,j),/interruption/);
+  const persisted=readUpdateJournal(inst.files.journal);
+  const moved=(split?persisted.socketRestore.units:persisted.restoreRoots).find(p=>p.status==='moving-old');
+  const oldHop=split?path.join(moved.aside,'hop'):path.join(moved.aside,'chain','hop');
+  rmSync(oldHop);symlinkSync('hop',oldHop);
+  await assert.rejects(assessRestore(inst,backup,persisted),/alias topology changed/);
+  rmSync(oldHop);symlinkSync('../landing/sub',oldHop);
+  await restoreBackup(inst,ctx,backup,persisted);
+  assert.equal(readFileSync(inst.paths.authFile,'utf8'),'via hop');
+  if(split)await reachable(socket,endpoint);
+ });
+});
+
+test('rollback restores a missing covered target through an unchanged external alias',async t=>{
+ const {dir,inst,ctx}=fixture(t),target=path.join(inst.paths.data,'legitimate.tgz');
+ inst.paths.authFile=path.join(dir,'external','auth-link');
+ symlinkSync('../data/legitimate.tgz',inst.paths.authFile);
+ const backup=await createBackup(inst,ctx,'removed-target');
+ rmSync(target);
+ await restoreBackup(inst,ctx,backup,journal(inst,backup));
  assert.equal(readFileSync(inst.paths.authFile,'utf8'),'archive bytes');
+});
+
+test('rollback refuses unaligned and replaced live socket aliases',async t=>{
+ const {inst,ctx}=fixture(t,'/tmp');
+ const socket=path.join(inst.paths.state,'service.sock');
+ const endpoint=await listen(t,socket);
+ const alias=path.join(inst.paths.config,'address'),alternate=path.join(inst.paths.state,'alternate');
+ symlinkSync('service.sock',alternate);
+ symlinkSync('../data/state/service.sock',alias);
+ const backup=await createBackup(inst,ctx,'socket-alias'),j=journal(inst,backup);
+ const link='../data/state/service.sock';
+ rmSync(alias);symlinkSync('../data/state/alternate',alias);
+ await assert.rejects(restoreBackup(inst,ctx,backup,j),/would replace a UNIX socket.*address/);
+ assert.equal(j.restoreRoots,undefined);
+ await reachable(alias,lstatSync(alias,{bigint:true}).ino);
+ rmSync(alias);symlinkSync(link,alias);
+ const added=path.join(inst.paths.config,'added');
+ symlinkSync('address',added);
+ await assert.rejects(restoreBackup(inst,ctx,backup,j),/would replace a UNIX socket.*added/);
+ await reachable(added,lstatSync(added,{bigint:true}).ino);
+ rmSync(added);
+
+ await assert.rejects(restoreBackup(inst,{...ctx,checkpoint:name=>{
+  if(name==='restore-all-prepared')throw new Error('interruption');
+ }},backup,j),/interruption/);
+ const replaced=path.join(inst.paths.config,'replaced');
+ symlinkSync(link,replaced);renameSync(replaced,alias);
+ await assert.rejects(restoreBackup(inst,ctx,backup,readUpdateJournal(inst.files.journal)),/Preserved UNIX socket alias changed/);
+ await reachable(alias,lstatSync(alias,{bigint:true}).ino);
+ await reachable(socket,endpoint);
 });
 
 test('resume rejects a shutdown write to an already installed root',async t=>{

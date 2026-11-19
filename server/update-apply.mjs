@@ -28,7 +28,7 @@ import {V1} from './state-forward.mjs';
 // Only static imports: the command may be running from the very checkout it switches, so nothing is loaded later.
 import {performance} from 'node:perf_hooks';
 import {spawnSync} from 'node:child_process';
-import {existsSync,readFileSync,writeFileSync,mkdirSync,renameSync,rmSync,readdirSync,statSync,appendFileSync,cpSync,symlinkSync,mkdtempSync,chmodSync,realpathSync,lstatSync} from 'node:fs';
+import {existsSync,readFileSync,writeFileSync,mkdirSync,renameSync,rmSync,unlinkSync,readdirSync,statSync,appendFileSync,cpSync,symlinkSync,mkdtempSync,chmodSync,realpathSync,lstatSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
@@ -46,7 +46,7 @@ import {packageReceipt} from './build-info.mjs';
 import {within,syncDirectory} from './release-trust.mjs';
 import {identityMismatch,observeReadiness,healthSample} from './update-readiness.mjs';
 import {contentFingerprint,pluginSourceFingerprint} from './runtime-identity.mjs';
-import {backupPlan,createBackup,restoreBackup,assessRestore,recheckRestore,backupRootSummary} from './update-backup.mjs';
+import {backupPlan,createBackup,restoreBackup,assessRestore,backupRootSummary} from './update-backup.mjs';
 import {UpdateError,RollbackFailed} from './update-errors.mjs';
 import {refuseSocketReplacement} from './restore-sockets.mjs';
 import {retainDriver,checkRetainedDriver} from './update-driver.mjs';
@@ -101,12 +101,20 @@ function checkSiteUnchanged(site){
  if(hashOf(bytes)!==site.baseHash)throw new UpdateError(`The ${site.label??'site'} configuration changed since preflight. Run the update again; no configuration was replaced.`);
  return bytes;
 }
-const replaceSite=(file,bytes,mode)=>durableWrite(file,bytes,mode);
+function verifyConfigurationPath(file){
+ refuseSocketReplacement(file);
+ try{
+  if(!lstatSync(file).isFile())throw new Error(`Configuration path is no longer a regular file: ${file}`);
+ }catch(e){if(e.code!=='ENOENT')throw e;}
+}
+const replaceSite=(file,bytes,mode)=>durableWrite(file,bytes,mode,()=>verifyConfigurationPath(file));
 const currentSiteMatches=site=>hashOf(siteBytes(site.file))===site.baseHash&&(statSync(site.file).mode&0o777)===site.mode;
 function verifyConfigurationRecovery(journal,assessed){
  for(const key of ['site','instance']){
   const site=journal[key];
-  if(!site||!['applying','applied'].includes(site.status)||site.baseHash===null)continue;
+  if(!site||!['applying','applied'].includes(site.status))continue;
+  verifyConfigurationPath(site.file);
+  if(site.baseHash===null)continue;
   if(assessed?.restorableSettings?.has(site.file))continue;
   if(assessed?.manifest?.files?.some(e=>{
    const r=assessed.manifest.roots.find(r=>e.path===r.id||e.path.startsWith(r.id+'/'));
@@ -119,8 +127,10 @@ function verifyConfigurationRecovery(journal,assessed){
 function restoreSite(inst,journal,key='site'){
  const site=journal[key];
  if(!site||!['applying','applied'].includes(site.status))return;
- if(site.baseHash===null)rmSync(site.file,{force:true});
- else if(!currentSiteMatches(site)){
+ verifyConfigurationPath(site.file);
+ if(site.baseHash===null){
+  try{unlinkSync(site.file);}catch(e){if(e.code!=='ENOENT')throw e;}
+ }else if(!currentSiteMatches(site)){
   const bytes=siteBytes(site.backup);
   if(bytes===null||hashOf(bytes)!==site.baseHash)throw new Error(`the original ${key} configuration is missing or changed: ${site.backup}`);
   replaceSite(site.file,bytes,site.mode);
@@ -690,6 +700,7 @@ async function undo(inst,ctx,journal){
  const switched=!['stopping','backup','backup-verified'].includes(journal.undoFrom??journal.step);
  if(journal.step!=='rolling-back'&&journal.step!=='rollback-failed')journal.undoFrom=journal.step;
  journal.step='rolling-back';writeJournal(inst,journal);
+ let stopped=false;
  try{
   const head=change=>git(ctx,change.dir,'rev-parse','HEAD');
   const moved=journal.changes.some(c=>head(c)!==c.from)||Boolean(journal.package&&existsSync(journal.package.old));
@@ -699,7 +710,9 @@ async function undo(inst,ctx,journal){
   if(untouched)ctx.log('  the hub still runs as it did; nothing was changed. Check the service\'s stop command before trying again.');
   if(!untouched){
    await stopService(inst,ctx,readRun(inst)?.pid??null);
-   if(assessed)await recheckRestore(assessed,journal.backup,journal);
+   stopped=true;
+   // The stop command can change the state layout. Reassess against the archive before switching code.
+   if(assessed)assessed=await assessRestore(inst,journal.backup,journal);
    verifyConfigurationRecovery(journal,assessed);
    if(journal.package)restorePackage(inst,journal,ctx);
    for(const c of journal.changes)if(head(c)!==c.from||c.branch){ctx.log(`  ${c.id}: back to ${short(c.from)}${c.branch?` (${c.branch})`:''}`);if(inspectSource(ctx,c).dirty.length)throw new Error(`Unrelated tracked edits in ${c.dir}; refusing forced rollback`);const current=head(c);if(current!==c.from&&current!==c.to)throw new Error(`Unexpected source identity in ${c.dir}; manual recovery required`);recordMutation(inst,journal,'source-restore',{source:c.id,from:current,to:c.from},()=>switchTo(ctx,c,c.from,{branch:c.branch}));}
@@ -715,6 +728,7 @@ async function undo(inst,ctx,journal){
    if(!journal.package&&journal.quarantine&&journal.changes.some(c=>c.id==='core'))setQuarantine(inst.files.updates,'git-'+journal.to.core.commit,{at:iso(ctx.now()),reason:journal.quarantine.reason});
    if(journal.package&&journal.quarantine)setQuarantine(inst.files.updates,journal.package.manifestSha256,{at:iso(ctx.now()),reason:journal.quarantine.reason});
    const since=ctx.now();
+   stopped=false;
    await startService(inst,ctx);
    await waitHealthy(inst,ctx,journal.from.expect,since,{interruptible:false});
   }
@@ -724,7 +738,7 @@ async function undo(inst,ctx,journal){
  }catch(e){
   journal.step='rollback-failed';journal.rollbackError=oneLine(e.message);writeJournal(inst,journal);
   history(inst,ctx,journal,'rollback-failed');
-  try{ctx.exec(inst.service.stop[0],inst.service.stop.slice(1),{timeoutMs:60000});}catch{}
+  if(!stopped)try{ctx.exec(inst.service.stop[0],inst.service.stop.slice(1),{timeoutMs:60000});}catch{}
   throw new RollbackFailed(`The previous version could not be brought back: ${e.message}\nThe service was told to stop and is left stopped. Look at these, fix the cause, then run "rollback" again:\n${pathsLine(inst,journal)}`);
  }
 }

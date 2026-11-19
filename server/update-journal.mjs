@@ -18,7 +18,8 @@ export function validateJournal(j){
  if(j.socketRestore!==undefined){
   const layout=j.socketRestore;
   if(!layout||!Array.isArray(layout.anchors)||!Array.isArray(layout.sockets)||!Array.isArray(layout.units)||
-   layout.anchors.length+layout.units.length>20000||layout.sockets.length>1000||
+   (layout.aliases!==undefined&&(!Array.isArray(layout.aliases)||!layout.aliases.every(a=>a&&absolute(a.live)&&absolute(a.target))))||
+   layout.anchors.length+layout.units.length+(layout.aliases?.length??0)>20000||layout.sockets.length>1000||
    !layout.anchors.every(a=>a&&absolute(a.live))||!layout.sockets.every(id=>typeof id==='string')||
    !layout.units.every(u=>u&&[u.live,u.aside,u.staged,u.stageDir].every(absolute)))
    throw new Error('invalid socket restore layout');

@@ -8,9 +8,9 @@ import {compare,parse} from './semver.mjs';
 export const TRUST_SCHEMA=1;
 export const sha256=bytes=>createHash('sha256').update(bytes).digest('hex');
 export const within=(child,parent)=>child===parent||child.startsWith(parent+path.sep);
-export function durableWrite(file,bytes,mode=0o600){
+export function durableWrite(file,bytes,mode=0o600,beforeRename){
  mkdirSync(path.dirname(file),{recursive:true,mode:0o700});const tmp=`${file}.${randomUUID()}.tmp`;let fd;
- try{fd=openSync(tmp,'wx',mode);writeFileSync(fd,bytes);fsyncSync(fd);closeSync(fd);fd=undefined;renameSync(tmp,file);syncDirectory(path.dirname(file));}finally{if(fd!==undefined)closeSync(fd);rmSync(tmp,{force:true});}
+ try{fd=openSync(tmp,'wx',mode);writeFileSync(fd,bytes);fsyncSync(fd);closeSync(fd);fd=undefined;beforeRename?.();renameSync(tmp,file);syncDirectory(path.dirname(file));}finally{if(fd!==undefined)closeSync(fd);rmSync(tmp,{force:true});}
 }
 export function syncDirectory(dir){let fd;try{fd=openSync(dir,'r');fsyncSync(fd);}catch(e){if(!['EINVAL','ENOTSUP','EISDIR','EBADF'].includes(e.code))throw e;}finally{if(fd!==undefined)closeSync(fd);}}
 // A small JSON recognizer rejects duplicate names before JSON.parse can discard evidence.
