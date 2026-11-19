@@ -6,6 +6,21 @@ Home Hub core, newest first. One section per release; the section is the text of
 number promises is in `AGENTS.md` → Versioning. The top section is the release being prepared, `## Unreleased`
 until the release gives it its number: a change to the public surface adds its line there in the same commit.
 
+## Unreleased
+
+### Added
+
+- Project wikis support child pages, subtree moves, inventory tables with ordered stats and attachments,
+  and on-demand image, audio, video and 3D viewing. Authors can pin approved Git LFS and Review files
+  and use the wiki MCP tools for the entire authoring flow. See [the wiki guide](docs/wiki.md)
+  and [the API reference](docs/API.md#project-wiki).
+
+### Data
+
+- Data epoch 8 upgrades `hub.db` to schema 3 and the wiki collection to schema 2. Existing pages become
+  children of Home and retain their IDs, revisions and content. Wiki attachment bytes, resumable uploads
+  and metadata live in the instance state directory. Restore the pre-update backup when rolling back.
+
 ## 1.2.0
 
 ### Added

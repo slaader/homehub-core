@@ -30,7 +30,9 @@ code directory.
 
 | Where | What | Format |
 |---|---|---|
-| `state/hub.db` (+ `-wal`, `-shm`) | Tickets (projects, releases, tickets with comments and history), project wiki pages and their summaries, the review index (sets → rounds → items → feedback, blob metadata), browser sign-in sessions, the full-text search index | SQLite, `node:sqlite` built into Node, no npm package |
+| `state/hub.db` (+ `-wal`, `-shm`) | Tickets (projects, releases, tickets with comments and history), project wiki tree, documents, asset records, import grants, uploads and retry receipts, the review index (sets → rounds → items → feedback, blob metadata), browser sign-in sessions, the full-text search index | SQLite, `node:sqlite` built into Node, no npm package |
+| `state/wiki/blobs/` | Verified wiki asset payloads keyed by SHA-256. Multiple wiki assets can share a payload. Include this directory and `hub.db` in the same backup | files, 0600 |
+| `state/wiki/uploads/` | Private resumable uploads and staged large wiki documents. Expire after 24 hours | files, 0600 |
 | `state/review/blobs/` | Review files (mockups, images, `.glb`), content-addressed by sha256 | files |
 | `state/access.json`, `state/app-tokens.json` | Users and their roles, custom roles, service accounts, API keys, per-account preferences, app tokens (hashes only; `{schemaVersion: 2, tokens}`). Legacy `device-tokens.json` and `device-tokens-audit.jsonl` files are moved to `app-tokens.json` and `app-tokens-audit.jsonl` once, at startup | JSON |
 | `state/agents.json`, `state/agent/` | Push agent keys (hashes only, each bound to one device; `schemaVersion: 2`), and per device (`agent/<device>.json`, `schemaVersion: 2`) the latest copy of each part its agent reported, with the hub's receive time (0600, directory 0700); `agent/history.jsonl`, the agents' trend (one line per device at most every six hours, at most 3000 lines) | JSON / JSONL |
@@ -47,6 +49,12 @@ code directory.
 | `data/security/probes.json` | Written by `scripts/collect-security.mjs` beside `ssh-keys.json` (0600; `schemaVersion: 2`): each device's raw probe output with `probedAt` (fingerprints, paths, public `authorized_keys` lines, `ssh -G` routes, `sudo -l` rules; never a private key), Forgejo and the router entry, so the hub can join the push agents' records | JSON |
 | `data/plugins/<id>/` | A plugin's own files (`hub.pluginData(id)`) | the plugin's |
 | `private/` | `auth.json` (the owner's hash and `passwordAt`; written by `scripts/setup.mjs`), TLS key, tokens; `backup-jobs/<id>/` (0700): each backup job's ed25519 key pair (private key 0600), its generated `ssh_config` and `known_hosts` with the pinned host keys | JSON / PEM |
+
+Wiki attachments and upload reservations use a default budget of 20 GiB. Set `WIKI_MAX_BYTES` to
+override it, or use `REVIEW_MAX_BYTES` for the same configured ceiling in each store. The wiki keeps
+unreferenced assets for seven days and only deletes a payload once every wiki asset using it has
+expired. Review stays usable when a wiki reference goes away. The normal updater backup covers both
+wiki directories and their metadata under `STATE_DIR`.
 
 ## hub.db
 

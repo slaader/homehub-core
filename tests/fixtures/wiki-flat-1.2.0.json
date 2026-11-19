@@ -1,0 +1,288 @@
+{
+  "schema": 2,
+  "home": "wtiplrec5uiw",
+  "inventory": "wl5td4t3osyy",
+  "units": "wf6fwremiqtn",
+  "ticket": "APP-1",
+  "ddl": [
+    "CREATE TABLE meta(kind TEXT PRIMARY KEY, doc TEXT NOT NULL)",
+    "CREATE TABLE docs(kind TEXT NOT NULL, coll TEXT NOT NULL, id TEXT NOT NULL, doc TEXT NOT NULL, PRIMARY KEY(kind,coll,id))",
+    "CREATE TABLE sessions(hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, password_at TEXT, until INTEGER NOT NULL)",
+    "CREATE INDEX sessions_until ON sessions(until)",
+    "CREATE TABLE search_version(kind TEXT PRIMARY KEY, version INTEGER NOT NULL)",
+    "CREATE VIRTUAL TABLE search USING fts5(kind UNINDEXED, id UNINDEXED, project UNINDEXED, updated UNINDEXED, title, body,\n   tokenize='unicode61 remove_diacritics 2', prefix='2 3')"
+  ],
+  "meta": [
+    [
+      "tickets",
+      {
+        "schema": 1,
+        "revision": 1,
+        "updatedAt": "2026-11-19T19:56:34.062Z"
+      }
+    ],
+    [
+      "wiki",
+      {
+        "schema": 1,
+        "revision": 4,
+        "updatedAt": "2026-11-19T19:56:34.065Z"
+      }
+    ]
+  ],
+  "docs": [
+    [
+      "tickets",
+      "projects",
+      "example-app",
+      {
+        "id": "example-app",
+        "key": "APP",
+        "name": "Example App",
+        "type": "app",
+        "description": "",
+        "createdAt": null,
+        "rev": 1,
+        "next": 2
+      }
+    ],
+    [
+      "tickets",
+      "tickets",
+      "APP-1",
+      {
+        "id": "APP-1",
+        "project": "example-app",
+        "title": "Scout implementation",
+        "description": "",
+        "type": "task",
+        "status": "open",
+        "priority": "normal",
+        "release": null,
+        "assignee": null,
+        "labels": [],
+        "refs": [],
+        "reporter": "alice",
+        "createdAt": "2026-11-19T19:56:34.062Z",
+        "updatedAt": "2026-11-19T19:56:34.062Z",
+        "closedAt": null,
+        "rev": 1,
+        "comments": [],
+        "attachments": [],
+        "history": [
+          {
+            "at": "2026-11-19T19:56:34.062Z",
+            "by": "alice",
+            "field": "created",
+            "from": null,
+            "to": "open"
+          }
+        ]
+      }
+    ],
+    [
+      "wiki",
+      "wikis",
+      "example-app",
+      {
+        "project": "example-app",
+        "home": "wtiplrec5uiw",
+        "count": 3,
+        "createdAt": "2026-11-19T19:56:34.065Z",
+        "createdBy": "alice"
+      }
+    ],
+    [
+      "wiki",
+      "pages",
+      "example-app/wtiplrec5uiw",
+      {
+        "id": "wtiplrec5uiw",
+        "project": "example-app",
+        "title": "Home",
+        "doc": {
+          "v": 1,
+          "blocks": [
+            {
+              "t": "h",
+              "level": 1,
+              "c": [
+                {
+                  "t": "text",
+                  "text": "Example App"
+                }
+              ]
+            }
+          ]
+        },
+        "links": {
+          "tickets": []
+        },
+        "rev": 1,
+        "createdAt": "2026-11-19T19:56:34.065Z",
+        "createdBy": "alice",
+        "updatedAt": "2026-11-19T19:56:34.065Z",
+        "updatedBy": "alice",
+        "history": [
+          {
+            "at": "2026-11-19T19:56:34.065Z",
+            "by": "alice",
+            "rev": 1,
+            "field": "created"
+          }
+        ]
+      }
+    ],
+    [
+      "wiki",
+      "summaries",
+      "example-app/wtiplrec5uiw",
+      {
+        "id": "wtiplrec5uiw",
+        "project": "example-app",
+        "title": "Home",
+        "rev": 1,
+        "updatedAt": "2026-11-19T19:56:34.065Z",
+        "updatedBy": "alice",
+        "links": {
+          "tickets": []
+        }
+      }
+    ],
+    [
+      "wiki",
+      "pages",
+      "example-app/wl5td4t3osyy",
+      {
+        "id": "wl5td4t3osyy",
+        "project": "example-app",
+        "title": "Game inventory",
+        "doc": {
+          "v": 1,
+          "blocks": [
+            {
+              "t": "p",
+              "c": [
+                {
+                  "t": "text",
+                  "text": "Collection notes"
+                }
+              ]
+            }
+          ]
+        },
+        "links": {
+          "tickets": []
+        },
+        "rev": 1,
+        "createdAt": "2026-11-19T19:56:34.065Z",
+        "createdBy": "alice",
+        "updatedAt": "2026-11-19T19:56:34.065Z",
+        "updatedBy": "alice",
+        "history": [
+          {
+            "at": "2026-11-19T19:56:34.065Z",
+            "by": "alice",
+            "rev": 1,
+            "field": "created"
+          }
+        ]
+      }
+    ],
+    [
+      "wiki",
+      "summaries",
+      "example-app/wl5td4t3osyy",
+      {
+        "id": "wl5td4t3osyy",
+        "project": "example-app",
+        "title": "Game inventory",
+        "rev": 1,
+        "updatedAt": "2026-11-19T19:56:34.065Z",
+        "updatedBy": "alice",
+        "links": {
+          "tickets": []
+        }
+      }
+    ],
+    [
+      "wiki",
+      "pages",
+      "example-app/wf6fwremiqtn",
+      {
+        "id": "wf6fwremiqtn",
+        "project": "example-app",
+        "title": "Playable units",
+        "doc": {
+          "v": 1,
+          "blocks": [
+            {
+              "t": "table",
+              "header": true,
+              "rows": [
+                [
+                  [
+                    {
+                      "t": "text",
+                      "text": "Unit"
+                    }
+                  ]
+                ],
+                [
+                  [
+                    {
+                      "t": "ticket",
+                      "id": "APP-1"
+                    }
+                  ]
+                ]
+              ]
+            }
+          ]
+        },
+        "links": {
+          "tickets": [
+            "APP-1"
+          ]
+        },
+        "rev": 2,
+        "createdAt": "2026-11-19T19:56:34.065Z",
+        "createdBy": "alice",
+        "updatedAt": "2026-11-19T19:56:34.065Z",
+        "updatedBy": "alice",
+        "history": [
+          {
+            "at": "2026-11-19T19:56:34.065Z",
+            "by": "alice",
+            "rev": 1,
+            "field": "created"
+          },
+          {
+            "at": "2026-11-19T19:56:34.065Z",
+            "by": "alice",
+            "rev": 2,
+            "field": "title"
+          }
+        ]
+      }
+    ],
+    [
+      "wiki",
+      "summaries",
+      "example-app/wf6fwremiqtn",
+      {
+        "id": "wf6fwremiqtn",
+        "project": "example-app",
+        "title": "Playable units",
+        "rev": 2,
+        "updatedAt": "2026-11-19T19:56:34.065Z",
+        "updatedBy": "alice",
+        "links": {
+          "tickets": [
+            "APP-1"
+          ]
+        }
+      }
+    ]
+  ]
+}

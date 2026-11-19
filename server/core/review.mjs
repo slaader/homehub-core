@@ -31,7 +31,7 @@ export default {
   'Review: review_list feedbackPending:true finds feedback; review_get reads decisions and comments.',
   {scope:'review:write',text:'With review:write: review_publish publishes individual assets or selected revisions with addresses; review_set_save links tickets via rev. Use choose for alternatives, approve for deliverables; inspect motion and listen.'},
  ],
- assets:['review-view.js','review-media.js','review-guidance.js','review.css','vendor/model-viewer.min.js','i18n-en-review.js'],
+ assets:['review-view.js','review-media.js','review-guidance.js','review.css','model-viewer.js','vendor/model-viewer.min.js','i18n-en-review.js'],
  nav:[{group:'Project Tracker',hash:'review',label:'Review',view:'review-view.js#reviewPage',order:43}],
  setup:hub=>({review:createReviewStore(path.join(hub.stateDirectory,'review'),{tickets:hub.state('tracker').tickets,db:hub.db})}),
  routes:[

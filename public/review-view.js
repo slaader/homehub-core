@@ -17,6 +17,7 @@
 // the site's time zone.
 import {videoClock,comparisonAllowed,swipeEligible,clampComparison} from './review-media.js';
 import {reviewPrompt,reviewDialog} from './review-guidance.js';
+import {loadModelViewer,modelElement} from './model-viewer.js';
 import {el,onLeave} from './views.js';
 import {onSessionReset,authGuard} from './session-cache.js';
 import {timeZone} from './site.js';
@@ -713,9 +714,6 @@ function audioViewer(variant,{onPick,clock}){
 }
 
 // 3D model (.glb) in <model-viewer>: orbit and zoom, animations, pins on the surface. ----------------------------
-// The library (public/vendor/model-viewer.min.js, Apache 2.0) is imported on first use, never on other pages.
-let modelViewerModule=null;
-const loadModelViewer=()=>modelViewerModule??=import('./vendor/model-viewer.min.js').catch(e=>{modelViewerModule=null;throw e;});
 const metres=v=>`${v.x}m ${v.y}m ${v.z}m`;
 const round5=n=>Math.round(n*1e5)/1e5;
 // What a click hit: the glTF node path (root first), the mesh and the material. Node and mesh come from the
@@ -776,11 +774,12 @@ function modelViewer(variant,{onPick,onCamera}){
   anims.replaceChildren(el('span',{class:'sec-dim'},t('Animace ({n})',{n:list.length})),select,play);
  }
  function load(){
-  const m=variant.media[index],self=document.createElement('model-viewer');mv=self;gen++;posed=false;pendingCam=null;
+  const m=variant.media[index],alt=t('3D model {label}',{label:variant.label})+(m.name?' · '+m.name:'');
+  const self=modelElement({src:blob(m.sha256),alt,poster:m.poster?blob(m.poster.sha256):null});
+  mv=self;gen++;posed=false;pendingCam=null;
   // Events of a model that was replaced (another media picked) are ignored.
   const live=fn=>(...args)=>{if(mv===self&&node.isConnected)fn(...args);};
-  for(const [k,v] of Object.entries({src:blob(m.sha256),'camera-controls':'','interaction-prompt':'none','touch-action':'pan-y','shadow-intensity':'1','max-camera-orbit':'auto auto auto',alt:`${t('3D model {label}',{label:variant.label})}${m.name?' · '+m.name:''}`}))mv.setAttribute(k,v);
-  if(m.poster)mv.setAttribute('poster',blob(m.poster.sha256));if(spinning)mv.setAttribute('auto-rotate','');
+  if(spinning)mv.setAttribute('auto-rotate','');
   mv.addEventListener('load',live(()=>{note.hidden=true;tools.hidden=false;drawAnimations();drawPins();}));
   mv.addEventListener('error',live(()=>{note.hidden=false;tools.hidden=true;note.textContent=t('Model nejde načíst (jen .glb bez Draco/meshopt komprese).');}));
   mv.addEventListener('camera-change',live(e=>{if(!applying&&e.detail?.source==='user-interaction')onCamera?.(camera());}));

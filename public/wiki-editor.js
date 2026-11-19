@@ -1,7 +1,8 @@
 import {el} from './views.js';
 import {t} from './i18n.js';
-import {htmlSource,normalizeDoc,wikiUrl,WIKI_LIMITS} from './wiki-doc.js';
-import {htmlFrame,tableCell,ticketChip,wikiBlocks} from './wiki-content.js';
+import {htmlSource,normalizeDoc,wikiAssetIds,wikiUrl,WIKI_LIMITS} from './wiki-doc.js';
+import {htmlFrame,inlineNodes,tableCell,ticketChip,wikiBlocks} from './wiki-content.js';
+import {editAttachments,editInventory,newWikiItemId} from './wiki-inventory-editor.js';
 
 const button=(label,onclick,attrs={})=>el('button',{type:'button',class:'acc-btn small',onclick,...attrs},label);
 const BLOCKS=new Set(['DIV','P','H1','H2','H3','BLOCKQUOTE','PRE','UL','OL','HR']);
@@ -42,7 +43,7 @@ function inlineBlocks(container){
  },[]);
 }
 
-export function serializeWiki(root,htmlBlocks){
+export function serializeWiki(root,islands){
  const blocks=[];
  function collect(container){
   let pending=[];
@@ -52,8 +53,8 @@ export function serializeWiki(root,htmlBlocks){
   }
   for(const node of container.childNodes){
    if(node.nodeType!==1){if(node.nodeType===3&&node.data)pending.push(node);continue;}
-   const tag=node.tagName,html=htmlBlocks.get(node);
-   if(html){flush();blocks.push(html);continue;}
+   const tag=node.tagName,block=islands.get(node);
+   if(block){flush();blocks.push(block);continue;}
    if(node.classList.contains('wiki-table')){
     flush();
     const table=node.querySelector('table');
@@ -63,7 +64,7 @@ export function serializeWiki(root,htmlBlocks){
    }
    if(!BLOCKS.has(tag)){pending.push(node);continue;}
    flush();
-   if((tag==='DIV'||tag==='P')&&Array.from(node.children).some(child=>BLOCKS.has(child.tagName)||htmlBlocks.has(child)||child.classList.contains('wiki-table'))){
+   if((tag==='DIV'||tag==='P')&&Array.from(node.children).some(child=>BLOCKS.has(child.tagName)||islands.has(child)||child.classList.contains('wiki-table'))){
     collect(node);
    }else if(tag==='P'||tag==='DIV'){
     blocks.push({t:'p',c:inlineBlocks(node)});
@@ -91,13 +92,19 @@ export function serializeWiki(root,htmlBlocks){
 const newBlockId=()=> 'h'+Array.from(crypto.getRandomValues(new Uint8Array(8)),byte=>'abcdefghijklmnopqrstuvwxyz234567'[byte&31]).join('');
 const paragraph=()=>el('p',{},el('br'));
 
-export function wikiEditor({page,doc,tickets,api,dialog,changed}){
+export function wikiEditor({page,doc,tickets,api,dialog,changed,inlineOnly=false}){
  const root=el('div',{class:'wiki-article wiki-editor',contenteditable:'true',role:'textbox',
-  'aria-multiline':'true','aria-label':t('Obsah stránky'),tabindex:'0'});
- const htmlBlocks=new WeakMap(),htmlPreviews=new Map(),tableTools=el('div',{class:'wiki-table-tools',hidden:''});
+  'aria-multiline':'true','aria-label':t(inlineOnly?'Text buňky':'Obsah stránky'),tabindex:'0'});
+ if(inlineOnly)root.classList.add('wiki-inline-editor');
+ const islands=new WeakMap(),htmlPreviews=new Map(),tableTools=el('div',{class:'wiki-table-tools',hidden:''});
  const error=el('p',{class:'acc-status error',role:'alert'});
  let selection=null,activeCell=null;
- const context={page,tickets,editing:true,htmlCard};
+ const context={page,tickets,editing:true,htmlCard,inventoryCard};
+ const assets=new Map((page.assets??[]).map(asset=>[asset.id,asset]));
+ if(!inlineOnly&&wikiAssetIds(doc).some(id=>!assets.has(id)))api('/api/wiki/'+page.project+'/assets')
+  .then(data=>{for(const asset of data.assets)assets.set(asset.id,asset);}).catch(()=>{});
+ const inventoryContext={project:page.project,dialog,assets,inline:runs=>inlineNodes(runs,{tickets,editing:false}),
+  richEditor:runs=>wikiEditor({page,doc:{v:1,blocks:[{t:'p',c:runs}]},tickets,api,dialog,changed:()=>{},inlineOnly:true})};
 
  function htmlCard(block){
   const saved=page.doc.blocks.find(value=>value.t==='html'&&value.id===block.id&&value.source===block.source);
@@ -107,8 +114,30 @@ export function wikiEditor({page,doc,tickets,api,dialog,changed}){
     button(t('Upravit HTML'),()=>editHtml(block,card)),
     button(t('Odebrat blok HTML'),()=>{card.remove();htmlPreviews.delete(block.id);ensureCaret();changed();})),
    src?htmlFrame(src,block.label,block.height):null);
-  htmlBlocks.set(card,block);
+  islands.set(card,block);
   return card;
+ }
+
+ function inventoryCard(block){
+  const group=block.t==='attachments';
+  const title=t(group?'Skupina příloh':'Tabulka inventáře');
+  const edit=()=>openIsland(block,card);
+  const summary=group?t('Přílohy ({count})',{count:block.attachments.length}):block.columns.map(column=>column.label).join(' · ');
+  const card=el('div',{class:'wiki-html wiki-island',contenteditable:'false'},
+   el('div',{class:'wiki-html-head'},el('strong',{},title),
+    el('div',{class:'wiki-actions'},button(t('Upravit'),edit),button(t('Odebrat'),()=>{card.remove();ensureCaret();changed();}))),
+   el('div',{class:'sec-dim'},summary));
+  islands.set(card,block);
+  return card;
+ }
+
+ function openIsland(block,card){
+  const edit=block.t==='attachments'?editAttachments:editInventory;
+  edit(block,inventoryContext,value=>{
+   const next=inventoryCard(value);
+   if(card){card.replaceWith(next);changed();next.querySelector('button')?.focus();}
+   else insertBlock(next);
+  });
  }
 
  function ensureCaret(){
@@ -225,10 +254,10 @@ export function wikiEditor({page,doc,tickets,api,dialog,changed}){
     if(label.value!==existing.textContent)existing.textContent=label.value||url;
     place(existing,{end:true});
     changed();
-   }else if(!range.collapsed&&label.value===range.toString()&&!range.cloneContents().querySelector('[data-ticket],.wiki-table,.wiki-html')){
+   }else if(!range.collapsed&&label.value===range.toString()&&!range.cloneContents().querySelector('[data-ticket],.wiki-table,.wiki-html,.wiki-island')){
     command('createLink',url);
    }else{
-    if(!range.collapsed&&range.cloneContents().querySelector('[data-ticket],.wiki-table,.wiki-html'))range.collapse(false);
+    if(!range.collapsed&&range.cloneContents().querySelector('[data-ticket],.wiki-table,.wiki-html,.wiki-island'))range.collapse(false);
     range.deleteContents();
     const anchor=el('a',{href:url},label.value||url);
     range.insertNode(anchor);
@@ -342,7 +371,7 @@ export function wikiEditor({page,doc,tickets,api,dialog,changed}){
  const formatting=[
   ['Tučně','B','bold'],['Kurzíva','I','italic'],['Přeškrtnutí','S','strikeThrough'],['Kód','</>','fontName'],
   ['Odrážky','•','insertUnorderedList'],['Číslovaný seznam','1.','insertOrderedList'],
- ].map(([label,text,name])=>{
+ ].slice(0,inlineOnly?4:6).map(([label,text,name])=>{
   const pressed=()=>name==='fontName'?document.queryCommandValue(name)==='monospace':document.queryCommandState(name);
   const control=button(text,()=>{
    restore();
@@ -353,9 +382,14 @@ export function wikiEditor({page,doc,tickets,api,dialog,changed}){
  const editButton=(label,action)=>button(label,action,{onmousedown:event=>event.preventDefault()});
  const ticketButton=editButton(t('Ticket'),pickTicket);
  const toolbar=el('div',{class:'wiki-toolbar',role:'group','aria-label':t('Formátování')},
-  type,...formatting.map(({control})=>control),
-  editButton(t('Odkaz'),link),editButton(t('Tabulka'),newTable),
-  ticketButton,editButton(t('Blok HTML'),()=>editHtml()),editButton(t('Oddělovač'),()=>insertBlock(el('hr',{contenteditable:'false'}))));
+  inlineOnly?null:type,...formatting.map(({control})=>control),editButton(t('Odkaz'),link),ticketButton,
+  ...(inlineOnly?[]:[
+   editButton(t('Tabulka'),newTable),
+   editButton(t('Tabulka inventáře'),()=>openIsland({t:'inventory',id:newWikiItemId('inventory'),
+    columns:[{id:newWikiItemId('column'),label:t('Název')}],rows:[]})),
+   editButton(t('Skupina příloh'),()=>openIsland({t:'attachments',id:newWikiItemId('group'),attachments:[]})),
+   editButton(t('Blok HTML'),()=>editHtml()),editButton(t('Oddělovač'),()=>insertBlock(el('hr',{contenteditable:'false'}))),
+  ]));
  const tableActions=[
   ['above','Řádek nad'],['below','Řádek pod'],['left','Sloupec vlevo'],['right','Sloupec vpravo'],
   ['row','Odebrat řádek'],['column','Odebrat sloupec'],['header','Záhlaví'],['table','Odebrat tabulku'],
@@ -428,7 +462,7 @@ export function wikiEditor({page,doc,tickets,api,dialog,changed}){
  });
  document.addEventListener('selectionchange',syncTools);
  return {node:el('div',{class:'wiki-form'},el('div',{class:'wiki-tool-stack'},toolbar,tableTools),root,error),error,
-  read:()=>serializeWiki(root,htmlBlocks),
+  read:()=>inlineOnly?inlineBlocks(root):serializeWiki(root,islands),
   focus:()=>place([...root.children].find(node=>node.getAttribute('contenteditable')!=='false')??root),
   stop:()=>document.removeEventListener('selectionchange',syncTools)};
 }

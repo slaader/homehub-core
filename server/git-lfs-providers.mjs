@@ -111,6 +111,47 @@ export async function checkObjects(ctx,repo,objects,{chunk=100}={}){
  return out;
 }
 
+// Follow a batch download action only to the configured Git origin or an explicitly approved HTTPS origin.
+// The provider's action stays inside the server, and its headers are scoped to that action.
+export async function downloadObject(ctx,repo,{oid,size,ref},downloadOrigin){
+ const {data}=await apiRequest(ctx,'POST',`${ctx.web}/${repo.owner}/${repo.name}.git/info/lfs/objects/batch`,{
+  auth:{Authorization:ctx.gitAuthHeader},headers:{Accept:'application/vnd.git-lfs+json','Content-Type':'application/vnd.git-lfs+json'},
+  body:{operation:'download',transfers:['basic'],objects:[{oid,size}],hash_algo:'sha256',...(ref?{ref:{name:ref}}:{})},
+ });
+ if(data?.transfer!==undefined&&data.transfer!=='basic'||data?.hash_algo!==undefined&&data.hash_algo!=='sha256')
+  throw new ProviderError('bad-response');
+ const result=Array.isArray(data?.objects)?data.objects.find(object=>object?.oid===oid):null;
+ if(result?.error&&[404,410].includes(Number(result.error.code)))throw new ProviderError('not-found');
+ const action=result?.actions?.download;
+ if(result?.size!==size||typeof action?.href!=='string')throw new ProviderError('bad-response');
+ let url;
+ try{url=new URL(action.href);}catch{throw new ProviderError('invalid-url');}
+ const same=url.origin===new URL(ctx.web).origin;
+ if(url.username||url.password||url.hash||!same&&(url.protocol!=='https:'||url.origin!==downloadOrigin))throw new ProviderError('invalid-url');
+ const headers=new Headers({'Accept-Encoding':'identity'});
+ const supplied=action.header??{};
+ if(typeof supplied!=='object'||Array.isArray(supplied))throw new ProviderError('bad-response');
+ for(const [name,value] of Object.entries(supplied)){
+  if(typeof value!=='string'||/^(host|cookie|proxy-authorization|connection|transfer-encoding|content-length|forwarded|x-forwarded-.*)$/i.test(name))
+   throw new ProviderError('bad-response');
+  headers.set(name,value);
+ }
+ if(same&&result.authenticated!==true&&!headers.has('Authorization'))headers.set('Authorization',ctx.gitAuthHeader);
+ if(ctx.stopped?.())throw new ProviderError('disabled');
+ const response=await (ctx.fetch||fetch)(url,{headers,redirect:'manual',signal:AbortSignal.timeout(180000)});
+ if(!response.ok||!response.body){
+  await response.body?.cancel();
+  if(response.status>=300&&response.status<400)throw new ProviderError('invalid-url',response.status);
+  throw new ProviderError(response.status===404?'not-found':'host-error',response.status);
+ }
+ const contentLength=response.headers.get('content-length');
+ if(contentLength!==null&&Number(contentLength)!==size){
+  await response.body.cancel();
+  throw new ProviderError('bad-response');
+ }
+ return response.body;
+}
+
 // --- GitHub (github.com and GitHub Enterprise Server) ---------------------------------------------------
 // REST: https://docs.github.com/en/rest/repos/lfs has only enable/disable; LFS objects are removed only by
 // deleting the repository or through GitHub Support (docs: removing-files-from-git-large-file-storage).

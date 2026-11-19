@@ -1,9 +1,12 @@
 // The browser and the wiki store share the same structured document format.
 export const PAGE_ID=/^w[a-z2-7]{11}$/;
 export const HTML_ID=/^h[a-z2-7]{8}$/;
+export const ASSET_ID=/^a[a-f0-9]{32}$/;
+export const WIKI_ITEM_ID=/^[a-z][a-z0-9-]{0,39}$/;
 export const WIKI_LIMITS=Object.freeze({
  title:120,pages:500,docBytes:256*1024,blocks:1000,rows:100,columns:20,cell:2000,
  htmlBlocks:10,htmlBytes:64*1024,label:120,minHeight:80,maxHeight:2000,bodyBytes:512*1024,
+ attachments:50,stats:50,caption:1000,
 });
 export const WIKI_MARKS=Object.freeze(['b','i','s','code']);
 
@@ -79,12 +82,74 @@ function table(block){
  return {t:'table',header:block.header,rows:rows.map(row=>{
   if(array(row,WIKI_LIMITS.columns).length!==columns)invalid();
   return row.map(value=>{
-   const cell=inline(value);
-   const chars=cell.reduce((sum,run)=>sum+(run.text?.length??run.id?.length??run.c.reduce((n,text)=>n+text.text.length,0)),0);
-   if(chars>WIKI_LIMITS.cell)fail('limit');
-   return cell;
+   return cellRuns(value);
   });
  })};
+}
+
+function cellRuns(value){
+ const runs=inline(value);
+ const chars=runs.reduce((sum,run)=>sum+(run.text?.length??run.id?.length??run.c.reduce((n,text)=>n+text.text.length,0)),0);
+ if(chars>WIKI_LIMITS.cell)fail('limit');
+ return runs;
+}
+
+function boundedText(value,max,required=false){
+ const text=string(value).trim();
+ if(required&&!text)invalid();
+ if(text.length>max)fail('limit');
+ return text;
+}
+
+export function wikiAttachment(ref){
+ if(!exactKeys(ref,['assetId','label','caption'])||typeof ref.assetId!=='string'||!ASSET_ID.test(ref.assetId))invalid();
+ return {assetId:ref.assetId,label:boundedText(ref.label??'',WIKI_LIMITS.label),caption:boundedText(ref.caption??'',WIKI_LIMITS.caption)};
+}
+
+function group(value){
+ return array(value,WIKI_LIMITS.attachments).map(wikiAttachment);
+}
+
+function itemId(id,ids){
+ if(typeof id!=='string'||!WIKI_ITEM_ID.test(id)||ids.has(id))invalid();
+ ids.add(id);
+ return id;
+}
+
+function stats(value){
+ return array(value,WIKI_LIMITS.stats).map(stat=>{
+  if(!exactKeys(stat,['name','value','unit']))invalid();
+  const name=boundedText(stat.name,WIKI_LIMITS.label,true);
+  const number=typeof stat.value==='number'&&Number.isFinite(stat.value);
+  const val=number?stat.value:boundedText(stat.value,WIKI_LIMITS.cell,true);
+  return {name,value:val,...(stat.unit===undefined?{}:{unit:boundedText(stat.unit,WIKI_LIMITS.label)})};
+ });
+}
+
+function inventory(block,ids){
+ if(!exactKeys(block,['t','id','columns','rows']))invalid();
+ const id=itemId(block.id,ids),columnIds=new Set(),rowIds=new Set();
+ const columns=array(block.columns,WIKI_LIMITS.columns).map(column=>{
+  if(!exactKeys(column,['id','label']))invalid();
+  return {id:itemId(column.id,columnIds),label:boundedText(column.label,WIKI_LIMITS.label,true)};
+ });
+ if(!columns.length)invalid();
+ const rows=array(block.rows,WIKI_LIMITS.rows).map(row=>{
+  if(!exactKeys(row,['id','cells'])||!exactKeys(row.cells,[...columnIds]))invalid();
+  const cells={};
+  for(const column of columns){
+   if(!Object.hasOwn(row.cells,column.id))continue;
+   const cell=row.cells[column.id];
+   if(!exactKeys(cell,['c','stats','attachments']))invalid();
+   cells[column.id]={
+    ...(cell.c===undefined?{}:{c:cellRuns(cell.c)}),
+    ...(cell.stats===undefined?{}:{stats:stats(cell.stats)}),
+    ...(cell.attachments===undefined?{}:{attachments:group(cell.attachments)}),
+   };
+  }
+  return {id:itemId(row.id,rowIds),cells};
+ });
+ return {t:'inventory',id,columns,rows};
 }
 
 function html(block,ids){
@@ -97,7 +162,7 @@ function html(block,ids){
  return {t:'html',id:block.id,label,height:block.height,source:htmlSource(block.source)};
 }
 
-function blockValue(block,ids){
+function blockValue(block,htmlIds,inventoryIds){
  switch(block?.t){
   case 'p':case 'quote':
    if(!exactKeys(block,['t','c']))invalid();
@@ -115,15 +180,19 @@ function blockValue(block,ids){
    if(!exactKeys(block,['t']))invalid();
    return {t:'hr'};
   case 'table':return table(block);
-  case 'html':return html(block,ids);
+  case 'html':return html(block,htmlIds);
+  case 'inventory':return inventory(block,inventoryIds);
+  case 'attachments':
+   if(!exactKeys(block,['t','id','attachments']))invalid();
+   return {t:'attachments',id:itemId(block.id,inventoryIds),attachments:group(block.attachments)};
   default:return invalid();
  }
 }
 
 export function normalizeDoc(doc){
  if(!exactKeys(doc,['v','blocks'])||doc.v!==1)invalid();
- const ids=new Set();
- const result={v:1,blocks:array(doc.blocks,WIKI_LIMITS.blocks).map(block=>blockValue(block,ids))};
+ const htmlIds=new Set(),inventoryIds=new Set();
+ const result={v:1,blocks:array(doc.blocks,WIKI_LIMITS.blocks).map(block=>blockValue(block,htmlIds,inventoryIds))};
  if(bytes(JSON.stringify(result))>WIKI_LIMITS.docBytes)fail('limit');
  return result;
 }
@@ -134,7 +203,18 @@ export function extractLinks(doc){
  for(const block of doc.blocks){
   if(block.c)visit(block.c);
   for(const item of block.items??[])visit(item);
-  for(const row of block.rows??[])for(const cell of row)visit(cell);
+  if(block.t==='table')for(const row of block.rows)for(const cell of row)visit(cell);
+  if(block.t==='inventory')for(const row of block.rows)for(const cell of Object.values(row.cells))visit(cell.c??[]);
  }
  return {tickets:[...tickets]};
+}
+
+export function wikiAssetIds(doc){
+ const ids=new Set();
+ const visit=refs=>{for(const ref of refs??[])ids.add(ref.assetId);};
+ for(const block of doc.blocks){
+  if(block.t==='attachments')visit(block.attachments);
+  if(block.t==='inventory')for(const row of block.rows)for(const cell of Object.values(row.cells))visit(cell.attachments);
+ }
+ return [...ids];
 }

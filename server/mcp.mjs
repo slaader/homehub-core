@@ -297,7 +297,8 @@ export function createMcpBusiness({version='2',ctx,tools:extraTools=[],instructi
    // Refused write attempts are logged too (account, tool, status only; nothing from the arguments).
    if(!allowed(principal,tool)){
     if(write)await ctx.log({key:principal.id,account:principal.accountId,name:principal.username,tool:tool.name,status:'denied'}).catch(()=>{});
-    return {content:[{type:'text',text:`This service account lacks the "${tool.scope}" scope needed for ${tool.name}.`}],isError:true};
+    const message=`This service account lacks the "${tool.scope}" scope needed for ${tool.name}.`;
+    return {content:[{type:'text',text:message}],structuredContent:{error:{code:'SCOPE_REQUIRED',reason:'denied',message}},isError:true};
    }
    try{
     const unknown=unknownArguments(tool,args);if(unknown)throw new ToolError(unknown);
@@ -307,7 +308,8 @@ export function createMcpBusiness({version='2',ctx,tools:extraTools=[],instructi
     return {content:[{type:'text',text:JSON.stringify(data,null,1)}],structuredContent:data,isError:false};
    }catch(e){
     if(write)await ctx.log({key:principal.id,account:principal.accountId,name:principal.username,tool:tool.name,status:'error',subject:subjectOf(tool.name,args)}).catch(()=>{});
-    if(e instanceof ToolError||e?.toolError===true)return {content:[{type:'text',text:e.message}],isError:true};
+    if(e instanceof ToolError||e?.toolError===true)return {content:[{type:'text',text:e.message}],
+     ...(e.details?{structuredContent:e.details}:{}),isError:true};
     throw e;
    }
   }

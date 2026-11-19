@@ -9,7 +9,7 @@ import {mkdirSync,chmodSync,existsSync} from 'node:fs';
 import {readFile,rename} from 'node:fs/promises';
 import path from 'node:path';
 
-const SCHEMA=2,SEARCH_VERSION=1;
+const SCHEMA=3,SEARCH_VERSION=1;
 // The schema version of hub.db, for the data-epoch table (tests/data-epoch.test.mjs).
 export const DB_SCHEMA=SCHEMA;
 const open=new Map();
@@ -33,19 +33,34 @@ export function openDb(file){
 }
 
 function migrate(db){
- const version=db.prepare('PRAGMA user_version').get().user_version;
- if(version>SCHEMA)throw new Error(`hub.db schema ${version} is newer than this code (${SCHEMA})`);
- if(version<1)db.exec(`BEGIN;
-  CREATE TABLE IF NOT EXISTS meta(kind TEXT PRIMARY KEY, doc TEXT NOT NULL);
-  CREATE TABLE IF NOT EXISTS docs(kind TEXT NOT NULL, coll TEXT NOT NULL, id TEXT NOT NULL, doc TEXT NOT NULL, PRIMARY KEY(kind,coll,id));
-  CREATE TABLE IF NOT EXISTS sessions(hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, password_at TEXT, until INTEGER NOT NULL);
-  CREATE INDEX IF NOT EXISTS sessions_until ON sessions(until);
-  CREATE TABLE IF NOT EXISTS search_version(kind TEXT PRIMARY KEY, version INTEGER NOT NULL);
-  CREATE VIRTUAL TABLE IF NOT EXISTS search USING fts5(kind UNINDEXED, id UNINDEXED, project UNINDEXED, updated UNINDEXED, title, body,
-   tokenize='unicode61 remove_diacritics 2', prefix='2 3');
-  PRAGMA user_version=1; COMMIT;`);
- // Schema 2 admits wiki records. Older releases must restore their pre-update archive.
- if(version<2)db.exec('PRAGMA user_version=2');
+ const version=()=>db.prepare('PRAGMA user_version').get().user_version;
+ if(version()===SCHEMA)return;
+ db.exec('BEGIN IMMEDIATE');
+ try{
+  const from=version();
+  if(from>SCHEMA)throw new Error(`hub.db schema ${from} is newer than this code (${SCHEMA})`);
+  if(from<1)db.exec(`
+   CREATE TABLE IF NOT EXISTS meta(kind TEXT PRIMARY KEY, doc TEXT NOT NULL);
+   CREATE TABLE IF NOT EXISTS docs(kind TEXT NOT NULL, coll TEXT NOT NULL, id TEXT NOT NULL, doc TEXT NOT NULL, PRIMARY KEY(kind,coll,id));
+   CREATE TABLE IF NOT EXISTS sessions(hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, password_at TEXT, until INTEGER NOT NULL);
+   CREATE INDEX IF NOT EXISTS sessions_until ON sessions(until);
+   CREATE TABLE IF NOT EXISTS search_version(kind TEXT PRIMARY KEY, version INTEGER NOT NULL);
+   CREATE VIRTUAL TABLE IF NOT EXISTS search USING fts5(kind UNINDEXED, id UNINDEXED, project UNINDEXED, updated UNINDEXED, title, body,
+    tokenize='unicode61 remove_diacritics 2', prefix='2 3');`);
+  if(from<3){
+   const wiki=db.prepare("SELECT doc FROM meta WHERE kind='wiki'").get();
+   if(wiki){
+    if(JSON.parse(wiki.doc).schema!==1)throw new Error('Unsupported wiki schema');
+    db.exec(`UPDATE docs AS page SET doc=json_set(page.doc,'$.parentId',
+     (SELECT CASE WHEN json_extract(wiki.doc,'$.home')=json_extract(page.doc,'$.id') THEN NULL ELSE json_extract(wiki.doc,'$.home') END
+      FROM docs AS wiki WHERE wiki.kind='wiki' AND wiki.coll='wikis' AND wiki.id=json_extract(page.doc,'$.project')))
+     WHERE page.kind='wiki' AND page.coll IN ('pages','summaries');
+     UPDATE meta SET doc=json_set(doc,'$.schema',2) WHERE kind='wiki';`);
+   }
+   db.exec('PRAGMA user_version=3');
+  }
+  db.exec('COMMIT');
+ }catch(error){db.exec('ROLLBACK');throw error;}
 }
 
 function wrap(db,file){
@@ -56,6 +71,7 @@ function wrap(db,file){
   rows:q('SELECT coll,id,doc FROM docs WHERE kind=? ORDER BY rowid'),
   row:q('SELECT doc FROM docs WHERE kind=? AND coll=? AND id=?'),
   coll:q('SELECT id,doc FROM docs WHERE kind=? AND coll=? ORDER BY rowid'),
+  range:q('SELECT id,doc FROM docs WHERE kind=? AND coll=? AND id>=? AND id<? ORDER BY id'),
   count:q('SELECT count(*) n FROM docs WHERE kind=? AND coll=?'),
   put:q('INSERT INTO docs(kind,coll,id,doc) VALUES(?,?,?,?) ON CONFLICT(kind,coll,id) DO UPDATE SET doc=excluded.doc'),
   del:q('DELETE FROM docs WHERE kind=? AND coll=? AND id=?'),
@@ -123,14 +139,15 @@ function wrap(db,file){
    async read({forWrite=true}={}){await ensure();const data=load();if(forWrite){snapshot=new Map();const {colls}=split(data);for(const [coll,rows] of Object.entries(colls))for(const [id,doc] of rows)snapshot.set(stamp(coll,id),JSON.stringify(doc));}return data;},
    // Indexed reads do not load unrelated documents or replace a writer's snapshot.
    async get(coll,id){await ensure();const row=st.row.get(kind,coll,id);return row?JSON.parse(row.doc):null;},
-   async list(coll){await ensure();return st.coll.all(kind,coll).map(r=>JSON.parse(r.doc));},
+   async list(coll,prefix){await ensure();const rows=prefix===undefined?st.coll.all(kind,coll):st.range.all(kind,coll,prefix,prefix+'\uffff');return rows.map(r=>JSON.parse(r.doc));},
    // Selected read-modify-write in one synchronous transaction. null selects a whole subcollection;
    // an id array selects only those rows. Other rows are never loaded, rewritten or removed.
    async change(selection,fn){
     await ensure();return tx(()=>{
      const colls={},previous=new Map();
      for(const [coll,ids] of Object.entries(selection)){
-      const rows=ids===null?st.coll.all(kind,coll):[...new Set(ids)].flatMap(id=>{const r=st.row.get(kind,coll,id);return r?[{id,...r}]:[];});
+      const rows=ids===null?st.coll.all(kind,coll):typeof ids==='string'?st.range.all(kind,coll,ids,ids+'\uffff'):
+       [...new Set(ids)].flatMap(id=>{const r=st.row.get(kind,coll,id);return r?[{id,...r}]:[];});
       colls[coll]=rows.map(r=>{previous.set(stamp(coll,r.id),r.doc);return [r.id,JSON.parse(r.doc)];});
      }
      const data=join(JSON.parse(st.meta.get(kind).doc),colls),result=fn(data,coll=>st.count.get(kind,coll).n);

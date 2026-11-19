@@ -1006,29 +1006,105 @@ See [optional provider configuration](configuration.md).
 
 ### Project wiki
 
-The project toolbar opens the wiki at `#wiki/<project>`. Signed-in readers can open pages and backlinks.
-Writes use `tickets:write`. A project can have up to 500 pages including Home. Titles are trimmed and
-contain 1–120 characters. Each page has a stable id of `w` and 11 lowercase base32 characters.
+The project toolbar opens the wiki at `#wiki/<project>`. Tracker readers can open pages and backlinks.
+Writes use `tickets:write`. Home has `parentId:null`. The tree uses stable page IDs of `w` and 11 lowercase
+base32 characters and returns parents before their alphabetically ordered children. A project can have
+500 pages including Home. Titles are trimmed and contain 1–120 characters.
 
 | Request | Response |
 |---|---|
-| `GET /api/wiki/<project>` | `{enabled:false}` or `{enabled:true, home, pages:[{id, project, title, rev, updatedAt, updatedBy, links}]}` |
+| `GET /api/wiki/<project>` | `{enabled:false}` or `{enabled:true, home, pages:[{id, project, parentId, title, rev, updatedAt, updatedBy, links}]}` |
 | `POST /api/wiki/setup` with `{project}` | `201 {created:true, home}` on setup and `200 {created:false, home}` on repeat |
-| `GET /api/wiki/<project>/pages/<id>` | Page including its structured document and provenance |
-| `POST /api/wiki/pages` with `{project, title, doc?}` | `201` page. Omit `doc` to start with an empty page |
-| `POST /api/wiki/pages/update` with `{project, id, rev, title?, doc?}` | `200` page. Supply at least one of `title` and `doc` |
+| `GET /api/wiki/<project>/pages/<id>` | Page including its document, asset metadata and provenance |
+| `POST /api/wiki/pages` with `{project, title, parentId?, doc?, requestId?}` | `201` page. Omit `parentId` for Home or `doc` for an empty page |
+| `POST /api/wiki/pages/update` with `{project, id, rev, title?, doc?, documentUploadId?}` | `200` page. Supply a title, a document, or both. Use either inline `doc` or a finished staged document |
+| `POST /api/wiki/pages/move` with `{project, id, rev, parentId}` | `200` page. The new parent must be in the same wiki and outside the page's subtree |
+| `POST /api/wiki/attachments/add` with `{project, id, rev, assetId, requestId, label?, caption?, position?, groupId?}` | `200` page. For a cell use `tableId, rowId, columnId` instead of `groupId`. Position is zero-based and defaults to append |
 | `GET /api/wiki/tickets/<ID>/backlinks` | `{pages:[{project, id, title, updatedAt}]}` derived from saved content |
 | `POST /api/wiki/preview` with `{source}` | `200 {token}` for a draft HTML preview. The token expires in 10 minutes and is bound to its author |
 | `GET /api/wiki/frame/<project>/<id>/<block>` | Sandboxed static HTML block |
 | `GET /api/wiki/frame/preview/<token>` | Sandboxed static HTML preview |
 
-The page response carries `{id, project, title, doc, links, rev, createdAt, createdBy, updatedAt,
-updatedBy, history, provenance}`. The server derives `links:{tickets:[…]}` and retains up to 50 metadata
-entries in `history`. A stale update responds `409 WIKI_FAILED` with
-`current:{rev, updatedAt, updatedBy}`. Read the saved page again to obtain the latest revision. Unknown
-projects, pages or preview tokens return `404`. Invalid fields, unsafe hyperlink schemes or ticket
-references outside the project's existing tickets return `400`. Wiki limits return `409`. JSON
-write bodies may be up to 512 KiB. See [the wiki guide](wiki.md) for the document format and other limits.
+A page contains `{id, project, parentId, title, doc, links, assets, rev, createdAt, createdBy, updatedAt,
+updatedBy, history, provenance}`. The server derives `links:{tickets:[…]}` and retains up to 50 entries
+in `history`. Page content, asset references and ticket backlinks change in the same transaction.
+A stale revision responds `409` with `error.reason:"conflict"` and `current:{rev, updatedAt, updatedBy}`.
+Reusing a request ID with the same arguments returns the original page ID and revision with
+`replayed:true`. The receipt also carries the original page title, parent and summary on HTTP.
+Request IDs are 1–100 letters, digits, dots, underscores, hyphens or colons, scoped to a principal,
+project and operation. Different arguments with an existing request ID return `409`.
+JSON write bodies may be up to 512 KiB.
+
+#### Wiki assets and imports
+
+| Request | Response |
+|---|---|
+| `POST /api/wiki/uploads` with `{project, name, size, digest, type?, purpose?}` | `201` upload session with `uploadId, nextOffset, expiresAt, chunkSize, rawChunkSize, project, size` |
+| `GET /api/wiki/uploads/<uploadId>` | Upload state for the same principal, including the next offset |
+| `PUT /api/wiki/uploads/<uploadId>?offset=<bytes>` | `200` upload state. Send up to 8 MiB of bytes as `application/octet-stream` |
+| `POST /api/wiki/uploads/finish` with `{uploadId}` | `200` upload state and `{assetId, asset}`, or `documentUploadId` for a staged document |
+| `GET /api/wiki/<project>/assets` | `{assets:[…]}`, including published attachments and the writer's private assets |
+| `GET\|HEAD /api/wiki/<project>/assets/<assetId>` | Authorized bytes with single-range support. Pass `?download=1` to request download disposition |
+| `GET /api/wiki/<project>/sources` | With `tickets:write`, authorized repository and Review choices and the destination audience |
+| `POST /api/wiki/assets/import` with `{project, source}` | `201` upload result with a verified, pinned asset and source provenance |
+| `POST /api/admin/wiki/sources` | Authorize or revoke a source for a destination project. Requires an administrator's password session |
+
+Use a filename without path separators, a byte count and a lowercase hexadecimal SHA-256 digest.
+Size and digest are verified before finish, along with the signatures of supported preview formats.
+The server returns the next offset on `409` when a chunk does not match. Resend the same bytes at their
+original offset to retry a chunk. Repeating finish returns the same asset. Sessions expire after 24 hours
+and return `410` after expiry. One asset can be up to 256 MiB, or up to 128 MiB for a GLB. Draft uploads and
+finished assets without a saved reference are private to their author. Unreferenced assets are retained for
+seven days. A limit returns an actionable `error.reason`, such as `too-large`, `disk-limit` or `asset-limit`.
+Use `purpose:"document"` for staged UTF-8 JSON up to 256 KiB. A finished document upload can be used by
+its owner for a save in the same project before the session expires.
+
+The asset metadata has `{id, project, name, type, size, digest, url, source?}`. Images, audio, video and
+supported GLB models can preview. Generic files use download disposition. A digest cannot be used as an
+asset ID. Readers can access assets referenced by a saved page in that project. Media URLs require
+authorization on every request, including ranges and HEAD.
+
+Import `source` is one of these objects:
+
+- Git LFS `{kind:"lfs", connection, repo, ref, path}`. The destination needs a grant for that connection
+  and repository. The pinned source records `{kind, connection, repo, commit, path, oid}`.
+- Review `{kind:"review", set, round, item, variant, media?}`. The zero-based `media` index defaults to
+  zero. Readers with destination write permission may copy from a Review set in the same project.
+  A set from another project also needs a destination grant. The source records the set's project and
+  selected round, item, variant, media index and digest.
+
+A repository grant is `{project, kind:"lfs", connection, repo, enabled, downloadOrigin?}`.
+A grant binds to the configured Git host and provider. When the LFS batch action uses a different origin,
+approve that exact HTTPS origin as `downloadOrigin`. The server uses the
+[Git LFS Batch API](https://github.com/git-lfs/git-lfs/blob/main/docs/api/batch.md).
+A Review grant is `{project, kind:"review", set, enabled}`.
+The grant response includes `audience:"project-readers"`. Revocation stops future imports. Existing pinned
+copies stay available according to their saved wiki references. See [the wiki guide](wiki.md#source-imports).
+
+#### MCP wiki authoring
+
+MCP uses the same validation and transactions as HTTP. The read tools require `read`. All other tools below
+require `tickets:write`. Page mutations return `pageId`, `parentId`, `rev` and a page `url`. Errors include
+`structuredContent.error` for store validation, with `current` on a stale save and `nextOffset` when available.
+
+| Tool | Arguments and result |
+|---|---|
+| `wiki_list` | `{project}` reads the tree |
+| `wiki_get` | `{project, pageId?}` reads the page, document and media metadata. Omit `pageId` for Home |
+| `wiki_setup` | `{project}` enables the wiki idempotently and returns Home |
+| `wiki_page_create` | `{project, parentId?, title, doc?, requestId}` |
+| `wiki_page_move` | `{project, pageId, rev, parentId}` |
+| `wiki_page_save` | `{project, pageId, rev, title?, doc?, documentUploadId?}` |
+| `wiki_upload_begin` | `{project, name, size, digest, type?, purpose?}` returns a private expiring session |
+| `wiki_upload_status` | `{uploadId}` returns the current offset and expiry |
+| `wiki_upload_chunk` | `{uploadId, offset, data}`, where `data` is canonical padded base64 for at most 32 KiB of bytes |
+| `wiki_upload_finish` | `{uploadId}` verifies the upload and returns an asset ID or a document upload ID |
+| `wiki_asset_import` | `{project, source}` returns an asset ID, URL and resolved provenance |
+| `wiki_attachment_add` | `{project, pageId, rev, assetId, requestId, groupId?, tableId?, rowId?, columnId?, label?, caption?, position?}` |
+
+The MCP HTTP request limit remains 64 KiB. For a larger document, create the page first, upload the
+UTF-8 JSON with `purpose:"document"`, then save with `documentUploadId` and the expected page revision.
+Binary uploads accept file bytes only. See [document format and an example](wiki.md#document-format).
 
 ### Review
 

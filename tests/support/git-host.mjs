@@ -71,7 +71,20 @@ export async function gitHost(t,{kind='gitea',token='test-token-123456',login='a
    if(!basicAuth(req))return json(res,401,{message:'Credentials needed'},{'LFS-Authenticate':'Basic realm="lfs"'});
    const objects=store.get(lm[1]);if(!objects)return json(res,404,{message:'Not found'});
    const reqBody=JSON.parse(body);
-   return json(res,200,{transfer:'basic',objects:reqBody.objects.map(o=>objects.has(o.oid)?{oid:o.oid,size:objects.get(o.oid).size,actions:{download:{href:`http://lfs.example.lan/${o.oid}`}}}:{oid:o.oid,size:o.size,error:{code:404,message:'Object does not exist'}})},{'Content-Type':'application/vnd.git-lfs+json'});
+   return json(res,200,{transfer:'basic',objects:reqBody.objects.map(o=>{
+    const object=objects.get(o.oid);
+    if(!object)return {oid:o.oid,size:o.size,error:{code:404,message:'Object does not exist'}};
+    const href=object.href??(object.bytes?`${origin}/${lm[1]}.git/info/lfs/objects/${o.oid}`:`http://lfs.example.lan/${o.oid}`);
+    return {oid:o.oid,size:object.size,actions:{download:{href}}};
+   })},{'Content-Type':'application/vnd.git-lfs+json'});
+  }
+  const download=/^\/([^/]+\/[^/]+)\.git\/info\/lfs\/objects\/([a-f0-9]{64})$/.exec(p);
+  if(download&&req.method==='GET'){
+   if(!basicAuth(req))return json(res,401,{message:'Credentials needed'});
+   const bytes=store.get(download[1])?.get(download[2])?.bytes;
+   if(!bytes)return json(res,404,{message:'Not found'});
+   res.writeHead(200,{'Content-Type':'application/octet-stream','Content-Length':bytes.length});
+   return res.end(bytes);
   }
   // --- the REST API --------------------------------------------------------------------------------
   if(!p.startsWith(api+'/')&&!p.startsWith('/api/fake/')){req.resume();return json(res,404,{message:'not found'});}
@@ -125,7 +138,9 @@ export async function gitHost(t,{kind='gitea',token='test-token-123456',login='a
    repos.set(fullName,{defaultBranch,private:priv});store.set(fullName,new Map(Object.entries(objects)));
    return dir;
   },
-  storeObject(fullName,o,size,createdAt='2026-01-01T00:00:00Z'){store.get(fullName).set(o,{size,createdAt});},
+  storeObject(fullName,o,content,createdAt='2026-01-01T00:00:00Z'){
+   store.get(fullName).set(o,Buffer.isBuffer(content)?{size:content.length,bytes:content,createdAt}:{size:content,createdAt});
+  },
   bare:(fullName,...args)=>git(barePath(fullName),...args),
  };
 }

@@ -154,7 +154,7 @@ test('wiki page and projection survive reopening the existing tracker database',
  db.db.exec('PRAGMA user_version=1');
  db.close();
  db=openDb(file);
- assert.equal(db.db.prepare('PRAGMA user_version').get().user_version,2);
+ assert.equal(db.db.prepare('PRAGMA user_version').get().user_version,3);
  tickets=createTicketStore(dir,{db});
  let store=createWikiStore(db,tickets);
  assert.deepEqual(await store.list('example-app'),{enabled:false});
@@ -176,7 +176,7 @@ test('wiki page and projection survive reopening the existing tracker database',
  assert.equal(meta.pages[0].title,saved.title);
  assert.equal(meta.pages[0].doc,undefined);
  assert.equal((await store.backlinks(old.id))[0].id,home);
- db.db.exec("UPDATE meta SET doc=json_set(doc,'$.schema',2) WHERE kind='wiki'");
+ db.db.exec("UPDATE meta SET doc=json_set(doc,'$.schema',3) WHERE kind='wiki'");
  await assert.rejects(store.list('example-app'),/Unsupported wiki schema/);
  await assert.rejects(store.update({project:'example-app',id:home,rev:2,title:'Unsupported'},'alice'),/Unsupported wiki schema/);
 });

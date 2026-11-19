@@ -18,6 +18,7 @@ import {envelope,systemsParts,reportTo,issueAgent as issue,errorCode as code,qui
 const SAMPLES=[
  ['([a-z][a-z0-9-]{1,39})','wiki-project'],['(w[a-z2-7]{11})','wabcdefghijk'],
  ['(h[a-z2-7]{8})','habcdefgh'],['([A-Za-z0-9_-]{32})','a'.repeat(32)],
+ ['(a[a-f0-9]{32})','a'+'0'.repeat(32)],['(u[a-f0-9]{32})','u'+'0'.repeat(32)],
  ['([a-z][a-z0-9_-]{1,31})','mini'],['([A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,5})','HH-1'],['([0-9a-f-]{36})','01234567-89ab-cdef-0123-456789abcdef'],['(.*)','x'],['(.+)','x']];
 function samplePath(route){
  if(route.path)return route.path;

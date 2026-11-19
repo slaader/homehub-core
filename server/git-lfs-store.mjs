@@ -19,8 +19,8 @@ import {readFileSync} from 'node:fs';
 import {mkdir,writeFile,rename,rm,appendFile} from 'node:fs/promises';
 import {randomBytes} from 'node:crypto';
 import path from 'node:path';
-import {syncMirror,scanMirror,remoteRefsHash,usageView,runGit,hashOf,OID,GitError} from './git-lfs-git.mjs';
-import {BUILTIN_PROVIDERS,validProvider,providerView,contextFor,checkObjects,validFullName,validName,ProviderError} from './git-lfs-providers.mjs';
+import {syncMirror,scanMirror,remoteRefsHash,usageView,runGit,hashOf,OID,GitError,resolveImportPointer} from './git-lfs-git.mjs';
+import {BUILTIN_PROVIDERS,validProvider,providerView,contextFor,checkObjects,downloadObject,validFullName,validName,ProviderError} from './git-lfs-providers.mjs';
 import {secretIn} from './home-devices.mjs';
 
 // Seven days, as Gitea's own LFS garbage collection waits. GIT_LFS_GRACE_HOURS (server environment) changes it.
@@ -96,6 +96,22 @@ export function createGitLfsStore({stateDirectory,tokenFile,providers:extra=()=>
  };
  // A repository as a provider describes it, checked: owner, name and fullName agree and are plain names.
  const validRepo=r=>plain(r)&&validName(r.owner)&&validName(r.name)&&r.fullName===`${r.owner}/${r.name}`;
+ const importIdentity=id=>{
+  const c=connection(id),p=c&&provider(c.provider);
+  return p&&hashOf([c.provider,normalBase(p,c.baseUrl)]);
+ };
+ async function importPointer({connection:id,repo:fullName,ref,path:file},grant){
+  if(!isEnabled())fail('disabled');
+  const c=connection(id),p=c&&provider(c.provider);
+  if(!p||!tokenOf(id)||!validFullName(fullName)||importIdentity(id)!==grant.identity)fail('denied');
+  const ctx=ctxOf(c,p),repo=await p.getRepo(ctx,fullName);
+  if(!validRepo(repo)||repo.fullName!==fullName)fail('denied');
+  if(!isEnabled())fail('disabled');
+  const pointer=await resolveImportPointer(`${ctx.web}/${repo.owner}/${repo.name}.git`,{header:ctx.gitAuthHeader},ref,file,{git});
+  const {commit,oid,size}=pointer;
+  return {name:file.split('/').at(-1),size,digest:oid,body:()=>downloadObject(ctx,repo,pointer,grant.downloadOrigin),
+   source:{kind:'lfs',connection:id,repo:fullName,commit,path:file,oid}};
+ }
 
  async function gitCheck(){
   if(gitState&&gitState.ok)return gitState;
@@ -531,7 +547,7 @@ const errorCode=e=>e instanceof GitError||e instanceof ProviderError?e.code:/^[a
  }
  function due(t=now()){return connections.filter(c=>!running.has(c.id)&&!deleting.has(c.id)&&tokenOf(c.id)&&t-(ms(catalogOf(c.id).fullFinishedAt)||0)>=REFRESH_MINUTES*60000).map(c=>c.id);}
 
- return {overview,list,test,repoChoices,save,remove,refresh,startRefresh,preview,removeObjects,readAudit,status,due,provider,connection,
+ return {overview,list,test,repoChoices,save,remove,refresh,startRefresh,preview,removeObjects,readAudit,status,due,provider,connection,importIdentity,importPointer,
   files:{connectionsFile,auditFile,tokenFile,base}};
 }
 

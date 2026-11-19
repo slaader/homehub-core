@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp,rm} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {openDb} from '../server/db.mjs';
+import {DB_SCHEMA,openDb} from '../server/db.mjs';
 import {createTicketStore} from '../server/tickets-store.mjs';
 import {createReviewStore} from '../server/review-store.mjs';
 import {MCP_TOOLS} from '../server/mcp.mjs';
@@ -167,6 +167,6 @@ test('compatibility: a hub.db written before attachments, search stats and this 
  const row=id=>db.db.prepare('SELECT doc FROM docs WHERE kind=? AND coll=? AND id=?').get('tickets','tickets',id).doc;
  assert.equal(row('LEG-2'),JSON.stringify(other),'an untouched ticket is byte-identical');
  assert.equal(db.db.prepare('SELECT doc FROM docs WHERE kind=? AND id=?').get('review','R-1').doc,JSON.stringify(set),'an untouched review set is byte-identical');
- assert.equal(db.db.prepare('PRAGMA user_version').get().user_version,2,'legacy database migrated');
+ assert.equal(db.db.prepare('PRAGMA user_version').get().user_version,DB_SCHEMA,'legacy database migrated');
  assert.deepEqual(db.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'search_%' ORDER BY name").all().map(r=>r.name),['docs','meta','search','sessions']);
 });

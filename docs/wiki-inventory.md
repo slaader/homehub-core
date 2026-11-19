@@ -1,6 +1,6 @@
 # Project wiki hierarchy, inventory tables and attachments
 
-**Proposed feature for implementation.** A project author can document a collection on child pages, attach media to an entry, and publish the same content from an MCP client. Existing wikis already have stable page IDs, revision checks, rich-text tables and project ticket links. This proposal extends that contract. See [Wiki](wiki.md), [Reviews](review.md) and [Git LFS](git-lfs.md).
+**Feature specification.** See [Project wiki](wiki.md) for the implemented workflow and format. A project author can document a collection on child pages, attach media to an entry, and publish the same content from an MCP client. Existing wikis already have stable page IDs, revision checks, rich-text tables and project ticket links. This proposal extends that contract. See [Wiki](wiki.md), [Reviews](review.md) and [Git LFS](git-lfs.md).
 
 ## Author experience
 
@@ -44,9 +44,9 @@ Ship as a minor release with a data epoch change. On upgrade, place existing non
 
 An administrator must authorize a source repository for import into the destination project. Make the resulting audience clear before import: project readers will be able to view the copied asset. Catalog visibility alone does not grant import rights. Keep credentials and temporary provider download URLs server-side. Missing objects, denied access, digest mismatches or budget failures leave the page unchanged. Direct upload works without a Git connection. Apply the same source-access and destination-write checks to **Use from Review**, pinning a selected variant's bytes and retaining its provenance.
 
-## Proposed MCP authoring contract
+## MCP authoring contract
 
-Expose the same validation and transactions to the UI and MCP. Tool names below are proposed. Return stable IDs, the resulting revision for mutations, and a navigable page URL. Filter tool discovery and execution using existing tracker read/write scopes and principal permissions. Source imports also require source authorization.
+Expose the same validation and transactions to the UI and MCP. The [API reference](API.md#mcp-wiki-authoring) lists the tool arguments. Return stable IDs, the resulting revision for mutations, and a navigable page URL. Filter tool discovery and execution using existing tracker read/write scopes and principal permissions. Source imports also require source authorization.
 
 | Tool | Inputs and effect |
 |---|---|

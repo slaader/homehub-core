@@ -1,21 +1,26 @@
 import {el} from './views.js';
 import {t} from './i18n.js';
 import {authGuard} from './session-cache.js';
+import {wikiInventory} from './wiki-inventory.js';
 
 export const wikiHref=(project,id)=>`#wiki/${project}${id?'/'+id:''}`;
 export const wikiApiPath=(project,id)=>`/api/wiki/${project}${id?'/pages/'+id:''}`;
 export const canWriteWiki=me=>me?.canWrite===true&&Boolean(me.scopes?.includes('tickets:write'));
 export const editWikiHref=(project,id)=>wikiHref(project,id)+'?edit';
 
-export async function wikiApi(url,body){
- const lost=authGuard();
- const response=await fetch(url,body===undefined?{}:{
+export function wikiApi(url,body){
+ return wikiRequest(url,body===undefined?{}:{
   method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),
  });
+}
+
+export async function wikiRequest(url,options){
+ const lost=authGuard();
+ const response=await fetch(url,options);
  lost(response);
  const result=await response.json().catch(()=>({}));
  if(!response.ok)throw Object.assign(new Error(result.error?.message?t(result.error.message):t('Požadavek selhal.')),
-  {status:response.status,current:result.current});
+  {status:response.status,current:result.current,reason:result.error?.reason,nextOffset:result.nextOffset});
  return result;
 }
 
@@ -48,7 +53,7 @@ export function ticketChip(id,ticket,editing=false){
 function textNode(run){
  return (run.m??[]).reduce((node,mark)=>el(mark,{},node),run.text);
 }
-function inlineNodes(runs,{tickets,editing}){
+export function inlineNodes(runs,{tickets,editing}){
  return runs.map(run=>{
   if(run.t==='ticket')return ticketChip(run.id,tickets.get(run.id),editing);
   if(run.t==='link')return el('a',{href:run.href,target:'_blank',rel:'noopener noreferrer'},run.c.map(textNode));
@@ -84,6 +89,8 @@ export function wikiBlocks(doc,context){
    case 'hr':return el('hr',{contenteditable:context.editing?'false':null});
    case 'table':return tableNode(block,context);
    case 'html':return context.htmlCard?.(block)??htmlFrame(blockFrame(context.page,block.id),block.label,block.height);
+   case 'inventory':return context.inventoryCard?.(block)??wikiInventory(block,{inline,group:context.media});
+   case 'attachments':return context.inventoryCard?.(block)??context.media(block.attachments);
   }
  });
 }

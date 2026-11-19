@@ -39,6 +39,7 @@ const MAGIC={'image/png':b=>b.subarray(0,8).equals(Buffer.from([0x89,0x50,0x4e,0
  'model/gltf-binary':b=>b.length>=12&&b.subarray(0,4).toString('latin1')==='glTF'&&b.readUInt32LE(4)===2};
 export const LIMITS=Object.freeze({sets:2000,rounds:100,items:30,variants:6,media:20,comments:200,commentsPerSave:50,tickets:20,addresses:500,attachments:10,
  attachment:20*1024*1024,blob:256*1024*1024,model:128*1024*1024,chunk:8*1024*1024,inlineHtml:48*1024});
+export const matchesReviewMedia=(type,head)=>MAGIC[type]?.(head)===true;
 const ITEM=/^[a-z0-9][a-z0-9-]{0,39}$/,SURFACE=/^[0-9 .eE+-]{1,200}$/,VARIANT=/^[a-f]$/,MOCK_ID=/^[A-Za-z0-9_.:-]{1,80}$/,PROJECT=/^[a-z][a-z0-9-]{1,39}$/;
 const fail=code=>{throw new Error(code);};
 const plain=x=>x&&typeof x==='object'&&!Array.isArray(x);

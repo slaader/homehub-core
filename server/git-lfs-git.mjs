@@ -11,7 +11,7 @@
 //  - The scan never fetches (GIT_NO_LAZY_FETCH, --missing=print) and fails closed: any git error, a truncated
 //    output or an output over its limit throws, and the caller treats the repository as not verified.
 import {spawn} from 'node:child_process';
-import {mkdir,rm,stat,rename} from 'node:fs/promises';
+import {mkdir,rm,stat,rename,mkdtemp} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
@@ -101,6 +101,42 @@ export function parsePointer(buffer){
  const sizeText=/^size (\d{1,16})$/m.exec(text)?.[1],size=sizeText!==undefined?Number(sizeText):NaN;
  if(strict&&Number.isSafeInteger(size))return {oid,size};
  return {oid,size:Number.isSafeInteger(size)?size:null,loose:true};
+}
+
+export function validImportRef(ref){
+ return typeof ref==='string'&&ref.isWellFormed()&&ref.length<=240&&!ref.startsWith('-')&&!/[\x00-\x20\x7f ~^:?*[\\]/.test(ref)&&!ref.includes('@{')&&
+  !ref.includes('..')&&!ref.split('/').some(name=>!name||name.startsWith('.')||name.endsWith('.')||name.endsWith('.lock'));
+}
+
+export function validImportPath(file){
+ return typeof file==='string'&&file.isWellFormed()&&file.length<=1024&&!/[\x00-\x1f\x7f\\]/.test(file)&&
+  file.split('/').every(segment=>segment&&segment!=='.'&&segment!=='..');
+}
+
+// A temporary repository isolates the exact remote ref from the catalog's mutable mirror and local Git config.
+export async function resolveImportPointer(url,auth,ref,file,{git=gitBinary()}={}){
+ if(!validImportRef(ref)||!validImportPath(file))throw new GitError('invalid');
+ const network={git,auth,timeoutMs:60000,maxBytes:MB};
+ let target=ref;
+ if(!validSha(ref)&&ref!=='HEAD'){
+  const candidates=ref.startsWith('refs/')?[ref]:['refs/heads/'+ref,'refs/tags/'+ref];
+  const output=await runGit(['ls-remote','--exit-code','--refs',url,...candidates],network);
+  const refs=lines(output).map(line=>line.split('\t')[1]).filter(name=>candidates.includes(name));
+  if(refs.length!==1)throw new GitError('invalid-ref');
+  [target]=refs;
+ }
+ const gitDir=await mkdtemp(path.join(os.tmpdir(),'hub-lfs-import-'));
+ try{
+  await runGit(['init','--bare','--quiet',gitDir],{git});
+  await runGit(['fetch','--quiet','--depth=1',`--filter=blob:limit=${POINTER_LIMIT}`,'--',url,target],{...network,gitDir});
+  const options={git,gitDir,maxBytes:POINTER_LIMIT,timeoutMs:10000};
+  const commit=(await runGit(['rev-parse','--verify','FETCH_HEAD^{commit}'],options)).toString('ascii').trim();
+  if(!validSha(commit))throw new GitError('invalid-ref');
+  const bytes=await runGit(['cat-file','blob',commit+':'+file],options);
+  const pointer=parsePointer(bytes);
+  if(!pointer||pointer.loose)throw new GitError('invalid-pointer');
+  return {commit,...pointer,...(target.startsWith('refs/')?{ref:target}:{})};
+ }finally{await rm(gitDir,{recursive:true,force:true});}
 }
 
 const lines=buf=>buf.toString('utf8').split('\n').filter(Boolean);
