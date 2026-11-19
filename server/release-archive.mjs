@@ -14,7 +14,7 @@ export function archivePath(value,{release=true}={}){
 }
 function field(b,start,size){const part=b.subarray(start,start+size),end=part.indexOf(0);if(end>=0&&part.subarray(end).some(v=>v!==0))throw new Error('nonzero archive field after NUL');return utf8.decode(end<0?part:part.subarray(0,end));}
 function octal(b,start,size){const raw=b.subarray(start,start+size);if(raw[0]&128)throw new Error('unsupported archive numeric encoding');const text=raw.toString('ascii').replace(/[\0 ]+$/,'').replace(/^ +/,'');if(!/^[0-7]*$/.test(text))throw new Error('invalid archive octal');const v=parseInt(text||'0',8);if(!Number.isSafeInteger(v))throw new Error('unsafe archive integer');return v;}
-function header(entry){
+export function header(entry){
  const b=Buffer.alloc(512),put=(text,start,size)=>{const data=Buffer.from(text);if(data.length>size)throw new Error('USTAR field exceeds format limit');data.copy(b,start);};
  let name=entry.path,prefix='';if(Buffer.byteLength(name)>100){const cuts=[...name.matchAll(/\//g)].map(m=>m.index).reverse();const cut=cuts.find(i=>Buffer.byteLength(name.slice(0,i))<=155&&Buffer.byteLength(name.slice(i+1))<=100);if(cut===undefined)throw new Error(`path cannot fit USTAR: ${name}`);prefix=name.slice(0,cut);name=name.slice(cut+1);}
  put(name,0,100);const num=(v,start,len)=>put(v.toString(8).padStart(len-1,'0')+'\0',start,len);
@@ -25,7 +25,7 @@ export async function writeArchive(file,entries,{release=true,limits=ARCHIVE_LIM
  async function* blocks(){for(const e of entries){archivePath(e.path,{release});if(e.bytes>limits.file)throw new Error('individual file exceeds local limit');expanded+=512+Math.ceil((e.bytes??0)/512)*512;if(expanded>limits.expanded)throw new Error('expanded archive exceeds local limit');yield header(e);if(e.type==='file'){let count=0;for await(const chunk of createReadStream(e.source)){count+=chunk.length;yield chunk;}if(count!==e.bytes)throw new Error('source changed during archive creation');const pad=(512-e.bytes%512)%512;if(pad)yield Buffer.alloc(pad);}}yield Buffer.alloc(1024);}
  await pipeline(Readable.from(blocks()),createGzip({level:6}),createWriteStream(file,{flags:'wx',mode:0o600}));
 }
-class Reader{
+export class Reader{
  constructor(iter){this.iter=iter[Symbol.asyncIterator]();this.buffer=Buffer.alloc(0);this.offset=0;this.total=0;}
  async take(n,{eof=false}={}){const out=[];let length=0;while(length<n){if(this.offset===this.buffer.length){const next=await this.iter.next();if(next.done){if(eof&&length===0)return null;throw new Error('truncated archive');}this.buffer=next.value;this.offset=0;}const size=Math.min(n-length,this.buffer.length-this.offset);out.push(this.buffer.subarray(this.offset,this.offset+size));this.offset+=size;length+=size;this.total+=size;}return out.length===1?out[0]:Buffer.concat(out,length);}
 }

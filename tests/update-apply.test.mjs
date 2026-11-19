@@ -279,7 +279,7 @@ test('a release that does not come up is rolled back: the old code, the old bran
 
 test('the data epoch: when it rises, going back restores the archive, and what was there is moved aside',async t=>{
  const w=await world(t),inst=w.inst();
- await w.upstream.commit('1.1.0',tree('1.1.0',2),{tag:'v1.1.0'});
+ const v110=await w.upstream.commit('1.1.0',tree('1.1.0',2),{tag:'v1.1.0'});
  await w.upstream.commit('1.2.0',tree('1.2.0',3,{CRASH_AT_START:''}),{tag:'v1.2.0'});
  // the new code migrates the state the moment it starts
  w.svc.onStart=version=>{if(version!=='1.0.0')writeFileSync(path.join(w.state,'hub.db'),`migrated by ${version}\n`);};
@@ -288,6 +288,13 @@ test('the data epoch: when it rises, going back restores the archive, and what w
  assert.equal(readFileSync(path.join(w.state,'hub.db'),'utf8'),'migrated by 1.1.0\n');
  await writeFile(path.join(w.root,'data','knowledge.json'),'{"entries":["added after the update"]}\n');
  await refused(rollback(inst,w.ctx),/The data epoch rose[\s\S]*everything written since then is lost[\s\S]*--yes/);
+ const integrity=readFileSync(journal.backup.integrity),beforeCalls=[...w.svc.calls];
+ writeFileSync(journal.backup.integrity,Buffer.concat([integrity,Buffer.from(' ')]));
+ await refused(rollback(inst,w.ctx,{yes:true}),/Rollback assessment refused before stopping the service: backup integrity sidecar mismatch/);
+ assert.deepEqual(w.svc.calls,beforeCalls);
+ assert.equal(readJournal(inst).step,'done');
+ assert.equal(w.hub.git('rev-parse','HEAD'),v110);
+ writeFileSync(journal.backup.integrity,integrity);
  assert.deepEqual(w.svc.calls,['stop','start 1.1.0'],'asking is not doing');
  const back=await rollback(inst,w.ctx,{yes:true});
  assert.equal(back.journal.restored,true);

@@ -46,8 +46,9 @@ import {packageReceipt} from './build-info.mjs';
 import {within,syncDirectory} from './release-trust.mjs';
 import {identityMismatch,observeReadiness,healthSample} from './update-readiness.mjs';
 import {contentFingerprint,pluginSourceFingerprint} from './runtime-identity.mjs';
-import {backupPlan,createBackup,restoreBackup} from './update-backup.mjs';
+import {backupPlan,createBackup,restoreBackup,assessRestore,backupRootSummary} from './update-backup.mjs';
 import {UpdateError,RollbackFailed} from './update-errors.mjs';
+import {retainDriver,checkRetainedDriver} from './update-driver.mjs';
 import {acquireLock,acquireSourceLocks} from './update-lock.mjs';
 import {JOURNAL_SCHEMA,TERMINAL_STEPS,readUpdateJournal,writeUpdateJournal,unfinished,recordMutation} from './update-journal.mjs';
 export {UpdateError,RollbackFailed,JOURNAL_SCHEMA,TERMINAL_STEPS,unfinished};
@@ -95,6 +96,7 @@ function stageSite(inst,request,installed,target,staging){
 }
 function checkSiteUnchanged(site){
  const bytes=siteBytes(site.file);
+ if(bytes!==null&&statSync(site.file).nlink>1)throw new UpdateError(`Cannot replace hard-linked ${site.label??'site'} configuration.`);
  if(hashOf(bytes)!==site.baseHash)throw new UpdateError(`The ${site.label??'site'} configuration changed since preflight. Run the update again; no configuration was replaced.`);
  return bytes;
 }
@@ -106,7 +108,7 @@ function restoreSite(inst,journal,key='site'){
  else{
   const bytes=siteBytes(site.backup);
   if(bytes===null||hashOf(bytes)!==site.baseHash)throw new Error(`the original ${key} configuration is missing or changed: ${site.backup}`);
-  replaceSite(site.file,bytes,site.mode);
+  if(!journal.restored||hashOf(siteBytes(site.file))!==site.baseHash||(statSync(site.file).mode&0o777)!==site.mode)replaceSite(site.file,bytes,site.mode);
  }
  site.status='restored';writeJournal(inst,journal);
 }
@@ -200,7 +202,8 @@ export function resolveInstance({env=process.env,root=repoRoot,options={}}={}){
  }
  const work=home??path.join(core,'backups');
  return Object.freeze({home,root:core,env,instanceHash:hashOf(instanceBytes),paths,service,health,keep:backups.keep,sources:Object.freeze(sources),
-  backupRoots:options.backupRoots??[],trustFile:options.trust??(home?path.join(home,'update','trust.json'):null),
+  backupRoots:options.backupRoots??[],backupPolicyFile:options.backupPolicy?path.resolve(options.backupPolicy):null,
+  driverSource:path.resolve(core)===path.resolve(repoRoot)?null:repoRoot,trustFile:options.trust??(home?path.join(home,'update','trust.json'):null),
   backups:path.resolve(options.backups??(home?path.join(home,'backups'):path.join(core,'backups'))),
   staging:path.resolve(options.staging??(home?path.join(home,'staging'):os.tmpdir())),
   files:Object.freeze({journal:path.join(work,'update-journal.json'),lock:path.join(work,'update.lock'),history:path.join(paths.state,'update-history.jsonl'),run:path.join(paths.state,'run.json'),updates:path.join(paths.state,'updates.json')})});
@@ -319,13 +322,13 @@ async function waitHealthy(inst,ctx,expect,since,{interruptible=true}={}){
 
 // --- the archive ---------------------------------------------------------------------------------------
 export const archiveEntries=inst=>backupPlan(inst).roots;
-export const makeArchive=(inst,ctx,name)=>createBackup(inst,ctx,name);
-export const restoreArchive=(inst,ctx,backup,journal)=>restoreBackup(inst,ctx,backup,journal);
+export const makeArchive=(inst,ctx,name,options)=>createBackup(inst,ctx,name,options);
+export const restoreArchive=(inst,ctx,backup,journal,assessed)=>restoreBackup(inst,ctx,backup,journal,assessed);
 function pruneArchives(inst,ctx,keepFile){
  try{
   const old=readdirSync(inst.backups).filter(n=>/^pre-.*\.tgz$/.test(n)).map(n=>({file:path.join(inst.backups,n),at:statSync(path.join(inst.backups,n)).mtimeMs})).sort((a,b)=>b.at-a.at).slice(inst.keep).filter(a=>a.file!==keepFile);
   const active=readJournal(inst);
-  for(const a of old){if(active?.backup?.file===a.file)continue;for(const suffix of ['.manifest.json','.integrity.json'])rmSync(a.file+suffix,{force:true});rmSync(a.file,{force:true});for(const key of ['site','instance'])rmSync(a.file+`.${key}.json`,{force:true});ctx.log(`  removed the old archive ${a.file}`);}
+  for(const a of old){if(active?.backup?.file===a.file)continue;for(const suffix of ['.manifest.json','.manifest.jsonl','.integrity.json'])rmSync(a.file+suffix,{force:true});rmSync(a.file,{force:true});for(const key of ['site','instance'])rmSync(a.file+`.${key}.json`,{force:true});ctx.log(`  removed the old archive ${a.file}`);}
  }catch{}
 }
 
@@ -361,6 +364,7 @@ export async function preflight(inst,request,ctx,{forApply=false,sourceLocksHeld
  if(request.package)return preflightPackage(inst,request,ctx,{forApply});
  let trustFile;try{trustFile=selectTrustFile({home:inst.home,explicit:request.trust});}catch(e){throw new UpdateError(`Trust selection refused: ${e.message}`);}
  let trust=null;if(trustFile){try{trust=loadTrust(trustFile,{forbidden:[inst.root,inst.paths.config,inst.paths.data,inst.paths.state,inst.paths.private,...inst.backupRoots]});rememberTrustSelection(inst.home,trustFile);}catch(e){throw new UpdateError(`Trust policy refused: ${e.message}`);}}
+ const coverage=backupPlan({...inst,trustFile:trustFile??inst.trustFile});
  const initialSnapshot=sourceSnapshot(inst,ctx);
  const say=line=>ctx.log(line);
  const addedSources=addedPluginSources(inst,request);
@@ -540,7 +544,7 @@ export async function preflight(inst,request,ctx,{forApply=false,sourceLocksHeld
     expect:{version:installed.version,previousPid:run?.pid??null,...(run?.readinessProtocol===1?{readinessProtocol:1,dataEpoch:run.dataEpoch,fullCommit:run.fullCommit,packageDigest:run.packageDigest,previousBootId:run.bootId}:{}),plugins:run?(Array.isArray(run.plugins)?run.plugins:[]).map(p=>({id:p.id,version:p.version??null,...(p.fingerprint?{fingerprint:p.fingerprint}:{}),...(p.sourceFingerprint?{sourceFingerprint:p.sourceFingerprint}:{})})):null}},
    to:{label:label(target,targetCommit,after),core:{...target,commit:targetCommit,tag:coreTag??core.tag},plugins:after.map(({id,version,dataEpoch})=>({id,version,dataEpoch})),
     expect:{version:target.version,previousPid:run?.pid??null,...(modern?{readinessProtocol:1,dataEpoch:target.dataEpoch,fullCommit:targetCommit,packageDigest:null,previousBootId:run?.bootId??null}:{}),plugins:stagedDirs.flatMap(dir=>pluginFacts(dir).map(p=>({id:p.id,version:p.version,...(modern?{fingerprint:contentFingerprint(path.join(dir,p.id)),sourceFingerprint:pluginSourceFingerprint((()=>{const source=live.find(s=>s.plugins.some(rel=>path.join(place(s),rel)===dir));const rel=source?.plugins.find(rel=>path.join(place(source),rel)===dir);return source&&!changes.some(c=>c.id===source.id)?path.join(source.dir,rel):dir;})())}:{})})))}},
-   changes,epochRose,lines,trustFile,sourceSnapshot:initialSnapshot,trustDigest:trustFile?sha256(readFileSync(trustFile)):null,siteChange:siteChange?Object.fromEntries(Object.entries(siteChange).filter(([k])=>k!=='staged')):null,instanceChange:addedSources.change};
+   changes,epochRose,lines,trustFile,coverage,sourceSnapshot:initialSnapshot,trustDigest:trustFile?sha256(readFileSync(trustFile)):null,siteChange:siteChange?Object.fromEntries(Object.entries(siteChange).filter(([k])=>k!=='staged')):null,instanceChange:addedSources.change};
  }finally{
   for(const s of added)ctx.exec('git',['-C',s.dir,'worktree','remove','--force',place(s)]);
   rmSync(staging,{recursive:true,force:true});
@@ -560,7 +564,14 @@ async function preflightPackage(inst,request,ctx,{forApply}){
  if(request.core)throw new UpdateError('Conflicting Git and package targets');packageLayout(inst,request);const initialSnapshot=sourceSnapshot(inst,ctx),installed=coreFacts(inst.root),run=readRun(inst),source=inspectSource(ctx,inst.sources[0]);
  if(source.dirty.length)throw new UpdateError('Git checkout has tracked edits; migration refuses to replace them.');
  const trustFile=selectTrustFile({home:inst.home,explicit:request.trust}),repository=updateRepository(inst);
- let verified;try{verified=await verifyPackage(request.package,{trustFile,repository,manifestDigest:request.manifestDigest,stagingParent:path.dirname(inst.root),keepStage:true,forbidden:[inst.root,inst.paths.config,inst.paths.data,inst.paths.state,inst.paths.private,...inst.backupRoots]});}catch(e){throw new UpdateError(`Package verification refused: ${e.message}`);}
+ const options={trustFile,repository,manifestDigest:request.manifestDigest,stagingParent:path.dirname(inst.root),keepStage:true,forbidden:[inst.root,inst.paths.config,inst.paths.data,inst.paths.state,inst.paths.private,...inst.backupRoots]};
+ let verified,coverage;
+ try{
+  const {manifest}=authenticatePackageMetadata(request.package,options);
+  const packageBytes=manifest.artifact.uncompressedBytes+8192*manifest.files.length;
+  coverage=backupPlan({...inst,trustFile},{packageBytes});
+  verified=await verifyPackage(request.package,options);
+ }catch(e){throw new UpdateError(`Package verification refused: ${e.message}`);}
  rememberTrustSelection(inst.home,trustFile);const stage=verified.stage,target=coreFacts(stage),m=verified.manifest,siteStaging=mkdtempSync(path.join(path.dirname(inst.root),'.hub-check-'));
  try{
   if(compare(target.version,installed.version)<0||target.dataEpoch<installed.dataEpoch)throw new UpdateError('Package downgrade refused; use the recorded rollback transaction.');
@@ -584,15 +595,26 @@ async function preflightPackage(inst,request,ctx,{forApply}){
   verifyStagedTree(stage,m);writePackageReceipt(stage,verified);const expectedPlugins=plugins.map(({id,version,fingerprint,sourceFingerprint})=>({id,version,fingerprint,sourceFingerprint}));
   return {from:{label:installed.version,core:{...installed,commit:source.commit},plugins:before,expect:{version:installed.version,previousPid:run?.pid??null,...(run?.readinessProtocol===1?{readinessProtocol:1,fullCommit:run.fullCommit,packageDigest:run.packageDigest,dataEpoch:run.dataEpoch,previousBootId:run.bootId}:{}),plugins:run?.plugins??null}},
    to:{label:target.version,core:{...target,commit:m.fullCommit,tag:m.tag},plugins:before,expect:{version:m.version,previousPid:run?.pid??null,dataEpoch:m.dataEpoch,fullCommit:m.fullCommit,packageDigest:verified.manifestSha256,readinessProtocol:1,previousBootId:run?.bootId??null,plugins:expectedPlugins}},
-   changes:[],sourceSnapshot:initialSnapshot,epochRose:target.dataEpoch>installed.dataEpoch,package:{live:inst.root,old:inst.root+'.previous-'+path.basename(stage),staged:stage,status:'prepared',manifestSha256:verified.manifestSha256,artifact:verified.manifest.artifact,files:m.files,trustFile,packageFile:path.resolve(request.package)},siteChange:siteChange?Object.fromEntries(Object.entries(siteChange).filter(([k])=>k!=='staged')):null,instanceChange:null,lines:[`package signature: verified (${verified.keyId}); manifest ${verified.manifestSha256}`,`exact release: ${m.tag} @ ${m.fullCommit}`,`readiness: exact boot/process/plugin identity for 10 consecutive seconds after startup`,...(target.dataEpoch>installed.dataEpoch?['DATA EPOCH RISES: rollback restores the pre-update backup']:[])]};
+   changes:[],coverage,trustFile,trustDigest:sha256(readFileSync(trustFile)),sourceSnapshot:initialSnapshot,epochRose:target.dataEpoch>installed.dataEpoch,package:{live:inst.root,old:inst.root+'.previous-'+path.basename(stage),staged:stage,status:'prepared',manifestSha256:verified.manifestSha256,artifact:verified.manifest.artifact,files:m.files,trustFile,packageFile:path.resolve(request.package)},siteChange:siteChange?Object.fromEntries(Object.entries(siteChange).filter(([k])=>k!=='staged')):null,instanceChange:null,lines:[`package signature: verified (${verified.keyId}); manifest ${verified.manifestSha256}`,`exact release: ${m.tag} @ ${m.fullCommit}`,`readiness: exact boot/process/plugin identity for 10 consecutive seconds after startup`,...(target.dataEpoch>installed.dataEpoch?['DATA EPOCH RISES: rollback restores the pre-update backup']:[])]};
  }catch(e){rmSync(stage,{recursive:true,force:true});throw e;}finally{rmSync(siteStaging,{recursive:true,force:true});}
 }
 function sourceSnapshot(inst,ctx){
  const files=[inst.paths.config,inst.paths.siteConfig,inst.paths.softwareWatch,inst.paths.authFile,inst.env.HOME_HUB_SECRET_KEY_FILE,inst.env.INTEGRATION_SECRETS_FILE,inst.env.GITHUB_TOKEN_FILE,inst.env.TLS_KEY,inst.env.TLS_CERT,...(inst.home?[path.join(inst.home,'instance.json')]:[])].filter(Boolean);
  return {sources:inst.sources.map(s=>{const git=inspectSource(ctx,s);return {dir:s.dir,canonical:realpathSync(s.dir),device:statSync(s.dir).dev,inode:statSync(s.dir).ino,commit:git.commit,dirty:git.dirty,plugins:s.plugins.map(p=>contentFingerprint(path.join(s.dir,p))),...(s.kind==='plugins'?{sourceFingerprints:s.plugins.map(rel=>pluginSourceFingerprint(path.join(s.dir,rel)))}:{}),...(!git.git?{content:contentFingerprint(s.dir)}:{})};}),configuration:files.map(file=>[file,existsSync(file)?realpathSync(file):null,existsSync(file)?contentFingerprint(realpathSync(file)):null])};
 }
-function retainDriver(inst,journal){
- const driver=path.join(inst.home,'update','drivers',journal.id);mkdirSync(driver,{recursive:true,mode:0o700});for(const name of ['server','scripts','public','package.json'])cpSync(path.join(repoRoot,name),path.join(driver,name),{recursive:true,dereference:false});journal.driver=driver;writeJournal(inst,journal);
+function recordDriver(inst,journal,ctx){
+ const facts=coreFacts(repoRoot);
+ const tree=inspectSource(ctx,{dir:repoRoot});
+ retainDriver(inst,journal,repoRoot,{version:facts.version,commit:tree.git&&!tree.dirty.length?tree.commit:null});
+}
+function sameCoverage(before,after){
+ if(before.policy.file!==after.policy.file||before.policy.digest!==after.policy.digest||
+  JSON.stringify(before.roots)!==JSON.stringify(after.roots))throw new UpdateError('Backup policy or root topology changed since preflight; retry from a new plan.');
+ return after;
+}
+function backupPolicyRecord(coverage){
+ const {file,digest}=coverage.policy;
+ return file?{backupPolicy:{file,digest}}:{};
 }
 function activatePackage(inst,journal,ctx){const p=journal.package;
  p.status='moving-old';writeJournal(inst,journal);renameSync(p.live,p.old);ctx.checkpoint('package-old-renamed');syncDirectory(path.dirname(p.live));p.status='old-moved';writeJournal(inst,journal);
@@ -626,6 +648,14 @@ const pathsLine=(inst,journal)=>`  journal  ${inst.files.journal}\n  archive  ${
  * been switched yet). When that fails the service is left stopped and RollbackFailed names the files that matter.
  */
 async function undo(inst,ctx,journal){
+ let assessed=null;
+ try{
+  checkRetainedDriver(journal);
+  if(journal.epochRose&&journal.started&&!journal.restored){
+   if(!journal.backup)throw new Error('the data epoch rose and the new version was started, but the journal names no archive');
+   assessed=await assessRestore(inst,journal.backup,journal);
+  }
+ }catch(e){throw new UpdateError(`Rollback assessment refused before stopping the service: ${e.message}\n${pathsLine(inst,journal)}`);}
  const switched=!['stopping','backup','backup-verified'].includes(journal.undoFrom??journal.step);
  if(journal.step!=='rolling-back'&&journal.step!=='rollback-failed')journal.undoFrom=journal.step;
  journal.step='rolling-back';writeJournal(inst,journal);
@@ -640,10 +670,9 @@ async function undo(inst,ctx,journal){
    await stopService(inst,ctx,readRun(inst)?.pid??null);
    if(journal.package)restorePackage(inst,journal,ctx);
    for(const c of journal.changes)if(head(c)!==c.from||c.branch){ctx.log(`  ${c.id}: back to ${short(c.from)}${c.branch?` (${c.branch})`:''}`);if(inspectSource(ctx,c).dirty.length)throw new Error(`Unrelated tracked edits in ${c.dir}; refusing forced rollback`);const current=head(c);if(current!==c.from&&current!==c.to)throw new Error(`Unexpected source identity in ${c.dir}; manual recovery required`);recordMutation(inst,journal,'source-restore',{source:c.id,from:current,to:c.from},()=>switchTo(ctx,c,c.from,{branch:c.branch}));}
-   if(journal.epochRose&&journal.started&&!journal.restored){
-    if(!journal.backup)throw new Error('the data epoch rose and the new version was started, but the journal names no archive');
+   if(assessed){
     ctx.log(`  restoring ${journal.backup.file} (the data epoch rose, and the new version has written its state)`);
-    journal.failedState=await restoreArchive(inst,ctx,journal.backup,journal);journal.restored=true;writeJournal(inst,journal);
+    journal.failedState=await restoreArchive(inst,ctx,journal.backup,journal,assessed);journal.restored=true;writeJournal(inst,journal);
    }
    // The site may have changed before the new code ever started; restore it independently of the data epoch.
    for(const key of ['site','instance'])restoreSite(inst,journal,key);
@@ -684,14 +713,16 @@ export async function recover(inst,ctx){
 export async function apply(inst,request,ctx){
  needService(inst);
  if(request.trust)inst={...inst,trustFile:path.resolve(request.trust)};
- const release=takeLock(inst,ctx);let sourceRelease=()=>{};
+ const release=takeLock(inst,ctx);let sourceRelease=()=>{},unusedStage=null;
  try{
   if(unfinished(readJournal(inst))){const old=readJournal(inst);sourceRelease=acquireSourceLocks([...inst.sources,...old.changes],{now:ctx.now});await reconcileJournal(inst,ctx,old);throw new UpdateError('The unfinished transaction was recovered. Run apply again for a new update.');}
   sourceRelease=acquireSourceLocks([...inst.sources,...addedPluginSources(inst,request).sources],{now:ctx.now});
   ctx.log('Preflight:');
   const plan=await preflight(inst,request,ctx,{forApply:true,sourceLocksHeld:true});
+  unusedStage=plan.package?.staged??null;
   for(const line of plan.lines)ctx.log(`  ${line}`);
-  backupPlan(inst);
+  inst={...inst,trustFile:plan.trustFile??inst.trustFile};
+  const coverage=sameCoverage(plan.coverage,backupPlan(inst));
   for(const change of [plan.siteChange,plan.instanceChange])if(change)checkSiteUnchanged(change);
   if(JSON.stringify(sourceSnapshot(inst,ctx))!==JSON.stringify(plan.sourceSnapshot))throw new UpdateError('Installed source/plugin/configuration fingerprint changed since preflight; refusing before stop');
   for(const c of plan.changes){if(git(ctx,c.dir,'rev-parse','HEAD')!==c.from||tagCommit(ctx,c.dir,c.tag)!==c.to||git(ctx,c.dir,'rev-parse',`refs/tags/${c.tag}`)!==c.tagObject||inspectSource(ctx,c).dirty.length)throw new UpdateError('Source or target changed since preflight; refusing before stop');}
@@ -701,9 +732,9 @@ export async function apply(inst,request,ctx){
   ctx.checkpoint();
   const started=ctx.now(),run=readRun(inst);
   const journal={schemaVersion:JOURNAL_SCHEMA,id:`${stampOf(started)}-${process.pid}`,startedAt:iso(started),by:ctx.user??null,from:plan.from,to:plan.to,changes:plan.changes,epochRose:plan.epochRose,
-   ...(plan.package?{package:plan.package}:{}),settings:{service:inst.service.spec,health:inst.health,root:inst.root,home:inst.home,state:inst.paths.state},step:'stopping',started:false,backup:null};
-  writeJournal(inst,journal);
-  if(plan.package)retainDriver(inst,journal);
+   ...(plan.package?{package:plan.package}:{}),...(plan.trustFile?{trustFile:plan.trustFile}:{}),...backupPolicyRecord(coverage),settings:{service:inst.service.spec,health:inst.health,root:inst.root,home:inst.home,state:inst.paths.state},step:'stopping',started:false,backup:null};
+  recordDriver(inst,journal,ctx);
+  writeJournal(inst,journal);unusedStage=null;
   const fail=async(e,quarantine)=>{
    journal.failure={step:journal.step,message:oneLine(e.message)};
    if(e.stopRefused)journal.stopRefused=true;
@@ -719,7 +750,7 @@ export async function apply(inst,request,ctx){
    ctx.checkpoint();
    journal.step='backup';writeJournal(inst,journal);
    ctx.log('Archiving, with the hub stopped:');
-   journal.backup=await makeArchive(inst,ctx,`pre-${plan.from.core.version}-to-${plan.to.core.version}-${stampOf(started)}`);
+   journal.backup=await makeArchive(inst,ctx,`pre-${plan.from.core.version}-to-${plan.to.core.version}-${stampOf(started)}`,{plan:sameCoverage(coverage,backupPlan(inst))});
    for(const key of ['site','instance'])if(plan[`${key}Change`]){
     const site=plan[`${key}Change`],original=checkSiteUnchanged(site),backup=journal.backup.file+`.${key}.json`;
     if(original!==null)writeAtomic(backup,original);
@@ -727,8 +758,8 @@ export async function apply(inst,request,ctx){
     writeJournal(inst,journal);
    }
    journal.step='backup-verified';writeJournal(inst,journal);
-   ctx.log(`  ${journal.backup.file} (${journal.backup.entries.map(e=>e.name).join(', ')}; ${journal.backup.files} entries, ${Math.ceil(journal.backup.bytes/1024)} KiB)`);
-   ctx.checkpoint();
+   ctx.log(`  ${journal.backup.file} (${backupRootSummary(journal.backup.entries)}; ${journal.backup.files} entries, ${Math.ceil(journal.backup.bytes/1024)} KiB)`);
+   ctx.checkpoint('backup-verified');
   }catch(e){await fail(e,false);}
   try{
    if(JSON.stringify(sourceSnapshot(inst,ctx))!==JSON.stringify(plan.sourceSnapshot))throw new Error('Source/configuration topology changed after backup; refusing switch');
@@ -755,7 +786,10 @@ export async function apply(inst,request,ctx){
   history(inst,ctx,journal,'done');
   pruneArchives(inst,ctx,journal.backup.file);
   return {journal,plan};
- }finally{sourceRelease();release();}
+ }finally{
+  try{if(unusedStage)rmSync(unusedStage,{recursive:true,force:true});}
+  finally{sourceRelease();release();}
+ }
 }
 
 /** The last update, undone by hand. yes: required when the data epoch rose (the archive is restored and later writes are lost). */
@@ -793,12 +827,13 @@ export async function backup(inst,ctx){
   if(!(await probeOk(ctx,inst.health.url)))throw new UpdateError(`${inst.health.url} does not answer; this command stops and starts a hub that is running.`);
   const recorded=readJournal(inst),previous=recorded?.kind==='backup'?recorded.previous??null:recorded,facts=coreFacts(inst.root),side={label:version,core:facts,expect:{version:run?.version??version,previousPid:run?.pid??null,...(run?.readinessProtocol===1?{readinessProtocol:1,fullCommit:run.fullCommit,packageDigest:run.packageDigest,dataEpoch:run.dataEpoch,previousBootId:run.bootId}:{}),plugins:run?.plugins??null}};
   const journal={schemaVersion:JOURNAL_SCHEMA,id:`backup-${stampOf(ctx.now())}-${process.pid}`,kind:'backup',previous,startedAt:iso(ctx.now()),from:side,to:side,changes:[],epochRose:false,started:false,backup:null,settings:{service:inst.service.spec,health:inst.health,root:inst.root,home:inst.home,state:inst.paths.state},step:'stopping'};
-  backupPlan(inst);writeJournal(inst,journal);
+  const coverage=backupPlan(inst);Object.assign(journal,backupPolicyRecord(coverage));
+  recordDriver(inst,journal,ctx);writeJournal(inst,journal);
   ctx.log('Stopping the hub:');
   await stopService(inst,ctx,run?.pid??null);ctx.checkpoint('manual-backup-stopped');
   journal.step='backup';writeJournal(inst,journal);
   let made=null,error=null;
-  try{made=await makeArchive(inst,ctx,`manual-${version}-${stampOf(ctx.now())}`);}catch(e){error=e;}
+  try{made=await makeArchive(inst,ctx,`manual-${version}-${stampOf(ctx.now())}`,{plan:sameCoverage(coverage,backupPlan(inst))});}catch(e){error=e;}
   journal.backup=made;journal.step='starting';writeJournal(inst,journal);
   ctx.log('Starting it again:');
   const since=ctx.now();
@@ -823,7 +858,7 @@ export function status(inst,ctx){
   quarantined:plain(known?.quarantined)?known.quarantined:{},
   service:inst.service?{kind:inst.service.kind,stop:inst.service.stop,start:inst.service.start}:null,health:inst.health,
   journal:journal?{id:journal.id,step:journal.step,unfinished:unfinished(journal),startedAt:journal.startedAt,finishedAt:journal.finishedAt??null,from:journal.from.label,to:journal.to.label,epochRose:journal.epochRose,
-   archive:journal.backup?.file??null,failure:journal.failure??null}:null};
+   archive:journal.backup?.file??null,driver:journal.driver??null,failure:journal.failure??null}:null};
 }
 export function formatStatus(s){
  const out=[`Home Hub ${s.installed.version??'?'}${s.installed.exact?'':'+dev'} @ ${short(s.installed.commit)}${s.installed.branch?` (branch ${s.installed.branch})`:s.installed.tag?` (${s.installed.tag}, detached)`:' (detached)'}, data epoch ${s.installed.dataEpoch??'?'}`,
@@ -841,6 +876,7 @@ export function formatStatus(s){
   const j=s.journal;
   out.push(`Last update: ${j.from} → ${j.to}, begun ${j.startedAt}: ${j.step}${j.finishedAt?` at ${j.finishedAt}`:''}${j.failure?` (${j.failure.message})`:''}`);
   if(j.archive)out.push(`  archive   ${j.archive}${j.epochRose?'  (the data epoch rose: going back needs it)':''}`);
+  if(j.driver)out.push(`  driver    ${j.driver}/scripts/update.mjs`);
   if(j.unfinished)out.push('  UNFINISHED: run "rollback" to put the previous version back before anything else.');
  }else out.push('Last update: none recorded');
  return out;

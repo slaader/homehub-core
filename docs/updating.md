@@ -11,6 +11,7 @@ node scripts/update.mjs preflight "$TARGET_TAG"    # every check that needs no c
 node scripts/update.mjs apply "$TARGET_TAG"        # preflight, stop, archive, switch, start, health check; back on any failure
 node scripts/update.mjs rollback            # undo the last update
 node scripts/update.mjs backup              # only the archive (stop, archive, start)
+node scripts/update.mjs backup-diagnose     # report backup coverage, limits and space
 ```
 
 Without a tag, `preflight` and `apply` take the newest release tag after a fetch. `--to "$TARGET_TAG"` is the same as the
@@ -86,7 +87,7 @@ hub's own `/healthz` on its local port, not the reverse proxy in front of it.
 | 4 | Checks out the target in a scratch worktree (`<home>/staging/`, else the temp directory), with every plugin source beside it. From those files: each plugin's `core` range must include the target version, each `requires` must be met, the Node version must fit, and the data epoch is compared. | stops, naming the plugin |
 | 5 | In the scratch worktree: the target's `npm test`, each plugin source's tests separately with its own fixture site against the target core, then `node server/index.mjs --check` with **this instance's** secrets and plugins, and its site file (a staged copy when configuration changes). The worktree is removed. | stops; nothing was touched |
 | 6 | Writes the journal, stops the service, waits for its process to exit. | starts it again |
-| 7 | Archives configuration, data, state, private files and configured external roots into `pre-<from>-to-<to>-<time>.tgz` (0600), then verifies a staged restore against its inventory. The hub is stopped, so SQLite is closed and consistent. Nested staging mirrors and `*.tgz` files are included; archive limits still apply. A site being replaced is also saved separately. | starts the old version |
+| 7 | Archives configuration, data, state, private files and configured external roots into `pre-<from>-to-<to>-<time>.tgz` (0600), then verifies the stream against its inventory. The hub is stopped, so SQLite is closed and consistent. Nested staging mirrors and `*.tgz` files are included. A site being replaced is also saved separately. | starts the old version |
 | 8 | `git checkout --detach <tag>` in each source that changes. Atomically install any replacement site configuration checked in step 5. | rolls back |
 | 9 | Starts the service. Within `health.seconds` readiness must begin, then pass ten consecutive seconds with the exact process, build and plugin identity. | rolls back |
 | 10 | Marks the journal done, appends to `<state>/update-history.jsonl`, removes archives beyond `backups.keep`. | |
@@ -264,9 +265,11 @@ and never replace the policy with an older copy. There is no automatic rotation 
 The updater never restores trust from its application archives.
 
 Run an **already trusted driver**, independently verified and retained through the rollback window. Downloading
-an updater and running it to verify its own package does not establish trust. Package transactions retain a copy
-of this driver under `<home>/update/drivers/<transaction>/`; its journal names that driver and the old core.
-Its target tests and `--check` run authenticated code under the updater account: they are **not a sandbox**.
+an updater and running it to verify its own package does not establish trust. Git and package transactions retain the executable driver under `<home>/update/drivers/<transaction>/` (or
+`<backups>/drivers/` without an instance directory). The journal records its path, capabilities and tree digest.
+When obtaining a driver from a release package, use the already trusted installed updater's `verify-package`
+with operator trust before invoking any code from the new package. Target tests and `--check` execute under
+the updater account.
 Tests use a sanitized environment; `--check` may read the instance configuration and plugin settings.
 
 ```sh
@@ -315,7 +318,7 @@ PID check. Then run the retained driver's `rollback` with the original instance 
 unfinished transaction and exits without beginning a new update. Corrupt or future journals block mutation and are
 preserved; schema-1 journals are read explicitly, with the strongest available legacy recovery checks.
 
-Schema-2 journals record source switches and per-root restore progress before and after mutations, flushing files
+Schema-3 journals record source switches and per-root restore progress before and after mutations, flushing files
 and directories where supported. A multi-root change is **recoverable, not globally atomic**. Package activation
 moves core to a unique sibling and then moves verified staging into its stable pathname. Restore prepares and
 validates **every root** before the first replacement, on each destination filesystem, then reconciles partial
@@ -324,23 +327,92 @@ is an index of them. No archive is extracted directly into a live parent. A fail
 the service stopped, exits 3 and names the journal, backup, retained driver and failed state. Unrelated code edits
 cause a safe refusal instead of a forced checkout.
 
-Backups use stable `root-0001` IDs and a private schema-1 manifest plus integrity sidecar. Coverage includes data,
-state, private, configuration even without HOME_HUB_HOME, instance.json, site/watch overrides, external AUTH_FILE
-and its sibling secret.key, and explicit secret-key/integration-secret/GitHub-token/TLS files. Physical ancestors
-are deduplicated, top-level symlink topology is checked, nested links are preserved without traversal, and escaping
-links require explicitly covered targets. Add `--backup-root PATH` for each plugin-managed external resource.
-Environment keys and macOS Keychain keys are reported as external prerequisites, never serialized. The service's
-stop command must stop all managed writers; core cannot infer arbitrary plugin jobs or independently running
-writers. Hard-linked files, unsupported special files/modes and layouts are refused before switching. Archives inside data (including
-legitimate `.tgz` files) are retained. There are no wildcard exclusions in this implementation.
+New transactions use journal schema 3. The updaters shipped in v1.0.0 and v1.1.0 refuse that journal
+before stopping the service, changing the checkout or restoring files. Use the retained driver path printed by
+`apply` for `status`, `rollback` and recovery. Supply the original `--root`, `--home` and any path overrides,
+especially when the installed checkout has its data inside it.
 
-Backup creation inventories bytes/modes/links, streams a restricted USTAR gzip, reads it completely, stages a restore
-and compares its complete inventory before publishing. Local limits are 20,000 entries, 256 MiB compressed,
-1 GiB expanded and 64 MiB per file; larger instances need a separately verified backup procedure. Legacy `.tgz`
-archives are inspected and staged by the same restricted reader, explicitly labelled as lacking integrity provenance;
-unsupported PAX/GNU extensions, special entries and ambiguous metadata require manual recovery. A retained journal's
-archive is never pruned; archive sidecars are pruned together. Old core and failed roots require manual retention
-review, and are never automatically deleted.
+```sh
+node /srv/home-hub/update/drivers/TRANSACTION/scripts/update.mjs status --home /srv/home-hub
+node /srv/home-hub/update/drivers/TRANSACTION/scripts/update.mjs rollback --home /srv/home-hub --yes
+```
+
+The driver reads schema-1 and schema-2 journals and restores both schema-1 manifests and older archives without
+integrity metadata. Legacy archives use the restricted reader and staged inspection. Keep the archive and both
+sidecars together. Pruning removes an old archive and its sidecars and skips the active journal's archive.
+Review retained drivers, failed roots, old core and abandoned partial backup files separately before removing them.
+
+## Backup coverage and budgets
+
+A backup covers data, state, private files, configuration, `instance.json`, site/watch overrides, external
+`AUTH_FILE` and its sibling `secret.key`, and configured secret-key, integration-secret, GitHub-token and TLS
+files. The service stop must also stop external writers. Environment and Keychain keys appear as external
+prerequisites. Use `--backup-root PATH` for a plugin's external data or `coverFiles` for individual hard-link aliases.
+
+```sh
+node /trusted/driver/scripts/update.mjs backup-diagnose --home /srv/home-hub \
+  --search-root /srv/legacy-checkout --examples 5 --candidate-cover-files
+node /trusted/driver/scripts/update.mjs preflight --read-only --home /srv/home-hub
+```
+
+Both commands report JSON, exit 1 for blockers, and leave the service, repositories, locks and recovery metadata
+untouched. `preflight --read-only` checks the backup and journal state. Run regular `preflight <tag>` for target
+compatibility, signature, target tests and startup checks. Regular preflight can fetch, stage and persist trust
+selection. Diagnostic reports cover root sizes, discovered aliases by parent, filesystem space and blockers. The
+optional search walks directories without following symlinks. It stops after two million entries by default.
+Use `--search-max-entries N` for a smaller search. `--examples N` prints at most 100 names and
+`--candidate-cover-files` supplies the discovered exact paths for operator review. Searches do not enroll any
+files. The updater repeats coverage and space checks after the service stops.
+
+Create an owner-only `<home>/update/backup-policy.json` outside restored and source roots. An alternate
+`--backup-policy FILE` is selected explicitly on each diagnostic, backup, preflight or apply. Rollback uses
+the coverage recorded with the archive. `instance.json` keeps its existing format.
+
+```json
+{"schemaVersion":1,
+ "budget":{"maxBytes":6442450944,"maxEntries":50000,"maxFileBytes":536870912,"maxRoots":300,"gzipLevel":1},
+ "coverFiles":["/srv/legacy-checkout/assets/linked-image.bin"]}
+```
+
+Each `coverFiles` path must be an existing hard-linked regular file outside the already covered roots and
+installed sources. Each group must include at least one name in ordinary backup coverage. Every name counted by
+the filesystem must be covered. An unknown name blocks backup, and rollback refuses if a covered exact path
+has been replaced or there are additional live aliases outside coverage. The archive stores each hard-linked
+payload once. On rollback every covered name in the group points to one restored inode, including names in
+different roots. Only the exact enrolled files are replaced in the external directory. The failed pre-rollback
+versions are retained at adjacent `.failed-*` paths.
+
+| Budget | Default | Maximum |
+|---|---:|---:|
+| Unique file payload bytes | 1 GiB | 64 GiB |
+| Entries, including aliases and directories | 20,000 | 200,000 |
+| Bytes per file | 64 MiB | 8 GiB − 1 byte |
+| Roots, including exact-file roots | 64 | 1,000 |
+| gzip level | 1 | 9 |
+
+The backup uses restricted USTAR plus a schema-2 JSON Lines manifest and integrity sidecar. The manifest is
+capped at 128 MiB. Signed release packages keep their existing limits, including 256 MiB compressed and
+64 MiB per file. The updater reserves space for the worst-case archive and destination staging, counting a
+hard-linked payload once and budgeting sparse files at their apparent size. Existing archives consume disk
+space until pruning at the end of a successful update. Use local filesystems and leave space for the retained
+failed state. Mounted roots, unsupported special files/modes, unsafe links and paths outside USTAR limits are refused.
+
+Backup verification reads the gzip and compares header, payload and manifest digests without extracting.
+Rollback checks integrity and space before stopping the service. It creates all staged roots on their destination
+filesystems, verifies their content, modes and inode graph, then begins the journalled rename sequence. If
+preparation is interrupted, it discards the partial staging set and rebuilds it as a group. If renames are
+interrupted, it validates and resumes the graph across the installed and staged locations.
+
+The disposable Git rehearsal uses the local v1.0.0 and v1.1.0 tags and a stand-in service with real readiness probes.
+
+```sh
+node tests/large/backup-large.mjs
+node tests/large/backup-large.mjs --small --interrupt=restore-prepare-mid
+```
+
+The default fixture has over 2.07 GiB of expanded payload and 268 external aliases. Add `--dense` to produce
+a compressed archive over 2 GiB. The rehearsal skips the tagged releases' test suites and runs their actual
+startup check. It removes its scratch instance on exit.
 
 Readiness retains `/healthz` body `{ok:true}` and adds `X-Home-Hub-Run-Id`. `run.json` retains existing fields and adds
 boot ID, capability 1, full commit/package digest and exact loaded-plugin and complete source-content fingerprints (excluding `.git` and `node_modules`). Modern updates of a selected Git plugin source require a reproducible tracked tree; untracked/ignored resources must be relocated outside that source first. Every sample checks

@@ -1,0 +1,43 @@
+{
+ "archiveBase64": "H4sIAAAAAAAAEyvKzy/RNTAwMGSgHQAab2BuYACmDTBpLGxzI0NTBgVTGroJDkqLSxKLgFbSw65BCIpg8a9fkFiZk5+YQgM7QJFqZoIn/o2MUePf0MDM1JBBgS5xMsLjP7EoOSOzLDVFIalSocxQz0DPgGugnTQKRsEoGAWjgA4AAGhSTn4ACgAA",
+ "manifest": {
+  "schemaVersion": 1,
+  "roots": [
+   {
+    "logical": "/srv/example-hub/data",
+    "canonical": "/srv/example-hub/data",
+    "existed": true,
+    "link": null,
+    "aliases": [],
+    "id": "root-0001",
+    "name": "data",
+    "parent": "/srv/example-hub"
+   }
+  ],
+  "files": [
+   {
+    "path": "root-0001",
+    "type": "directory",
+    "mode": 448,
+    "bytes": 0,
+    "sha256": null
+   },
+   {
+    "path": "root-0001/payload",
+    "type": "file",
+    "mode": 416,
+    "bytes": 19,
+    "sha256": "59a60519c0de8deb9eda39d4da3f1e1a69163c813c26f3501ca433c7871c5c06"
+   }
+  ],
+  "prerequisites": [],
+  "exclusions": [],
+  "limitations": []
+ },
+ "integrity": {
+  "schemaVersion": 1,
+  "archiveSha256": "ca52d4b70044619138393cb1fbbb5a8b14349af0ea85efaec52296e08383fe21",
+  "archiveBytes": 138,
+  "manifestSha256": "7d3e4c28f62a9fdb6ca0383469c3d95c4adca806809c9cdf0f37d85fed230501"
+ }
+}

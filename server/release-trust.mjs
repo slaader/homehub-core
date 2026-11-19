@@ -15,12 +15,12 @@ export function durableWrite(file,bytes,mode=0o600){
 export function syncDirectory(dir){let fd;try{fd=openSync(dir,'r');fsyncSync(fd);}catch(e){if(!['EINVAL','ENOTSUP','EISDIR','EBADF'].includes(e.code))throw e;}finally{if(fd!==undefined)closeSync(fd);}}
 // A small JSON recognizer rejects duplicate names before JSON.parse can discard evidence.
 export function strictJson(bytes,{limit=8*1024*1024}={}){
- if(bytes.length>limit)throw new Error('JSON exceeds local byte limit');const s=new TextDecoder('utf-8',{fatal:true}).decode(bytes);let i=0;
+ if(bytes.length>limit)throw new Error('JSON exceeds local byte limit');const s=new TextDecoder('utf-8',{fatal:true}).decode(bytes);let i=0;const literal=/(?:true|false|null|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)/y;
  const ws=()=>{while(/[\t\n\r ]/.test(s[i]??'x'))i++;};
  const string=()=>{const start=i++;while(i<s.length){if(s[i]==='"'){i++;return JSON.parse(s.slice(start,i));}if(s[i]==='\\')i++;i++;}throw new Error('unterminated JSON string');};
  const value=()=>{ws();if(s[i]==='{'){i++;ws();const seen=new Set();if(s[i]==='}'){i++;return;}for(;;){ws();if(s[i]!=='"')throw new Error('invalid JSON object');const key=string();if(seen.has(key))throw new Error(`duplicate JSON key: ${key}`);seen.add(key);ws();if(s[i++]!==':')throw new Error('invalid JSON colon');value();ws();const c=s[i++];if(c==='}')return;if(c!==',')throw new Error('invalid JSON object');}}
  if(s[i]==='['){i++;ws();if(s[i]===']'){i++;return;}for(;;){value();ws();const c=s[i++];if(c===']')return;if(c!==',')throw new Error('invalid JSON array');}}
- if(s[i]==='"'){string();return;}const m=/^(?:true|false|null|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)/.exec(s.slice(i));if(!m)throw new Error('invalid JSON value');i+=m[0].length;};value();ws();if(i!==s.length)throw new Error('trailing JSON content');return JSON.parse(s);
+ if(s[i]==='"'){string();return;}literal.lastIndex=i;const m=literal.exec(s);if(!m)throw new Error('invalid JSON value');i+=m[0].length;};value();ws();if(i!==s.length)throw new Error('trailing JSON content');return JSON.parse(s);
 }
 export function fields(value,names,where){if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!names.includes(k)))throw new Error(`invalid ${where} fields`);}
 export function publicKey(pem){if(typeof pem!=='string'||!/-----BEGIN PUBLIC KEY-----[\s\S]+-----END PUBLIC KEY-----\s*$/.test(pem)||pem.includes('PRIVATE KEY'))throw new Error('package trust requires a public SPKI key');const key=createPublicKey(pem);if(key.asymmetricKeyType!=='ed25519')throw new Error('only Ed25519 package keys are supported');const der=key.export({type:'spki',format:'der'});return {key,id:sha256(der)};}

@@ -6,6 +6,21 @@ Home Hub core, newest first. One section per release; the section is the text of
 number promises is in `AGENTS.md` → Versioning. The top section is the release being prepared, `## Unreleased`
 until the release gives it its number: a change to the public surface adds its line there in the same commit.
 
+## Unreleased
+
+### Added
+
+- The updater streams and verifies backups with a separate size policy. `backup-diagnose` reports coverage,
+  external hard-link candidates, limits and free space. `preflight --read-only` checks backup readiness without
+  staging a release. Exact file coverage preserves hard-link groups across restore roots. See
+  [updating.md](docs/updating.md#backup-coverage-and-budgets).
+
+### Data
+
+- Data epoch 7 introduces journal schema 3 and backup manifest schema 2. A rollback across the epoch restores the
+  pre-update backup. Use the retained updater driver with schema-3 journals, including when the installed release
+  is v1.0.0 or v1.1.0. The driver also reads older journals and archives.
+
 ## 1.1.0
 
 ### Added

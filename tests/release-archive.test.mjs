@@ -1,3 +1,4 @@
+import {ARCHIVE_LIMITS} from '../server/release-archive.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';
 import {mkdtempSync,writeFileSync,mkdirSync,rmSync,existsSync,readFileSync} from 'node:fs';import os from 'node:os';import path from 'node:path';import {gzipSync} from 'node:zlib';
 import {extractArchive} from '../server/release-archive.mjs';
@@ -10,4 +11,9 @@ test('archive: hostile signed content is constrained to staging with a restricte
 });
 test('archive: truncation, unsupported trailing bytes and incomplete manifests fail',async t=>{
  const dir=mkdtempSync(path.join(os.tmpdir(),'hub-tar-complete-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));for(const [i,bytes] of [tarEntry('one').subarray(0,600),Buffer.concat([tarEntry('one'),Buffer.alloc(1024),Buffer.from('malicious')])].entries()){const root=path.join(dir,'stage'+i);mkdirSync(root);const file=path.join(dir,'p'+i);writeFileSync(file,gzipSync(bytes));await assert.rejects(extractArchive(file,root));}
+});
+
+
+test('release package limits remain separate and unchanged',()=>{
+ assert.deepEqual(ARCHIVE_LIMITS,{entries:20000,compressed:256*1024**2,expanded:1024**3,file:64*1024**2});
 });
