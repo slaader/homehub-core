@@ -160,7 +160,7 @@ export function wikiMedia({dialog}){
    if(!asset)return el('li',{},el('span',{class:'sec-dim'},label));
    let node;
    if(asset.type.startsWith('image/')){
-    const img=el('img',{class:'wiki-thumbnail',src:asset.url,alt:'',loading:'lazy',decoding:'async',width:144,height:96,
+    const img=el('img',{class:'wiki-thumbnail',src:asset.url+'?thumbnail=1',alt:'',loading:'lazy',decoding:'async',width:144,height:96,
      onerror:()=>{img.hidden=true;}});
     node=el('button',{class:'acc-btn wiki-image-button',type:'button',onclick:()=>gallery(pictures,pictures.indexOf(entry))},img,label);
    }else if(asset.type.startsWith('audio/'))node=[el('strong',{},label),audioNode(asset,label),download(asset)];

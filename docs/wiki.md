@@ -43,7 +43,11 @@ zoom, or pick and play an embedded animation. For GLB models, embed all buffers 
 use a model the bundled viewer can decode without fetching resources from another host. Escape or
 **Close** returns focus to the opener and stops the expanded media. Generic files are downloads.
 
-The page loads image thumbnails lazily near the viewport. Full videos and 3D models load when opened.
+The page loads image thumbnails lazily near the viewport. Full images, videos and 3D models load
+when opened. To enable thumbnails on macOS or Linux, set `HOME_HUB_WIKI_FFMPEG` for the hub service
+to the absolute path of an installed FFmpeg executable. The hub renders one still PNG up to 384
+pixels per side from JPEG, PNG, GIF or WebP files up to 32 MiB and 24 megapixels. An image with
+an unavailable thumbnail still opens from its label.
 Browser file uploads require HTTPS or localhost for SHA-256. If an upload is interrupted, choose
 **Upload or resume** for the same file in the same tab. An MCP client can also ask for the current offset
 and resume after losing a response. Uploads expire after 24 hours, and unreferenced assets are kept

@@ -1044,7 +1044,7 @@ JSON write bodies may be up to 512 KiB.
 | `PUT /api/wiki/uploads/<uploadId>?offset=<bytes>` | `200` upload state. Send up to 8 MiB of bytes as `application/octet-stream` |
 | `POST /api/wiki/uploads/finish` with `{uploadId}` | `200` upload state and `{assetId, asset}`, or `documentUploadId` for a staged document |
 | `GET /api/wiki/<project>/assets` | `{assets:[…]}`, including published attachments and the writer's private assets |
-| `GET\|HEAD /api/wiki/<project>/assets/<assetId>` | Authorized bytes with single-range support. Pass `?download=1` to request download disposition |
+| `GET\|HEAD /api/wiki/<project>/assets/<assetId>` | Authorized bytes with single-range support. Pass `?download=1` to request download disposition or `?thumbnail=1` for a bounded image preview |
 | `GET /api/wiki/<project>/sources` | With `tickets:write`, authorized repository and Review choices and the destination audience |
 | `POST /api/wiki/assets/import` with `{project, source}` | `201` upload result with a verified, pinned asset and source provenance |
 | `POST /api/admin/wiki/sources` | Authorize or revoke a source for a destination project. Requires an administrator's password session |
@@ -1062,7 +1062,9 @@ its owner for a save in the same project before the session expires.
 The asset metadata has `{id, project, name, type, size, digest, url, source?}`. Images, audio, video and
 supported GLB models can preview. Generic files use download disposition. A digest cannot be used as an
 asset ID. Readers can access assets referenced by a saved page in that project. Media URLs require
-authorization on every request, including ranges and HEAD.
+authorization on every request, including ranges and HEAD. The thumbnail variant returns a still PNG of
+up to 384 pixels per side, uses the same authorization, and ignores Range. It returns `404` when a
+thumbnail is unavailable. See [thumbnail configuration](wiki.md#inventory-and-media).
 
 Import `source` is one of these objects:
 

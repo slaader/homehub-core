@@ -15,6 +15,9 @@ until the release gives it its number: a change to the public surface adds its l
   and use the wiki MCP tools for the entire authoring flow. See [the wiki guide](docs/wiki.md)
   and [the API reference](docs/API.md#project-wiki).
 
+- Wiki image attachments load bounded thumbnails from the authorized media endpoint when an installed
+  FFmpeg is configured. Opening the gallery loads the full image.
+
 ### Fixed
 
 - Sync wiki upload files and their directory entries before publishing them, and commit cleanup metadata

@@ -3,6 +3,7 @@ import path from 'node:path';
 import {pipeline} from 'node:stream/promises';
 import {createWikiStore} from '../wiki-store.mjs';
 import {createWikiAssets,RAW_CHUNK,UPLOAD_ID,readWikiChunk} from '../wiki-assets.mjs';
+import {createWikiThumbnails} from '../wiki-thumbnails.mjs';
 import {createWikiSources} from '../wiki-sources.mjs';
 import {createWikiPreviews,staticWikiHtml,WIKI_FRAME_CSP} from '../wiki-frame.mjs';
 import {wikiProblem} from '../wiki-errors.mjs';
@@ -58,7 +59,16 @@ function disposition(name,inline){
 
 async function media(c){
  const {params,req,res,state}=c;
+ const thumbnail=c.query.thumbnail==='1';
+ if(thumbnail)res.setHeader('Cache-Control','private, no-store');
  const file=await state.assets.media(params[1],params[2],canDraft(c)?wikiActor(c):null);
+ if(thumbnail){
+  const bytes=await state.thumbnails.get(file);
+  if(!bytes)return c.error(404,'WIKI_THUMBNAIL_UNAVAILABLE','Image thumbnail unavailable.');
+  res.writeHead(200,{'Content-Type':'image/png','Content-Length':bytes.length,
+   'Content-Security-Policy':"sandbox; default-src 'none'"});
+  return res.end(req.method==='HEAD'?undefined:bytes);
+ }
  let range;
  try{range=byteRange(req.headers.range,file.size);}
  catch{
@@ -93,7 +103,7 @@ export default {
   const wiki=createWikiStore(hub.db,hub.state('tracker').tickets);
   const assets=createWikiAssets(hub.db,path.join(hub.stateDirectory,'wiki'),wiki,hub.options.wikiAssets);
   const sources=createWikiSources(hub.db,wiki,assets,{lfs:()=>hub.state('git-lfs')?.store,review:()=>hub.state('review')?.review});
-  return {wiki,assets,sources,previews:createWikiPreviews()};
+  return {wiki,assets,sources,thumbnails:createWikiThumbnails(hub.options.wikiThumbnails),previews:createWikiPreviews()};
  },
  mcpTools:wikiTools,
  mcpInstructions:'wiki_list, wiki_get.',
@@ -170,7 +180,7 @@ export default {
   ['PUT','/api/wiki/uploads/<uploadId>?offset=','tickets:write','Nahrání souboru po částech (max. 8 MiB).'],
   ['POST','/api/wiki/uploads/finish','tickets:write','Ověření a dokončení nahrávky {uploadId}.'],
   ['GET','/api/wiki/<project>/assets','read','Přílohy dostupné v projektu.'],
-  ['GET','/api/wiki/<project>/assets/<assetId>','read','Příloha projektu s podporou rozsahů.'],
+  ['GET','/api/wiki/<project>/assets/<assetId>','read','Příloha projektu s podporou rozsahů nebo náhled obrázku s ?thumbnail=1.'],
   ['GET','/api/wiki/<project>/sources','tickets:write','Povolené repozitáře a sady Review pro import.'],
   ['POST','/api/wiki/assets/import','tickets:write','Kopie povoleného souboru z Git LFS nebo Review {project, source}.'],
   ['POST','/api/admin/wiki/sources','admin','Povolení nebo odebrání zdroje pro cílový projekt.'],
