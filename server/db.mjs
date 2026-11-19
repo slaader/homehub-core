@@ -9,7 +9,7 @@ import {mkdirSync,chmodSync,existsSync} from 'node:fs';
 import {readFile,rename} from 'node:fs/promises';
 import path from 'node:path';
 
-const SCHEMA=1,SEARCH_VERSION=1;
+const SCHEMA=2,SEARCH_VERSION=1;
 // The schema version of hub.db, for the data-epoch table (tests/data-epoch.test.mjs).
 export const DB_SCHEMA=SCHEMA;
 const open=new Map();
@@ -44,6 +44,8 @@ function migrate(db){
   CREATE VIRTUAL TABLE IF NOT EXISTS search USING fts5(kind UNINDEXED, id UNINDEXED, project UNINDEXED, updated UNINDEXED, title, body,
    tokenize='unicode61 remove_diacritics 2', prefix='2 3');
   PRAGMA user_version=1; COMMIT;`);
+ // Schema 2 admits wiki records. Older releases must restore their pre-update archive.
+ if(version<2)db.exec('PRAGMA user_version=2');
 }
 
 function wrap(db,file){
@@ -68,7 +70,7 @@ function wrap(db,file){
  // searchKinds names the search kinds this collection writes, so a SEARCH_VERSION bump can rebuild them.
  const collections=new Map();
  function collection(kind,spec){if(!collections.has(kind))collections.set(kind,makeCollection(kind,spec));return collections.get(kind);}
- function makeCollection(kind,{empty,split,join,search=()=>null,searchKinds=[],legacy=null,valid=()=>true}){
+ function makeCollection(kind,{empty,split,join,search=()=>null,searchKinds=[],legacy=null,checkMeta=null,valid=()=>true}){
   let snapshot=null,ready=null,generation=0;
   const stamp=(coll,id)=>coll+'\u0000'+id;
   function load(){
@@ -111,7 +113,10 @@ function wrap(db,file){
    snapshot=null;save(data,{full:true});reindex(data);
    if(legacy&&existsSync(legacy))await rename(legacy,legacy+'.migrated');
   }
-  const ensure=()=>ready??=init().catch(e=>{ready=null;throw e;});
+  async function ensure(){
+   await (ready??=init().catch(e=>{ready=null;throw e;}));
+   if(checkMeta)checkMeta(JSON.parse(st.meta.get(kind).doc));
+  }
   const store={
    // SQLite data_version detects other connections; generation catches local imports.
    async version(){await ensure();return generation+'\u0000'+st.dataVersion.get().data_version+'\u0000'+st.meta.get(kind).doc;},

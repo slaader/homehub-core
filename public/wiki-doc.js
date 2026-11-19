@@ -30,7 +30,7 @@ export function wikiUrl(value){
  if(href.length>2048||!/^https?:\/\//i.test(href))invalid();
  let url;
  try{url=new URL(href);}catch{invalid();}
- if(url.username||url.password)invalid();
+ if(url.href.length>2048||url.username||url.password)invalid();
  return url.href;
 }
 

@@ -6,7 +6,7 @@ Home Hub core, newest first. One section per release; the section is the text of
 number promises is in `AGENTS.md` → Versioning. The top section is the release being prepared, `## Unreleased`
 until the release gives it its number: a change to the public surface adds its line there in the same commit.
 
-## Unreleased
+## 1.1.0
 
 ### Added
 
@@ -17,8 +17,8 @@ until the release gives it its number: a change to the public surface adds its l
 
 ### Data
 
-- Data epoch 6 adds the wiki collection to `hub.db` using the existing SQLite tables. Home Hub 1.0.x ignores
-  these records. Use the pre-update backup when rolling back to restore the previous state and remove the
+- Data epoch 6 adds the wiki collection to `hub.db` using the existing SQLite tables. Database schema 2 prevents
+  older releases from opening the newer state. Use the pre-update backup when rolling back to restore the previous state and remove the
   wiki collection.
 
 ## 1.0.0

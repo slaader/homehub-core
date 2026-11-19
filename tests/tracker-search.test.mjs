@@ -167,6 +167,6 @@ test('compatibility: a hub.db written before attachments, search stats and this 
  const row=id=>db.db.prepare('SELECT doc FROM docs WHERE kind=? AND coll=? AND id=?').get('tickets','tickets',id).doc;
  assert.equal(row('LEG-2'),JSON.stringify(other),'an untouched ticket is byte-identical');
  assert.equal(db.db.prepare('SELECT doc FROM docs WHERE kind=? AND id=?').get('review','R-1').doc,JSON.stringify(set),'an untouched review set is byte-identical');
- assert.equal(db.db.prepare('PRAGMA user_version').get().user_version,1,'no schema change');
+ assert.equal(db.db.prepare('PRAGMA user_version').get().user_version,2,'legacy database migrated');
  assert.deepEqual(db.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'search_%' ORDER BY name").all().map(r=>r.name),['docs','meta','search','sessions']);
 });

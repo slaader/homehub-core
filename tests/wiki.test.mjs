@@ -35,6 +35,8 @@ test('wiki document: canonical runs, ticket links in tables and strict validatio
   html('<b>Source stays verbatim</b>'),
  ));
  assert.deepEqual(normalized.blocks[0],p(text('Heading',['b','i']),{t:'link',href:'https://example.com/guide',c:[text('Guide')]}));
+ assert.deepEqual(normalizeDoc(normalized),normalized);
+ assert.throws(()=>normalizeDoc(doc(p({t:'link',href:'https://example.com/'+'é'.repeat(400),c:[text('Long')]}))),/invalid/);
  assert.deepEqual(extractLinks(normalized),{tickets:['APP-1','APP-2']});
  assert.equal(normalized.blocks[3].source,'<b>Source stays verbatim</b>');
  for(const input of [
@@ -142,8 +144,13 @@ test('wiki page and projection survive reopening the existing tracker database',
  const dir=await mkdtemp(path.join(os.tmpdir(),'wiki-test-')),file=path.join(dir,'hub.db');
  let db=openDb(file);
  t.after(async()=>{db.close();await rm(dir,{recursive:true,force:true});});
- let tickets=createTicketStore(dir,{db,seedProjects:[{id:'example-app',key:'APP',name:'Example app'}]});
+ let tickets=createTicketStore(dir,{db,seedProjects:[{id:'example-app',key:'APP',name:'Example app',description:'Imported\0notes'}]});
  const old=await tickets.create({project:'example-app',title:'Before the wiki'},'alice');
+ db.db.exec('PRAGMA user_version=1');
+ db.close();
+ db=openDb(file);
+ assert.equal(db.db.prepare('PRAGMA user_version').get().user_version,2);
+ tickets=createTicketStore(dir,{db});
  let store=createWikiStore(db,tickets);
  assert.deepEqual(await store.list('example-app'),{enabled:false});
  const {home}=await store.setup({project:'example-app'},'alice');
@@ -164,6 +171,9 @@ test('wiki page and projection survive reopening the existing tracker database',
  assert.equal(meta.pages[0].title,saved.title);
  assert.equal(meta.pages[0].doc,undefined);
  assert.equal((await store.backlinks(old.id))[0].id,home);
+ db.db.exec("UPDATE meta SET doc=json_set(doc,'$.schema',2) WHERE kind='wiki'");
+ await assert.rejects(store.list('example-app'),/Unsupported wiki schema/);
+ await assert.rejects(store.update({project:'example-app',id:home,rev:2,title:'Unsupported'},'alice'),/Unsupported wiki schema/);
 });
 
 test('wiki frames: safe static HTML, restrictive headers and preview ownership',async t=>{

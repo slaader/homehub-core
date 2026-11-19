@@ -158,6 +158,7 @@ export function wikiPage({me,sub:project}){
   const conflictNotice=el('div',{});
   const editor=wikiEditor({page,doc:draft?.doc??page.doc,tickets,api:wikiApi,dialog,changed});
   const read=()=>({rev,title:title.value,doc:editor.read()});
+  const initialBody=JSON.stringify(editor.read());
   const original=draft?null:JSON.stringify(read());
   const saveButton=el('button',{class:'acc-btn primary'},t('Uložit'));
   const cancelButton=button(t('Zrušit'),cancel);
@@ -224,9 +225,9 @@ export function wikiPage({me,sub:project}){
     let name=wikiTitle(value.title);
     if(copy){
      const suffix=t(' (kopie)');
-     name=name.slice(0,WIKI_LIMITS.title-suffix.length).trimEnd()+suffix;
+     name=name.slice(0,WIKI_LIMITS.title-suffix.length).replace(/[\uD800-\uDBFF]$/,'').trimEnd()+suffix;
     }
-    input={project,title:name,doc:normalizeDoc(value.doc),...(copy?{}:{id:page.id,rev})};
+    input={project,title:name,...(copy||draft||JSON.stringify(value.doc)!==initialBody?{doc:normalizeDoc(value.doc)}:{}),...(copy?{}:{id:page.id,rev})};
    }catch(error){editor.error.textContent=wikiValidationMessage(error);return;}
    busy=true;
    form.inert=true;

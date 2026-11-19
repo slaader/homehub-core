@@ -385,7 +385,7 @@ export function wikiEditor({page,doc,tickets,api,dialog,changed}){
   }
   if(!cell)return;
   const table=cell.closest('table'),rows=table.rows.length,columns=table.rows[0].cells.length;
-  const disabled={above:rows>=WIKI_LIMITS.rows,below:rows>=WIKI_LIMITS.rows,left:columns>=WIKI_LIMITS.columns,
+  const disabled={above:cell.tagName==='TH'||rows>=WIKI_LIMITS.rows,below:rows>=WIKI_LIMITS.rows,left:columns>=WIKI_LIMITS.columns,
    right:columns>=WIKI_LIMITS.columns,row:rows===1,column:columns===1};
   for(const [action,control] of tableActions){
    control.disabled=disabled[action]??false;

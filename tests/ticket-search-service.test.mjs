@@ -157,7 +157,7 @@ test('populated 2.0.1 SQLite ticket state is read without rewriting canonical ro
  const db=openDb(file),tickets=createTicketStore(dir,{db}),service=createTicketSearchService(dir,{tickets,ticketFiles:createTicketFiles(dir),env:{}});
  t.after(async()=>{await service.close();db.close();await rm(dir,{recursive:true,force:true});});service.start();await service.whenIdle();
  assert.equal((await service.search({query:'legacycontentneedle',mode:'text'})).results[0].attachment,old.attachments[0].id);
- assert.equal(db.db.prepare("SELECT doc FROM docs WHERE kind='tickets' AND coll='tickets' AND id=?").get(old.id).doc,JSON.stringify(old));assert.equal(db.db.prepare('PRAGMA user_version').get().user_version,1);
+ assert.equal(db.db.prepare("SELECT doc FROM docs WHERE kind='tickets' AND coll='tickets' AND id=?").get(old.id).doc,JSON.stringify(old));assert.equal(db.db.prepare('PRAGMA user_version').get().user_version,2);
 });
 
 test('startup reconciles stale cached sources before sending them to a changed provider',async t=>{

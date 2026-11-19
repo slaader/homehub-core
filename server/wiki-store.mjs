@@ -11,17 +11,21 @@ const pageRow=page=>pageKey(page.project,page.id);
 const rows=(items,key)=>items.map(item=>[key(item),item]);
 const docs=items=>(items??[]).map(([,value])=>value);
 const projection=({id,project,title,rev,updatedAt,updatedBy,links})=>({id,project,title,rev,updatedAt,updatedBy,links});
-const plainText=text=>[{t:'text',text}];
+const plainText=text=>[{t:'text',text:text.toWellFormed().replaceAll('\0','�')}];
 const emptyDoc=()=>({v:1,blocks:[]});
 
 export function createWikiStore(db,tickets){
  const store=db.collection('wiki',{
+  checkMeta:meta=>{if(meta.schema!==WIKI_SCHEMA)throw new Error('Unsupported wiki schema');},
   empty:()=>({schema:WIKI_SCHEMA,revision:0,updatedAt:null,wikis:[],pages:[],summaries:[]}),
   valid:data=>data?.schema===WIKI_SCHEMA&&Array.isArray(data.wikis)&&Array.isArray(data.pages)&&Array.isArray(data.summaries),
   split:({wikis,pages,summaries,...meta})=>({meta,colls:{
    wikis:rows(wikis,w=>w.project),pages:rows(pages,pageRow),summaries:rows(summaries,pageRow),
   }}),
-  join:(meta,colls)=>({...meta,wikis:docs(colls.wikis),pages:docs(colls.pages),summaries:docs(colls.summaries)}),
+  join:(meta,colls)=>{
+   if(meta.schema!==WIKI_SCHEMA)throw new Error('Unsupported wiki schema');
+   return {...meta,wikis:docs(colls.wikis),pages:docs(colls.pages),summaries:docs(colls.summaries)};
+  },
  });
  let queue=Promise.resolve(),cached=null;
  function write(run){
