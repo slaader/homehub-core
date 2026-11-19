@@ -19,7 +19,7 @@ import {FILE_MAX,FILES_MAX,fileToken,attachmentName,savedFile,pendingFile,releas
 import {timeZone} from './site.js';
 import {t,tp,locale} from './i18n.js';
 import {pageHeader,emptyState,provenanceBadge} from './ui.js';
-import {canWriteWiki,editWikiHref,wikiApi,wikiApiPath,wikiHref} from './wiki-content.js';
+import {canWriteWiki,setupWikiAction,wikiApi,wikiApiPath,wikiHref} from './wiki-content.js';
 
 // Label lists are functions: t() has to run when the page is drawn, in the language active then.
 const TYPES=()=>[['bug',t('Chyba'),'crit'],['feature',t('Funkce'),'ok'],['task',t('Úkol'),'']];
@@ -762,17 +762,8 @@ async function projectPage(wrap,ctx){
  const mine=data.tickets.filter(x=>x.project===id);
  const to=hash=>()=>{Object.assign(filters,defaults,{project:id});location.hash=hash;};
  const add=canWrite?{label:t('+ Nová položka'),primary:true,onclick:()=>newTicket(data.projects,id,ctx)}:null;
- const wikiAction=wiki?.enabled===true?{label:'Wiki →',href:wikiHref(id)}:
-  wiki?.enabled===false&&ctx.canWriteWiki?{label:t('Založit wiki'),onclick:async event=>{
-   const button=event.currentTarget;
-   if(button.disabled)return;
-   button.disabled=true;
-   msg.textContent='';
-   try{
-    const {home}=await wikiApi('/api/wiki/setup',{project:id});
-    if(button.isConnected)location.hash=editWikiHref(id,home);
-   }catch(error){if(button.isConnected){fail(msg,error);button.disabled=false;}}
-  }}:null;
+ const wikiAction=wiki?.enabled===false?(ctx.canWriteWiki?setupWikiAction(id,error=>fail(msg,error)):null):
+  {label:'Wiki →',href:wikiHref(id)};
  show(wrap,
   el('nav',{class:'tk-crumbs','aria-label':t('Drobečková navigace')},el('a',{href:'#projects'},t('Projekty')),el('span',{class:'tk-dim'},'/'),el('b',{},p.name),el('span',{class:'sec-pill'},p.key),p.type?el('span',{class:'sec-pill'},label(PROJECT_TYPES(),p.type)):null),
   pageHeader({title:p.name,lead:p.description||undefined,provenance:data.provenance,actions:[canWrite?{label:t('Upravit'),onclick:()=>editProject(p,redraw)}:null,{label:`${t('Tabulka')} →`,onclick:to('#items')},{label:`${t('Releasy')} →`,onclick:to('#releases')},{label:'Review →',href:'#review/'+id},wikiAction,add].filter(Boolean)}),

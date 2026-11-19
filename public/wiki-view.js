@@ -3,7 +3,7 @@ import {t,locale} from './i18n.js';
 import {timeZone} from './site.js';
 import {banner,emptyState,errorState,loadingState,pageHeader} from './ui.js';
 import {normalizeDoc,PAGE_ID,WIKI_LIMITS,wikiTitle} from './wiki-doc.js';
-import {canWriteWiki,editWikiHref,ticketChip,wikiApi,wikiApiPath,wikiBlocks,wikiHref} from './wiki-content.js';
+import {canWriteWiki,editWikiHref,setupWikiAction,ticketChip,wikiApi,wikiApiPath,wikiBlocks,wikiHref} from './wiki-content.js';
 import {wikiEditor,wikiValidationMessage} from './wiki-editor.js';
 
 const drafts=new Map();
@@ -76,7 +76,7 @@ export function wikiPage({me,sub:project}){
    const tickets=new Map((tracker?.tickets??[]).map(ticket=>[ticket.id,ticket]));
    if(!meta.enabled){
     root.replaceChildren(emptyState({icon:'box',title:t('Wiki projektu zatím není založena.'),
-     actions:[{label:projectName,href:'#projects/'+project}]}));
+     actions:[writable?setupWikiAction(project,fail):null,{label:projectName,href:'#projects/'+project}]}));
     return;
    }
    const page=await wikiApi(wikiApiPath(project,selected||meta.home));

@@ -19,6 +19,18 @@ export async function wikiApi(url,body){
  return result;
 }
 
+export function setupWikiAction(project,onError){
+ return {label:t('Založit wiki'),onclick:async event=>{
+  const button=event.currentTarget;
+  if(button.disabled)return;
+  button.disabled=true;
+  try{
+   const {home}=await wikiApi('/api/wiki/setup',{project});
+   if(button.isConnected)location.hash=editWikiHref(project,home);
+  }catch(error){if(button.isConnected){onError(error);button.disabled=false;}}
+ }};
+}
+
 const blockFrame=(page,id)=>`/api/wiki/frame/${page.project}/${page.id}/${id}`;
 
 const ticketStates={
