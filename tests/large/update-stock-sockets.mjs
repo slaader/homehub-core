@@ -30,10 +30,11 @@ if(mode==='start'||mode==='stop'){
   try{process.kill(pid,'SIGTERM');}catch(e){if(e.code!=='ESRCH')throw e;}
  }
 }else{
- const {values}=parseArgs({options:{aliases:{type:'boolean'},tag:{type:'string'},
+ const {values}=parseArgs({options:{aliases:{type:'boolean'},'unsigned-pin':{type:'string'},tag:{type:'string'},
   'tag-object':{type:'string'},'public-key':{type:'string'},fingerprint:{type:'string'}}});
  const supplied=[values.tag,values['tag-object'],values['public-key'],values.fingerprint].filter(Boolean).length;
- assert.ok(supplied===0||supplied===4,'--tag requires --tag-object, --public-key and --fingerprint');
+ if(values['unsigned-pin'])assert.ok(supplied===2&&values.tag&&values['tag-object']&&/^[0-9a-f]{40}$/.test(values['unsigned-pin']),'unsigned rehearsal requires tag, tag object and full commit');
+ else assert.ok(supplied===0||supplied===4,'--tag requires --tag-object, --public-key and --fingerprint');
  await rehearsal(values);
 }
 
@@ -91,17 +92,23 @@ async function rehearsal(options){
   writeFileSync(path.join(root,'private','auth.json'),JSON.stringify({username:'admin',...hashPassword(password)}),{mode:0o600});
   writeFileSync(durable,'pre-update data',{mode:0o600});
   const repo=readJson(path.join(root,'package.json')).homeHub.updates.repo;
-  const fingerprint=options.fingerprint??run('/usr/bin/ssh-keygen',['-lf',publicKey]).split(/\s+/)[1];
-  run(node,[stock,'trust-import','--root',root,'--trust',trust,'--repository',repo,'--role','git',
-   '--public-key',publicKey,'--fingerprint',fingerprint]);
+  const pinned=options['unsigned-pin'];
+  if(pinned){
+   assert.equal(commit,pinned);
+   assert.equal(git(root,'rev-parse','refs/tags/'+target),tagObject);
+  }else{
+   const fingerprint=options.fingerprint??run('/usr/bin/ssh-keygen',['-lf',publicKey]).split(/\s+/)[1];
+   run(node,[stock,'trust-import','--root',root,'--trust',trust,'--repository',repo,'--role','git',
+    '--public-key',publicKey,'--fingerprint',fingerprint]);
 
-  // Provision the driver with the same exact tag-object pin and SSH verification as the operator guide.
-  writeFileSync(allowed,`release namespaces="git" ${readFileSync(publicKey,'utf8').trim()}\n`,{mode:0o600});
+   // Provision the driver with the same exact tag-object pin and SSH verification as the operator guide.
+   writeFileSync(allowed,`release namespaces="git" ${readFileSync(publicKey,'utf8').trim()}\n`,{mode:0o600});
+  }
   mkdirSync(driver,{mode:0o700});
   git(driver,'init','--quiet');
   git(driver,'fetch','--quiet','--no-tags',publisher,`refs/tags/${target}:refs/tags/${target}`);
   assert.equal(git(driver,'rev-parse','refs/tags/'+target),tagObject);
-  git(driver,'-c','gpg.format=ssh','-c','gpg.ssh.program=/usr/bin/ssh-keygen',
+  if(!pinned)git(driver,'-c','gpg.format=ssh','-c','gpg.ssh.program=/usr/bin/ssh-keygen',
    '-c',`gpg.ssh.allowedSignersFile=${allowed}`,'verify-tag',tagObject);
   git(driver,'-c','core.hooksPath=/dev/null','checkout','--quiet','--detach',tagObject+'^{commit}');
 
@@ -111,7 +118,7 @@ async function rehearsal(options){
   env.PORT=String(portPicker.address().port);
   await new Promise(resolve=>portPicker.close(resolve));
   writeFileSync(settings,JSON.stringify({root,pidFile,log}));
-  const flags=['--root',root,'--trust',trust,'--health',health,'--service','command:'+service];
+  const flags=['--root',root,...(pinned?[]:['--trust',trust]),'--health',health,'--service','command:'+service];
   bridge.listen(endpoint);await once(bridge,'listening');bridgeOpen=true;
   const inode=lstatSync(endpoint,{bigint:true}).ino,folder=lstatSync(path.dirname(endpoint),{bigint:true}).ino;
   const verifyBridge=async()=>{
@@ -147,8 +154,8 @@ async function rehearsal(options){
    return response.headers.get('set-cookie').split(';')[0];
   };
   await login();
-  console.log(`Stock ${oldTag} @ ${git(root,'rev-parse','HEAD')} → signed ${target} @ ${commit}, tag object ${tagObject}`);
-  echo(run(node,[cli,'apply',target,...flags,...coverage,'--skip-tests']));
+  console.log(`Stock ${oldTag} @ ${git(root,'rev-parse','HEAD')} → ${pinned?'pinned':'signed'} ${target} @ ${commit}, tag object ${tagObject}`);
+  echo(run(node,[cli,'apply',target,...flags,...coverage,'--no-fetch','--skip-tests']));
   await verifyBridge();
   assert.equal(git(root,'rev-parse','HEAD'),commit);
   assert.equal(readJson(runFile).fullCommit,commit);

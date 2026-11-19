@@ -270,6 +270,29 @@ Use a separate, verified checkout of the release that contains the socket-aware 
 checkout stays on its original tag until the updater switches it. A source checkout works with both the default
 in-checkout layout and an instance directory. No package migration is needed for this Git upgrade.
 
+The public v1.2.0 Git tag is unsigned. For an installation already using unsigned releases, obtain its
+full tag object and commit through an independently trusted channel. Using an owner-controlled directory for
+the driver, fetch the tag into both checkouts and compare both IDs before executing the driver:
+
+```sh
+(
+  set -eu
+  umask 077
+  git init --quiet "$DRIVER"
+  for checkout in "$DRIVER" "$INSTALL"; do
+    git -C "$checkout" fetch --no-tags "$PUBLISHER_URL" "refs/tags/$TARGET_TAG:refs/tags/$TARGET_TAG"
+    test "$(git -C "$checkout" rev-parse "refs/tags/$TARGET_TAG")" = "$TAG_OBJECT"
+    test "$(git -C "$checkout" rev-parse "refs/tags/$TARGET_TAG^{commit}")" = "$TARGET_COMMIT"
+  done
+  git -C "$DRIVER" -c core.hooksPath=/dev/null checkout --quiet --detach "$TARGET_COMMIT"
+  node "$DRIVER/scripts/update.mjs" apply "$TARGET_TAG" --no-fetch --root "$INSTALL" --home "$INSTANCE"
+)
+```
+
+Run the backup diagnostics below first if the stock updater reports a coverage or budget error.
+Instances configured to require signatures continue to enforce their publisher policy. For a signed
+distribution, use the following verification procedure.
+
 First obtain the target tag name, its full annotated tag object ID, the publisher's Git URL and approved SSH
 signer through an independently authenticated channel. Keep the operator trust file and the driver's new Git
 checkout in owner-controlled locations outside the installation. Import the Git signer with the stock updater
