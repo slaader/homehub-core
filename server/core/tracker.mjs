@@ -54,8 +54,12 @@ async function people({state,hub}){
 // without one request per hit. The index itself only knows the text.
 async function describeHits(results,{state,hub}){
  if(!results.length)return results;
- const needTickets=results.some(r=>r.kind==='ticket'&&!r.meta);
- const tickets=needTickets?new Map((await state.tickets.list()).tickets.map(t=>[t.id,t])):new Map();
+ const missingTicketIds=[...new Set(results.filter(r=>r.kind==='ticket'&&!r.meta).map(r=>r.id))];
+ const tickets=new Map();
+ if(missingTicketIds.length){
+  const loaded=await Promise.all(missingTicketIds.map(id=>state.tickets.get(id).catch(()=>null)));
+  for(const t of loaded)if(t)tickets.set(t.id,t);
+ }
  let sets=new Map();
  if(results.some(r=>r.kind==='review'&&!r.meta))try{sets=new Map((await hub.state('review').review.list({status:'all'})).sets.map(s=>[s.id,s]));}catch{}
  return results.map(r=>{

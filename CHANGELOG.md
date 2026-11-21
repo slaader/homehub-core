@@ -6,6 +6,13 @@ Home Hub core, newest first. One section per release; the section is the text of
 number promises is in `AGENTS.md` → Versioning. The top section is the release being prepared, `## Unreleased`
 until the release gives it its number: a change to the public surface adds its line there in the same commit.
 
+## Unreleased
+
+### Added
+
+- `GET /api/tickets/search/status` and MCP `ticket_search_status` include a credential-free top-level `provider` descriptor (`{ configured, model }`).
+- Non-ready `GET /api/tickets/search/hybrid` and MCP `ticket_hybrid_search` responses include top-level `extraction` alongside backward-compatible `coverage.extraction`.
+
 ## 1.6.0
 
 ### Added

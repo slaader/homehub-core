@@ -110,7 +110,7 @@ export function createTicketSearch(directory,{db,tickets,ticketFiles,env=process
  const configured=Boolean(embed||configuredSettings.url);
  // Validate provider configuration synchronously before any preference is persisted. Construction sends no requests.
  const provider=embed??(configuredSettings.url?createTicketEmbedder(configuredSettings):undefined);
- const modelFingerprint=options.modelFingerprint??(configuredSettings.url&&!envSettings.url?provider?.modelFingerprint:undefined)??envSettings.modelFingerprint??provider?.modelFingerprint??'default';
+ const modelFingerprint=options.modelFingerprint??envSettings.modelFingerprint??provider?.modelFingerprint??'default';
  const minScore=configuredSettings.minScore;
  if(typeof modelFingerprint!=='string'||!modelFingerprint||modelFingerprint.length>1024||!Number.isFinite(minScore)||minScore<0||minScore>1){
   throw new Error('Invalid ticket search configuration');
@@ -189,7 +189,9 @@ export function createTicketSearch(directory,{db,tickets,ticketFiles,env=process
  let generation=0,semanticGeneration=0,indexedRevision=null;
  let extractDirty=true,extracting=false,extractError=null,extractAttempts=0,extractNextAt=0,extractRecoverAt=0;
  let embedError=null,embedController=null;
- let running=null,workTimer=null,workTimerAt=Infinity,recoveryTimer=null,contentTimer=null,unsubscribe=null;
+ let extractRunning=null,extractTimer=null,extractTimerAt=Infinity;
+ let embedRunning=null,embedTimer=null,embedTimerAt=Infinity;
+ let recoveryTimer=null,contentTimer=null,unsubscribe=null;
  let entries=new Map(),extraction=blankExtraction(),cachedBytes=0,closedStatus=null;
  let resolveClosed;
  const closedSignal=new Promise(resolve=>{resolveClosed=resolve;});
@@ -245,12 +247,14 @@ export function createTicketSearch(directory,{db,tickets,ticketFiles,env=process
   const lexicalReady=indexedRevision!==null&&!extractDirty&&!extracting&&!extractError;
   const state=closed?'closed':extractError?'degraded':!lexicalReady?'indexing':hasExtractionCapacity()?'degraded':semanticState==='disabled'?'ready':semanticState;
   const errors=[...(extractError?[extractError]:[]),...(semanticOn&&embedError?[embedError]:[])];
+  const providerSummary={configured,model:configured?(configuredSettings.model??'injected'):null};
   return {
    state,
    semanticState,
    readiness:semanticState,
    enabled,
    configured,
+   provider:providerSummary,
    defaultMode:'text',
    chunks:docs.size,
    embedded,
@@ -268,7 +272,7 @@ export function createTicketSearch(directory,{db,tickets,ticketFiles,env=process
  }
 
  function status(){
-  if(closed)return closedStatus?{...closedStatus,extraction:{...closedStatus.extraction},coverage:{...closedStatus.coverage},errors:[...closedStatus.errors]}:{state:'closed',semanticState:'disabled',readiness:'disabled',enabled:false,configured,defaultMode:'text',chunks:0,embedded:0,pending:0,failed:0,model:null,revision:indexedRevision,lexicalReady:false,extracting:false,extraction:{...extraction},coverage:{chunks:0,embedded:0,pending:0,failed:0,ratio:1},error:extractError,errors:[]};
+  if(closed)return closedStatus?{...closedStatus,provider:{...closedStatus.provider},extraction:{...closedStatus.extraction},coverage:{...closedStatus.coverage},errors:[...closedStatus.errors]}:{state:'closed',semanticState:'disabled',readiness:'disabled',enabled:false,configured,provider:{configured,model:configured?(configuredSettings.model??'injected'):null},defaultMode:'text',chunks:0,embedded:0,pending:0,failed:0,model:null,revision:indexedRevision,lexicalReady:false,extracting:false,extraction:{...extraction},coverage:{chunks:0,embedded:0,pending:0,failed:0,ratio:1},error:extractError,errors:[]};
   return computeStatus();
  }
 
@@ -317,33 +321,53 @@ export function createTicketSearch(directory,{db,tickets,ticketFiles,env=process
   recoveryTimer.unref?.();
  }
 
+ function scheduleExtract(minDelay=0){
+  if(closed||!started||extractRunning||!needsExtractWork())return;
+  const now=Date.now(),delay=Math.max(minDelay,extractNextAt-now);
+  if(!Number.isFinite(delay))return;
+  if(extractTimer){
+   if(now+delay>=extractTimerAt)return;
+   clearTimeout(extractTimer);
+   extractTimer=null;
+  }
+  extractTimerAt=now+delay;
+  extractTimer=setTimeout(()=>{
+   extractTimer=null;
+   extractTimerAt=Infinity;
+   kickExtract();
+  },delay);
+  extractTimer.unref?.();
+ }
+
+ function scheduleEmbed(minDelay=0){
+  if(closed||!started||embedRunning||!needsEmbedWork())return;
+  const now=Date.now(),delay=Math.max(minDelay,nextEmbedDelay(now));
+  if(!Number.isFinite(delay))return;
+  if(embedTimer){
+   if(now+delay>=embedTimerAt)return;
+   clearTimeout(embedTimer);
+   embedTimer=null;
+  }
+  embedTimerAt=now+delay;
+  embedTimer=setTimeout(()=>{
+   embedTimer=null;
+   embedTimerAt=Infinity;
+   kickEmbed();
+  },delay);
+  embedTimer.unref?.();
+ }
+
  function scheduleNext(minDelay=0){
   if(closed||!started)return;
   scheduleRecovery();
-  if(running)return;
-  const now=Date.now();
-  let delay=null;
-  if(needsExtractWork())delay=Math.max(minDelay,extractNextAt-now);
-  else if(needsEmbedWork())delay=Math.max(minDelay,nextEmbedDelay(now));
-  if(delay===null||!Number.isFinite(delay))return;
-  if(workTimer){
-   if(now+delay>=workTimerAt)return;
-   clearTimeout(workTimer);
-   workTimer=null;
-  }
-  workTimerAt=now+delay;
-  workTimer=setTimeout(()=>{
-   workTimer=null;
-   workTimerAt=Infinity;
-   kickRunner();
-  },delay);
-  workTimer.unref?.();
+  scheduleExtract(minDelay);
+  scheduleEmbed(minDelay);
  }
 
  function onTicketsChange(){
   extractDirty=true;
   if(extractError&&extractAttempts>maxBuildRetries)return;
-  scheduleNext(5);
+  scheduleExtract(5);
  }
 
  async function readContent(a){
@@ -558,33 +582,38 @@ export function createTicketSearch(directory,{db,tickets,ticketFiles,env=process
   }
  }
 
- function kickRunner(){
-  if(closed||running)return running;
-  running=(async()=>{
-   if(needsExtractWork()&&Date.now()>=extractNextAt){
-    extractDirty=false;
-    extracting=true;
-    try{
-     await extractBuild();
-    }catch{
-     if(!closed){
-      extractError='Ticket search extraction unavailable';
-      extractAttempts++;
-      extractDirty=true;
-      if(extractAttempts<=maxBuildRetries)extractNextAt=Date.now()+buildRetryMs*2**(extractAttempts-1);
-      else extractRecoverAt=Date.now()+buildRecoveryMs;
-     }
-    }finally{
-     extracting=false;
+ function kickExtract(){
+  if(closed||extractRunning||!needsExtractWork()||Date.now()<extractNextAt)return extractRunning;
+  extractDirty=false;
+  extracting=true;
+  extractRunning=(async()=>{
+   try{
+    await extractBuild();
+   }catch{
+    if(!closed){
+     extractError='Ticket search extraction unavailable';
+     extractAttempts++;
+     extractDirty=true;
+     if(extractAttempts<=maxBuildRetries)extractNextAt=Date.now()+buildRetryMs*2**(extractAttempts-1);
+     else extractRecoverAt=Date.now()+buildRecoveryMs;
     }
-   }else if(needsEmbedWork()&&nextEmbedDelay(Date.now())===0){
-    await embedBatch();
+   }finally{
+    extracting=false;
    }
   })().finally(()=>{
-   running=null;
+   extractRunning=null;
    if(!closed)scheduleNext(0);
   });
-  return running;
+  return extractRunning;
+ }
+
+ function kickEmbed(){
+  if(closed||embedRunning||!needsEmbedWork()||nextEmbedDelay(Date.now())>0)return embedRunning;
+  embedRunning=embedBatch().finally(()=>{
+   embedRunning=null;
+   if(!closed)scheduleNext(0);
+  });
+  return embedRunning;
  }
 
  function cancelSemanticWork(){
@@ -594,7 +623,7 @@ export function createTicketSearch(directory,{db,tickets,ticketFiles,env=process
   for(const ctl of queryControllers)ctl.abort();
   embedFailures.clear();
   embedError=null;
-  if(workTimer&&!needsExtractWork()){clearTimeout(workTimer);workTimer=null;workTimerAt=Infinity;}
+  clearTimeout(embedTimer);embedTimer=null;embedTimerAt=Infinity;
   scheduleRecovery();
  }
 
@@ -685,7 +714,7 @@ export function createTicketSearch(directory,{db,tickets,ticketFiles,env=process
   const revBefore=tickets.searchRevision(),genBefore=generation;
   const stNow=status();
   if(indexedRevision!==revBefore||extractDirty||extracting||extractError){
-   return {query,requestedMode:mode,mode,state:extractError&&!extracting?'degraded':'indexing',semanticState:stNow.semanticState,coverage:stNow.coverage,extraction:stNow.extraction,results:[]};
+   return {query,requestedMode:mode,mode,state:extractError&&!extracting?'degraded':'indexing',semanticState:stNow.semanticState,coverage:{...stNow.coverage,extraction:stNow.extraction},extraction:stNow.extraction,results:[]};
   }
   const eligible=new Map([...docs].filter(([,d])=>match({...d.fields,project:d.project,labels:d.fields?.labels??[]})));
   const terms=query.normalize('NFC').match(QUERY_TERMS)?.slice(0,12)??[];
@@ -693,7 +722,7 @@ export function createTicketSearch(directory,{db,tickets,ticketFiles,env=process
   const semanticOn=Boolean(enabled&&provider);
   const vectorsReady=semanticOn&&[...eligible.values()].every(d=>cachedVector(d.hash));
   if(mode==='semantic'&&(!semanticOn||!vectorsReady)){
-   return {query,requestedMode:mode,mode,state:!semanticOn?'disabled':stNow.failed?'degraded':'indexing',semanticState:stNow.semanticState,coverage:stNow.coverage,extraction:stNow.extraction,results:[]};
+   return {query,requestedMode:mode,mode,state:!semanticOn?'disabled':stNow.failed?'degraded':'indexing',semanticState:stNow.semanticState,coverage:{...stNow.coverage,extraction:stNow.extraction},extraction:stNow.extraction,results:[]};
   }
   let semantic=[],queryFailed=false;
   if(mode!=='text'&&vectorsReady&&eligible.size){
@@ -715,7 +744,7 @@ export function createTicketSearch(directory,{db,tickets,ticketFiles,env=process
   }
   if(closed||genBefore!==generation||revBefore!==tickets.searchRevision()){
    const stAfter=status();
-   return {query,requestedMode:mode,mode,state:closed?'closed':'indexing',semanticState:stAfter.semanticState,coverage:stAfter.coverage,extraction:stAfter.extraction,results:[]};
+   return {query,requestedMode:mode,mode,state:closed?'closed':'indexing',semanticState:stAfter.semanticState,coverage:{...stAfter.coverage,extraction:stAfter.extraction},extraction:stAfter.extraction,results:[]};
   }
   const ranked=new Map();
   lexical.forEach((r,i)=>ranked.set(r.id,{score:1/(60+i+1),matchKind:'text'}));
@@ -752,6 +781,7 @@ export function createTicketSearch(directory,{db,tickets,ticketFiles,env=process
   if(closed)throw new Error('Search is closed');
   let available=enabled===true;
   if(input.kind==='review'||!QUERY_WORD.test(input.q))return {...base,mode,semanticAvailable:available};
+  const toggleGen=semanticGeneration;
   const found=await search({query:input.q,...(input.project?{project:input.project}:{}),mode,limit:100});
   available=enabled===true;
   if(mode!=='text')base.results=[];
@@ -774,6 +804,11 @@ export function createTicketSearch(directory,{db,tickets,ticketFiles,env=process
     meta:{status:ticket.status,type:ticket.type,priority:ticket.priority,assignee:ticket.assignee,release:ticket.release},
    });
   }
+  available=enabled===true;
+  if(mode!=='text'&&(!available||toggleGen!==semanticGeneration)){
+   const fallback=mode==='hybrid'?db.search(query):{q:query.q,total:0,results:[]};
+   return {...fallback,mode:mode==='hybrid'?'text':mode,semanticAvailable:available,attachmentSearch:{state:available?'indexing':'disabled',extraction:status().extraction}};
+  }
   if(revision!==tickets.searchRevision()){
    return {...(mode==='text'?db.search(query):{q:query.q,total:0,results:[]}),mode,semanticAvailable:available,attachmentSearch:{state:'indexing',extraction:status().extraction}};
   }
@@ -791,29 +826,38 @@ export function createTicketSearch(directory,{db,tickets,ticketFiles,env=process
   return status();
  }
 
+ function sleepRef(ms){
+  let timerId;
+  const wait=new Promise(resolve=>{timerId=setTimeout(resolve,ms);});
+  return Promise.race([wait,closedSignal]).finally(()=>clearTimeout(timerId));
+ }
+
  async function whenIdle(){
   if(closed)throw new Error('Ticket search is closed');
   await Promise.race([start(),closedSignal]);
   if(closed)throw new Error('Ticket search is closed');
   await Promise.race([settingsQueue,closedSignal]);
   if(closed)throw new Error('Ticket search is closed');
-  if(workTimer&&extractAttempts===0&&needsExtractWork()&&Date.now()>=extractNextAt){
-   clearTimeout(workTimer);
-   workTimer=null;
-   workTimerAt=Infinity;
-   kickRunner();
+  if(extractTimer&&extractAttempts===0&&needsExtractWork()&&Date.now()>=extractNextAt){
+   clearTimeout(extractTimer);extractTimer=null;extractTimerAt=Infinity;
+   kickExtract();
   }
-  while(running||workTimer||needsExtractWork()||needsEmbedWork()){
-   if(running){
-    await Promise.race([running,closedSignal]);
-   }else if(workTimer){
-    const waitMs=Math.min(10,Math.max(1,workTimerAt-Date.now()));
-    await Promise.race([new Promise(r=>{const t=setTimeout(r,waitMs);t.unref?.();}),closedSignal]);
-   }else if((needsExtractWork()&&Date.now()>=extractNextAt)||(needsEmbedWork()&&nextEmbedDelay(Date.now())===0)){
-    kickRunner();
+  while(extractRunning||embedRunning||extractTimer||embedTimer||needsExtractWork()||needsEmbedWork()){
+   if(extractRunning){
+    await Promise.race([extractRunning,closedSignal]);
+   }else if(needsExtractWork()&&Date.now()>=extractNextAt){
+    clearTimeout(extractTimer);extractTimer=null;extractTimerAt=Infinity;
+    kickExtract();
+   }else if(embedRunning){
+    await Promise.race([embedRunning,closedSignal]);
+   }else if(needsEmbedWork()&&nextEmbedDelay(Date.now())===0){
+    clearTimeout(embedTimer);embedTimer=null;embedTimerAt=Infinity;
+    kickEmbed();
    }else{
     scheduleNext(0);
-    await Promise.race([new Promise(r=>{const t=setTimeout(r,5);t.unref?.();}),closedSignal]);
+    const nextAt=Math.min(extractTimerAt,embedTimerAt);
+    const waitMs=Number.isFinite(nextAt)?Math.min(25,Math.max(1,nextAt-Date.now())):5;
+    await sleepRef(waitMs);
    }
    if(closed)throw new Error('Ticket search is closed');
   }
@@ -829,7 +873,8 @@ export function createTicketSearch(directory,{db,tickets,ticketFiles,env=process
   resolveClosed();
   unsubscribe?.();
   unsubscribe=null;
-  clearTimeout(workTimer);workTimer=null;workTimerAt=Infinity;
+  clearTimeout(extractTimer);extractTimer=null;extractTimerAt=Infinity;
+  clearTimeout(embedTimer);embedTimer=null;embedTimerAt=Infinity;
   clearTimeout(recoveryTimer);recoveryTimer=null;
   clearInterval(contentTimer);contentTimer=null;
   embedController?.abort();embedController=null;

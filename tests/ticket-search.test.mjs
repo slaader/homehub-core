@@ -21,9 +21,12 @@ async function fixture(t,options={}){
 }
 
 function assertStatusShape(st){
- for(const key of ['state','semanticState','readiness','enabled','configured','defaultMode','chunks','embedded','pending','failed','model','revision','lexicalReady','extracting','extraction','coverage','error','errors']){
+ for(const key of ['state','semanticState','readiness','enabled','configured','provider','defaultMode','chunks','embedded','pending','failed','model','revision','lexicalReady','extracting','extraction','coverage','error','errors']){
   assert.ok(Object.hasOwn(st,key),`status missing ${key}`);
  }
+ assert.equal(typeof st.provider.configured,'boolean');
+ assert.ok(st.provider.model===null||typeof st.provider.model==='string');
+ assert.ok(!Object.hasOwn(st.provider,'url')&&!Object.hasOwn(st.provider,'token'),'provider summary leaks no endpoint or secret');
  assert.equal(typeof st.coverage.chunks,'number');
  assert.equal(typeof st.coverage.embedded,'number');
  assert.equal(typeof st.coverage.pending,'number');
@@ -580,19 +583,145 @@ test('HTTP routes and MCP tools enforce read auth, strict input, and avoid doubl
   assert.equal((await fetch(h.origin+'/api/tickets/search/'+suffix,{headers:reader.headers})).status,400);
  }
 
- // Attachment-only /api/search hit already carries meta, so describeHits does not call tickets.list().
+ // Mixed global HTTP search (one title hit + one attachment-only hit) hydrates each ticket at most once.
+ const titleOnly=await state.tickets.create({project:'smoke',title:'Mixed sharedneedle title'},'alice');
+ const attachOnly=await state.tickets.create({project:'smoke',title:'Mixed plain ticket'},'alice');
+ const mixAtt=await state.ticketFiles.put([Buffer.from('sharedneedle inside attachment')],{name:'mix.txt'});
+ await state.tickets.attach(attachOnly.id,mixAtt,'alice');
+ await state.ticketSearch.whenIdle();
+
  let listCalls=0;
- const origList=state.tickets.list;
+ const getCounts=new Map();
+ const origList=state.tickets.list,origGet=state.tickets.get;
  state.tickets.list=async(...args)=>{listCalls++;return origList(...args);};
- const globalRes=await (await fetch(h.origin+'/api/search?q=smokeneedle',{headers:reader.headers})).json();
- assert.equal(globalRes.results[0].id,smoke.id);
- assert.equal(globalRes.results[0].meta.status,'open');
+ state.tickets.get=async(id,...rest)=>{getCounts.set(id,(getCounts.get(id)??0)+1);return origGet(id,...rest);};
+ const globalRes=await (await fetch(h.origin+'/api/search?q=sharedneedle',{headers:reader.headers})).json();
+ state.tickets.list=origList;state.tickets.get=origGet;
+ assert.deepEqual(new Set(globalRes.results.map(r=>r.id)),new Set([titleOnly.id,attachOnly.id]));
+ assert.ok(globalRes.results.every(r=>r.meta?.status==='open'));
  assert.equal(globalRes.attachmentSearch.state,'ready');
  assert.equal(typeof globalRes.attachmentSearch.extraction.attachments,'number');
- assert.equal(listCalls,0,'describeHits skips tickets.list() when all ticket hits already carry meta');
+ assert.equal(listCalls,0,'describeHits never calls tickets.list() on mixed search hits');
+ assert.equal(getCounts.get(titleOnly.id),1,'title hit hydrated once');
+ assert.equal(getCounts.get(attachOnly.id),1,'attachment-only hit hydrated once');
+
+ // HTTP filter parity: ticket endpoints share canonical filters; cross-kind /api/search honors project and rejects ticket-only keys.
+ const activeHttp=await (await fetch(h.origin+'/api/tickets/search?q=sharedneedle&status=active&release=none&assignee=none',{headers:reader.headers})).json();
+ const activeHybrid=await (await fetch(h.origin+'/api/tickets/search/hybrid?query=sharedneedle&mode=text&status=active&release=none&assignee=none',{headers:reader.headers})).json();
+ assert.equal(activeHttp.tickets.length,1);
+ assert.equal(activeHybrid.results.length,2);
+ assert.equal((await fetch(h.origin+'/api/search?q=sharedneedle&project=smoke',{headers:reader.headers})).status,200);
+ assert.equal((await fetch(h.origin+'/api/search?q=sharedneedle&status=active',{headers:reader.headers})).status,400);
 
  const rpc=async(name,args)=>(await (await fetch(h.origin+'/mcp',{method:'POST',headers:{...reader.headers,'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}})})).json()).result;
  assert.equal((await rpc('ticket_search_status',{})).isError,false);
  assert.equal((await rpc('ticket_hybrid_search',{query:'example',mode:'text'})).isError,false);
  assert.equal((await rpc('ticket_hybrid_search',{query:'example',limit:1.5})).isError,true);
+});
+
+test('lexical edits stay searchable while an embedding batch is pending, and early-exit keeps coverage.extraction',async t=>{
+ let releaseBatch,batchStarted;
+ const startedPromise=new Promise(r=>{batchStarted=r;});
+ const pendingBatch=new Promise(r=>{releaseBatch=r;});
+ let calls=0;
+ const embed=async texts=>{
+  calls++;
+  if(calls===1){batchStarted();await pendingBatch;}
+  return texts.map(()=>[1,0]);
+ };
+ const {tickets,search}=await fixture(t,{embed,semanticEnabled:true});
+ const t1=await tickets.create({project:'sample',title:'initial alpha'},'alice');
+ // Before first build finishes, early-exit response carries both top-level extraction and legacy coverage.extraction.
+ const early=await search.search({query:'alpha',mode:'text'});
+ assert.equal(early.state,'indexing');
+ assert.equal(typeof early.extraction.attachments,'number');
+ assert.equal(typeof early.coverage.extraction.attachments,'number');
+
+ await startedPromise;
+ // While the first embedding batch is blocked in flight, edit the ticket and verify lexical search updates immediately.
+ await tickets.update({id:t1.id,rev:t1.rev,title:'updated concurrentlexicalword'},'alice');
+ for(let i=0;i<40;i++){
+  const res=await search.search({query:'concurrentlexicalword',mode:'text'});
+  if(res.state==='ready'&&res.results.length===1){
+   assert.equal(res.results[0].ticket,t1.id);
+   break;
+  }
+  if(i===39)assert.fail('lexical edit did not become searchable while embedding batch was pending');
+  await new Promise(r=>setTimeout(r,20));
+ }
+ releaseBatch();
+ await search.whenIdle();
+ assertStatusShape(search.status());
+ assert.equal(search.status().state,'ready');
+});
+
+test('constructor-option provider keeps base cache fingerprint, opt-out during searchAll drops semantic hits, and standalone whenIdle stays alive',async t=>{
+ // 1. Constructor options {url, model} share the same fingerprint as base ticketSearchSettings({}) when modelFingerprint is omitted.
+ let fetchCalls=0;
+ const fetchImpl=async(url,init)=>{
+  fetchCalls++;
+  const body=JSON.parse(init.body);
+  return new Response(JSON.stringify({data:body.input.map((_,index)=>({index,embedding:[1,0]}))}),{status:200,headers:{'content-type':'application/json'}});
+ };
+ const dir=await mkdtemp(path.join(os.tmpdir(),'ticket-search-fp-'));
+ const db=openDb(path.join(dir,'hub.db'));
+ const tickets=createTicketStore(dir,{db,seedProjects:[{id:'sample',key:'SM',name:'Sample',type:'app'}]});
+ const files=createTicketFiles(dir);
+ t.after(async()=>{db.close();await rm(dir,{recursive:true,force:true});});
+ await tickets.create({project:'sample',title:'warm cache check'},'alice');
+ const first=createTicketSearch(dir,{db,tickets,ticketFiles:files,env:{},url:'http://127.0.0.1:8081/v1/embeddings',model:'embed-m',fetchImpl,semanticEnabled:true});
+ await first.start();await first.whenIdle();
+ const baseModel=first.status().model;
+ assert.equal(baseModel,ticketSearchSettings({}).modelFingerprint);
+ assert.equal(fetchCalls,1);
+ await first.close();
+ const second=createTicketSearch(dir,{db,tickets,ticketFiles:files,env:{},url:'http://127.0.0.1:8081/v1/embeddings',model:'embed-m',fetchImpl,semanticEnabled:true});
+ await second.start();await second.whenIdle();
+ assert.equal(fetchCalls,1,'reopening with identical constructor url/model reuses warm vector cache');
+ assert.deepEqual(second.status().provider,{configured:true,model:'embed-m'});
+ await second.close();
+
+ // 2. Disabling semantic search while searchAll() awaits ticket metadata discards semantic hits and reports semanticAvailable: false.
+ const embed=async texts=>texts.map(()=>[1,0]);
+ const f=await fixture(t,{embed,semanticEnabled:true});
+ const tk=await f.tickets.create({project:'sample',title:'unrelated alpha'},'alice');
+ await f.search.start();await f.search.whenIdle();
+ let releaseGet,getEntered;
+ const entered=new Promise(r=>{getEntered=r;});
+ const blocked=new Promise(r=>{releaseGet=r;});
+ const origGet=f.tickets.get;
+ f.tickets.get=async(...args)=>{getEntered();await blocked;return origGet(...args);};
+ const pendingSearch=f.search.searchAll({q:'conceptquery',mode:'semantic'});
+ await entered;
+ await f.search.setEnabled({enabled:false});
+ releaseGet();
+ f.tickets.get=origGet;
+ const afterOptOut=await pendingSearch;
+ assert.equal(afterOptOut.semanticAvailable,false);
+ assert.deepEqual(afterOptOut.results,[]);
+ assert.equal(afterOptOut.attachmentSearch.state,'disabled');
+
+ // 3. Standalone caller awaiting whenIdle() with pending backfill exits 0 (event loop stays alive).
+ const {spawnSync}=await import('node:child_process');
+ const script=`
+  import {mkdtempSync,rmSync} from 'node:fs';
+  import os from 'node:os';
+  import path from 'node:path';
+  import {openDb} from ${JSON.stringify(new URL('../server/db.mjs',import.meta.url).href)};
+  import {createTicketStore} from ${JSON.stringify(new URL('../server/tickets-store.mjs',import.meta.url).href)};
+  import {createTicketFiles} from ${JSON.stringify(new URL('../server/ticket-files.mjs',import.meta.url).href)};
+  import {createTicketSearch} from ${JSON.stringify(new URL('../server/ticket-search.mjs',import.meta.url).href)};
+  const dir=mkdtempSync(path.join(os.tmpdir(),'ts-idle-'));
+  const db=openDb(path.join(dir,'hub.db'));
+  const tickets=createTicketStore(dir,{db,seedProjects:[{id:'s',key:'SM',name:'S',type:'app'}]});
+  const files=createTicketFiles(dir);
+  await tickets.create({project:'s',title:'standalone idle test'},'alice');
+  const search=createTicketSearch(dir,{db,tickets,ticketFiles:files,env:{},embed:async texts=>texts.map(()=>[1,0]),semanticEnabled:true});
+  try{
+   const st=await search.whenIdle();
+   if(st.state!=='ready'||st.embedded<1)process.exit(2);
+  }finally{await search.close();db.close();rmSync(dir,{recursive:true,force:true});}
+ `;
+ const child=spawnSync(process.execPath,['--input-type=module','-e',script],{encoding:'utf8',timeout:15000});
+ assert.equal(child.status,0,`standalone whenIdle exited with ${child.status}: ${child.stderr}`);
 });
