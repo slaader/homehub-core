@@ -1,12 +1,12 @@
 // Schema 1 is read explicitly. Corrupt and future journals are evidence, never absence.
-import {lstatSync,readFileSync} from 'node:fs';
 import path from 'node:path';
-import {strictJson,durableWrite} from './release-trust.mjs';
+import {strictJson,durableWrite,boundedRegularFile} from './safe-fs.mjs';
 import {parseService,parseHealth} from './update-config.mjs';
 import {UpdateError} from './update-errors.mjs';
 export const JOURNAL_SCHEMA=3;
 export const TERMINAL_STEPS=Object.freeze(['done','rolled-back','aborted']);
 const STEPS=[...TERMINAL_STEPS,'stopping','backup','backup-verified','switching','switched','starting','target-may-have-written','rolling-back','rollback-failed'];
+// Legacy read contract: previously-written journals (schemas 1..3) may contain unnormalized absolute paths such as /a/./b.
 const absolute=p=>typeof p==='string'&&path.isAbsolute(p)&&!p.includes('\0')&&path.resolve(p)!==path.parse(p).root;
 const hash=v=>typeof v==='string'&&/^[0-9a-f]{40}$/.test(v);
 export function validateJournal(j){
@@ -47,11 +47,8 @@ export function validateJournal(j){
 }
 export function readUpdateJournal(file){
  let bytes;
- try{
-  const st=lstatSync(file);
-  if(!st.isFile()||st.size>16*1024**2)throw new Error('journal is not a bounded regular file; mutation refused');
-  bytes=readFileSync(file);
- }catch(e){if(e.code==='ENOENT')return null;throw new UpdateError(`Cannot read update journal ${file}: ${e.message}`);}
+ try{bytes=boundedRegularFile(file,16*1024**2,'journal');}
+ catch(e){if(e.code==='ENOENT')return null;throw new UpdateError(`Cannot read update journal ${file}: ${e.message}`);}
  try{return validateJournal(strictJson(bytes,{limit:16*1024*1024}));}catch(e){throw new UpdateError(`Update journal ${file} is corrupt or newer: ${e.message}. Preserve it and recover manually; mutation refused.`);}
 }
 export const writeUpdateJournal=(file,journal)=>{if(journal.schemaVersion===1)journal.schemaVersion=2;validateJournal(journal);const data=JSON.stringify(journal,null,1)+'\n';if(Buffer.byteLength(data)>16*1024**2)throw new Error('journal exceeds its byte limit');durableWrite(file,data);};

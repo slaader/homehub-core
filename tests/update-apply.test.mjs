@@ -10,7 +10,7 @@ import {packageFixture} from './package-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,writeFile,readFile,rm,realpath} from 'node:fs/promises';
-import {existsSync,readFileSync,readdirSync,writeFileSync,statSync,chmodSync,rmSync,symlinkSync} from 'node:fs';
+import {existsSync,readFileSync,readdirSync,writeFileSync,statSync,lstatSync,realpathSync,chmodSync,rmSync,symlinkSync} from 'node:fs';
 import {execFileSync,spawnSync} from 'node:child_process';
 import {createConnection,createServer} from 'node:net';
 import os from 'node:os';
@@ -61,7 +61,23 @@ function clone(from,to){execFileSync('git',['clone','-q',from,to],{stdio:'ignore
  * as STATE_DIR puts it). layout 'home': <home>/core, <home>/household (a plugin source of its own), config/, data/,
  * private/ and instance.json. upstream has v1.0.0; the test adds what it needs.
  */
-async function world(t,{layout='checkout',instance={},temp=os.tmpdir()}={}){
+function safeTempParent(){
+ for(const candidate of [os.tmpdir(),os.homedir(),process.cwd()]){
+  if(!candidate)continue;
+  try{
+   const real=realpathSync.native(candidate);
+   let ok=true;
+   for(let dir=real;dir!==path.dirname(dir);dir=path.dirname(dir)){
+    const st=lstatSync(dir);
+    if((st.mode&0o022)||![0,process.getuid?.()??st.uid].includes(st.uid)){ok=false;break;}
+   }
+   if(ok)return real;
+  }catch{}
+ }
+ return os.tmpdir();
+}
+
+async function world(t,{layout='checkout',instance={},temp=safeTempParent()}={}){
  const dir=await realpath(await mkdtemp(path.join(temp,'hub-update-')));t.after(()=>rm(dir,{recursive:true,force:true}));
  const upstream=await init(path.join(dir,'upstream'));
  const v100=await upstream.commit('1.0.0',tree('1.0.0'),{tag:'v1.0.0'});
@@ -832,4 +848,51 @@ test('CLI discovery honors normalized environment and stored integration disable
   }
   assert.equal(requests,0);assert.deepEqual(w.svc.calls,[]);
  }finally{globalThis.fetch=originalFetch;}
+});
+
+test('trust-import refuses new and existing trust files inside --backup-root and accepts isolated trust paths',async t=>{
+ const w=await world(t,{layout:'home'});
+ const {generateKeyPairSync}=await import('node:crypto');
+ const {publicKey}=await import('../server/release-trust.mjs');
+ const pair=generateKeyPairSync('ed25519'),pem=pair.publicKey.export({type:'spki',format:'pem'}),fp=publicKey(pem).id;
+ const keyFile=path.join(w.dir,'publisher.pub.pem');
+ await writeFile(keyFile,pem,{mode:0o600});
+ const extraBackup=path.join(w.dir,'extra-backup');
+ await mkdir(extraBackup,{recursive:true,mode:0o700});
+ const insideBackup=path.join(extraBackup,'trust.json');
+ const baseArgs=['trust-import','--public-key',keyFile,'--fingerprint',fp,'--backup-root',extraBackup,'--trust',insideBackup];
+ await assert.rejects(main(baseArgs,{env:w.env,ctx:w.ctx,out:()=>{}}),/outside replaced\/restored root/);
+ assert.equal(existsSync(insideBackup),false);
+ // Even when an existing valid trust file already sits inside --backup-root, trust-import must refuse it.
+ const otherPair=generateKeyPairSync('ed25519'),otherPem=otherPair.publicKey.export({type:'spki',format:'pem'}),otherFp=publicKey(otherPem).id;
+ const existingDoc={schemaVersion:1,publishers:{'example/core':{gitSigners:[],packageKeys:[{id:otherFp,publicKey:otherPem,fingerprint:otherFp,role:'package',status:'active'}]}}};
+ await writeFile(insideBackup,JSON.stringify(existingDoc),{mode:0o600});
+ await assert.rejects(main(baseArgs,{env:w.env,ctx:w.ctx,out:()=>{}}),/outside replaced\/restored root/);
+ assert.deepEqual(JSON.parse(readFileSync(insideBackup,'utf8')),existingDoc);
+ // Importing into an isolated trust path outside all forbidden roots succeeds and remembers selection.
+ const safeTrust=path.join(w.dir,'operator-trust','trust.json');
+ const output=[];
+ assert.equal(await main(['trust-import','--public-key',keyFile,'--fingerprint',fp,'--backup-root',extraBackup,'--trust',safeTrust],{env:w.env,ctx:w.ctx,out:l=>output.push(l)}),0);
+ assert.ok(output.some(l=>l.includes(fp)));
+ assert.equal(selectTrustFile({home:w.home}),safeTrust);
+ // Re-importing the same key is refused without modifying the trust policy.
+ assert.equal(await main(['trust-import','--public-key',keyFile,'--fingerprint',fp,'--backup-root',extraBackup,'--trust',safeTrust],{env:w.env,ctx:w.ctx,out:()=>{}}),1);
+});
+
+test('update journal accepts legacy schema-3 journals with unnormalized absolute paths',async t=>{
+ const {validateJournal,readUpdateJournal}=await import('../server/update-journal.mjs');
+ const dir=await realpath(await mkdtemp(path.join(os.tmpdir(),'hub-journal-compat-')));
+ t.after(()=>rm(dir,{recursive:true,force:true}));
+ const file=path.join(dir,'update-journal.json');
+ const legacy={
+  schemaVersion:3,id:'op-legacy-1',startedAt:'2026-01-01T00:00:00.000Z',step:'done',epochRose:false,
+  from:{label:'v1.0.0',core:{version:'1.0.0'},expect:{version:'1.0.0'}},
+  to:{label:'v1.1.0',core:{version:'1.1.0'},expect:{version:'1.1.0'}},
+  changes:[{id:'core',dir:'/srv/home-hub/./core',from:'a'.repeat(40),to:'b'.repeat(40)}],
+  settings:{root:'/srv/home-hub/./core',state:'/srv/home-hub/data/./state',service:{stop:['svc','stop'],start:['svc','start']},health:{url:'http://127.0.0.1:9/healthz',seconds:2}},
+  trustFile:'/srv/policy/./trust.json',
+ };
+ assert.deepEqual(validateJournal(legacy),legacy);
+ await writeFile(file,JSON.stringify(legacy)+'\n',{mode:0o600});
+ assert.deepEqual(readUpdateJournal(file),legacy);
 });

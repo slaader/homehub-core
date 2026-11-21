@@ -1,7 +1,8 @@
 import {lstatSync,readFileSync} from 'node:fs';
 import path from 'node:path';
 import {ARCHIVE_LIMITS} from './release-archive.mjs';
-import {fields,strictJson,trustDestination,sha256} from './release-trust.mjs';
+import {trustDestination} from './release-trust.mjs';
+import {fields,strictJson,sha256,cleanAbsolute} from './safe-fs.mjs';
 
 const MiB=1024**2,GiB=1024**3;
 export const POLICY_SCHEMA=1;
@@ -12,8 +13,6 @@ const MAX_BUDGET={maxBytes:64*GiB,maxEntries:200000,maxFileBytes:8*GiB-1,maxRoot
 export const MANIFEST_LIMIT=128*MiB;
 export const MANIFEST_HEADER_LIMIT=4*MiB;
 export const MANIFEST_ENTRY_LIMIT=8192;
-export const cleanAbsolute=p=>typeof p==='string'&&p.length<=4096&&path.isAbsolute(p)&&path.resolve(p)===p&&p!==path.parse(p).root&&!/\p{Cc}/u.test(p);
-export const withinPath=(child,parent)=>child===parent||child.startsWith(parent.endsWith(path.sep)?parent:parent+path.sep);
 
 export function backupBudget(raw={}){
  fields(raw,Object.keys(DEFAULT_BUDGET),'backup budget');

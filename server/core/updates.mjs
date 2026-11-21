@@ -9,7 +9,7 @@
 // MCP: hub_version (read-only). hub.options.updateCheck = {settings, env, fetchJson, fetchImpl, now, random,
 // setTimer, clearTimer, timing} replaces the real network, clock and timers in the tests.
 import {createUpdateChecker,updateSettings,updateSummary,integrationStatus,UPDATE_INTEGRATION} from '../update-check.mjs';
-import {loadTrust,selectTrustFile} from '../release-trust.mjs';
+import {loadTrust,selectTrustFile,forbiddenTrustRoots} from '../release-trust.mjs';
 import {resolvePaths} from '../paths.mjs';
 import {field} from '../text.mjs';
 
@@ -21,7 +21,7 @@ const zone=hub=>({timeZone:hub.site.timeZone});
 // What GET /api/updates answers. Turned off by an administrator: `disabled` says by whom, and nothing else is known.
 export function updatesPayload(state,hub){
  const view=state.checker.view({repoSource:state.settings.repoSource}),disabled=view.code==='disabled'?hub.integrationDisabled(UPDATE_INTEGRATION):null;
- const home=resolvePaths().home;let trustState='legacy';try{const trustFile=selectTrustFile({home});if(trustFile){loadTrust(trustFile,{forbidden:[hub.root,hub.directory,hub.stateDirectory]});trustState='configured';}}catch{trustState='invalid';}
+ const paths=resolvePaths(),home=paths.home;let trustState='legacy';try{const trustFile=selectTrustFile({home});if(trustFile){loadTrust(trustFile,{forbidden:forbiddenTrustRoots({root:hub.root,paths:{...paths,data:hub.directory,state:hub.stateDirectory}})});trustState='configured';}}catch{trustState='invalid';}
  const releases=state.checker.releases();
  return {...view,discovery:{checkedAt:view.checkedAt,releases:releases.length},trust:{state:trustState,signature:hub.version.packageDigest?'verified':'not-checked'},package:{releases:releases.map(r=>({...r,commands:{download:`node scripts/update.mjs download ${r.tag}${r.manifestDigest?' --manifest-sha256 '+r.manifestDigest:''}`,preflight:`node scripts/update.mjs preflight --package ${r.assets.find(a=>a.name.endsWith('.tar.gz'))?.name??'PACKAGE'}${r.manifestDigest?' --manifest-sha256 '+r.manifestDigest:''}`,apply:`node scripts/update.mjs apply --package ${r.assets.find(a=>a.name.endsWith('.tar.gz'))?.name??'PACKAGE'}${r.manifestDigest?' --manifest-sha256 '+r.manifestDigest:''}`}})),installedManifestDigest:hub.version.packageDigest??null,signature:hub.version.packageDigest?'verified':'legacy',compatibility:'unknown',instructions:'CLI preflight is required for instance compatibility; the browser cannot install or change trust.'},...field('summary',updateSummary(view,zone(hub))),...(disabled?{disabled}:{}),
   // The hub never applies an update. `tag` is the release to switch to and `command` what a person runs on the

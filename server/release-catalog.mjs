@@ -5,7 +5,7 @@ import {parse,compare} from './semver.mjs';
 import {mkdirSync,createWriteStream,rmSync,renameSync,readFileSync} from 'node:fs';
 import path from 'node:path';import {Readable} from 'node:stream';import {pipeline} from 'node:stream/promises';
 import {authenticatePackageMetadata,verifyPackage} from './release-package.mjs';
-import {durableWrite,sha256} from './release-trust.mjs';
+import {durableWrite} from './safe-fs.mjs';
 export function selectPublished(releases,{channel='stable'}={}){return pickRelease(releases,{allowPrerelease:channel==='prerelease'});}
 export function publishedCatalog(releases,{repository,channel='stable'}={}){
  if(!validRepo(repository))throw new Error('invalid fixed release repository');const unique=new Map();
