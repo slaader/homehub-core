@@ -71,17 +71,25 @@ export const citationOf=r=>r?.source==='attachment'&&typeof r.name==='string'&&r
 // semanticAvailable, mode and attachmentSearch.state (ready | indexing | degraded | disabled | closed).
 // requested = the mode the page asked for. → {tone, body, fallback} or null when the results are complete.
 export function searchNotice(data,requested='text'){
- const state=data?.attachmentSearch?.state;
+ const as=data?.attachmentSearch,state=as?.state,x=as?.extraction;
+ const hasExtractionIssues=Boolean(x&&typeof x==='object'&&['oversize','invalid','missing','capacity','metadataCapacity','ticketCapacity'].some(k=>Number.isInteger(x[k])&&x[k]>0));
  if(requested!=='text'&&data?.semanticAvailable!==true)return {tone:'warn',fallback:true,
   body:t('Hledání podle významu je vypnuté. Zapnout ho může správce v Nastavení platformy; do té doby hledej fulltextem.')};
- if(state==='degraded')return {tone:'warn',body:t('Část obsahu příloh se do indexu nevešla nebo ji nešlo přečíst. Výsledky nemusí být úplné.')};
+ if(requested==='hybrid'&&data?.mode==='text'){
+  if(state==='degraded')return {tone:'warn',body:hasExtractionIssues
+   ?t('Významová část selhala a část obsahu příloh není v indexu; výsledky jsou jen z fulltextu a nemusí být úplné.')
+   :t('Významová část selhala; výsledky jsou zatím jen z fulltextu.')};
+  return {tone:'info',body:t('Významová část ještě není připravená; výsledky jsou zatím jen z fulltextu.')};
+ }
+ if(state==='degraded')return {tone:'warn',body:hasExtractionIssues
+  ?t('Část obsahu příloh se do indexu nevešla nebo ji nešlo přečíst. Výsledky nemusí být úplné.')
+  :t('Index nebo poskytovatel hledání hlásí chyby. Výsledky nemusí být úplné.')};
  if(state==='indexing'||state==='closed')return {tone:'info',body:t('Index hledání ještě není úplný. Prázdný výsledek teď nemusí znamenat, že záznam neexistuje.')};
- if(requested==='hybrid'&&data?.mode==='text')return {tone:'info',body:t('Významová část ještě není připravená; výsledky jsou zatím jen z fulltextu.')};
  return null;
 }
 const hit=r=>el('a',{class:`sr-hit ${r.kind}`,href:resultHref(r)},
  el('div',{class:'sr-hit-meta'},el('span',{class:'sr-id'},r.id),stateOf(r),r.project?el('span',{},r.project):null,r.meta?.assignee?el('span',{},r.meta.assignee):null,
-  citationOf(r)?el('span',{class:'sr-source',title:t('Nalezeno v obsahu přílohy')},el('span',{'aria-hidden':'true'},'📎 '),t('Příloha: {name}',{name:citationOf(r)})):null,
+  citationOf(r)?el('span',{class:'sr-source'},el('span',{'aria-hidden':'true'},'📎 '),t('Příloha: {name}',{name:citationOf(r)})):null,
   r.updatedAt?el('span',{class:'sr-date'},when(r.updatedAt)):null),
  el('b',{class:'sr-title'},...marked(titleOf(r))),
  r.snippet?el('p',{},...marked(r.snippet)):null);
@@ -90,12 +98,14 @@ export function searchView(me,sub){
  const q=queryOf(sub),modePicker=el('div',{class:'sr-mode'}),notice=el('div',{class:'sr-notice'}),body=el('div',{class:'sr-body','aria-live':'polite'},el('p',{class:'sec-dim',role:'status'},q?t('Hledám…'):t('Načítám…')));
  const view=el('section',{class:'sec tk sr'},pageHeader({eyebrow:t('Hledání'),title:q?t('Hledání: {q}',{q}):t('Hledání'),lead:q?undefined:t('Napiš, co hledáš: slova z názvu, popisu, komentářů nebo poznámek.')}),modePicker,notice,body);
  const live=sessionTicket(),lost=authGuard(live);
- let only='',mode='text';
+ let only='',mode='text',modeSelect=null;
  function chooseMode(data){
-  if(!data.semanticAvailable&&mode==='text'){modePicker.replaceChildren();return;}
-  const select=el('select',{'aria-label':t('Způsob hledání'),onchange:()=>{mode=select.value;search();}},
+  if(!data.semanticAvailable&&mode==='text'){modeSelect=null;modePicker.replaceChildren();return;}
+  if(modeSelect&&modeSelect.isConnected){modeSelect.value=mode;return;}
+  modeSelect=el('select',{'aria-label':t('Způsob hledání'),onchange:()=>{mode=modeSelect.value;search();}},
    [['text',t('Fulltext (výchozí)')],['semantic',t('Podle významu (tickety)')],['hybrid',t('Hybridní (tickety)')]].map(([id,label])=>el('option',{value:id,selected:mode===id?'':null},label)));
-  modePicker.replaceChildren(el('label',{},t('Způsob hledání'),' ',select));
+  modeSelect.value=mode;
+  modePicker.replaceChildren(el('label',{},t('Způsob hledání'),' ',modeSelect));
  }
  function showNotice(data){
   const n=searchNotice(data,mode);

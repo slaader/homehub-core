@@ -30,7 +30,12 @@ test('search notice: one line per readiness state, nothing when the results are 
  assert.equal(searchNotice({...ready,attachmentSearch:{state:'indexing'}}).tone,'info');
  assert.equal(searchNotice({...ready,attachmentSearch:{state:'closed'}}).tone,'info');
  const degraded=searchNotice({...ready,attachmentSearch:{state:'degraded',extraction:{capacity:1}}});
- assert.equal(degraded.tone,'warn');assert.match(degraded.body,/may be incomplete/);
+ assert.equal(degraded.tone,'warn');assert.match(degraded.body,/attachment contents.*may be incomplete/i);
+ const degradedProvider=searchNotice({...ready,mode:'text',attachmentSearch:{state:'degraded',extraction:{attachments:0,indexed:0}}},'hybrid');
+ assert.equal(degradedProvider.tone,'warn');assert.match(degradedProvider.body,/Meaning-based search failed.*full-text search only/);
+ assert.doesNotMatch(degradedProvider.body,/attachment/i,'provider failure with zero attachment issues does not blame attachments');
+ const degradedGeneral=searchNotice({...ready,attachmentSearch:{state:'degraded',extraction:{attachments:0,indexed:0}}},'text');
+ assert.equal(degradedGeneral.tone,'warn');assert.doesNotMatch(degradedGeneral.body,/attachment/i);
  const off=searchNotice({...ready,semanticAvailable:false,attachmentSearch:{state:'disabled'}},'semantic');
  assert.equal(off.tone,'warn');assert.equal(off.fallback,true);assert.match(off.body,/turned off/);
  assert.equal(searchNotice({...ready,semanticAvailable:false},'hybrid').fallback,true);
@@ -38,7 +43,7 @@ test('search notice: one line per readiness state, nothing when the results are 
  assert.equal(searchNotice({...ready,mode:'hybrid'},'hybrid'),null);
 });
 
-test('search: an attachment-content hit cites its file by name, as text only',async()=>{
+test('search: an attachment hit cites its file by name as plain text without overstating content match',async()=>{
  assert.equal(citationOf({source:'attachment',name:'notes.txt'}),'notes.txt');
  assert.equal(citationOf({source:'ticket',name:'x'}),null);assert.equal(citationOf({source:'attachment'}),null);assert.equal(citationOf(null),null);
  const evil='<img src=x onerror=alert(1)>.txt';
@@ -48,7 +53,7 @@ test('search: an attachment-content hit cites its file by name, as text only',as
  document.body.replaceChildren(searchView(admin,'token'));await tick();
  const [first,second]=byClass(document.body,'sr-hit');
  const source=byClass(first,'sr-source')[0];assert.ok(source,'the citation is drawn');
- assert.equal(source.textContent,`📎 Attachment: ${evil}`);assert.equal(source.getAttribute('title'),'Found in the attachment contents');
+ assert.equal(source.textContent,`📎 Attachment: ${evil}`);assert.equal(source.getAttribute('title'),null);
  assert.ok(!nodes(document.body).some(n=>n.tagName==='img'),'a file name never becomes markup');
  assert.equal(byClass(second,'sr-source').length,0,'a ticket hit has no citation');
  assert.equal(find(first,n=>n.tagName==='mark').textContent,'token');
@@ -77,8 +82,10 @@ test('search: semantic switched off while asked for offers full-text, and the ad
  for(const me of [admin,{...admin,canAdmin:false,role:'viewer'}]){
   requests.length=0;available=true;
   document.body.replaceChildren(searchView(me,'login'));await tick();
-  const select=find(document.body,n=>n.tagName==='select');select.value='semantic';available=false;fire(select,'change');await tick();
+  const select=find(document.body,n=>n.tagName==='select');select.focus();select.value='semantic';available=false;fire(select,'change');await tick();
   assert.deepEqual(requests,['text','semantic']);
+  assert.equal(document.activeElement,select,'changing search mode preserves keyboard focus on the mode selector');
+  assert.ok(select.isConnected);
   const notice=byClass(document.body,'ui-banner')[0];assert.ok(notice?.classList.contains('warn'));assert.match(notice.textContent,/Meaning-based search is turned off/);
   assert.equal(nodes(notice).some(n=>n.getAttribute?.('href')==='#platform-settings'),me.canAdmin,'only an admin gets the settings link');
   const back=find(notice,n=>n.tagName==='button'&&n.textContent==='Search full-text');fire(back,'click');await tick();
@@ -102,17 +109,25 @@ test('search: a kind chip keeps the keyboard focus after the results are redrawn
  assert.match(document.body.textContent,/Search is unavailable right now/);
 });
 
-test('platform settings: the status is read once from the canonical top-level fields',()=>{
- const status={state:'ready',semanticState:'indexing',coverage:{chunks:4,embedded:1,pending:3,failed:0,ratio:.25},
-  extraction:{attachments:5,indexed:2,unsupported:1,oversize:1,invalid:0,missing:0,capacity:1,metadataCapacity:0,ticketCapacity:0}};
+test('platform settings: status reads canonical fields, lexicalReady, status.provider, and separate limit units',()=>{
+ const status={state:'ready',lexicalReady:true,semanticState:'indexing',coverage:{chunks:4,embedded:1,pending:3,failed:0,ratio:.25},
+  extraction:{attachments:5,indexed:2,unsupported:1,oversize:1,invalid:0,missing:0,capacity:1,metadataCapacity:2,ticketCapacity:3}};
  const v=searchStatusView({configured:true,enabled:true,status});
  assert.deepEqual(v.fullText,{label:'Ready',tone:'good'});assert.deepEqual(v.semantic,{label:'Indexing',tone:'info'});
  assert.deepEqual(v.vectors,{done:1,total:4,failed:0});
  assert.deepEqual(v.attachments,{total:5,indexed:2,omitted:[{key:'unsupported',label:'unsupported type',n:1},{key:'oversize',label:'too large',n:1},{key:'capacity',label:'over the index limit',n:1}]});
+ assert.deepEqual(v.limits,[{key:'metadataCapacity',label:'attachment metadata over limit',n:2},{key:'ticketCapacity',label:'tickets over the index limit',n:3}]);
+ // lexicalReady=true keeps Full-text Ready even while aggregate state is indexing vectors or provider degraded without extraction issues.
+ assert.deepEqual(searchStatusView({configured:true,enabled:true,status:{...status,state:'indexing',lexicalReady:true}}).fullText,{label:'Ready',tone:'good'});
+ assert.deepEqual(searchStatusView({configured:true,enabled:true,status:{state:'degraded',lexicalReady:true,semanticState:'degraded',extraction:{attachments:0,indexed:0}}}).fullText,{label:'Ready',tone:'good'});
+ // Provider metadata supplied only under status.provider works identically to legacy top-level configured/model.
+ const nested=searchStatusView({enabled:true,status:{...status,provider:{configured:true,model:'nested-model'}}});
+ assert.deepEqual(nested.provider,{configured:true,model:'nested-model'});
+ assert.deepEqual(nested.semantic,{label:'Indexing',tone:'info'});
  assert.deepEqual(searchStatusView({configured:true,enabled:false,status}).semantic,{label:'Off',tone:''});
  assert.deepEqual(searchStatusView({configured:false,enabled:false,status}).semantic,{label:'Not configured',tone:''});
  assert.deepEqual(searchStatusView({configured:true,enabled:true,status:{...status,semanticState:'degraded'}}).semantic.tone,'bad');
- assert.deepEqual(searchStatusView({configured:true,enabled:true,status:{...status,state:'degraded'}}).fullText,{label:'Incomplete',tone:'warn'});
+ assert.deepEqual(searchStatusView({configured:true,enabled:true,status:{state:'degraded'}}).fullText,{label:'Incomplete',tone:'warn'});
  const empty=searchStatusView({configured:true,enabled:true});
  assert.deepEqual(empty.vectors,{done:0,total:0,failed:0},'a missing field counts as zero');assert.equal(empty.fullText.label,'—');
  assert.equal(searchStatusView({status:{state:'warming'}}).fullText.label,'warming','an unknown state is shown as it is');
@@ -146,6 +161,31 @@ test('platform settings: saving keeps the focus on the toggle and says it saved;
  fire(document.activeElement,'click');await tick();
  assert.match(document.body.textContent,/Request failed\./,'an HTML error page is not shown as a parser error');
  assert.equal(document.activeElement.textContent,'Try again');assert.ok(document.activeElement.isConnected);
+});
+
+test('platform settings: late refresh cannot overwrite a newer save, and status.provider enables the toggle',async()=>{
+ let releaseStale;
+ const staleGet=new Promise(r=>{releaseStale=r;});
+ let getCount=0;
+ globalThis.fetch=async(url,options={})=>{
+  if(options.method==='POST')return reply({enabled:false,status:{state:'ready',lexicalReady:true,semanticState:'disabled',provider:{configured:true,model:'canonical-model'},coverage:{chunks:3,embedded:0}}});
+  if(++getCount===1)return reply({enabled:true,status:{state:'ready',lexicalReady:true,semanticState:'ready',provider:{configured:true,model:'canonical-model'},coverage:{chunks:3,embedded:3}}});
+  return staleGet;
+ };
+ document.body.replaceChildren(platformSettingsPage({me:admin}));await tick();
+ assert.match(document.body.textContent,/Provider configured\. Model: canonical-model/);
+ assert.match(document.body.textContent,/3\/3/);
+ const refresh=find(document.body,n=>n.tagName==='button'&&n.textContent==='Refresh status');
+ fire(refresh,'click');
+ const toggle=find(document.body,n=>n.getAttribute?.('id')==='semantic-enabled');
+ assert.equal(toggle.hasAttribute('disabled'),false);
+ toggle.checked=false;fire(toggle,'change');await tick();
+ assert.equal(document.activeElement.getAttribute('id'),'semantic-enabled');
+ assert.equal(document.activeElement.hasAttribute('checked'),false);
+ releaseStale(reply({enabled:true,status:{state:'ready',lexicalReady:true,semanticState:'ready',provider:{configured:true,model:'canonical-model'},coverage:{chunks:3,embedded:3}}}));
+ await tick();
+ assert.equal(document.activeElement.getAttribute('id'),'semantic-enabled','stale GET does not steal focus');
+ assert.equal(document.activeElement.hasAttribute('checked'),false,'stale GET does not revert saved toggle');
 });
 
 test('both pages: text-safe DOM, shared components, design tokens',()=>{

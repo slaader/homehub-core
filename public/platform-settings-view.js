@@ -24,48 +24,64 @@ const count=v=>Number.isInteger(v)&&v>0?v:0;
 const FULL_TEXT=()=>({ready:[t('Připraveno'),'good'],indexing:[t('Indexuje se'),'info'],degraded:[t('Neúplné'),'warn'],closed:[t('Zastaveno'),'']});
 const SEMANTIC=()=>({ready:[t('Připraveno'),'good'],indexing:[t('Indexuje se'),'info'],degraded:[t('Chyby poskytovatele'),'bad'],closed:[t('Zastaveno'),''],disabled:[t('Vypnuto'),'']});
 const OMITTED=()=>[['unsupported',t('nepodporovaný typ')],['oversize',t('příliš velké')],['invalid',t('neplatné UTF-8')],['missing',t('chybí soubor')],['capacity',t('nad limit indexu')]];
-// What GET /api/admin/platform/search says, read once from the canonical status: state (the full-text index),
-// semanticState, coverage (vectors) and extraction (attachment contents) are top-level fields of `status`;
+const LIMITS=()=>[['metadataCapacity',t('metadata příloh nad limit')],['ticketCapacity',t('tickety nad limit indexu')]];
+function providerInfo(data){
+ const p=data?.status?.provider&&typeof data.status.provider==='object'?data.status.provider:{};
+ const configured=typeof data?.configured==='boolean'?data.configured:Boolean(p.configured);
+ const model=data?.model??p.model??null;
+ return {configured,model};
+}
+// What GET /api/admin/platform/search says, read once from the canonical status: state, lexicalReady,
+// semanticState, provider, coverage (vectors) and extraction (attachment contents) are top-level fields of `status`;
 // a missing one counts as zero, an unknown state word is shown as it is.
-// → {fullText:{label,tone}, semantic:{label,tone}, vectors:{done,total,failed}, attachments:{total,indexed,omitted:[{key,label,n}]}}
+// → {provider:{configured,model}, fullText:{label,tone}, semantic:{label,tone}, vectors:{done,total,failed}, attachments:{total,indexed,omitted:[{key,label,n}]}, limits:[{key,label,n}]}
 export function searchStatusView(data){
  const s=data?.status&&typeof data.status==='object'?data.status:{},c=s.coverage||{},x=s.extraction||{};
+ const provider=providerInfo(data);
  const pick=(table,state)=>{const [label,tone]=table[state]||[String(state??'—'),''];return {label,tone};};
- const semantic=!data?.configured?{label:t('Nenastaveno'),tone:''}:!data.enabled?{label:t('Vypnuto'),tone:''}:pick(SEMANTIC(),s.semanticState);
- return {fullText:pick(FULL_TEXT(),s.state),semantic,
+ const extractionIssues=count(x.oversize)+count(x.invalid)+count(x.missing)+count(x.capacity)+count(x.metadataCapacity)+count(x.ticketCapacity);
+ const fullTextState=s.lexicalReady===true?(s.state==='degraded'&&extractionIssues>0?'degraded':'ready'):s.state;
+ const semantic=!provider.configured?{label:t('Nenastaveno'),tone:''}:!data?.enabled?{label:t('Vypnuto'),tone:''}:pick(SEMANTIC(),s.semanticState);
+ return {provider,fullText:pick(FULL_TEXT(),fullTextState),semantic,
   vectors:{done:count(c.embedded),total:count(c.chunks),failed:count(c.failed)},
   attachments:{total:count(x.attachments),indexed:count(x.indexed),
-   omitted:OMITTED().map(([key,label])=>({key,label,n:key==='capacity'?count(x.capacity)+count(x.metadataCapacity)+count(x.ticketCapacity):count(x[key])})).filter(o=>o.n)}};
+   omitted:OMITTED().map(([key,label])=>({key,label,n:count(x[key])})).filter(o=>o.n)},
+  limits:LIMITS().map(([key,label])=>({key,label,n:count(x[key])})).filter(o=>o.n)};
 }
 function statusList(data){
  const v=searchStatusView(data),row=(term,...value)=>[el('dt',{},term),el('dd',{},...value)];
  return el('dl',{class:'set-dl'},
   row(t('Fulltext'),statusPill(v.fullText.label,v.fullText.tone)),
   row(t('Sémantické hledání'),statusPill(v.semantic.label,v.semantic.tone)),
-  data?.configured?row(t('Vektory'),`${v.vectors.done}/${v.vectors.total}`,v.vectors.failed?statusPill(tp(v.vectors.failed,'{n} selhal|{n} selhaly|{n} selhalo'),'bad'):null):null,
+  v.provider.configured?row(t('Vektory'),`${v.vectors.done}/${v.vectors.total}`,v.vectors.failed?statusPill(tp(v.vectors.failed,'{n} selhal|{n} selhaly|{n} selhalo'),'bad'):null):null,
   v.attachments.total?row(t('Obsah příloh'),t('{indexed} z {total} v indexu',{indexed:v.attachments.indexed,total:v.attachments.total}),
-   ...v.attachments.omitted.map(o=>el('span',{class:'set-dim'},`· ${o.label}: ${o.n}`))):null);
+   ...v.attachments.omitted.map(o=>el('span',{class:'set-dim'},`· ${o.label}: ${o.n}`))):null,
+  v.limits.length?row(t('Limity indexu'),...v.limits.map((o,i)=>el('span',{class:'set-dim'},`${i?'· ':''}${o.label}: ${o.n}`))):null);
 }
 export function platformSettingsPage({me}){
  if(!me?.canAdmin)return emptyState({icon:'◇',title:t('Vyžaduje správce'),body:t('Nastavení platformy je jen pro správce přihlášeného heslem.')});
  const live=sessionTicket(),content=el('div',{'aria-live':'polite'},t('Načítám…'));
+ let version=0;
  // focus: which control gets the keyboard back after the card is drawn again ('toggle' | 'refresh').
  async function load(focus){
-  try{const data=await request();if(live())draw(data,{focus});}
-  catch(e){if(!live())return;const retry=el('button',{type:'button',class:'ui-button',onclick:()=>load('refresh')},t('Zkusit znovu'));
+  const req=++version;
+  try{const data=await request();if(live()&&req===version)draw(data,{focus});}
+  catch(e){if(!live()||req!==version)return;const retry=el('button',{type:'button',class:'ui-button',onclick:()=>load('refresh')},t('Zkusit znovu'));
    content.replaceChildren(el('p',{class:'set-status bad',role:'alert'},e.message),retry);if(focus)retry.focus();}
  }
  function draw(data,{focus,saved}={}){
+  const {configured,model}=providerInfo(data);
   const status=el('p',{class:`set-status${saved?' good':''}`,role:'status'},saved?t('Uloženo.'):'');
-  const toggle=el('input',{id:'semantic-enabled',type:'checkbox',checked:data.enabled?'':null,disabled:!data.configured?'':null,'aria-describedby':data.configured?null:'semantic-provider-missing',onchange:async()=>{
+  const toggle=el('input',{id:'semantic-enabled',type:'checkbox',checked:data.enabled?'':null,disabled:!configured?'':null,'aria-describedby':configured?null:'semantic-provider-missing',onchange:async()=>{
+   const req=++version;
    toggle.disabled=true;status.className='set-status';status.textContent=t('Ukládám…');
-   try{const next=await request({enabled:toggle.checked});if(live())draw(next,{focus:'toggle',saved:true});}
-   catch(e){if(live()){toggle.checked=data.enabled;toggle.disabled=!data.configured;status.textContent=e.message;status.className='set-status bad';toggle.focus();}}
+   try{const next=await request({enabled:toggle.checked});if(live()&&req===version)draw(next,{focus:'toggle',saved:true});}
+   catch(e){if(live()&&req===version){toggle.checked=data.enabled;toggle.disabled=!configured;status.textContent=e.message;status.className='set-status bad';toggle.focus();}}
   }});
   const refresh=el('button',{type:'button',class:'ui-button',onclick:()=>load('refresh')},t('Obnovit stav'));
-  const provider=data.configured?el('p',{class:'set-dim'},t('Poskytovatel je nastaven. Model: {model}',{model:data.model??'—'}))
+  const provider=configured?el('p',{class:'set-dim'},t('Poskytovatel je nastaven. Model: {model}',{model:model??'—'}))
    :banner({tone:'warn',body:t('Nejdřív nastav poskytovatele na serveru a restartuj Home Hub. Potom lze hledání zapnout tady.')});
-  if(!data.configured)provider.setAttribute('id','semantic-provider-missing');
+  if(!configured)provider.setAttribute('id','semantic-provider-missing');
   content.replaceChildren(
    el('section',{class:'set-card'},el('h3',{},t('Hledání')),
     el('p',{},t('Fulltext je výchozí. Hledá přesné chyby, identifikátory, metadata příloh a podporovaný textový obsah.')),
