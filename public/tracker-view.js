@@ -161,8 +161,9 @@ function noProjects({canWrite},redraw){
   actions:canWrite?[{label:t('+ Nový projekt'),primary:true,onclick:()=>newProject(redraw)}]:[]});
 }
 function projectChips(projects,onPick,state=filters){
- return el('div',{class:'sys-chips tk-chips'},[['',t('Všechny projekty')],...projects.map(p=>[p.id,p.name])].map(([id,name])=>
-  el('button',{type:'button',class:`sys-chip${state.project===id?' on':''}`,'aria-pressed':String(state.project===id),'aria-label':id?t('Projekt {name}',{name}):name,onclick:()=>{state.project=id;if('release'in state)state.release='';onPick();}},name)));
+ return el('div',{class:'sys-chips tk-chips'},[['',t('Všechny projekty')],...projects.map(p=>[p.id,p.name,p.settings?.color])].map(([id,name,color])=>
+  el('button',{type:'button',class:`sys-chip${state.project===id?' on':''}`,'aria-pressed':String(state.project===id),'aria-label':id?t('Projekt {name}',{name}):name,onclick:()=>{state.project=id;if('release'in state)state.release='';onPick();}},
+   color?el('span',{class:'dot','aria-hidden':'true','data-project-color':color}):null,name)));
 }
 
 // List ------------------------------------------------------------------------------------------

@@ -371,6 +371,7 @@ test('project settings and its table keep preferences, requests and new items sc
  assert.ok(get.every(q=>q.project===project));
  get.length=0;
  const global=await render('#items');assert.ok(global.textContent.includes('Foreign item'));assert.ok(get.every(q=>!q.project));
+ assert.ok(nodes(global,n=>n.attrs.class==='dot'&&n.attrs['data-project-color']==='blue').length);
  const look='#projects/'+project+'/settings/look';
  const reader=await render(look,{canWrite:true,scopes:['read']});
  assert.equal(buttonText(reader,'Save changes'),undefined);assert.ok(reader.textContent.includes('Look and feel'));
