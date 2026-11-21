@@ -2,7 +2,7 @@ import {createHash,randomBytes} from 'node:crypto';
 import {exactKeys,extractLinks,normalizeDoc,PAGE_ID,WIKI_LIMITS,wikiTitle,wikiAssetIds,wikiAttachment,wikiAttachmentRefs,wikiDisplayType} from '../public/wiki-doc.js';
 import {PROJECT_ID,TICKET_ID} from './tickets-store.mjs';
 
-import {referenceGuard} from './reference-records.mjs';
+import {createMentionGuard} from './references.mjs';
 export const WIKI_SCHEMA=4;
 const ALPHABET='abcdefghijklmnopqrstuvwxyz234567';
 const fail=code=>{throw new Error(code);};
@@ -147,8 +147,11 @@ function orderedTree(pages){
  return ordered;
 }
 
-export function createWikiStore(db,tickets,machines=async()=>[]){
+export function createWikiStore(db,tickets,{mentionGuard=null}={}){
  const store=wikiCollection(db);
+ const wikiProjectQuery=db.db.prepare("SELECT json_extract(doc,'$.project') AS project FROM docs WHERE kind='wiki' AND coll='summaries' AND id=?");
+ const wikiProjectSync=id=>wikiProjectQuery.get(id)?.project??null;
+ const guardMentions=mentionGuard??createMentionGuard({db,tickets,wiki:{wikiProjectSync}});
  let cached=null;
 
  async function projectOf(id){
@@ -215,7 +218,7 @@ export function createWikiStore(db,tickets,machines=async()=>[]){
   const title=wikiTitle(input.title),project=await projectOf(input.project),id=pageId(),key=wikiKey(project.id,id);
   const parent=input.parentId===undefined?undefined:parentOf(input.parentId);
   const doc=input.doc===undefined?emptyDoc():normalizeDoc(input.doc);
-  const validate=await referenceGuard(db,machines,docRefs(doc));
+  const validate=await guardMentions(docRefs(doc));
   const receipt=retryKey(project.id,'create',input.requestId,actor,requireRequestId),fingerprint=hash([parent,title,doc]);
   const selection={wikis:[project.id],pages:[key],summaries:project.id+'/',assets:wikiAssetIds(doc).map(id=>wikiKey(project.id,id)),
    receipts:receipt?[receipt]:[]};
@@ -246,7 +249,7 @@ export function createWikiStore(db,tickets,machines=async()=>[]){
   const key=wikiKey(project.id,input.id);
   // Read only the previous asset IDs here. The revision is checked again inside the write transaction.
   const doc=input.doc===undefined?undefined:normalizeDoc(input.doc);
-  const validate=await referenceGuard(db,machines,doc?docRefs(doc):[]);
+  const validate=await guardMentions(doc?docRefs(doc):[]);
   const old=doc===undefined?null:await get(project.id,input.id);
   if(old)checkRevision(old,input.rev);
   const assets=old?[...new Set([...wikiAssetIds(old.doc),...wikiAssetIds(doc)])].map(id=>wikiKey(project.id,id)):[];
@@ -343,5 +346,5 @@ export function createWikiStore(db,tickets,machines=async()=>[]){
   });
  }
 
- return {summaries,version:store.version,projectOf,index,list,get,withAssets,setup,create,update,move,attach,backlinks,pruneReceipts};
+ return {summaries,version:store.version,projectOf,index,list,get,withAssets,setup,create,update,move,attach,backlinks,pruneReceipts,wikiProjectSync};
 }

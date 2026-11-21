@@ -82,7 +82,7 @@ export default {
  ],
  setup(hub){
   const dir=path.join(hub.stateDirectory,'tickets');
-  const tickets=createTicketStore(dir,{db:hub.db,seedProjects:hub.site.tracker.projects,machines:()=>hub.state('references').machines()}),ticketFiles=createTicketFiles(dir);
+  const tickets=createTicketStore(dir,{db:hub.db,seedProjects:hub.site.tracker.projects,mentionGuard:refs=>hub.state('references').prepareMentionGuard(refs)}),ticketFiles=createTicketFiles(dir);
   const ticketSearch=createPlatformSearch(dir,{db:hub.db,tickets,ticketFiles,...hub.options.ticketSearch});
   return {tickets,ticketFiles,ticketSearch,fullTextSearch:input=>fullTextSearch({db:hub.db,tickets,ticketSearch},input)};
  },

@@ -4,7 +4,8 @@
 // release carries `rev`; an update must send the rev it read, otherwise it is refused as a conflict (read
 // again, reapply). Comments are append-only and need no rev.
 // Errors are thrown as Error('invalid' | 'not-found' | 'conflict' | 'limit').
-import {referenceGuard} from './reference-records.mjs';
+import {createMentionGuard} from './references.mjs';
+import {referenceHref} from '../public/reference-format.js';
 import {markdownReferences} from '../public/tracker-markdown-format.js';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
@@ -86,12 +87,19 @@ export function ticketFilter(filter,keys=FILTERS){
   return {f,match};
  }
 
-export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seedProjects=[],machines=async()=>[]}={}){
+export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seedProjects=[],mentionGuard=null}={}){
  let queue=Promise.resolve(),searchRevision=0;const searchListeners=new Set();
  const store=db.collection('tickets',{empty:()=>empty(seedProjects),legacy:path.join(root,'tickets.json'),searchKinds:['ticket'],search:ticketSearch,
   valid:d=>d?.schema===1&&Array.isArray(d.projects)&&Array.isArray(d.releases)&&Array.isArray(d.tickets),
   split:({projects,releases,tickets,...meta})=>({meta,colls:{projects:rows(projects,p=>p.id),releases:rows(releases,r=>r.project+'/'+r.version),tickets:rows(tickets,t=>t.id)}}),
   join:(meta,c)=>({...meta,projects:docs(c.projects),releases:docs(c.releases),tickets:docs(c.tickets)})});
+ const refSummaryQuery=db.db.prepare("SELECT id,json_extract(doc,'$.title') AS title,json_extract(doc,'$.project') AS project FROM docs WHERE kind='tickets' AND coll='tickets'");
+ const mentionCandidatesQuery=db.db.prepare("SELECT doc FROM docs WHERE kind='tickets' AND coll='tickets' AND instr(doc,?)>0");
+ const hasProjectQuery=db.db.prepare("SELECT 1 FROM docs WHERE kind='tickets' AND coll='projects' AND id=?");
+ const ticketProjectQuery=db.db.prepare("SELECT json_extract(doc,'$.project') AS project FROM docs WHERE kind='tickets' AND coll='tickets' AND id=?");
+ const hasProjectSync=id=>Boolean(hasProjectQuery.get(id));
+ const ticketProjectSync=id=>ticketProjectQuery.get(id)?.project??null;
+ const guardMentions=mentionGuard??createMentionGuard({db,tickets:{hasProjectSync,ticketProjectSync}});
  // Serialised read-modify-write; fn mutates the document and returns the reply. A throw writes nothing.
  function write(fn,selection={projects:null,releases:null,tickets:null}){
   const run=queue.then(()=>store.change(selection,(data,count)=>{
@@ -232,10 +240,25 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
   if('refs'in input)out.refs=refs(input.refs);
   return out;
  }
+ async function referenceSummaries(){await store.version();return refSummaryQuery.all();}
+ async function findMentionUsages(kind,id){
+  const keys=(await projects()).map(p=>p.key),hits=[];
+  // A token (including a legacy ticket link) always contains its literal ID. Preselect candidate documents in SQLite.
+  for(const row of mentionCandidatesQuery.iterate(id)){
+   const tk=JSON.parse(row.doc);
+   const attachmentNames=[...(tk.attachments??[]).map(a=>a.name),...(tk.history??[]).filter(h=>h.field==='attachment'&&h.to===null).map(h=>h.from)];
+   for(const [text,field,updatedAt] of [[tk.description,'description',tk.updatedAt],...tk.comments.map(c=>[c.text,'comment/'+c.id,c.at])]){
+    if(!text.includes(id))continue;
+    const hit=markdownReferences(text,{keys,attachmentNames}).find(r=>r.kind===kind&&r.id===id);
+    if(hit)hits.push({source:{kind:'ticket',id:tk.id,label:tk.title,project:tk.project,href:referenceHref('ticket',tk.id)},field,updatedAt,excerpt:hit.excerpt});
+   }
+  }
+  return hits;
+ }
  async function guardText(value){
   if(typeof value!=='string'||!value.includes('@['))return ()=>{};
   // File chip resolution changes the presentation, while the shared parser keeps filename text isolated.
-  const validate=await referenceGuard(db,machines,markdownReferences(value));
+  const validate=await guardMentions(markdownReferences(value));
   return (project,previous='')=>validate(project,markdownReferences(previous));
  }
  async function create(input,by){
@@ -319,5 +342,5 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
    const p={id:input.id,key:input.key,name,description:description??'',type:type??null,settings:{...PROJECT_SETTINGS,...settings},createdAt:now,createdBy:by,updatedAt:now,rev:1,next:1};data.projects.push(p);return publicProject(p);
   },{projects:null});
  }
- return {version:store.version,searchSnapshot:async()=>({revision:searchRevision,tickets:await store.list('tickets')}),searchRevision:()=>searchRevision,onSearchChange:fn=>{searchListeners.add(fn);return ()=>searchListeners.delete(fn);},validateSearchFilters:filter=>ticketFilter(filter),list,projects,get,search,people,create,update,comment,saveRelease,saveProject,attach,detach,attachment};
+ return {version:store.version,searchSnapshot:async()=>({revision:searchRevision,tickets:await store.list('tickets')}),searchRevision:()=>searchRevision,onSearchChange:fn=>{searchListeners.add(fn);return ()=>searchListeners.delete(fn);},validateSearchFilters:filter=>ticketFilter(filter),list,projects,get,search,people,create,update,comment,saveRelease,saveProject,attach,detach,attachment,referenceSummaries,findMentionUsages,hasProjectSync,ticketProjectSync};
 }
