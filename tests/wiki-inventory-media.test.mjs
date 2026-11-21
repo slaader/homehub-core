@@ -124,3 +124,21 @@ test('read-only inventory keeps dense rows compact and preserves authored detail
  assert.equal(editor.querySelector('.wiki-stat-disclosure'),null);
  assert.equal(editor.querySelector('.wiki-cell-text'),null);
 });
+
+test('a folded cell keeps its early mention noninteractive and its full reference link in the body',async t=>{
+ installDom();
+ const {inlineNodes}=await import('../public/wiki-content.js');
+ const ref={t:'ref',kind:'machine',id:'example-host',label:'Example host'};
+ const savedFetch=globalThis.fetch;t.after(()=>{globalThis.fetch=savedFetch;});
+ globalThis.fetch=async()=>Response.json({items:[{...ref,label:'Current host'}]});
+ const c=[{t:'text',text:'See '},ref,{t:'text',text:' for details. '.repeat(30)},ref];
+ const region=wikiInventory({columns:[{id:'notes',label:'Notes'}],rows:[{cells:{notes:{c}}}]},
+  {group:()=>null,inline:runs=>inlineNodes(runs,{tickets:new Map()})});
+ await new Promise(resolve=>setImmediate(resolve));
+ const [summary]=withTag(region,'summary'),preview=summary.querySelector('.ref-chip');
+ assert.equal(preview.tagName,'span');assert.equal(preview.hasAttribute('href'),false);
+ assert.equal(summary.querySelectorAll('.ref-chip').length,1);
+ assert.equal(withTag(summary,'a').length,0);
+ assert.equal(preview.textContent,'Current host');
+ assert.deepEqual(withTag(region,'a').map(a=>a.getAttribute('href')),['#host-example-host','#host-example-host']);
+});

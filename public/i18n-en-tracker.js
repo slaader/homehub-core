@@ -3,6 +3,15 @@
 // strings passed to t() / tp(). Reused from other parts and not redefined: Hotovo, Jiné, Načítám…, Zkusit znovu,
 // Projekty, Releasy, Hledat, Hledání, Název, Stav, Typ, Popis, Verze, Upravit, Uložit, Zrušit, Požadavek selhal.
 export default {
+ 'Nastavení projektu':'Project settings','Nastavení projektu {name}':'Settings for {name}',
+ 'Obecné':'General','Vzhled projektu':'Look and feel','Funkce projektu':'Features','Barva projektu':'Project color',
+ 'Výchozí barva':'Default','Břidlicová':'Slate','Červená':'Red','Oranžová':'Orange','Jantarová':'Amber',
+ 'Zelená':'Green','Tyrkysová':'Teal','Modrá':'Blue','Fialová':'Violet',
+ 'Zobrazit plánování releasů v projektu.':'Show release planning in this project.',
+ 'Nabízet vytvoření review pro položky projektu.':'Offer review requests for project items.',
+ 'Zobrazit odkaz na wiki nebo možnost ji založit.':'Show the wiki link or the option to set it up.',
+ 'Nabízet sdílené reference a povolit jejich vytváření v tomto projektu.':'Suggest shared references and allow creating them from this project.',
+ 'Nastavení je pouze pro čtení.':'You have read-only access to these settings.',
  // types, statuses, priorities
  'Chyba':'Bug','Funkce':'Feature','Úkol':'Task',
  'Otevřený':'Open','Rozpracovaný':'In progress','Zrušený':'Cancelled',
