@@ -572,6 +572,15 @@ export function notesPage({me}) {
 }
 ```
 
+For observed devices, `/device-record.js` exports `showDeviceRecord(record, {edit})` and
+`editDeviceRecord(record, {saveRecord, view, onSaved})`. A record supplies a name and optional observed
+identity, address, connection, version and evidence fields. The editor reads `recognition`, `confidence`,
+`recordedName`, `recordedConfidence`, `manualValues` and the record's observed field values as defaults.
+Supply `edit` only when the caller may edit.
+The editor calls `saveRecord(record, values)` with the original record (including its revision) and the
+updated annotation values. Return the saved record or throw an error suitable for the form. The editor
+calls `view(record)` to return to details and invokes the optional `onSaved` after persistence.
+
 The header can say where the page's data comes from: `pageHeader({…, provenance})` with the `provenance` of
 the data answer draws a small pill next to the title, which opens the list of sources (keyboard: Enter or Space,
 Escape closes it). When the header is drawn before the data arrives, fill it later with

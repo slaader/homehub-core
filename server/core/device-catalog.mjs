@@ -25,7 +25,7 @@ const FIELDS={id:{type:'string'},name:{type:'string'},device:{type:'string'},kin
 const tool=async fn=>{try{return await fn();}catch(e){throw toolError(error(e)[2]);}};
 export default {
  id:'device-catalog',title:'Devices and services',
- assets:['device-catalog.js','device-catalog.css','i18n-en-catalog.js'],
+ assets:['device-catalog.js','device-catalog.css','i18n-en-catalog.js','device-record.js','device-record.css'],
  nav:[{groupKey:'Inventář',hash:'device-catalog',labelKey:'Zařízení a služby',view:'device-catalog.js#deviceCatalogPage',scope:'security:read',admin:true,order:19,icon:'flow'}],
  strings:{en:{'Zařízení a služby':'Devices and services'}},
  routes:[

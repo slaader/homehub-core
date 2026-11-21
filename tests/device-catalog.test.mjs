@@ -60,7 +60,13 @@ test('registration preserves unrelated inventory fields and validates device, en
 });
 
 test('HTTP registration uses inventory authorization and optimistic hashes; joined software data keeps security:read',async t=>{
- const h=await hub(t);const reader=await h.account('catalog-reader',['read']),writer=await h.account('catalog-writer',['read','inventory:write']),security=await h.account('catalog-security',['security:read']);
+ const h=await hub(t);
+ for(const [file,type] of [['device-record.js','javascript'],['device-record.css','text/css']]){
+  const response=await fetch(h.origin+'/'+file);
+  assert.equal(response.status,200,file);
+  assert.match(response.headers.get('content-type'),new RegExp(type));
+ }
+ const reader=await h.account('catalog-reader',['read']),writer=await h.account('catalog-writer',['read','inventory:write']),security=await h.account('catalog-security',['security:read']);
  const body={id:'studio-new-service',device:'studio',name:'Registered example',kind:'generic',binary:'/opt/bin/example',platform:'macos',mode:'server',port:9000};
  assert.equal((await h.post('/api/service-registrations',body,reader.headers)).status,403);
  const created=await h.post('/api/service-registrations',body,writer.headers);assert.equal(created.status,200);const result=await created.json();

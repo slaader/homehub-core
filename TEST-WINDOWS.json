@@ -11,8 +11,8 @@
       "budget_seconds": 600,
       "budget_approval": "Owner approved up to ten minutes per full-suite run for the wiki inventory release.",
       "last_run": {
-        "duration_seconds": 129.13,
-        "finished_at": "2026-11-21T14:54:45Z",
+        "duration_seconds": 131.66,
+        "finished_at": "2026-11-21T19:30:49Z",
         "result": "passed"
       }
     },
@@ -25,8 +25,8 @@
       "budget_seconds": 120,
       "budget_approval": null,
       "last_run": {
-        "duration_seconds": 0.09,
-        "finished_at": "2026-11-21T14:27:35Z",
+        "duration_seconds": 0.08,
+        "finished_at": "2026-11-21T19:28:38Z",
         "result": "passed"
       }
     },
@@ -83,6 +83,20 @@
       "last_run": {
         "duration_seconds": 3.09,
         "finished_at": "2026-11-21T14:46:06Z",
+        "result": "passed"
+      }
+    },
+    "device-record": {
+      "category": "feature",
+      "scope": "Shared device record dialog, editor and catalog asset delivery",
+      "commands": [
+        "npm test -- tests/device-record-dom.test.mjs tests/device-catalog.test.mjs"
+      ],
+      "budget_seconds": 120,
+      "budget_approval": null,
+      "last_run": {
+        "duration_seconds": 0.45,
+        "finished_at": "2026-11-21T19:32:50Z",
         "result": "passed"
       }
     }

@@ -1,0 +1,56 @@
+.device-record-dialog {
+  width: min(44rem, calc(100% - 2rem));
+  max-height: 88vh;
+  padding: var(--space-6);
+  overflow: auto;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-m);
+}
+.device-record-dialog::backdrop { background: var(--color-scrim); }
+.device-record-dialog .detail-head,
+.device-record-dialog .form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.device-record-dialog .details {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) minmax(0, 2fr);
+  gap: var(--space-3);
+  overflow-wrap: anywhere;
+}
+.device-record-dialog .eyebrow {
+  color: var(--color-text-dim);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-caps);
+}
+.device-record-dialog .muted { color: var(--color-text-dim); }
+.device-record-dialog .mono { font-family: var(--font-mono); }
+.device-record-dialog .note {
+  padding: var(--space-3);
+  border-inline-start: 2px solid var(--color-border-strong);
+}
+.device-record-dialog .badge.good { color: var(--color-good); }
+.device-record-dialog .badge.amber { color: var(--color-warn); }
+.device-record-dialog .details dt { color: var(--color-text-dim); }
+.device-record-dialog .details dd { margin: 0; }
+.device-record-dialog .user-notes { white-space: pre-wrap; overflow-wrap: anywhere; }
+.device-record-dialog .device-edit-form { display: grid; gap: var(--space-3); }
+.device-record-dialog .device-edit-form label { display: block; }
+.device-record-dialog .device-edit-form :is(input, textarea, select) {
+  width: 100%;
+  padding: var(--space-2);
+  font: inherit;
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-s);
+}
+.device-record-dialog .error { color: var(--color-bad); }
+@media (max-width: 35rem) {
+  .device-record-dialog .details { grid-template-columns: 1fr; }
+}

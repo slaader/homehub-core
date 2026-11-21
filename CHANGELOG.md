@@ -6,6 +6,12 @@ Home Hub core, newest first. One section per release; the section is the text of
 number promises is in `AGENTS.md` → Versioning. The top section is the release being prepared, `## Unreleased`
 until the release gives it its number: a change to the public surface adds its line there in the same commit.
 
+## Unreleased
+
+### Plugin contract
+
+- Plugins can render device records and their edit form with the shared `/device-record.js` browser module. The plugin supplies edit access and saves.
+
 ## 1.5.0
 
 ### Added
