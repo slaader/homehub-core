@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {generateKeyPairSync,sign} from 'node:crypto';
-import {mkdtempSync,rmSync,mkdirSync,writeFileSync,readFileSync,chmodSync,symlinkSync,realpathSync,lstatSync} from 'node:fs';
+import {mkdtempSync,rmSync,mkdirSync,readdirSync,writeFileSync,readFileSync,chmodSync,symlinkSync,realpathSync,lstatSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {strictJson} from '../server/safe-fs.mjs';
@@ -107,7 +107,15 @@ test('trust: forbiddenTrustRoots includes backupRoots and loadTrust enforces sym
   const instUniDir={...inst,backupRoots:[...inst.backupRoots,absentDirRoot]};
   assert.throws(()=>importTrustKey({inst:instUniDir,trustFile:absentDirTrust,repository:'example/core',role:'package',publicKeyFile:keyFile,expectedFingerprint:id}),/outside replaced\/restored root/);
   assert.throws(()=>lstatSync(path.dirname(absentDirTrust)),{code:'ENOENT'});
+  // Existing nested directory with Unicode-equivalent backup root is refused by both loadTrust and importTrustKey via ancestor inode check.
+  const existingDir=path.join(safeDir,'nested-\u00df'),existingNested=path.join(existingDir,'sub','trust.json');
+  mkdirSync(path.dirname(existingNested),{recursive:true,mode:0o700});
+  writeFileSync(existingNested,JSON.stringify(doc()),{mode:0o600});
+  const instExistingDir={...inst,backupRoots:[...inst.backupRoots,path.join(safeDir,'nested-ss')]};
+  assert.throws(()=>loadTrust(existingNested,{forbidden:forbiddenTrustRoots(instExistingDir)}),/outside replaced\/restored root/);
+  assert.throws(()=>importTrustKey({inst:instExistingDir,trustFile:existingNested,repository:'example/core',role:'package',publicKeyFile:keyFile,expectedFingerprint:id}),/outside replaced\/restored root/);
  }
+ assert.equal(readdirSync(safeDir).some(name=>name.startsWith('.hub-trust-probe-')),false);
 });
 test('trust: importTrustKey refuses writes exceeding the 1 MiB trust policy limit without modifying the existing policy',t=>{
  const dir=safeTempDir(t,'.hub-trust-limit-');
