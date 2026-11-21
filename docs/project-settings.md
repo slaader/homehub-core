@@ -15,7 +15,7 @@ additive: nothing that existed before changes meaning.
 | `color` | `null`, `slate`, `red`, `orange`, `amber`, `green`, `teal`, `blue`, `violet` | `null` | The project's named color wherever the project is shown (chips, cards, headers). `null` is the neutral look. A name, never a hex value: the UI maps each name to design tokens for light and dark themes. |
 | `view` | `board`, `table` | `board` | How the project page lists its items. It is the project's choice for everyone, not a personal toggle. |
 | `releases` | boolean | `true` | Show the project's releases on its pages. |
-| `reviews` | boolean | `true` | Show the project's review sets on its pages. |
+| `reviews` | boolean | `true` | Show review entry points and request controls for the project. Existing review links remain visible. |
 | `wiki` | boolean | `true` | Show the project's wiki entry points on its pages. |
 | `globalReferences` | boolean | `true` | Offer global references, and wiki pages and tickets other projects share, in this project's reference suggestions. |
 
@@ -71,14 +71,14 @@ schema-6 database rather than misreading it; going back means restoring the back
 
 ## Settings page
 
-The project page (`#projects/<id>`) has a settings gear in its header. It opens `#projects/<id>/settings`, a page
+Each project card has a settings gear. The project page (`#projects/<id>`) also has one in its header. It opens `#projects/<id>/settings`, a page
 with tabs, each with its own address so it can be linked, reloaded and moved through with Back and Forward:
 
 | Address | Tab |
 |---|---|
 | `#projects/<id>/settings` | General |
-| `#projects/<id>/settings/look` | Look |
-| `#projects/<id>/settings/features` | Features |
+| `#projects/<id>/settings/look` | Look and feel |
+| `#projects/<id>/settings/features` | Additional settings |
 | `#projects/<id>/settings/references` | References |
 
 An unknown tab or project shows the not-found state, not another tab. Readers can open every tab; the controls
@@ -90,23 +90,23 @@ says the project changed, and offers to reload it.
 - Editable: name (1–80 characters), description (up to 500), type (`app`, `game`, `other`, none).
 - Shown, not editable: the project ID and the ticket key, with a note that they never change.
 
-### Look
+### Look and feel
 
 - Color: the eight named colors and "none", as swatches that are labelled buttons (the name is text and
   `aria-label`, never color alone), with the current one marked for assistive technology as well as visually.
   The choice applies to the whole project for everyone.
 - View: board or table, the project's default listing for everyone.
 
-### Features
+### Additional settings
 
-- Releases, reviews and wiki: one switch each, explained as showing or hiding that part of the project's pages,
-  with a line that turning one off deletes nothing and links keep working.
+- **Releases**, **Reviews**, and **Wiki** control project entry points and contextual creation. Existing content
+  and direct links remain available. Creating a wiki still requires an explicit setup action.
+- **Global references** controls whether editors in this project suggest global records and shared sources from
+  other projects. When off, it also hides the Global option when creating a reference from selected text.
+  Saved mentions still resolve.
 
 ### References
 
-- **Global suggestions**: a checkbox for `globalReferences`, aligned with its label and explanation, saying that
-  it decides whether reference suggestions in this project offer global sources and other projects' shared pages
-  and tickets, and that existing mentions are not affected.
 - **This project's references**: the list of the project's own sources from `GET /api/references?scope=local&project=<id>`,
   with search (`q`, the catalog's prefix match), an optional kind filter and pagination by `offset`/`limit`. The
   order is stable, so pages neither repeat nor skip; a page past the end shows the empty state, and a change
@@ -131,7 +131,7 @@ says the project changed, and offers to reload it.
 
 - Archiving or deleting a project, and any UX for it.
 - Personal, temporary view toggles: the view is the project's setting.
-- A settings scope, a settings route, or settings that grant or withhold access.
+- A separate settings API or scope, or settings that grant or withhold access.
 - Changes to how saved references are validated, resolved, listed or shared across projects.
 
 ## Acceptance
@@ -164,7 +164,9 @@ UI (browser and DOM tests, owned with the UI work):
 - The view setting changes the project page's listing for everyone; the project's filters stay its own; the
   "Table →" shortcut is gone.
 - Turning off releases, reviews or wiki hides those sections and leaves their direct links working.
-- The References tab lists, searches and pages the project's own references and creates a project Custom record;
-  the Global checkbox is aligned with its label and saves `globalReferences`; suggestions in the project editors
-  follow it.
+- The References tab lists, searches and pages the project's local references and creates a project Custom record.
+- The global references setting controls suggestions and the availability of the Global creation option. In the
+  Make reference form, the checkbox and its label sit together and work by pointer and keyboard.
+- Saved mentions use accessible, visibly distinct chips. A mention inside the visible excerpt of a collapsed
+  inventory cell has the same visual treatment. The expanded cell contains the link.
 - Readers see every tab read-only.
