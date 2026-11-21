@@ -25,8 +25,8 @@
       "budget_seconds": 120,
       "budget_approval": null,
       "last_run": {
-        "duration_seconds": 0.188,
-        "finished_at": "2026-11-19T22:02:48Z",
+        "duration_seconds": 0.09,
+        "finished_at": "2026-11-21T14:27:35Z",
         "result": "passed"
       }
     },
@@ -39,8 +39,8 @@
       "budget_seconds": 120,
       "budget_approval": null,
       "last_run": {
-        "duration_seconds": 13.489,
-        "finished_at": "2026-11-19T22:04:53Z",
+        "duration_seconds": 4.49,
+        "finished_at": "2026-11-21T14:34:45Z",
         "result": "passed"
       }
     },
@@ -69,6 +69,20 @@
       "last_run": {
         "duration_seconds": 33.75,
         "finished_at": "2026-11-19T11:56:12Z",
+        "result": "passed"
+      }
+    },
+    "references": {
+      "category": "feature",
+      "scope": "Reference storage, HTTP and MCP permissions, picker, wiki and tracker rendering, localization, Editor authorization and data epoch",
+      "commands": [
+        "npm test -- tests/references.test.mjs tests/reference-picker.test.mjs tests/wiki.test.mjs tests/wiki-view.test.mjs tests/wiki-authoring.test.mjs tests/wiki-inventory.test.mjs tests/tracker-md.test.mjs tests/tracker-attach.test.mjs tests/plugins.test.mjs tests/i18n.test.mjs tests/data-epoch.test.mjs tests/roles.test.mjs"
+      ],
+      "budget_seconds": 120,
+      "budget_approval": null,
+      "last_run": {
+        "duration_seconds": 8.16,
+        "finished_at": "2026-11-21T14:32:43Z",
         "result": "passed"
       }
     }

@@ -63,15 +63,21 @@ const RULES=[
  ['path',/(?<![\w/~.])(?:~\/|\/(?:tmp|Users|opt|etc|var|Library|private|Volumes)\/)[^\s,;:'"`()<>]*[^\s,;:'"`()<>.]/],
 ];
 const TOKEN=/(@\[((?:\\[\\\[\]]|[^\[\]\\\n]){1,400})\]\(ref:([a-z]+)\/([a-zA-Z0-9_/-]+)\))/;
+const ALL_TOKENS=new RegExp(TOKEN.source,'g');
 const ESCAPE=new RegExp('\\\\'+TOKEN.source);
 function inline(text,context){
  const {ids,files,mention,el,source}=context;
  const literal=(from,size)=>context.plain?.(context.offset+from,context.offset+from+size);
  const out=[],rules=[['slashes',/\\\\/],['escape',ESCAPE],['reference',TOKEN],...RULES,...(files?[['file',FILE_TOKEN]]:[]),...(ids?[['ticket',ids]]:[])];let rest=String(text);
+ // Keep token labels opaque to surrounding emphasis while preserving source offsets.
+ const emphasis=String(text).includes('@[')?String(text).replace(ALL_TOKENS,token=>'x'.repeat(token.length)):String(text);
  while(rest){
-  let best=null;
-  for(const [kind,re] of rules){const m=rest.match(re);if(m&&(!best||m.index<best.m.index))best={kind,m};}
   const from=text.length-rest.length;
+  let best=null;
+  for(const [kind,re] of rules){
+   const input=kind==='bold'||kind==='italic'?emphasis.slice(from):rest;
+   const m=input.match(re);if(m&&(!best||m.index<best.m.index))best={kind,m};
+  }
   if(!best){literal(from,rest.length);out.push(rest);break;}
   const {kind,m}=best;if(m.index){literal(from,m.index);out.push(rest.slice(0,m.index));}
   const column=context.column+from+m.index;
@@ -84,7 +90,7 @@ function inline(text,context){
   else if(kind==='code'||kind==='path'||kind==='const')out.push(el('code',{class:'tk-md-code'},kind==='code'?m[1]:m[0]));
   else if(kind==='bold'||kind==='italic'){
    const inner=from+m.index+(kind==='bold'?2:1);
-   out.push(el(kind==='bold'?'strong':'em',{},inline(m[1],{...context,column:context.column+inner,offset:context.offset+inner})));
+   out.push(el(kind==='bold'?'strong':'em',{},inline(text.slice(inner,inner+m[1].length),{...context,column:context.column+inner,offset:context.offset+inner})));
   }
   else if(kind==='file'){
    // Not a file of this ticket: only the "![" is passed over, so what stands in the brackets is read as before.

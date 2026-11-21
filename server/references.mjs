@@ -1,3 +1,4 @@
+import {deviceList} from './home-data.mjs';
 import {createReferenceRecords,fold} from './reference-records.mjs';
 import {exactKeys,wikiInlineGroups} from '../public/wiki-doc.js';
 import {referenceHref,referenceKey,referenceKinds,validReference} from '../public/reference-format.js';
@@ -28,10 +29,10 @@ function wikiExcerpt(doc,kind,id){
 export function createReferences(hub){
  const records=createReferenceRecords(hub.db),tickets=hub.state('tracker').tickets,wiki=hub.state('wiki').wiki;
  async function machines(){
-  const added=await hub.state('home').homeDevices.list();
-  const devices=new Map();
-  for(const d of [...added,...hub.site.devices])devices.set(d.id,{...entry('machine',d.id,d.name),role:d.role,ip:d.ip??null});
-  return [...devices.values()];
+  const home=hub.state('home').homeDevices;
+  const [added,siteOverrides]=await Promise.all([home.list(),home.siteOverrides()]);
+  const {devices}=deviceList({site:hub.site,added,siteOverrides});
+  return devices.map(d=>({...entry('machine',d.id,d.name),role:d.role,ip:d.ip??null}));
  }
  // Only lightweight fields enter the catalog. Wiki bodies and ticket comments are read on demand.
  let cached;

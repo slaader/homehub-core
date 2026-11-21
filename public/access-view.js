@@ -215,7 +215,7 @@ function rolesTab(status){
     el('p',{class:'ax-note'},t(r.description)||'—')),
    el('div',{class:'ax-row-actions'},el('span',{class:'ax-count'},tp(r.users,'{n} uživatel|{n} uživatelé|{n} uživatelů')),
     r.builtin?null:[button(t('Upravit'),()=>edit(r).catch(err=>status(err.message,true)),'small'),button(t('Smazat'),()=>remove(r),'small danger')])),
-  r.admin||r.id==='editor'?el('p',{class:'ax-note'},r.admin?t('Všechna oprávnění, i ta, která později přidá plugin.'):t('Čtení a všechny zápisy, i ty, které později přidá plugin.')):null,
+  r.admin||r.id==='editor'?el('p',{class:'ax-note'},r.admin?t('Všechna oprávnění, i ta, která později přidá plugin.'):t('Čtení a běžné zápisy, i ty, které později přidá plugin.')):null,
   scopeChips(r.scopes,catalog));
  const list=loader(async()=>{const r=await api('/api/admin/roles');catalog=r.scopes;roles=r.roles;return r.roles;},all=>{const custom=all.filter(r=>!r.builtin);
   return el('div',{class:'ax-stack'},el('div',{class:'ax-cards'},all.filter(r=>r.builtin).map(card)),

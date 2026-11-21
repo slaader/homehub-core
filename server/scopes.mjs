@@ -81,13 +81,13 @@ export function validScopes(input,{wildcard=false}={}){
 // Built-in roles are resolved when asked, so they follow the scopes plugins register:
 //   owner   the built-in account from the auth file; cannot be deleted, disabled or given another role
 //   admin   everything, including administration
-//   editor  read and every write scope, no administration, no sensitive read-only scopes (security:read)
+//   editor  read and ordinary write scopes, no administration, global reference management or sensitive reads
 //   viewer  read only
 // name/description are source-language text (Czech), translated in the UI like scope labels.
 export const BUILTIN_ROLES=Object.freeze([
  {id:'owner',name:'Vlastník',description:'Vestavěný účet tohoto Home Hubu. Smí všechno včetně správy; nejde smazat, zakázat ani mu změnit roli.',admin:true,assignable:false,grants:()=>scopeIds()},
  {id:'admin',name:'Admin',description:'Všechno včetně správy uživatelů, rolí, servisních účtů, klíčů a tokenů aplikací.',admin:true,assignable:true,grants:()=>scopeIds()},
- {id:'editor',name:'Editor',description:'Čtení a všechny zápisy. Bez správy přístupu a bez citlivých přehledů (bezpečnost).',admin:false,assignable:true,grants:()=>scopeIds().filter(s=>s==='read'||!SCOPES[s].readOnly)},
+ {id:'editor',name:'Editor',description:'Čtení a běžné zápisy. Bez správy přístupu, globálních referencí a citlivých přehledů.',admin:false,assignable:true,grants:()=>scopeIds().filter(s=>s==='read'||(!SCOPES[s].readOnly&&s!=='references:write'))},
  {id:'viewer',name:'Čtenář',description:'Jen čtení: vidí přehled, zařízení, inventář a tracker, nic nemění.',admin:false,assignable:true,grants:()=>['read']},
 ]);
 export const ROLE_ID=/^[a-z][a-z0-9-]{1,31}$/;

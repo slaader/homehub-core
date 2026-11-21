@@ -10,6 +10,7 @@ export const referenceKey=({kind,id})=>kind+'/'+id;
 export const validLabel=value=>typeof value==='string'&&value.trim().length>0&&value.length<=200&&value.isWellFormed()&&!/[\x00-\x1f\x7f]/.test(value);
 export function referenceHref(kind,id){
  if(!validReference(kind,id))return null;
+ if(kind==='machine')return '#host-'+id;
  const routes={wiki:'wiki',ticket:'items',project:'projects'};
  return '#'+(routes[kind]??'references/'+kind)+'/'+id;
 }

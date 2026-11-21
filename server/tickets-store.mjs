@@ -222,7 +222,8 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
  }
  async function create(input,by){
   if(!writeInput(input,['project',...TICKET_FIELDS])||typeof input.project!=='string'||!('title'in input))fail('invalid');
-  const validate=await guardText(input.description);
+  const description='description'in input?text(input.description,12000,{empty:true}):undefined;
+  const validate=await guardText(description);
   return write((data,now,count)=>{
    const project=projectOf(data,input.project);validate(project.id);if(count('tickets')>=LIMITS.tickets)fail('limit');
    const f=fields(input,project.id,data),id=`${project.key}-${project.next}`;project.next++;
@@ -234,8 +235,9 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
  }
  async function update(input,by){
   if(!writeInput(input,['id','rev',...TICKET_FIELDS])||!validRev(input.rev)||!TICKET_FIELDS.some(k=>k in input))fail('invalid');
-  const current=typeof input.description==='string'&&input.description.includes('@[')?await get(input.id):null;
-  const validate=await guardText(input.description,current?.attachments);
+  const description='description'in input?text(input.description,12000,{empty:true}):undefined;
+  const current=description?.includes('@[')?await get(input.id):null;
+  const validate=await guardText(description,current?.attachments);
   return write((data,now)=>{
    const t=ticketOf(data,input.id);if(current&&JSON.stringify(current.attachments)!==JSON.stringify(t.attachments??[]))fail('conflict');
    if(t.rev!==input.rev)fail('conflict');

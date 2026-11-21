@@ -5,6 +5,7 @@
 // over MCP (device_upsert); an empty hub says so and how to fill it. Live numbers need the telemetry agent
 // (home-telemetry.js says what a device shows without it). Deep link: #host-<id>/<stack block>.
 // Text-safe DOM only: el() for HTML, svg() for drawings; colours come from the design tokens (home.css).
+import {referencesSection} from './references-view.js';
 import {el,date,onLeave} from './views.js';
 import {SERIES,renderCharts,disposeCharts,loadECharts,level,renderSpark,disposeSparks} from './home-charts.js';
 import {onSessionReset,sessionCache,authGuard,pageAllowed} from './session-cache.js';
@@ -18,7 +19,7 @@ import {statusPill,hasReadings,tileNotice,telemetryNotice,runtimesSection,native
 import {agentLine,agentSection} from './home-agent.js';
 // Adding, editing and removing devices needs write access (the server checks it again). A device of the site
 // configuration is edited (its display metadata, over the site's values) only after a password sign-in: canEditSite.
-let canEdit=false,canEditSite=false,canAdmin=false;
+let canEdit=false,canEditSite=false,canAdmin=false,referencePrincipal=null;
 let cache=null,historyCache=new Map(),state={device:null,blk:null,range:'30m'};
 // A different account must not be shown the previous one's tiles or history.
 onSessionReset(()=>{cache=null;historyCache.clear();});
@@ -399,6 +400,7 @@ function renderChild(slot,device,{repaint:again,focus}={}){
   // The push agent, for a device that holds a key (home-agent.js).
   agentSection(device,{admin:canAdmin,refused:agentRefused()}),
   stackSection(device),
+  referencesSection('machine',device.id,referencePrincipal),
   // Only where a provider reports on this device; a device nobody reports on has no such section.
   device.runtimes?section(t('Lokální LLM runtimy'),null,runtimesSection(device,meta)):null].filter(Boolean));
  slot.dataset.shape=hostShape(device);
@@ -455,6 +457,7 @@ function emptyOverview(add){
 const summary=list=>{const counted=list.filter(m=>m.telemetry?.state!=='not-applicable'),ok=counted.filter(m=>m.telemetry?.state==='ok').length;
  return `${tp(list.length,'{n} zařízení|{n} zařízení|{n} zařízení')} · ${t('telemetrie běží na {ok} z {all}',{ok,all:counted.length})}`;};
 export function homeView(deviceId,me){
+ referencePrincipal=me;
  canEdit=me?.canWrite===true;canEditSite=canEdit&&me?.authKind==='session';canAdmin=me?.canAdmin===true;
  viewGen++;disposeCharts();disposeSparks();dragger?.destroy();dragger=null;childCards=null;built=false;
  onLeave(()=>{dragger?.destroy();dragger=null;disposeSparks();});

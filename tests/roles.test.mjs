@@ -291,7 +291,7 @@ test('newer scopes: Editor, the presets and full access hold home:write and soft
  const NEWER=['home:write','software:write'];
  for(const id of NEWER)assert.ok(SCOPES[id]&&!SCOPES[id].readOnly&&SCOPES[id].legacy===false,id);
  for(const role of ['owner','admin','editor'])assert.ok(NEWER.every(id=>roleOf(role).scopes.includes(id)),role);
- assert.deepEqual(roleOf('editor').scopes,scopeIds().filter(id=>id==='read'||!SCOPES[id].readOnly),'Editor = read and every write scope there is');
+ assert.deepEqual(roleOf('editor').scopes,scopeIds().filter(id=>id==='read'||(!SCOPES[id].readOnly&&id!=='references:write')));
  assert.deepEqual(roleOf('viewer').scopes,['read']);
  assert.ok(NEWER.every(id=>resolveScopes(['*']).includes(id)));
  assert.deepEqual(legacyScopes('read'),['read']);

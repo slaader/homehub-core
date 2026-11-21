@@ -4,6 +4,7 @@ import {mkdtemp,readFile,rm} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import {hub} from './hub-helper.mjs';
+import {siteOverrideHash} from '../server/home-devices.mjs';
 import {openDb,DB_SCHEMA} from '../server/db.mjs';
 import {createWikiStore} from '../server/wiki-store.mjs';
 import {referenceToken} from '../public/reference-format.js';
@@ -17,6 +18,9 @@ const doc=c=>({v:1,blocks:[{t:'inventory',id:'units',columns:[{id:'name',label:'
 const run=({kind,id,label})=>({t:'ref',kind,id,label});
 test('reference syntax round-trips in prose and inventory cells without interpreting literal examples',()=>{
  const token=referenceToken(custom);
+ const styled={...custom,label:'Build **debug** and *test*'};
+ assert.deepEqual(markdownReferences('**'+referenceToken(styled)+'**').map(r=>r.label),[styled.label]);
+ assert.deepEqual(markdownReferences('*'+referenceToken(styled)+'*').map(r=>r.label),[styled.label]);
  const md=['**'+token+'**'];
  md.push('\\'+token,'`'+token+'`','```',token,'```','![HH-2]','HH-1','3. '+token);
  const links=markdownReferences(md.join('\n'),{keys:['HH'],attachmentNames:['HH-2']});
@@ -54,6 +58,11 @@ test('source and storage permissions, atomic promotion, incoming uses and live r
  const used=await item('custom',first.id);
  assert.equal(used.usageTotal,3);assert.deepEqual(new Set(used.usages.map(u=>u.excerpt)),new Set(['Inventory Tróoper','Description Tróoper','Comment Tróoper']));
  const promote={kind:'custom',id:first.id,project,rev:first.rev};
+ await post('/api/admin/users',{username:'editor',role:'editor',password:'editor-test-password'},h.admin,201);
+ const login=await h.post('/api/session',{username:'editor',password:'editor-test-password'});
+ const editor={Cookie:login.headers.get('set-cookie').split(';')[0]};
+ await post(base+'/promote',promote,editor,403);
+ await post(base+'/global/save',{kind:'model',label:'Example model'},editor,403);
  await post(base+'/promote',promote,writer,403);await post(base+'/promote',promote,global,403);
  const clash=await post(base+'/global/save',{kind:'custom',label:'Trooper'},global);
  await post(base+'/promote',promote,h.admin,409);assert.equal((await item('custom',first.id)).record.scope,'local');
@@ -77,7 +86,10 @@ test('source and storage permissions, atomic promotion, incoming uses and live r
  const model=await rpc('reference_save',{kind:'model',label:'Example model',description:'Offline documentation'},global);
  assert.equal(model.structuredContent.kind,'model');
  assert.equal((await rpc('reference_get',{kind:'model',id:model.structuredContent.id},reader)).structuredContent.record.description,'Offline documentation');
+ await post('/api/home/devices/site',{id:'mini',base:siteOverrideHash(null),device:{name:'Renamed workstation'}},h.admin);
  const machine=(await item('machine','mini')).record;
+ assert.equal(machine.label,'Renamed workstation');
+ assert.equal(machine.href,'#host-mini');
  assert.deepEqual(Object.keys(machine).sort(),['kind','id','label','project','scope','href','role','ip'].sort());
  await post(base+'/global/delete',{kind:'custom',id:first.id,rev:3},global);
  assert.deepEqual((await post(base+'/resolve',{refs:[{kind:'custom',id:first.id}]},reader)).items,[]);
