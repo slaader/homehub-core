@@ -147,10 +147,14 @@ function orderedTree(pages){
  return ordered;
 }
 
+export function createWikiProjectLookup(db){
+ const query=db.db.prepare("SELECT json_extract(doc,'$.project') AS project FROM docs WHERE kind='wiki' AND coll='summaries' AND id=?");
+ return id=>query.get(id)?.project??null;
+}
+
 export function createWikiStore(db,tickets,{mentionGuard=null}={}){
  const store=wikiCollection(db);
- const wikiProjectQuery=db.db.prepare("SELECT json_extract(doc,'$.project') AS project FROM docs WHERE kind='wiki' AND coll='summaries' AND id=?");
- const wikiProjectSync=id=>wikiProjectQuery.get(id)?.project??null;
+ const wikiProjectSync=createWikiProjectLookup(db);
  const guardMentions=mentionGuard??createMentionGuard({db,tickets,wiki:{wikiProjectSync}});
  let cached=null;
 

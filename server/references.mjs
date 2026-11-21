@@ -232,10 +232,10 @@ export function createReferences(hub){
   });
  }
  async function annotate(input,by,share=false){
-  if(!exactKeys(input,['kind','id','rev',...(share?[]:['description'])])||owned(input.kind)||!validReference(input.kind,input.id)||
+  await target(input?.kind,input?.id);
+  if(!exactKeys(input,['kind','id','rev',...(share?[]:['description'])])||owned(input.kind)||
     share&&!['ticket','wiki'].includes(input.kind))fail('invalid');
   const note=share?undefined:description(input.description);
-  await target(input.kind,input.id);
   return store.change({notes:[referenceKey(input)]},(data,count)=>{
    const record=data.notes[0]??{kind:input.kind,id:input.id,description:'',rev:0};
    requireRev(input.rev,record.rev);

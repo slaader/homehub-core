@@ -5,6 +5,7 @@
 // again, reapply). Comments are append-only and need no rev.
 // Errors are thrown as Error('invalid' | 'not-found' | 'conflict' | 'limit').
 import {createMentionGuard} from './references.mjs';
+import {createWikiProjectLookup} from './wiki-store.mjs';
 import {referenceHref} from '../public/reference-format.js';
 import {markdownReferences} from '../public/tracker-markdown-format.js';
 import path from 'node:path';
@@ -99,7 +100,8 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
  const ticketProjectQuery=db.db.prepare("SELECT json_extract(doc,'$.project') AS project FROM docs WHERE kind='tickets' AND coll='tickets' AND id=?");
  const hasProjectSync=id=>Boolean(hasProjectQuery.get(id));
  const ticketProjectSync=id=>ticketProjectQuery.get(id)?.project??null;
- const guardMentions=mentionGuard??createMentionGuard({db,tickets:{hasProjectSync,ticketProjectSync}});
+ const wikiProjectSync=createWikiProjectLookup(db);
+ const guardMentions=mentionGuard??createMentionGuard({db,tickets:{hasProjectSync,ticketProjectSync},wiki:{wikiProjectSync}});
  // Serialised read-modify-write; fn mutates the document and returns the reply. A throw writes nothing.
  function write(fn,selection={projects:null,releases:null,tickets:null}){
   const run=queue.then(()=>store.change(selection,(data,count)=>{

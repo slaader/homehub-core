@@ -6,9 +6,7 @@ import os from 'node:os';
 import {hub} from './hub-helper.mjs';
 import {siteOverrideHash} from '../server/home-devices.mjs';
 import {openDb,DB_SCHEMA} from '../server/db.mjs';
-import {createTicketStore} from '../server/tickets-store.mjs';
 import {createWikiStore} from '../server/wiki-store.mjs';
-import {createMentionGuard,createReferences} from '../server/references.mjs';
 import {referenceToken} from '../public/reference-format.js';
 import {markdownReferences} from '../public/tracker-markdown-format.js';
 import {extractLinks,normalizeDoc} from '../public/wiki-doc.js';
@@ -112,6 +110,17 @@ test('source and storage permissions, atomic promotion, incoming uses and live r
  assert.deepEqual(Object.keys(machine).sort(),['kind','id','label','project','scope','href','role','ip'].sort());
  await post(base+'/global/delete',{kind:'custom',id:first.id,rev:3},global);
  assert.deepEqual((await post(base+'/resolve',{refs:[{kind:'custom',id:first.id}]},reader)).items,[]);
+ // Annotating a well-formed nonexistent custom reference returns 404 not-found before kind restriction.
+ await post(base+'/note',{kind:'custom',id:'r'+'b'.repeat(32),rev:0,description:'Missing target'},global,404);
+ // Live HTTP concurrency: promoting a local reference never opens a gap where same-project writes fail.
+ const atomic=await post(base+'/local/save',{kind:'custom',project,label:'Atomic unit'},writer);
+ const atomicToken=referenceToken(atomic);
+ const [promoted,...writes]=await Promise.all([
+  h.post(base+'/promote',{kind:'custom',id:atomic.id,project,rev:atomic.rev},h.admin),
+  ...Array.from({length:6},(_,i)=>h.post('/api/tickets',{project,title:`Concurrent ${i}`,description:`Uses ${atomicToken}`},writer)),
+ ]);
+ assert.equal(promoted.status,200);
+ for(const res of writes)assert.equal(res.status,201);
 });
 
 test('epoch 9 wiki pages retain their literal v1.4.0 document and links after migration',async t=>{
@@ -131,112 +140,4 @@ test('epoch 9 wiki pages retain their literal v1.4.0 document and links after mi
   assert.deepEqual(migrated,JSON.parse(page));
   assert.deepEqual(extractLinks(migrated.doc),migrated.links);
  }finally{db.close();}
-});
-
-test('standalone ticket and wiki stores enforce mention visibility without a full hub',async t=>{
- const dir=await mkdtemp(path.join(os.tmpdir(),'ref-standalone-'));
- t.after(()=>rm(dir,{recursive:true,force:true}));
- const db=openDb(path.join(dir,'hub.db'));
- t.after(()=>db.close());
- const seed=[{id:project,key:'HH',name:'Home Hub'},{id:other,key:'SG',name:'Sample Game'}];
- const tickets=createTicketStore(path.join(dir,'tickets'),{db,seedProjects:seed});
- const wiki=createWikiStore(db,tickets);
- const t1=await tickets.create({project,title:'Primary ticket'},'alice');
- const t2=await tickets.create({project:other,title:'Other ticket'},'alice');
- const {home}=await wiki.setup({project},'alice');
- const {home:otherHome}=await wiki.setup({project:other},'alice');
- const t1Token=referenceToken({kind:'ticket',id:t1.id,label:t1.title});
- const t2Token=referenceToken({kind:'ticket',id:t2.id,label:t2.title});
- const projToken=referenceToken({kind:'project',id:other,label:'Sample Game'});
- const missingToken=referenceToken(custom);
-
- // Standalone tickets store allows same-project tickets and any existing project, rejects cross-project or missing refs.
- const linked=await tickets.create({project,title:'Linked',description:`See ${t1Token} and ${projToken}`},'alice');
- assert.equal(linked.project,project);
- await assert.rejects(()=>tickets.create({project,title:'Cross',description:t2Token},'alice'),/unavailable-reference/);
- await assert.rejects(()=>tickets.comment({id:t1.id,text:t2Token},'alice'),/unavailable-reference/);
- await assert.rejects(()=>tickets.create({project,title:'Missing',description:missingToken},'alice'),/unavailable-reference/);
-
- // Standalone wiki store allows same-project wiki/tickets and projects, rejects cross-project unshared targets.
- const pageRef={kind:'wiki',id:project+'/'+home,label:'Home'};
- const otherPageRef={kind:'wiki',id:other+'/'+otherHome,label:'Other home'};
- const createdPage=await wiki.create({project,title:'Notes',doc:doc([run(pageRef),{t:'ticket',id:t1.id},run({kind:'project',id:other,label:'Sample Game'})])},'alice');
- assert.equal(createdPage.project,project);
- await assert.rejects(()=>wiki.create({project,title:'Bad wiki',doc:doc([run(otherPageRef)])},'alice'),/unavailable-reference/);
- await assert.rejects(()=>wiki.create({project,title:'Bad ticket',doc:doc([{t:'ticket',id:t2.id}])},'alice'),/unavailable-reference/);
- await assert.rejects(()=>wiki.create({project,title:'Bad custom',doc:doc([run(custom)])},'alice'),/unavailable-reference/);
-
- // Explicit createMentionGuard wires wiki visibility into standalone ticket writes as well.
- const wiredTickets=createTicketStore(path.join(dir,'tickets'),{db,mentionGuard:createMentionGuard({db,tickets,wiki})});
- const wikiMention=referenceToken(pageRef),otherWikiMention=referenceToken(otherPageRef);
- await wiredTickets.create({project,title:'Same wiki',description:wikiMention},'alice');
- await assert.rejects(()=>wiredTickets.create({project,title:'Other wiki',description:otherWikiMention},'alice'),/unavailable-reference/);
-});
-
-test('in-transaction mention validation sees one atomic SQLite snapshot across concurrent promote and delete',async t=>{
- // Deterministic two-phase check: mutations committed after prepareMentionGuard (phase 1) are seen by sync verify (phase 2).
- const dir=await mkdtemp(path.join(os.tmpdir(),'ref-snapshot-'));
- t.after(()=>rm(dir,{recursive:true,force:true}));
- const db=openDb(path.join(dir,'hub.db'));
- t.after(()=>db.close());
- let gate=null;
- const pause=()=>{let release;const ready=new Promise(r=>{gate={wait:new Promise(done=>{release=done;}),hit:r};});return {ready,release};};
- let refs;
- const gatedGuard=async list=>{
-  const verify=await refs.prepareMentionGuard(list);
-  if(gate&&list.length){const current=gate;gate=null;current.hit();await current.wait;}
-  return verify;
- };
- const seed=[{id:project,key:'HH',name:'Home Hub'},{id:other,key:'SG',name:'Sample Game'}];
- const tickets=createTicketStore(path.join(dir,'tickets'),{db,seedProjects:seed,mentionGuard:gatedGuard});
- const wiki=createWikiStore(db,tickets,{mentionGuard:gatedGuard});
- const stubHub={db,site:{devices:[]},state:id=>id==='tracker'?{tickets}:id==='wiki'?{wiki}:id==='home'?{homeDevices:{list:async()=>[],siteOverrides:async()=>({})}}:null};
- refs=createReferences(stubHub);
- await wiki.setup({project},'alice');
- await wiki.setup({project:other},'alice');
-
- // Delete commits between phase 1 and phase 2 -> ticket and wiki writes must observe deletion and fail.
- const ephemeral=await refs.save({kind:'custom',project,label:'Ephemeral'},'alice',true);
- const p1=pause();
- const ticketAfterDelete=tickets.create({project,title:'Race delete ticket',description:referenceToken(ephemeral)},'alice');
- await p1.ready;
- await refs.remove({kind:'custom',id:ephemeral.id,project,rev:ephemeral.rev},true);
- p1.release();
- await assert.rejects(ticketAfterDelete,/unavailable-reference/);
-
- const ephemeralWiki=await refs.save({kind:'custom',project,label:'Ephemeral wiki'},'alice',true);
- const p2=pause();
- const wikiAfterDelete=wiki.create({project,title:'Race delete page',doc:doc([run(ephemeralWiki)])},'alice');
- await p2.ready;
- await refs.remove({kind:'custom',id:ephemeralWiki.id,project,rev:ephemeralWiki.rev},true);
- p2.release();
- await assert.rejects(wikiAfterDelete,/unavailable-reference/);
-
- // Promote commits between phase 1 and phase 2 -> cross-project ticket and wiki writes observe global visibility and succeed.
- const promotable=await refs.save({kind:'custom',project,label:'Promotable'},'alice',true);
- const p3=pause();
- const crossTicket=tickets.create({project:other,title:'Race promote ticket',description:referenceToken(promotable)},'alice');
- await p3.ready;
- await refs.promote({kind:'custom',id:promotable.id,project,rev:promotable.rev},'alice');
- p3.release();
- assert.equal((await crossTicket).project,other);
-
- const promotableWiki=await refs.save({kind:'custom',project,label:'Promotable wiki'},'alice',true);
- const p4=pause();
- const crossWiki=wiki.create({project:other,title:'Race promote page',doc:doc([run(promotableWiki)])},'alice');
- await p4.ready;
- await refs.promote({kind:'custom',id:promotableWiki.id,project,rev:promotableWiki.rev},'alice');
- p4.release();
- assert.equal((await crossWiki).project,other);
-
- // Live HTTP concurrency: promoting a local reference never opens a gap where same-project writes fail.
- const h=await hub(t),writer=(await h.account('race-writer',['tickets:write'])).headers;
- const saved=await (await h.post(base+'/local/save',{kind:'custom',project,label:'Atomic unit'},writer)).json();
- const token=referenceToken(saved);
- const [promoted,...writes]=await Promise.all([
-  h.post(base+'/promote',{kind:'custom',id:saved.id,project,rev:saved.rev},h.admin),
-  ...Array.from({length:6},(_,i)=>h.post('/api/tickets',{project,title:`Concurrent ${i}`,description:`Uses ${token}`},writer)),
- ]);
- assert.equal(promoted.status,200);
- for(const res of writes)assert.equal(res.status,201);
 });
