@@ -58,6 +58,34 @@ export function rememberTrustSelection(home,file){
  durableWrite(marker,JSON.stringify({schemaVersion:TRUST_REQUIREMENT_SCHEMA,file:canonicalPath(file)})+'\n');
 }
 
+function flipCase(name){
+ for(let i=0;i<name.length;i++){
+  const ch=name[i],lo=ch.toLowerCase(),hi=ch.toUpperCase();
+  if(lo!==hi)return name.slice(0,i)+(ch===lo?hi:lo)+name.slice(i+1);
+ }
+ return null;
+}
+
+function isCaseInsensitiveDir(dir){
+ const baseStat=lstatSync(dir);
+ for(let cur=dir;cur!==path.dirname(cur);cur=path.dirname(cur)){
+  const st=lstatSync(cur);
+  if(st.dev!==baseStat.dev)break;
+  const swapped=flipCase(path.basename(cur));
+  if(!swapped)continue;
+  try{
+   const alt=lstatSync(path.join(path.dirname(cur),swapped));
+   return alt.dev===st.dev&&alt.ino===st.ino;
+  }catch(e){
+   if(e.code==='ENOENT')return false;
+   throw e;
+  }
+ }
+ return false;
+}
+
+const foldPath=p=>p.normalize('NFD').toLowerCase();
+
 export function trustDestination(file,{forbidden=[]}={}){
  const named=path.resolve(file);
  let parent=path.dirname(named),suffix=[];
@@ -74,10 +102,12 @@ export function trustDestination(file,{forbidden=[]}={}){
    if(!leafStat.isSymbolicLink())resolved=realpathSync.native(resolved);
   }catch(e){if(e.code!=='ENOENT')throw e;}
  }
+ const caseInsensitive=isCaseInsensitiveDir(realParent);
  for(const root of forbidden){
   if(!root)continue;
   const cRoot=canonicalPath(root);
-  if(withinPath(resolved,cRoot))throw new Error(`trust must be outside replaced/restored root: ${root}`);
+  if(withinPath(resolved,cRoot)||(caseInsensitive&&withinPath(foldPath(resolved),foldPath(cRoot))))
+   throw new Error(`trust must be outside replaced/restored root: ${root}`);
   if(leafStat&&!leafStat.isSymbolicLink()){
    try{
     const rStat=lstatSync(cRoot);
