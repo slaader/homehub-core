@@ -137,7 +137,7 @@ export default {
   'wiki-media.js','wiki-navigation.js','wiki.css','i18n-en-wiki.js'],
  nav:[{group:'Project Tracker',hash:'wiki',label:'Wiki',view:'wiki-view.js#wikiPage',order:43}],
  setup:hub=>{
-  const wiki=createWikiStore(hub.db,hub.state('tracker').tickets,()=>hub.state('references').machines());
+  const wiki=createWikiStore(hub.db,hub.state('tracker').tickets,{mentionGuard:refs=>hub.state('references').prepareMentionGuard(refs)});
   const assets=createWikiAssets(hub.db,path.join(hub.stateDirectory,'wiki'),wiki,hub.options.wikiAssets);
   const sources=createWikiSources(hub.db,wiki,assets,{lfs:()=>hub.state('git-lfs')?.store,review:()=>hub.state('review')?.review});
   return {wiki,assets,sources,thumbnails:createWikiThumbnails(hub.options.wikiThumbnails),videos:createWikiVideos(hub.options.wikiVideos),previews:createWikiPreviews()};

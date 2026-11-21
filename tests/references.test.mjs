@@ -110,6 +110,17 @@ test('source and storage permissions, atomic promotion, incoming uses and live r
  assert.deepEqual(Object.keys(machine).sort(),['kind','id','label','project','scope','href','role','ip'].sort());
  await post(base+'/global/delete',{kind:'custom',id:first.id,rev:3},global);
  assert.deepEqual((await post(base+'/resolve',{refs:[{kind:'custom',id:first.id}]},reader)).items,[]);
+ // Annotating a well-formed nonexistent custom reference returns 404 not-found before kind restriction.
+ await post(base+'/note',{kind:'custom',id:'r'+'b'.repeat(32),rev:0,description:'Missing target'},global,404);
+ // Live HTTP concurrency: promoting a local reference never opens a gap where same-project writes fail.
+ const atomic=await post(base+'/local/save',{kind:'custom',project,label:'Atomic unit'},writer);
+ const atomicToken=referenceToken(atomic);
+ const [promoted,...writes]=await Promise.all([
+  h.post(base+'/promote',{kind:'custom',id:atomic.id,project,rev:atomic.rev},h.admin),
+  ...Array.from({length:6},(_,i)=>h.post('/api/tickets',{project,title:`Concurrent ${i}`,description:`Uses ${atomicToken}`},writer)),
+ ]);
+ assert.equal(promoted.status,200);
+ for(const res of writes)assert.equal(res.status,201);
 });
 
 test('epoch 9 wiki pages retain their literal v1.4.0 document and links after migration',async t=>{
