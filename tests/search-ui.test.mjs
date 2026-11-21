@@ -34,6 +34,9 @@ test('search notice: one line per readiness state, nothing when the results are 
  const degradedTicketLimit=searchNotice({...ready,attachmentSearch:{state:'degraded',extraction:{attachments:0,indexed:0,ticketCapacity:1}}},'text');
  assert.equal(degradedTicketLimit.tone,'warn');assert.match(degradedTicketLimit.body,/tickets.*index limit/i);
  assert.doesNotMatch(degradedTicketLimit.body,/attachment contents/i,'ticketCapacity alone does not report missing attachment contents');
+ const hybridTicketLimit=searchNotice({...ready,mode:'text',attachmentSearch:{state:'degraded',extraction:{attachments:0,indexed:0,ticketCapacity:1}}},'hybrid');
+ assert.equal(hybridTicketLimit.tone,'warn');assert.match(hybridTicketLimit.body,/full-text search only.*index limit/i);
+ assert.doesNotMatch(hybridTicketLimit.body,/Meaning-based search failed/i,'hybrid fallback under ticketCapacity does not falsely report semantic failure');
  const degradedProvider=searchNotice({...ready,mode:'text',attachmentSearch:{state:'degraded',extraction:{attachments:0,indexed:0}}},'hybrid');
  assert.equal(degradedProvider.tone,'warn');assert.match(degradedProvider.body,/Meaning-based search failed.*full-text search only/);
  assert.doesNotMatch(degradedProvider.body,/attachment/i,'provider failure with zero attachment issues does not blame attachments');

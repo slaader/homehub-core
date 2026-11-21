@@ -79,9 +79,9 @@ export function searchNotice(data,requested='text'){
   body:t('Hledání podle významu je vypnuté. Zapnout ho může správce v Nastavení platformy; do té doby hledej fulltextem.')};
  if(requested==='hybrid'&&data?.mode==='text'){
   if(state==='degraded')return {tone:'warn',body:hasContentIssues
-   ?t('Významová část selhala a část obsahu příloh není v indexu; výsledky jsou jen z fulltextu a nemusí být úplné.')
+   ?t('Výsledky jsou zatím jen z fulltextu a část obsahu příloh není v indexu; výsledky nemusí být úplné.')
    :hasLimitIssues
-    ?t('Významová část selhala a část ticketů nebo metadat přesáhla limit indexu; výsledky jsou jen z fulltextu a nemusí být úplné.')
+    ?t('Výsledky jsou zatím jen z fulltextu a část ticketů nebo metadat přesáhla limit indexu; výsledky nemusí být úplné.')
     :t('Významová část selhala; výsledky jsou zatím jen z fulltextu.')};
   return {tone:'info',body:t('Významová část ještě není připravená; výsledky jsou zatím jen z fulltextu.')};
  }
