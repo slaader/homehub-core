@@ -1,5 +1,5 @@
 // Operator-owned trust. Nothing downloaded or restored is allowed to supply these roots.
-import {readFileSync,lstatSync,realpathSync} from 'node:fs';
+import {constants,readFileSync,lstatSync,fstatSync,realpathSync,openSync,closeSync,mkdirSync,rmdirSync,rmSync} from 'node:fs';
 import path from 'node:path';
 import {createPublicKey,createHash,verify} from 'node:crypto';
 import {validRepo} from './version.mjs';
@@ -58,34 +58,6 @@ export function rememberTrustSelection(home,file){
  durableWrite(marker,JSON.stringify({schemaVersion:TRUST_REQUIREMENT_SCHEMA,file:canonicalPath(file)})+'\n');
 }
 
-function flipCase(name){
- for(let i=0;i<name.length;i++){
-  const ch=name[i],lo=ch.toLowerCase(),hi=ch.toUpperCase();
-  if(lo!==hi)return name.slice(0,i)+(ch===lo?hi:lo)+name.slice(i+1);
- }
- return null;
-}
-
-function isCaseInsensitiveDir(dir){
- const baseStat=lstatSync(dir);
- for(let cur=dir;cur!==path.dirname(cur);cur=path.dirname(cur)){
-  const st=lstatSync(cur);
-  if(st.dev!==baseStat.dev)break;
-  const swapped=flipCase(path.basename(cur));
-  if(!swapped)continue;
-  try{
-   const alt=lstatSync(path.join(path.dirname(cur),swapped));
-   return alt.dev===st.dev&&alt.ino===st.ino;
-  }catch(e){
-   if(e.code==='ENOENT')return false;
-   throw e;
-  }
- }
- return false;
-}
-
-const foldPath=p=>p.normalize('NFD').toLowerCase();
-
 export function trustDestination(file,{forbidden=[]}={}){
  const named=path.resolve(file);
  let parent=path.dirname(named),suffix=[];
@@ -102,12 +74,10 @@ export function trustDestination(file,{forbidden=[]}={}){
    if(!leafStat.isSymbolicLink())resolved=realpathSync.native(resolved);
   }catch(e){if(e.code!=='ENOENT')throw e;}
  }
- const caseInsensitive=isCaseInsensitiveDir(realParent);
  for(const root of forbidden){
   if(!root)continue;
   const cRoot=canonicalPath(root);
-  if(withinPath(resolved,cRoot)||(caseInsensitive&&withinPath(foldPath(resolved),foldPath(cRoot))))
-   throw new Error(`trust must be outside replaced/restored root: ${root}`);
+  if(withinPath(resolved,cRoot))throw new Error(`trust must be outside replaced/restored root: ${root}`);
   if(leafStat&&!leafStat.isSymbolicLink()){
    try{
     const rStat=lstatSync(cRoot);
@@ -121,6 +91,47 @@ export function trustDestination(file,{forbidden=[]}={}){
   if((st.mode&0o022)||![0,process.getuid?.()??st.uid].includes(st.uid))throw new Error(`unsafe trust parent permissions/ownership: ${dir}`);
  }
  return resolved;
+}
+
+// For an absent trust destination, ask the destination directory's actual filesystem lookup (case-folding,
+// Unicode normalization, per-directory casefold flags) via an empty O_EXCL probe before writing any policy bytes.
+function probeAbsentTrustDestination(target,forbidden){
+ if(!forbidden.length||present(target))return;
+ const createdDirs=[],missing=[];
+ for(let dir=path.dirname(target);!present(dir);dir=path.dirname(dir)){
+  missing.unshift(dir);
+  if(dir===path.dirname(dir))break;
+ }
+ let probeCreated=false;
+ try{
+  for(const dir of missing){
+   try{mkdirSync(dir,{mode:0o700});createdDirs.push(dir);}
+   catch(e){if(e.code!=='EEXIST')throw e;}
+  }
+  let fd;
+  try{
+   fd=openSync(target,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);
+   probeCreated=true;
+   const probeStat=fstatSync(fd);
+   closeSync(fd);fd=undefined;
+   const canonicalTarget=realpathSync.native(target);
+   for(const root of forbidden){
+    if(!root)continue;
+    const cRoot=canonicalPath(root);
+    if(withinPath(canonicalTarget,cRoot))throw new Error(`trust must be outside replaced/restored root: ${root}`);
+    try{
+     const rStat=lstatSync(cRoot);
+     if(probeStat.dev===rStat.dev&&probeStat.ino===rStat.ino)throw new Error(`trust must be outside replaced/restored root: ${root}`);
+    }catch(e){if(e.code!=='ENOENT'&&e.code!=='ENOTDIR')throw e;}
+   }
+  }catch(e){
+   if(e.code==='EEXIST'){trustDestination(target,{forbidden});return;}
+   throw e;
+  }finally{if(fd!==undefined)closeSync(fd);}
+ }finally{
+  if(probeCreated)rmSync(target,{force:true});
+  for(let i=createdDirs.length-1;i>=0;i--)try{rmdirSync(createdDirs[i]);}catch{}
+ }
 }
 
 export function validateTrust(doc){
@@ -180,6 +191,7 @@ export function importTrustKey({inst,trustFile,repository,role='package',publicK
  if(!['package','git'].includes(role))throw new UpdateError('trust-import role must be package or git');
  const forbidden=forbiddenTrustRoots(inst);
  const target=trustDestination(trustFile,{forbidden});
+ probeAbsentTrustDestination(target,forbidden);
  const release=lock(target+'.lock');
  try{
   const pem=readFileSync(publicKeyFile,'utf8').trim()+'\n';
@@ -194,6 +206,7 @@ export function importTrustKey({inst,trustFile,repository,role='package',publicK
   validateTrust(doc);
   const serialized=Buffer.from(JSON.stringify(doc,null,1)+'\n','utf8');
   if(serialized.length>TRUST_MAX_BYTES)throw new UpdateError('Trust policy exceeds its 1 MiB byte limit');
+  probeAbsentTrustDestination(target,forbidden);
   out?.(`Authorizing repository ${repository}, role ${role}, fingerprint ${id}`);
   durableWrite(target,serialized);
   const trust=loadTrust(target,{forbidden});

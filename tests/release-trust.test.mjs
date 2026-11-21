@@ -89,6 +89,25 @@ test('trust: forbiddenTrustRoots includes backupRoots and loadTrust enforces sym
   assert.throws(()=>loadTrust(altCase,{forbidden:fileForbidden}),/outside replaced\/restored root/);
   assert.throws(()=>importTrustKey({inst:instFileRoot,trustFile:altCase,repository:'example/core',role:'package',publicKeyFile:keyFile,expectedFingerprint:id}),/outside replaced\/restored root/);
  }
+ // Filesystem-equivalent Unicode names (e.g. APFS full Unicode case-folding where ß == ss while NFD lowercase differs)
+ // are also rejected before writing when absent, leaving the destination absent.
+ const uniRoot=path.join(safeDir,'stra\u00dfe.json'),uniAlt=path.join(safeDir,'strasse.json');
+ const probeA=path.join(safeDir,'probe-\u00df'),probeB=path.join(safeDir,'probe-ss');
+ writeFileSync(probeA,'',{mode:0o600});
+ let unicodeEquivalent=false;
+ try{const sa=lstatSync(probeA),sb=lstatSync(probeB);unicodeEquivalent=sa.dev===sb.dev&&sa.ino===sb.ino;}catch{}
+ rmSync(probeA,{force:true});
+ if(unicodeEquivalent){
+  const instUni={...inst,backupRoots:[...inst.backupRoots,uniRoot]};
+  assert.throws(()=>importTrustKey({inst:instUni,trustFile:uniAlt,repository:'example/core',role:'package',publicKeyFile:keyFile,expectedFingerprint:id}),/outside replaced\/restored root/);
+  assert.throws(()=>lstatSync(uniRoot),{code:'ENOENT'});
+  assert.throws(()=>lstatSync(uniAlt),{code:'ENOENT'});
+  // Absent nested directory with Unicode-equivalent backup root is also rejected and cleaned up before writing.
+  const absentDirRoot=path.join(safeDir,'dir-\u00df'),absentDirTrust=path.join(safeDir,'dir-ss','trust.json');
+  const instUniDir={...inst,backupRoots:[...inst.backupRoots,absentDirRoot]};
+  assert.throws(()=>importTrustKey({inst:instUniDir,trustFile:absentDirTrust,repository:'example/core',role:'package',publicKeyFile:keyFile,expectedFingerprint:id}),/outside replaced\/restored root/);
+  assert.throws(()=>lstatSync(path.dirname(absentDirTrust)),{code:'ENOENT'});
+ }
 });
 test('trust: importTrustKey refuses writes exceeding the 1 MiB trust policy limit without modifying the existing policy',t=>{
  const dir=safeTempDir(t,'.hub-trust-limit-');
