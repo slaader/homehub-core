@@ -1,4 +1,11 @@
 export default {
+ 'Založení nebo úprava vlastní projektové reference.':'Create or revise a project-owned Custom record.',
+ 'Založení nebo úprava globální reference nebo modelu.':'Create or revise a global Custom or model record.',
+ 'Smazání vlastní projektové reference.':'Delete a project-owned Custom record.',
+ 'Smazání globální reference nebo modelu.':'Delete a global Custom or model record.',
+ 'Přesun projektové reference do globálního nastavení.':'Move a project reference to global Settings.',
+ 'Sdílení stránky wiki nebo ticketu napříč projekty.':'Share a wiki page or ticket across projects.',
+ 'Uložení poznámky k existujícímu zdroji.':'Save a note on an existing source.',
  'Projekt se změnil. Zkontroluj, zda jsou reference dostupné v novém projektu.':'The project changed. Check that the references are available in the new project.',
  'Reference neexistuje nebo není dostupná v tomto projektu.':'A reference is missing or unavailable in this project.',
  'Načíst znovu':'Reload','Reference překračuje limit textu.':'This reference would exceed the text limit.',

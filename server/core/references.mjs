@@ -29,6 +29,15 @@ const writes=[
  ['share','reference_share',global,{...identity,rev},['kind','id','rev'],'Share a native wiki or tracker ticket across projects. Also requires tickets:write. Use note.rev or zero.',(s,i,c)=>{sharing(c);return s.annotate(i,c.principal.username,true);}],
  ['note','reference_note_save',global,{...identity,description:str,rev},['kind','id','description','rev'],'Annotate a native source. Use note.rev or zero.',(s,i,c)=>s.annotate(i,c.principal.username,false)],
 ];
+const writeDocs={
+ 'local/save':'Založení nebo úprava vlastní projektové reference.',
+ 'global/save':'Založení nebo úprava globální reference nebo modelu.',
+ 'local/delete':'Smazání vlastní projektové reference.',
+ 'global/delete':'Smazání globální reference nebo modelu.',
+ promote:'Přesun projektové reference do globálního nastavení.',
+ share:'Sdílení stránky wiki nebo ticketu napříč projekty.',
+ note:'Uložení poznámky k existujícímu zdroji.',
+};
 function tool(name,scope,properties,required,description,run){
  return {name,scope,inputSchema:object(properties,required),description,annotations:{readOnlyHint:scope==='read',destructiveHint:name.endsWith('_delete'),openWorldHint:false},
   async run(input,c){
@@ -40,9 +49,10 @@ export default {
  id:'references',title:'References',setup:createReferences,
  assets:['reference-format.js','tracker-markdown-format.js','reference-chip.js','reference-picker.js','references-view.js','references.css','i18n-en-references.js'],
  nav:[{groupKey:'Správa',labelKey:'Reference',hash:'references',order:65,view:'references-view.js#referencesPage'}],
- mcpInstructions:'references_search and reference_get read shared documentation and where-used. Wiki mentions use {t:"ref",kind,id,label} or {t:"ticket",id}. Ticket descriptions/comments use @[Label](ref:kind/id). Use project context to discover available mentions.',
+ mcpInstructions:'references_search and reference_get read shared documentation and where-used. Wiki mentions use {t:"ref",kind,id,label} or {t:"ticket",id}. Ticket descriptions/comments use @[Label](ref:kind/id). Use references_suggest with project context to discover available mentions.',
  mcpTools:[
-  tool('references_search','read',search,[],'Find references by prefix. With project, return mentionable local and global sources.',(s,i)=>s.search(i,Boolean(i.project))),
+  tool('references_search','read',{...search,limit:{...page.limit,maximum:100}},[],'List references by prefix, type, scope or owning project.',(s,i)=>s.search(i)),
+  tool('references_suggest','read',{...search,limit:{...page.limit,maximum:20}},[],'Suggest mentionable local and global sources in the project being edited.',(s,i)=>s.search(i,true)),
   tool('reference_get','read',{...identity,...page},['kind','id'],'Read a reference, description and paged incoming mentions.',(s,i)=>s.get(i)),
   ...writes.map(([,name,scope,props,required,description,run])=>tool(name,scope,props,required,description,run)),
  ],
@@ -58,6 +68,6 @@ export default {
  apiDocs:[{title:'References',routes:[
   ['GET',base,'read','Reference podle druhu a projektu.'],['GET',base+'/suggest','read','Doplnění reference v projektu.'],
   ['GET',base+'/item','read','Zdroj reference a místa použití.'],['POST',base+'/resolve','read','Názvy odkazovaných záznamů.'],
-  ...writes.map(([path,,scope,,,description])=>['POST',base+'/'+path,scope,description]),
+  ...writes.map(([path,,scope])=>['POST',base+'/'+path,scope,writeDocs[path]]),
  ]}],
 };

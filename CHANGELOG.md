@@ -12,6 +12,10 @@ until the release gives it its number: a change to the public surface adds its l
 
 - Reference native projects, wiki pages, tracker tickets and machines, documented models, and project-owned Custom records from wiki text, inventory cells, ticket descriptions and comments. Settings and the read API/MCP expose current titles, source links, descriptions and incoming uses. The new `references:write` scope manages shared documentation. Authors holding both write scopes can promote a local record without changing its ID.
 
+### Changed
+
+- Wiki backlinks include pages across projects when a tracker ticket is shared. Wiki and ticket saves report an unavailable reference when a newly inserted mention points to a missing target or a target outside the project's available references.
+
 ### Data
 
 - Data epoch 10 adds revisioned reference records and native sharing annotations in SQLite, plus typed wiki runs and stable tracker Markdown tokens. The upgrade advances the database and wiki schema markers and preserves earlier documents. Rolling back to epoch 9 requires the pre-update backup.

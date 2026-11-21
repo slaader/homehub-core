@@ -215,7 +215,7 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
  }
  async function guardText(value){
   if(typeof value!=='string'||!value.includes('@['))return ()=>{};
-  // Only explicit reference tokens enter the guard. Attachment tokens cannot contain brackets.
+  // File chip resolution changes the presentation, while the shared parser keeps filename text isolated.
   const validate=await referenceGuard(db,machines,markdownReferences(value));
   return (project,previous='')=>validate(project,markdownReferences(previous));
  }

@@ -1687,7 +1687,9 @@ Creation omits ID and revision. Updates send both. A stale revision or a duplica
 kind in the destination returns 409. Labels accept 1–200 characters, descriptions up to 8,000.
 A record save supplies its full label and description. Read the current record before editing.
 
-Agents can call `references_search` and `reference_get` with `read`. The corresponding mutation tools are
+Agents can call `references_search` for the catalog, `references_suggest` for project-aware
+autocomplete, and `reference_get` for a source and its incoming uses. Each needs `read` and uses the
+same filters and bounds as its corresponding HTTP route. The mutation tools are
 `project_reference_save`, `reference_save`, `project_reference_delete`, `reference_delete`,
 `reference_promote`, `reference_share`, and `reference_note_save`. They use the same inputs, scopes and revision rules.
 

@@ -59,8 +59,8 @@ const RULES=[
  ['bold',/\*\*([^*\n]+?)\*\*/],
  ['italic',/(?<![\w*])\*([^*\s][^*\n]*?)\*(?![\w*])/],
  ['link',/https?:\/\/[^\s<>"'`]+[^\s<>"'`.,;:!?)\]]/],
- ['const',/(?<![\w$])[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+(?:\/[A-Z0-9_]+)*(?:_\*)?(?![\w$])/],
- ['path',/(?<![\w/~.])(?:~\/|\/(?:tmp|Users|opt|etc|var|Library|private|Volumes)\/)[^\s,;:'"`()<>]*[^\s,;:'"`()<>.]/],
+ ['const',/(?<![\w$@])[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+(?:\/[A-Z0-9_]+)*(?:_\*)?(?![\w$])/],
+ ['path',/(?<![\w/~.@])(?:~\/|\/(?:tmp|Users|opt|etc|var|Library|private|Volumes)\/)[^\s,;:'"`()<>]*[^\s,;:'"`()<>.]/],
 ];
 const TOKEN=/(@\[((?:\\[\\\[\]]|[^\[\]\\\n]){1,400})\]\(ref:([a-z]+)\/([a-zA-Z0-9_/-]+)\))/;
 const ALL_TOKENS=new RegExp(TOKEN.source,'g');
@@ -68,7 +68,7 @@ const ESCAPE=new RegExp('\\\\'+TOKEN.source);
 function inline(text,context){
  const {ids,files,mention,el,source}=context;
  const literal=(from,size)=>context.plain?.(context.offset+from,context.offset+from+size);
- const out=[],rules=[['slashes',/\\\\/],['escape',ESCAPE],['reference',TOKEN],...RULES,...(files?[['file',FILE_TOKEN]]:[]),...(ids?[['ticket',ids]]:[])];let rest=String(text);
+ const out=[],rules=[['slashes',/\\\\/],['escape',ESCAPE],['reference',TOKEN],...RULES,['file',FILE_TOKEN],...(ids?[['ticket',ids]]:[])];let rest=String(text);
  // Keep token labels opaque to surrounding emphasis while preserving source offsets.
  const emphasis=String(text).includes('@[')?String(text).replace(ALL_TOKENS,token=>'x'.repeat(token.length)):String(text);
  while(rest){
@@ -93,9 +93,13 @@ function inline(text,context){
    out.push(el(kind==='bold'?'strong':'em',{},inline(text.slice(inner,inner+m[1].length),{...context,column:context.column+inner,offset:context.offset+inner})));
   }
   else if(kind==='file'){
-   // Not a file of this ticket: only the "![" is passed over, so what stands in the brackets is read as before.
-   const node=files(m[1]);if(!node){out.push('![');rest=rest.slice(m.index+2);continue;}
-   out.push(node);
+   const node=files?.(m[1]);
+   if(node)out.push(node);
+   else{
+    // Parse an unresolved filename in isolation so adding a file cannot change the meaning of surrounding text.
+    const inner=from+m.index+2;
+    out.push('![',...inline(m[1],{...context,column:context.column+inner,offset:context.offset+inner}),']');
+   }
   }
   else if(kind==='link')out.push(el('a',{href:m[0],target:'_blank',rel:'noopener noreferrer',class:'sys-link'},m[0]));
   else {

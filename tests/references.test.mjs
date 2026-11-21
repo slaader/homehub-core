@@ -50,6 +50,17 @@ test('source and storage permissions, atomic promotion, incoming uses and live r
  const invalidComment=await post('/api/tickets/comment',{id:otherTicket.id,text:token},writer,400);
  assert.match(invalidComment.error.message,/reference is missing or unavailable/i);
  await post('/api/tickets',{project:other,title:'Unavailable reference',description:token},writer,400);
+ // A backtick in an attachment name cannot hide a reference in validation and expose it in rendering.
+ const name='a`b.txt',paired='!['+name+'] '+token+' `';
+ assert.deepEqual(markdownReferences(paired),markdownReferences(paired,{attachmentNames:[name]}));
+ await post('/api/tickets/comment',{id:otherTicket.id,text:paired},writer,400);
+ const attached=await body(fetch(h.origin+'/api/tickets/'+otherTicket.id+'/attachments?'+new URLSearchParams({name}),{
+  method:'PUT',headers:{...writer,'Content-Type':'application/octet-stream'},body:'Fixture attachment.',
+ }),201);
+ assert.equal(attached.attachments[0].name,name);
+ await post('/api/tickets/comment',{id:otherTicket.id,text:paired},writer,400);
+ await post('/api/tickets/attachments/delete',{id:otherTicket.id,attachment:attached.attachments[0].id});
+ await post('/api/tickets/comment',{id:otherTicket.id,text:paired},writer,400);
  await post('/api/tickets/update',{id:otherTicket.id,rev:1,description:token},writer,400);
  const {home}=await post('/api/wiki/setup',{project},writer,201);
  const saved=await post('/api/wiki/pages/update',{project,id:home,rev:1,doc:doc([{t:'text',text:'Inventory '},run(first)])});
@@ -57,6 +68,10 @@ test('source and storage permissions, atomic promotion, incoming uses and live r
  assert.equal((await rpc('wiki_page_save',{project:other,pageId:otherHome,rev:1,doc:doc([run(first)])},writer)).isError,true);
  assert.deepEqual((await get(base+'/suggest?project='+project+'&q=tRO')).items.map(r=>r.id),[first.id]);
  assert.deepEqual((await get(base+'/suggest?project='+other+'&q=tro')).items,[]);
+ const listed=await rpc('references_search',{project,kind:'custom',limit:50},reader);
+ assert.deepEqual(listed.structuredContent.items.map(r=>r.id),[first.id]);
+ const suggested=await rpc('references_suggest',{project:other,q:'tro'},reader);
+ assert.deepEqual(suggested.structuredContent.items,[]);
  const used=await item('custom',first.id);
  assert.equal(used.usageTotal,3);assert.deepEqual(new Set(used.usages.map(u=>u.excerpt)),new Set(['Inventory Tróoper','Description Tróoper','Comment Tróoper']));
  const promote={kind:'custom',id:first.id,project,rev:first.rev};

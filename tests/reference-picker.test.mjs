@@ -12,20 +12,27 @@ test('picker ignores literals and replaces a project selection or @ prefix using
  const node=document.createElement('textarea'),panel=referencePicker(node,{project:()=>'sample-game',canGlobal:true,context:()=>{
   const ctx={...selection,replace(r){inserted={r,trim:ctx.trim};}};return ctx;
  }});
- node.setAttribute('role','textbox');node.setAttribute('aria-multiline','true');
+ node.setAttribute('role','textbox');node.setAttribute('aria-multiline','true');node.setAttribute('aria-keyshortcuts','c');
  document.body.append(node,panel);
  const next=()=>new Promise(r=>setImmediate(r));
  globalThis.fetch=async(url,opts)=>{
-  if(!opts.method){assert.equal(url,'/api/references/suggest?project=sample-game&q=Tro');return Response.json({items:[record]});}
+  if(!opts.method){assert.match(url,/^\/api\/references\/suggest\?project=sample-game&q=(Tro)?$/);return Response.json({items:[record]});}
   requested={url,body:JSON.parse(opts.body)};return Response.json({...record,...requested.body});
  };
  fire(node,'input');await next();
  assert.equal(node.getAttribute('role'),'textbox');
  assert.equal(node.getAttribute('aria-multiline'),'true');
- assert.equal(node.getAttribute('aria-expanded'),'true');
+ assert.ok(node.getAttribute('aria-controls'));
  assert.ok(node.getAttribute('aria-activedescendant'));
  fire(node,'keyup',{key:'o'});fire(node,'keydown',{key:'Enter'});
  assert.deepEqual(inserted,{r:record,trim:4});
+ assert.equal(node.getAttribute('aria-keyshortcuts'),'c');
+ selection={selected:'',before:' @',position:2};inserted=undefined;
+ fire(node,'input');await next();
+ assert.ok(node.getAttribute('aria-controls'));
+ assert.equal(node.getAttribute('aria-activedescendant'),null);
+ assert.equal(fire(node,'keydown',{key:'Enter'}).defaultPrevented,false);
+ assert.equal(inserted,undefined);
  selection={selected:'Trooper',before:'',position:0};
  document.activeElement=node;fire(document,'selectionchange');fire(panel.children[0],'click');
  const [label,note]=panel.children;
@@ -36,7 +43,7 @@ test('picker ignores literals and replaces a project selection or @ prefix using
  assert.equal(inserted.r.kind,'custom');assert.equal(panel.hidden,true);
  const token=referenceToken(record),files=name=>name==='shot.png',keys=['HH'];
  for(const [text,segment,want] of [
-  ['plain @Tro','@Tro',true],['**Trooper**','Trooper',true],['- Selected text','Selected text',true],
+  ['plain @Tro','@Tro',true],['see @BUILD_HOST','@BUILD_HOST',true],['see @/tmp/example','@/tmp/example',true],['**Trooper**','Trooper',true],['- Selected text','Selected text',true],
   ['`@Tro`','@Tro',false],['```\n@Tro\n```','@Tro',false],['![shot.png]','shot.png',false],
   [token,'Trooper',false],['HH-12','HH-12',false],['https://example.org/test','example',false],
  ]){

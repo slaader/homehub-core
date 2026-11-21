@@ -24,11 +24,16 @@ export const kindName=kind=>t(({custom:'Vlastní',model:'Model',project:'Projekt
 // Each editor supplies a snapshot of its actual selection and a replacement operation against that snapshot.
 export function referencePicker(node,{context,project,canGlobal=false}){
  const id='reference-picker-'+(++serial),panel=el('div',{class:'ref-picker',hidden:''}),list=el('div',{id,role:'listbox'});
- let sequence=0,current=null,items=[],active=0,formOpen=false,last=null,createButton=null;
+ let sequence=0,current=null,items=[],active=-1,formOpen=false,last=null,createButton=null;
+ const originalShortcuts=node.getAttribute('aria-keyshortcuts');
  const hide=()=>{
   sequence++;current=null;last=null;items=[];formOpen=false;panel.hidden=true;panel.replaceChildren();
-  createButton=null;
-  for(const attr of ['aria-expanded','aria-controls','aria-activedescendant','aria-keyshortcuts'])node.removeAttribute(attr);
+  if(createButton){
+   if(originalShortcuts===null)node.removeAttribute('aria-keyshortcuts');
+   else node.setAttribute('aria-keyshortcuts',originalShortcuts);
+   createButton=null;
+  }
+  for(const attr of ['aria-controls','aria-activedescendant'])node.removeAttribute(attr);
  };
  function show(...parts){
   panel.replaceChildren(...parts);panel.hidden=false;
@@ -69,7 +74,7 @@ export function referencePicker(node,{context,project,canGlobal=false}){
  }
  function highlight(){
   Array.from(list.children).forEach((b,i)=>b.setAttribute('aria-selected',String(i===active)));
-  node.setAttribute('aria-activedescendant',id+'-'+active);
+  if(active>=0)node.setAttribute('aria-activedescendant',id+'-'+active);
  }
  async function update(){
   if(formOpen)return;
@@ -86,18 +91,18 @@ export function referencePicker(node,{context,project,canGlobal=false}){
   hide();current=selection;last=identity;
   if(selected){
    createButton=button(t('Vytvořit referenci'),()=>create(selected));
-   node.setAttribute('aria-keyshortcuts','Alt+Shift+R');show(createButton);return;
+   node.setAttribute('aria-keyshortcuts',[originalShortcuts,'Alt+Shift+R'].filter(Boolean).join(' '));show(createButton);return;
   }
 
   const turn=sequence;
   try{
    const {items:matches}=await referenceApi('/suggest?'+new URLSearchParams({project:owner,q:query}));
    if(sequence!==turn||!node.isConnected||owner!==project())return;
-   items=matches;active=0;
+   items=matches;active=query?0:-1;
    if(!items.length)return hide();
    list.replaceChildren(...items.map((r,i)=>el('button',{type:'button',role:'option',id:id+'-'+i,tabindex:'-1',
     onmousedown:e=>e.preventDefault(),onclick:()=>choose(r)},el('strong',{},r.label),' · '+kindName(r.kind)+' · '+(r.project??r.id))));
-   show(list);node.setAttribute('aria-controls',id);node.setAttribute('aria-expanded','true');highlight();
+   show(list);node.setAttribute('aria-controls',id);highlight();
   }catch{if(turn===sequence)hide();}
  }
  function key(e){
@@ -109,9 +114,12 @@ export function referencePicker(node,{context,project,canGlobal=false}){
   if(e.key==='Escape'&&!panel.hidden){e.preventDefault();e.stopImmediatePropagation();hide();return;}
   if(!items.length)return;
   if(e.key==='ArrowDown'||e.key==='ArrowUp'){
-   e.preventDefault();e.stopImmediatePropagation();active=(active+(e.key==='ArrowDown'?1:-1)+items.length)%items.length;highlight();return;
+   e.preventDefault();e.stopImmediatePropagation();active=active<0?(e.key==='ArrowDown'?0:items.length-1):(active+(e.key==='ArrowDown'?1:-1)+items.length)%items.length;highlight();return;
   }
-  if(e.key==='Enter'||e.key==='Tab'){e.preventDefault();e.stopImmediatePropagation();choose(items[active]);}
+  if(e.key==='Enter'||e.key==='Tab'){
+   if(active<0){hide();return;}
+   e.preventDefault();e.stopImmediatePropagation();choose(items[active]);
+  }
  }
  observeSelection(node,update);
  node.addEventListener('input',update);node.addEventListener('pointerup',update);node.addEventListener('select',update);
