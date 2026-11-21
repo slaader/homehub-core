@@ -357,6 +357,10 @@ tr.tk-cursor td:first-child{box-shadow:inset 3px 0 0 var(--color-accent)}
 .sr-none{margin:0 0 var(--space-2);font-size:var(--text-l)}
 .sr-tips{margin:var(--space-2) 0 0;padding-left:var(--space-5);display:grid;gap:var(--space-2);font-size:var(--text-m);line-height:var(--leading-body);color:var(--color-text-dim)}
 .sr-scope{margin:0}
+.sr-mode:empty,.sr-notice:empty{display:none}
+.sr-mode label{display:inline-flex;flex-wrap:wrap;align-items:center;gap:var(--space-2);max-width:100%;font-size:var(--text-s);color:var(--color-text-dim)}
+.sr-mode select{max-width:100%}
+.sr-source{display:inline-flex;align-items:baseline;min-width:0;max-width:100%;color:var(--color-text-dim);overflow-wrap:anywhere}
 /* Filter row: selects keep their natural width, the text filter takes the rest; the title column takes the table's spare width */
 .tk-filters{display:flex;flex-wrap:wrap;align-items:center}
 .tk-filters select{flex:0 1 auto;width:auto;max-width:230px}
