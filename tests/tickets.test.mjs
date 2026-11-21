@@ -380,6 +380,23 @@ test('project settings and its table keep preferences, requests and new items sc
  await form.listeners.submit({preventDefault(){},currentTarget:{elements:{color:{value:'teal'},view:{value:'board'}}}});
  assert.deepEqual(post.at(-1),{id:project,rev:1,settings:{color:'teal',view:'board'}});
  assert.ok(nodes(edit,n=>n.tag==='input'&&n.attrs.value==='teal'&&n.attrs.checked==='').length);
+ const features=await render('#projects/'+project+'/settings/features');
+ assert.match(features.textContent,/Additional settings/);
+ assert.ok(byName(features,'globalReferences'));
+ for(const invalid of ['typo','look/extra']){
+  const unknown=await render('#projects/'+project+'/settings/'+invalid);
+  assert.match(unknown.textContent,/This settings page does not exist/);
+  assert.equal(nodes(unknown,n=>n.tag==='form').length,0);
+ }
+ get.length=0;
+ const board=await render('#projects/'+project);
+ assert.match(board.textContent,/Scoped item/);
+ assert.doesNotMatch(board.textContent,/Foreign item/);
+ const type=nodes(board,n=>n.attrs['aria-label']==='All types')[0];
+ type.listeners.change({target:{value:'bug'}});await flush();
+ assert.doesNotMatch(board.textContent,/Scoped item/);
+ assert.ok(get.every(q=>q.project===project));
+ assert.ok(get.some(q=>q.type==='bug'));
 });
 
 test('disabled project features keep assigned releases and existing review results on tickets',async t=>{

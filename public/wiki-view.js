@@ -202,7 +202,7 @@ export function wikiPage({me,sub:project,onWikiTree}){
     })):
     emptyState({icon:'box',compact:true,title:t('Tahle stránka je prázdná.'),
      actions:writable?[{label:t('Upravit'),primary:true,onclick:edit}]:[]}));
-   content.append(referencesSection('wiki',project+'/'+page.id,me,context.globalReferences));
+   content.append(referencesSection('wiki',project+'/'+page.id,me));
    const subpages=children.get(page.id)??[];
    if(subpages.length)content.append(el('section',{class:'acc-card wiki-linked'},
     el('h2',{},t('Podstránky')),el('ul',{},subpages.map(entry=>el('li',{},el('a',{href:wikiHref(project,entry.id)},entry.title))))));

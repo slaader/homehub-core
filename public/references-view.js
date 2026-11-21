@@ -31,7 +31,7 @@ function form(record,done,reload){
   }catch(error){message.textContent=error.message;if(error.status===409&&reload)message.append(' ',btn(t('Načíst znovu'),reload));}finally{submit.disabled=false;}
  }},field('Název',label),field('Popis',description),message,submit);
 }
-function details(kind,id,me,standalone=false,allowSharing=true){
+function details(kind,id,me,standalone=false){
  const box=el('div',{class:'ref-usages'});let request=0;
  async function load(offset=0){
   const turn=++request;
@@ -46,7 +46,7 @@ function details(kind,id,me,standalone=false,allowSharing=true){
    });
    const authored=['model','custom'].includes(kind),controls=[];
    if(authored&&(r.scope==='local'?local:global))controls.push(btn(t('Upravit'),()=>edit.replaceChildren(form(r,()=>load(),()=>load()))));
-   if(allowSharing&&r.scope==='local'&&global&&local)controls.push(action('Zpřístupnit ve všech projektech',authored?'/promote':'/share',
+   if(r.scope==='local'&&global&&local)controls.push(action('Zpřístupnit ve všech projektech',authored?'/promote':'/share',
     authored?{kind,id,project:r.project,rev:r.rev}:{kind,id,rev:note?.rev??0}));
    if(!authored&&global)controls.push(btn(t('Upravit poznámku'),()=>{
     const text=el('textarea',{rows:3,maxlength:8000},note?.description??'');
@@ -74,8 +74,8 @@ function details(kind,id,me,standalone=false,allowSharing=true){
  }
  return {box,load};
 }
-export function referencesSection(kind,id,me,allowSharing=true){
- const {box,load}=details(kind,id,me,false,allowSharing),section=el('details',{class:'acc-card'},el('summary',{},t('Reference a místa použití')),box);
+export function referencesSection(kind,id,me){
+ const {box,load}=details(kind,id,me),section=el('details',{class:'acc-card'},el('summary',{},t('Reference a místa použití')),box);
  section.addEventListener('toggle',()=>{if(section.open)load();});
  return section;
 }
@@ -104,7 +104,8 @@ function catalog(me,fixedProject){
    if(sequence!==turn)return;
    const result=items.length?el('table',{class:'ref-table'},
     el('thead',{},el('tr',{},(fixedProject?['Název','Druh reference']:['Název','Druh reference','Rozsah']).map(k=>el('th',{scope:'col'},t(k))))),
-    el('tbody',{},items.map(r=>el('tr',{},el('td',{},el('a',{href:r.href},r.label)),el('td',{},kindName(r.kind)),fixedProject?null:el('td',{},scopeName(r)))))):
+    el('tbody',{},items.map(r=>el('tr',{},el('td',{},el('a',{href:r.href,class:fixedProject?'wiki-ticket ref-chip':null,
+      'aria-label':fixedProject?r.label+', '+kindName(r.kind):null},r.label)),el('td',{},kindName(r.kind)),fixedProject?null:el('td',{},scopeName(r)))))):
     emptyState({icon:'box',compact:true,title:t('Žádné odpovídající reference.')});
    list.replaceChildren(result,...[pager(offset,total,draw)].filter(Boolean));
   }catch(e){if(sequence===turn)list.textContent=e.message;}

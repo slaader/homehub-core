@@ -168,7 +168,7 @@ function projectChips(projects,onPick,state=filters){
 // List ------------------------------------------------------------------------------------------
 async function listPage(wrap,ctx,project=null,initial=null){
  const {canWrite,user}=ctx;
- const local=project?projectFilters.get(project.id):filters,board=!project&&prefs.view==='board';
+ const local=project?projectFilters.get(project.id):filters,board=project?project.settings?.view!=='table':prefs.view==='board';
  if(project?.settings?.releases===false)local.release='';
  const picked={...local,...(board?{status:''}:{})},query=new URLSearchParams(Object.entries(picked).filter(([,v])=>v));
  const result=await load(wrap,Promise.all([api('/api/tickets?'+query),initial??api('/api/tickets'+(picked.project?'?project='+encodeURIComponent(picked.project):''))]));if(!result)return;
@@ -180,7 +180,11 @@ async function listPage(wrap,ctx,project=null,initial=null){
  const count=s=>all.tickets.filter(x=>s.includes(x.status)).length,bugs=activeBugs(all.tickets);
  const setView=v=>{if(prefs.view===v)return;prefs.view=v;try{globalThis.localStorage?.setItem('tk-view',v);}catch{}redraw();};
  // The numbers double as quick filters: one click narrows the table to that status.
- const stat=(k,v,s,tone,change)=>el('button',{type:'button',class:`sec-stat tk-stat ${tone}`,title:t('Zobrazit jen tyto položky'),onclick:()=>{Object.assign(local,{type:'',priority:''},change);if(!project&&prefs.view!=='table'){prefs.view='table';try{globalThis.localStorage?.setItem('tk-view','table');}catch{}}redraw();}},
+ const stat=(k,v,s,tone,change)=>el('button',{type:'button',class:`sec-stat tk-stat ${tone}`,title:t('Zobrazit jen tyto položky'),onclick:()=>{
+   Object.assign(local,{type:'',priority:''},change);
+   if(!project&&prefs.view!=='table'){prefs.view='table';try{globalThis.localStorage?.setItem('tk-view','table');}catch{}}
+   redraw();
+  }},
   el('div',{class:'k'},k),el('div',{class:'v'},String(v)),el('div',{class:'s'},s));
  const select=(key,list,empty)=>el('select',{class:local[key]?'on':'','aria-label':empty,onchange:e=>{local[key]=e.target.value;redraw();}},options(list,local[key],empty));
  const showReleases=project?.settings?.releases!==false;
@@ -207,7 +211,7 @@ async function listPage(wrap,ctx,project=null,initial=null){
     agentPrompt:t('Přes MCP mého Home Hubu (scope tickets:write) založ nástrojem ticket_create položky pro práci, kterou v tomto repozitáři vidíš: project podle tickets_list → projects, title, description s kritérii přijetí, type bug|feature|task a priority. Než začneš na některé pracovat, nastav jí přes ticket_update stav in-progress a sebe jako assignee; po dokončení přidej ticket_comment s tím, co se změnilo.'),
     actions:[add].filter(Boolean)});
  show(wrap,title,project?null:el('div',{class:'tk-toolbar'},el('div',{class:'tk-toolbar-left'},projectChips(data.projects,redraw)),viewToggle),
-  el('div',{class:'sec-stats tk-stats'},stat(t('Otevřené'),count(['open']),t('čeká na práci'),'warn',{status:'open'}),stat(t('Rozpracované'),count(['in-progress']),t('právě se dělá'),'',{status:'in-progress'}),stat(t('Hotové'),count(['done']),t('uzavřeno'),'',{status:'done'}),
+  project&&board?null:el('div',{class:'sec-stats tk-stats'},stat(t('Otevřené'),count(['open']),t('čeká na práci'),'warn',{status:'open'}),stat(t('Rozpracované'),count(['in-progress']),t('právě se dělá'),'',{status:'in-progress'}),stat(t('Hotové'),count(['done']),t('uzavřeno'),'',{status:'done'}),
    stat(t('Aktivní chyby'),bugs,t('otevřené + rozpracované'),bugs?'crit':'',{status:'active',type:'bug'}),showReleases?el('div',{class:'sec-stat'},el('div',{class:'k'},t('Releasy')),el('div',{class:'v'},String(data.releases.filter(r=>r.status==='planned').length)),el('div',{class:'s'},t('naplánované'))):null),
   el('div',{class:'tk-filters'},
    board?null:select('status',[['active',t('Aktivní (otevřené + rozpracované)')],...STATUSES()],t('Všechny stavy')),select('type',TYPES(),t('Všechny typy')),
@@ -215,7 +219,7 @@ async function listPage(wrap,ctx,project=null,initial=null){
    select('assignee',[['none',t('Nepřiřazené')],...names.map(n=>[n,n===user?t('{name} (já)',{name:n}):n])],t('Všichni řešitelé')),
    labels.length||local.label?select('label',[...new Set([...labels,local.label].filter(Boolean))].map(l=>[l,'#'+l]),t('Všechny štítky')):null,search,clear),
   msg,
-  board&&all.total?boardView(data.tickets,{canWrite,msg,redraw,projects:data.projects,showProject:!picked.project}):
+  board&&all.total?boardView(data.tickets,{canWrite,msg,redraw:ctx.afterMove??redraw,projects:data.projects,showProject:!picked.project}):
   data.tickets.length?el('div',{class:'sec-scroll'},el('table',{class:'sec-table tk-table'},
    el('thead',{},el('tr',{},['ID',t('Název položky'),t('Priorita'),t('Stav'),...(releaseColumn?['Release']:[]),t('Řeší'),'',t('Změněno'),''].map(h=>el('th',{scope:'col'},h)))),el('tbody',{},rows)))
    :nothing(),
@@ -445,7 +449,7 @@ async function ticketPage(wrap,ctx){
  // It waits for a page of that item that is on the screen: a view the user already left does not use it up.
  const [tk,meta,people,reviews]=result,mine=wrap.isConnected&&prefs.notices.has(tk.id),notice=mine?{notice:prefs.notices.get(tk.id),noticeError:true}:{};if(mine)prefs.notices.delete(tk.id);
  const project=meta.projects.find(p=>p.id===tk.project);
- const referenceLinks=referencesSection('ticket',tk.id,ctx.me,project?.settings?.globalReferences!==false);
+ const referenceLinks=referencesSection('ticket',tk.id,ctx.me);
  const wikiLinks=el('section',{class:'acc-card',hidden:''});
  renderTicket(wrap,{...ctx,meta,wikiLinks,referenceLinks,reviews:Array.isArray(reviews?.sets)?reviews:null,people:peopleNames(people)},tk,{fields:{},comment:'',...notice});
  wikiApi('/api/wiki/tickets/'+encodeURIComponent(tk.id)+'/backlinks').then(data=>{
@@ -805,8 +809,11 @@ const projectColors=()=>[['',t('Výchozí barva')],['slate',t('Břidlicová')],[
 
 async function projectPage(wrap,ctx){
  const {canWrite,id}=ctx,encoded=encodeURIComponent(id);
- const [,,section,tab]=location.hash.split('?')[0].split('/');
- const settings=section==='settings';
+ const [route,routeId,section,tab,...extra]=location.hash.split('?')[0].split('/');
+ const sameProject=route==='#projects'&&routeId===id;
+ const settings=sameProject&&section==='settings';
+ if(sameProject&&section!==undefined&&(!settings||extra.length||tab!==undefined&&!['look','features','references'].includes(tab)))
+  throw Object.assign(new Error(t('Stránka nastavení neexistuje.')),{status:404});
  const result=await load(wrap,Promise.all([
   api('/api/tickets?project='+encoded+(settings?'&limit=1':'')).catch(e=>{if(e.status===400)e.status=404;throw e;}),
   settings?null:wikiApi(wikiApiPath(encoded)).catch(()=>null),
@@ -815,11 +822,11 @@ async function projectPage(wrap,ctx){
  if(!p){const e=new Error(t('Projekt „{id}“ v trackeru není.',{id}));e.status=404;throw e;}
  if(settings)return renderProjectSettings(wrap,ctx,p,tab);
  const msg=status(),redraw=()=>projectPage(wrap,ctx).catch(e=>fail(msg,e));
- const mine=data.tickets.filter(x=>x.project===id),table=p.settings?.view==='table';
+ const mine=data.tickets.filter(x=>x.project===id);
  const newItem=()=>newTicket(data.projects,id,{...ctx,lockProject:true});
  const add=canWrite?{label:t('+ Nová položka'),primary:true,onclick:newItem}:null;
  const wikiAction=wiki?.enabled===false?(ctx.canWriteWiki?setupWikiAction(id,error=>fail(msg,error)):null):{label:'Wiki →',href:wikiHref(id)};
- const tableWrap=el('div',{class:'tk-project-table'});
+ const itemsWrap=el('div',{class:'tk-project-table'});
  const header=pageHeader({title:p.name,lead:p.description||undefined,provenance:data.provenance,actions:[
   {label:'⚙ '+t('Nastavení projektu'),href:settingsHref(p)},
   p.settings?.releases!==false?{label:t('Releasy')+' →',onclick:()=>{releaseFilters.project=id;location.hash='#releases';}}:null,
@@ -827,22 +834,20 @@ async function projectPage(wrap,ctx){
  show(wrap,
   el('nav',{class:'tk-crumbs','aria-label':t('Drobečková navigace')},el('a',{href:'#projects'},t('Projekty')),el('span',{class:'tk-dim'},'/'),el('b',{},p.name),el('span',{class:'sec-pill'},p.key),p.type?el('span',{class:'sec-pill'},label(PROJECT_TYPES(),p.type)):null),
   el('div',{class:'tk-project-header','data-project-color':p.settings?.color},header),msg,
-  referencesSection('project',id,ctx.me,p.settings?.globalReferences!==false),
+  referencesSection('project',id,ctx.me),
   mine.length?el('div',{class:'acc-card tk-hero-row'},health(mine),activity(mine,4),p.settings?.releases!==false?nextBlock(data.releases,id):null):null,
-  table?tableWrap:mine.length?boardView(mine,{canWrite,msg,redraw,projects:data.projects,showProject:false}):
-   emptyState({icon:'✨',title:t('Čistý štít'),body:t('V projektu zatím nejsou žádné položky.'),
-    agentPrompt:t('Přes MCP mého Home Hubu (scope tickets:write) založ nástrojem ticket_create první položky projektu {id}: title, description s kritérii přijetí, type bug|feature|task a priority.',{id}),
-    actions:canWrite?[{label:t('+ První položka'),primary:true,onclick:newItem}]:[]}),
-  !table&&mine.length?keysHint(['n',t('nová položka')],['j k',t('další / předchozí')],['Enter',t('otevřít')]):null);
- if(table){
-  if(!projectFilters.has(id))projectFilters.set(id,{...defaults,project:id});
-  await listPage(tableWrap,{...ctx,afterMove:redraw},p,data);
- }else shortcuts(wrap,{n:()=>add?void add.onclick():false,j:()=>moveCursor(wrap,1),k:()=>moveCursor(wrap,-1),Enter:()=>openCursor(wrap)});
+  itemsWrap);
+ if(!projectFilters.has(id))projectFilters.set(id,{...defaults,project:id});
+ await listPage(itemsWrap,{...ctx,afterMove:redraw},p,data);
 }
 
 function renderProjectSettings(wrap,ctx,p,section,notice=''){
  const tabs=[['',t('Obecné')],['look',t('Vzhled projektu')],['features',t('Funkce projektu')],['references',t('Reference')]];
- const tab=tabs.some(([key])=>key===section)?section:'',settings=p.settings??{};
+ const tab=section??'',settings=p.settings??{};
+ const header=pageHeader({back:{label:p.name,href:'#projects/'+p.id},eyebrow:p.name,title:t('Nastavení projektu')});
+ const navigation=el('nav',{class:'tk-settings-tabs','aria-label':t('Nastavení projektu')},tabs.map(([key,title])=>
+  el('a',{href:settingsHref(p,key),'aria-current':tab===key?'page':null},title)));
+ if(tab==='references')return show(wrap,header,navigation,projectReferences(ctx.me,p.id));
  const writable=ctx.me?.canWrite===true&&ctx.me.scopes?.includes('tickets:write');
  const field=(title,input)=>el('label',{},title,input);
  const group=(title,items)=>el('fieldset',{class:'tk-choices'},el('legend',{},title),items);
@@ -859,9 +864,8 @@ function renderProjectSettings(wrap,ctx,p,section,notice=''){
  }else if(tab==='features'){
   controls.push(toggle('releases',t('Releasy'),t('Zobrazit plánování releasů v projektu.')),
    toggle('reviews','Review',t('Nabízet vytvoření review pro položky projektu.')),
-   toggle('wiki','Wiki',t('Zobrazit odkaz na wiki nebo možnost ji založit.')));
- }else if(tab==='references'){
-  controls.push(toggle('globalReferences',t('Globální reference'),t('Nabízet sdílené reference a povolit jejich vytváření v tomto projektu.')));
+   toggle('wiki','Wiki',t('Zobrazit odkaz na wiki nebo možnost ji založit.')),
+   toggle('globalReferences',t('Globální reference'),t('Nabízet sdílené reference a povolit jejich vytváření v tomto projektu.')));
  }else{
   controls.push(el('div',{class:'tk-grid2'},field('ID',el('input',{readonly:'',value:p.id})),field(t('Zkratka (prefix položek)'),el('input',{readonly:'',value:p.key}))),
    field(t('Název'),el('input',{name:'name',required:'',maxlength:80,value:p.name})),
@@ -875,8 +879,8 @@ function renderProjectSettings(wrap,ctx,p,section,notice=''){
   const fields=event.currentTarget.elements,body={id:p.id,rev:p.rev};
   if(!tab)Object.assign(body,{name:fields.namedItem('name').value,description:fields.description.value,type:fields.type.value||null});
   else if(tab==='look')body.settings={color:fields.color.value||null,view:fields.view.value};
-  else if(tab==='features')body.settings={releases:fields.releases.checked,reviews:fields.reviews.checked,wiki:fields.wiki.checked};
-  else body.settings={globalReferences:fields.globalReferences.checked};
+  else if(tab==='features')body.settings={
+   releases:fields.releases.checked,reviews:fields.reviews.checked,wiki:fields.wiki.checked,globalReferences:fields.globalReferences.checked};
   submit.disabled=true;const epoch=sessionEpoch;
   try{
    const saved=await api('/api/tickets/projects',body);
@@ -888,10 +892,7 @@ function renderProjectSettings(wrap,ctx,p,section,notice=''){
  }},el('fieldset',{class:'tk-settings-fields',disabled:writable?null:''},
   el('legend',{},tabs.find(([key])=>key===tab)[1]),controls),
   writable?el('div',{class:'acc-actions'},submit):el('p',{class:'acc-dim'},t('Nastavení je pouze pro čtení.')),msg);
- show(wrap,pageHeader({back:{label:p.name,href:'#projects/'+p.id},eyebrow:p.name,title:t('Nastavení projektu')}),
-  el('nav',{class:'tk-settings-tabs','aria-label':t('Nastavení projektu')},tabs.map(([key,title])=>
-   el('a',{href:settingsHref(p,key),'aria-current':tab===key?'page':null},title))),
-  form,tab==='references'?projectReferences(ctx.me,p.id):null);
+ show(wrap,header,navigation,form);
 }
 // A new project: the name proposes an id and a key until either is typed by hand; both are permanent.
 const slugOf=name=>name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^[^a-z]+|-+$/g,'').slice(0,40);
