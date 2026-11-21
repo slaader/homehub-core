@@ -4,15 +4,15 @@ import {execFileSync} from 'node:child_process';
 import {readFileSync,mkdirSync,mkdtempSync,writeFileSync,rmSync,lstatSync,chmodSync} from 'node:fs';
 import path from 'node:path';import os from 'node:os';import {fileURLToPath} from 'node:url';
 import {createPrivateKey,createPublicKey,sign} from 'node:crypto';
-import {loadTrust,authorizedKeys,publicKey,MANIFEST_DOMAIN,sha256,durableWrite,within} from '../server/release-trust.mjs';
+import {loadTrust,authorizedKeys,publicKey,MANIFEST_DOMAIN} from '../server/release-trust.mjs';
+import {sha256,fileHash,durableWrite,withinPath} from '../server/safe-fs.mjs';
 import {archivePath,writeArchive} from '../server/release-archive.mjs';
 import {verifyPackage,UPDATER_VERSION} from '../server/release-package.mjs';
 import {scanLeaks} from './leak-scan.mjs';
-import {fileHash} from '../server/update-backup.mjs';
 const env={...Object.fromEntries(Object.entries(process.env).filter(([k])=>!k.startsWith('GIT_'))),GIT_CONFIG_NOSYSTEM:'1',GIT_CONFIG_GLOBAL:'/dev/null',GIT_NO_REPLACE_OBJECTS:'1',GIT_CONFIG_COUNT:'0'};
 const git=(root,...args)=>execFileSync('git',['-C',root,'-c','core.hooksPath=/dev/null','-c','core.fsmonitor=false',...args],{env,maxBuffer:256*1024*1024});
 export async function packageRelease({root,tag,keyFile,trustFile,output,tests=true}){
- root=path.resolve(root);output=path.resolve(output);if(within(path.resolve(keyFile),root))throw new Error('publisher private key must be outside the repository');
+ root=path.resolve(root);output=path.resolve(output);if(withinPath(path.resolve(keyFile),root))throw new Error('publisher private key must be outside the repository');
  const object=git(root,'rev-parse',`refs/tags/${tag}`).toString().trim();if(git(root,'cat-file','-t',object).toString().trim()!=='tag')throw new Error('an annotated signed release tag is required');
  const fullCommit=git(root,'rev-parse',`${object}^{commit}`).toString().trim(),pkg=JSON.parse(git(root,'show',`${fullCommit}:package.json`));if(tag!=='v'+pkg.version)throw new Error('tag/version mismatch');
  const trust=loadTrust(trustFile,{forbidden:[root]}),repository=pkg.homeHub.updates.repo,signerDir=mkdtempSync(path.join(os.tmpdir(),'hub-package-signers-'));

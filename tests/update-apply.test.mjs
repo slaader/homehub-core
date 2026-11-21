@@ -833,3 +833,32 @@ test('CLI discovery honors normalized environment and stored integration disable
   assert.equal(requests,0);assert.deepEqual(w.svc.calls,[]);
  }finally{globalThis.fetch=originalFetch;}
 });
+
+test('trust-import refuses new and existing trust files inside --backup-root and accepts isolated trust paths',async t=>{
+ const w=await world(t,{layout:'home'});
+ const {generateKeyPairSync}=await import('node:crypto');
+ const {publicKey}=await import('../server/release-trust.mjs');
+ const pair=generateKeyPairSync('ed25519'),pem=pair.publicKey.export({type:'spki',format:'pem'}),fp=publicKey(pem).id;
+ const keyFile=path.join(w.dir,'publisher.pub.pem');
+ await writeFile(keyFile,pem,{mode:0o600});
+ const extraBackup=path.join(w.dir,'extra-backup');
+ await mkdir(extraBackup,{recursive:true,mode:0o700});
+ const insideBackup=path.join(extraBackup,'trust.json');
+ const baseArgs=['trust-import','--public-key',keyFile,'--fingerprint',fp,'--backup-root',extraBackup,'--trust',insideBackup];
+ await assert.rejects(main(baseArgs,{env:w.env,ctx:w.ctx,out:()=>{}}),/outside replaced\/restored root/);
+ assert.equal(existsSync(insideBackup),false);
+ // Even when an existing valid trust file already sits inside --backup-root, trust-import must refuse it.
+ const otherPair=generateKeyPairSync('ed25519'),otherPem=otherPair.publicKey.export({type:'spki',format:'pem'}),otherFp=publicKey(otherPem).id;
+ const existingDoc={schemaVersion:1,publishers:{'example/core':{gitSigners:[],packageKeys:[{id:otherFp,publicKey:otherPem,fingerprint:otherFp,role:'package',status:'active'}]}}};
+ await writeFile(insideBackup,JSON.stringify(existingDoc),{mode:0o600});
+ await assert.rejects(main(baseArgs,{env:w.env,ctx:w.ctx,out:()=>{}}),/outside replaced\/restored root/);
+ assert.deepEqual(JSON.parse(readFileSync(insideBackup,'utf8')),existingDoc);
+ // Importing into an isolated trust path outside all forbidden roots succeeds and remembers selection.
+ const safeTrust=path.join(w.dir,'operator-trust','trust.json');
+ const output=[];
+ assert.equal(await main(['trust-import','--public-key',keyFile,'--fingerprint',fp,'--backup-root',extraBackup,'--trust',safeTrust],{env:w.env,ctx:w.ctx,out:l=>output.push(l)}),0);
+ assert.ok(output.some(l=>l.includes(fp)));
+ assert.equal(selectTrustFile({home:w.home}),safeTrust);
+ // Re-importing the same key is refused without modifying the trust policy.
+ assert.equal(await main(['trust-import','--public-key',keyFile,'--fingerprint',fp,'--backup-root',extraBackup,'--trust',safeTrust],{env:w.env,ctx:w.ctx,out:()=>{}}),1);
+});

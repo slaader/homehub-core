@@ -2,8 +2,8 @@
 import {generateKeyPairSync,sign} from 'node:crypto';
 import {mkdirSync,writeFileSync,lstatSync} from 'node:fs';import path from 'node:path';
 import {writeArchive} from '../server/release-archive.mjs';
-import {sha256,MANIFEST_DOMAIN,publicKey} from '../server/release-trust.mjs';
-import {fileHash} from '../server/update-backup.mjs';
+import {MANIFEST_DOMAIN,publicKey} from '../server/release-trust.mjs';
+import {sha256,fileHash} from '../server/safe-fs.mjs';
 export async function packageFixture(dir,{version='1.1.0',epoch=1,files={},repository='example/core',fullCommit='a'.repeat(40)}={}){
  mkdirSync(dir,{recursive:true,mode:0o700});const pair=generateKeyPairSync('ed25519'),pem=pair.publicKey.export({type:'spki',format:'pem'}),id=publicKey(pem).id;
  const trust={schemaVersion:1,publishers:{[repository]:{gitSigners:[],packageKeys:[{id,publicKey:pem,fingerprint:id,role:'package',status:'active'}]}}},trustFile=path.join(dir,'trust.json');writeFileSync(trustFile,JSON.stringify(trust),{mode:0o600});

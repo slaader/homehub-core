@@ -5,9 +5,9 @@ import {createHash} from 'node:crypto';
 import {Readable,Transform} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
 import {createGzip,createGunzip} from 'node:zlib';
-import {fields,strictJson} from './release-trust.mjs';
+import {fields,strictJson,cleanAbsolute} from './safe-fs.mjs';
 import {archivePath,header,Reader} from './release-archive.mjs';
-import {backupBudget,cleanAbsolute,DRIVER_CAPABILITIES,MANIFEST_LIMIT,MANIFEST_HEADER_LIMIT,MANIFEST_ENTRY_LIMIT} from './backup-policy.mjs';
+import {backupBudget,DRIVER_CAPABILITIES,MANIFEST_LIMIT,MANIFEST_HEADER_LIMIT,MANIFEST_ENTRY_LIMIT} from './backup-policy.mjs';
 import {compressedBound,fold,inode,padded,signature,stat,walkRoot} from './backup-scan.mjs';
 
 export const BACKUP_SCHEMA=2;

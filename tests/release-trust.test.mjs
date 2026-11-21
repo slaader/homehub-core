@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {generateKeyPairSync,sign} from 'node:crypto';
-import {strictJson,validateTrust,publicKey,verifyManifestSignature,MANIFEST_DOMAIN} from '../server/release-trust.mjs';
+import {strictJson} from '../server/safe-fs.mjs';
+import {validateTrust,publicKey,verifyManifestSignature,MANIFEST_DOMAIN,forbiddenTrustRoots,loadTrust,importTrustKey} from '../server/release-trust.mjs';
 const pair=generateKeyPairSync('ed25519'),pem=pair.publicKey.export({type:'spki',format:'pem'}),id=publicKey(pem).id;
 const record={id,publicKey:pem,fingerprint:id,role:'package',status:'active'};
 const doc=()=>({schemaVersion:1,publishers:{'example/core':{gitSigners:[],packageKeys:[{...record}]}}});
@@ -20,4 +21,32 @@ test('trust: exact bytes, authorized key and version constraints required, inclu
 });
 test('trust: a removed selected policy never silently reverts to legacy discovery',async t=>{
  const {mkdtempSync,rmSync,mkdirSync,writeFileSync,realpathSync}=await import('node:fs'),os=await import('node:os'),path=await import('node:path');const {selectTrustFile,rememberTrustSelection}=await import('../server/release-trust.mjs');const home=realpathSync(mkdtempSync(path.join(os.tmpdir(),'hub-trust-marker-')));t.after(()=>rmSync(home,{recursive:true,force:true}));assert.equal(selectTrustFile({home}),null);const file=path.join(home,'publisher.json');writeFileSync(file,JSON.stringify(doc()),{mode:0o600});rememberTrustSelection(home,file);rmSync(file);assert.equal(selectTrustFile({home}),file);assert.throws(()=>selectTrustFile({home,explicit:''}),/empty/);writeFileSync(path.join(home,'update','trust-required.json'),'{');assert.throws(()=>selectTrustFile({home}));
+});
+test('trust: forbiddenTrustRoots includes backupRoots and loadTrust enforces symlink, permission and root checks',async t=>{
+ const {mkdtempSync,rmSync,mkdirSync,writeFileSync,chmodSync,symlinkSync,realpathSync}=await import('node:fs'),os=await import('node:os'),path=await import('node:path');
+ const dir=realpathSync.native(mkdtempSync(path.join(os.tmpdir(),'hub-trust-sec-')));
+ t.after(()=>rmSync(dir,{recursive:true,force:true}));
+ const inst={root:path.join(dir,'core'),paths:{config:path.join(dir,'config'),data:path.join(dir,'data'),state:path.join(dir,'state'),private:path.join(dir,'private')},backupRoots:[path.join(dir,'extra-backup')]};
+ const forbidden=forbiddenTrustRoots(inst);
+ assert.deepEqual(forbidden,[inst.root,inst.paths.config,inst.paths.data,inst.paths.state,inst.paths.private,inst.backupRoots[0]]);
+ const safeDir=path.join(dir,'safe'),badParent=path.join(dir,'writable'),linkParent=path.join(dir,'link-parent');
+ mkdirSync(safeDir,{mode:0o700});mkdirSync(badParent,{mode:0o700});chmodSync(badParent,0o777);symlinkSync(badParent,linkParent);
+ const goodFile=path.join(safeDir,'trust.json'),symFile=path.join(safeDir,'trust.link'),inBadParent=path.join(linkParent,'trust.json');
+ writeFileSync(goodFile,JSON.stringify(doc()),{mode:0o600});
+ writeFileSync(path.join(badParent,'trust.json'),JSON.stringify(doc()),{mode:0o600});
+ symlinkSync(goodFile,symFile);
+ assert.deepEqual(loadTrust(goodFile,{forbidden}),doc());
+ assert.throws(()=>loadTrust(symFile,{forbidden}),/owner-controlled regular file/);
+ assert.throws(()=>loadTrust(inBadParent,{forbidden}),/unsafe trust parent/);
+ chmodSync(goodFile,0o644);
+ assert.deepEqual(loadTrust(goodFile,{forbidden}),doc());
+ chmodSync(goodFile,0o660);
+ assert.throws(()=>loadTrust(goodFile,{forbidden}),/owner-controlled regular file/);
+ chmodSync(goodFile,0o600);
+ const backupDir=inst.backupRoots[0];mkdirSync(backupDir,{mode:0o700});
+ const inBackup=path.join(backupDir,'trust.json'),keyFile=path.join(dir,'pub.pem');
+ writeFileSync(keyFile,pem,{mode:0o600});
+ assert.throws(()=>importTrustKey({inst,trustFile:inBackup,repository:'example/core',role:'package',publicKeyFile:keyFile,expectedFingerprint:id}),/outside replaced\/restored root/);
+ writeFileSync(inBackup,JSON.stringify(doc()),{mode:0o600});
+ assert.throws(()=>importTrustKey({inst,trustFile:inBackup,repository:'example/core',role:'package',publicKeyFile:keyFile,expectedFingerprint:id}),/outside replaced\/restored root/);
 });

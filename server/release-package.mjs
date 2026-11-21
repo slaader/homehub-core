@@ -1,9 +1,9 @@
 // Authentication precedes payload processing and every target-code execution.
 import {readFileSync,lstatSync,mkdirSync,mkdtempSync,rmSync,readdirSync,chmodSync} from 'node:fs';
 import path from 'node:path';import os from 'node:os';
-import {strictJson,fields,sha256,loadTrust,verifyManifestSignature,durableWrite} from './release-trust.mjs';
+import {loadTrust,verifyManifestSignature} from './release-trust.mjs';
+import {strictJson,fields,sha256,fileHash,boundedRegularFile,durableWrite} from './safe-fs.mjs';
 import {archivePath,extractArchive,ARCHIVE_LIMITS} from './release-archive.mjs';
-import {fileHash} from './update-backup.mjs';
 import {parse,validRange,satisfies,compare} from './semver.mjs';
 export const PACKAGE_SCHEMA=1,RECEIPT_SCHEMA=1;
 export const UPDATER_VERSION='1.0.0';
@@ -20,9 +20,8 @@ export function validateManifest(m,{repository,tag=null,manifestDigest=null,byte
  for(const f of m.files){fields(f,['path','bytes','sha256','mode'],'manifest file');archivePath(f.path);if(/^(?:local|data|state|private|node_modules)(?:\/|$)/i.test(f.path))throw new Error('mutable/household payload in core package');if(names.has(f.path))throw new Error('duplicate manifest path');if(directories.has(f.path))throw new Error('manifest prefix collision');const parts=f.path.split('/');for(let i=1;i<=parts.length;i++){const prefix=parts.slice(0,i).join('/'),fold=prefix.normalize('NFC').toLowerCase();if(folds.has(fold)&&folds.get(fold)!==prefix)throw new Error('case-fold manifest path collision');folds.set(fold,prefix);if(i<parts.length){if(names.has(prefix))throw new Error('manifest prefix collision');directories.add(prefix);}}names.add(f.path);if(!Number.isSafeInteger(f.bytes)||f.bytes<0||f.bytes>ARCHIVE_LIMITS.file||!/^[0-9a-f]{64}$/.test(f.sha256)||![0o644,0o755].includes(f.mode))throw new Error('invalid manifest file metadata');expanded+=512+Math.ceil(f.bytes/512)*512;}
  if(expanded!==a.uncompressedBytes)throw new Error('expanded payload size differs from file inventory');return m;
 }
-const bounded=(file,max)=>{const st=lstatSync(file);if(!st.isFile()||st.isSymbolicLink()||st.size>max)throw new Error('metadata must be a bounded regular file');return readFileSync(file);};
 export function authenticatePackageMetadata(file,{trust,trustFile,repository,tag,manifestDigest,forbidden=[],compatibility=true}={}){
- const sidecars=packageSidecars(file),bytes=bounded(sidecars.manifest,8*1024*1024),side=strictJson(bounded(sidecars.signature,16384)),manifest=strictJson(bytes);
+ const sidecars=packageSidecars(file),bytes=boundedRegularFile(sidecars.manifest,8*1024*1024,'metadata'),side=strictJson(boundedRegularFile(sidecars.signature,16384,'metadata')),manifest=strictJson(bytes);
  const policy=trust??(trustFile?loadTrust(trustFile,{forbidden}):null);if(!policy)throw new Error('Package operations require --trust FILE or <home>/update/trust.json; signatures cannot be bypassed');
  const keyId=verifyManifestSignature(bytes,side,policy,repository,manifest.version);
  validateManifest(manifest,{repository,tag,manifestDigest,bytes,compatibility});if(path.basename(file)!==manifest.artifact.name)throw new Error('package filename differs from authenticated artifact');

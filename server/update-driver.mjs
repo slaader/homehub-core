@@ -2,9 +2,8 @@
 import {lstatSync,readdirSync,mkdirSync,copyFileSync,openSync,closeSync,fsyncSync,renameSync,rmSync,chmodSync} from 'node:fs';
 import path from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
-import {fileHash,canonical} from './update-backup.mjs';
-import {withinPath,DRIVER_CAPABILITIES} from './backup-policy.mjs';
-import {syncDirectory} from './release-trust.mjs';
+import {fileHash,canonicalPath,withinPath,syncDirectory} from './safe-fs.mjs';
+import {DRIVER_CAPABILITIES} from './backup-policy.mjs';
 
 const closure=['package.json','public','scripts','server'];
 function digestTree(root,destination=null){
@@ -32,7 +31,7 @@ function digestTree(root,destination=null){
 export function retainDriver(inst,journal,source,{version,commit}){
  const parent=inst.home?path.join(inst.home,'update','drivers'):path.join(inst.backups,'drivers');
  const temp=path.join(parent,'.copy-'+randomUUID());
- const resolved=canonical(parent),driverSource=canonical(source);
+ const resolved=canonicalPath(parent),driverSource=canonicalPath(source);
  if(withinPath(resolved,driverSource)&&closure.some(name=>withinPath(resolved,path.join(driverSource,name))))throw new Error('driver retention overlaps the executable tree');
  mkdirSync(parent,{recursive:true,mode:0o700});
  const parentStat=lstatSync(parent);

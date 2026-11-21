@@ -31,19 +31,18 @@ import {spawnSync} from 'node:child_process';
 import {existsSync,readFileSync,writeFileSync,mkdirSync,renameSync,rmSync,unlinkSync,readdirSync,statSync,appendFileSync,cpSync,symlinkSync,mkdtempSync,chmodSync,realpathSync,lstatSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {createHash} from 'node:crypto';
 import {convertSite} from '../scripts/convert-site.mjs';
 import {repoRoot} from './edition.mjs';
 import {resolvePaths} from './paths.mjs';
 import {readInstance} from './plugins.mjs';
 import {parse,compare,satisfies,validRange} from './semver.mjs';
 import {parseService,parseHealth,parseBackups,UpdateConfigError,DEFAULT_HEALTH_SECONDS} from './update-config.mjs';
-import {loadTrust,authorizedKeys,sha256,durableWrite,selectTrustFile,rememberTrustSelection} from './release-trust.mjs';
+import {loadTrust,authorizedKeys,selectTrustFile,rememberTrustSelection,forbiddenTrustRoots} from './release-trust.mjs';
 import {UPDATES_SCHEMA} from './update-check.mjs';
 
 import {verifyPackage,writePackageReceipt,authenticatePackageMetadata,verifyStagedTree} from './release-package.mjs';
 import {packageReceipt} from './build-info.mjs';
-import {within,syncDirectory} from './release-trust.mjs';
+import {sha256,withinPath,durableWrite,syncDirectory} from './safe-fs.mjs';
 import {identityMismatch,observeReadiness,healthSample} from './update-readiness.mjs';
 import {contentFingerprint,pluginSourceFingerprint} from './runtime-identity.mjs';
 import {backupPlan,createBackup,restoreBackup,assessRestore,backupRootSummary} from './update-backup.mjs';
@@ -56,16 +55,13 @@ export {UpdateError,RollbackFailed,JOURNAL_SCHEMA,TERMINAL_STEPS,unfinished};
 
 const plain=v=>v&&typeof v==='object'&&!Array.isArray(v);
 const readJson=file=>{try{return JSON.parse(readFileSync(file,'utf8'));}catch{return null;}};
-const inside=(child,parent)=>{const rel=path.relative(parent,child);return rel===''||(rel!=='..'&&!rel.startsWith('..'+path.sep)&&!path.isAbsolute(rel));};
 const stampOf=ms=>new Date(ms).toISOString().replace(/[-:]/g,'').replace('T','-').slice(0,15);
 const iso=ms=>new Date(ms).toISOString();
 const short=commit=>commit?commit.slice(0,7):'?';
 const oneLine=(text,max=300)=>String(text??'').replace(/\s+/g,' ').trim().slice(0,max);
 const lastLines=(text,n)=>String(text??'').trimEnd().split('\n').slice(-n).join('\n');
-const writeAtomic=(file,text)=>durableWrite(file,text);
-const digest=text=>createHash('sha256').update(text).digest('hex');
 const siteBytes=file=>{try{return readFileSync(file);}catch(e){if(e.code==='ENOENT')return null;throw e;}};
-const hashOf=bytes=>bytes===null?null:digest(bytes);
+const hashOf=bytes=>bytes===null?null:sha256(bytes);
 // Configuration is part of the update transaction. The staged check reads a copy, never a conversion of the live
 // file. The plan keeps the replacement in memory; the journal holds paths and hashes only, never site contents.
 function stageSite(inst,request,installed,target,staging){
@@ -92,7 +88,7 @@ function stageSite(inst,request,installed,target,staging){
   JSON.parse(text);
  }catch(e){throw new UpdateError(`Cannot stage the site configuration: ${e.message}. The live file was not changed.`);}
  if(original!==null&&original.equals(Buffer.from(text)))return null;
- const staged=path.join(staging,'site-config.json');writeAtomic(staged,text);
+ const staged=path.join(staging,'site-config.json');durableWrite(staged,text);
  return {file,baseHash:hashOf(original),mode:original===null?0o600:statSync(file).mode&0o777,text,staged};
 }
 function checkSiteUnchanged(site){
@@ -218,7 +214,7 @@ export function resolveInstance({env=process.env,root=repoRoot,options={}}={}){
  const sources=[{id:'core',kind:'core',dir:core,plugins:[]}];
  for(const dir of pluginDirs){
   if(!existsSync(dir))continue;
-  if(inside(dir,core)){sources[0].plugins.push(path.relative(core,dir));continue;}
+  if(withinPath(dir,core)){sources[0].plugins.push(path.relative(core,dir));continue;}
   const base=path.dirname(dir);let id=path.basename(base)||'plugins';
   const known=sources.find(s=>s.dir===base);
   if(known){known.plugins.push(path.basename(dir));continue;}
@@ -293,7 +289,7 @@ export function setQuarantine(file,version,entry){
  const {[version]:had,...rest}=plain(doc.quarantined)?doc.quarantined:{};
  if(!entry&&had===undefined)return true;
  doc.quarantined=Object.fromEntries([...(entry?[[version,{at:entry.at,reason:oneLine(entry.reason,120)||null}]]:[]),...Object.entries(rest)].slice(0,50));
- writeAtomic(file,JSON.stringify(doc,null,1)+'\n');
+ durableWrite(file,JSON.stringify(doc,null,1)+'\n');
  return true;
 }
 export const readQuarantine=file=>{const raw=readJson(file);return plain(raw?.quarantined)?raw.quarantined:{};};
@@ -400,7 +396,7 @@ export async function preflight(inst,request,ctx,{forApply=false,sourceLocksHeld
  if(request.trust)inst={...inst,trustFile:path.resolve(request.trust)};
  if(request.package)return preflightPackage(inst,request,ctx,{forApply});
  let trustFile;try{trustFile=selectTrustFile({home:inst.home,explicit:request.trust});}catch(e){throw new UpdateError(`Trust selection refused: ${e.message}`);}
- let trust=null;if(trustFile){try{trust=loadTrust(trustFile,{forbidden:[inst.root,inst.paths.config,inst.paths.data,inst.paths.state,inst.paths.private,...inst.backupRoots]});rememberTrustSelection(inst.home,trustFile);}catch(e){throw new UpdateError(`Trust policy refused: ${e.message}`);}}
+ let trust=null;if(trustFile){try{trust=loadTrust(trustFile,{forbidden:forbiddenTrustRoots(inst)});rememberTrustSelection(inst.home,trustFile);}catch(e){throw new UpdateError(`Trust policy refused: ${e.message}`);}}
  const coverage=backupPlan({...inst,trustFile:trustFile??inst.trustFile});
  const initialSnapshot=sourceSnapshot(inst,ctx);
  const say=line=>ctx.log(line);
@@ -515,9 +511,9 @@ export async function preflight(inst,request,ctx,{forApply=false,sourceLocksHeld
   const stagedCore=place(core);
   // Paths inside the checkout follow it into the stage when the target tracks them (an overlay kept in git), and
   // stay the instance's own otherwise (data, state, secrets, a site file that is not in git).
-  const at=dir=>{if(!inside(dir,core.dir))return dir;const there=path.join(stagedCore,path.relative(core.dir,dir));return existsSync(there)?there:dir;};
+  const at=dir=>{if(!withinPath(dir,core.dir))return dir;const there=path.join(stagedCore,path.relative(core.dir,dir));return existsSync(there)?there:dir;};
   const siteChange=stageSite(inst,request,installed,target,staging);
-  if(addedSources.change){const checked=mkdtempSync(path.join(staging,'.instance-'));writeAtomic(path.join(checked,'instance.json'),addedSources.change.text);readInstance(checked);}
+  if(addedSources.change){const checked=mkdtempSync(path.join(staging,'.instance-'));durableWrite(path.join(checked,'instance.json'),addedSources.change.text);readInstance(checked);}
   const siteFile=siteChange?.staged??(inst.paths.siteConfig?at(inst.paths.siteConfig):null);
   const checkEnv={...inst.env,HOME_HUB_CONFIG_DIR:at(inst.paths.config),HOME_HUB_SITE_CONFIG:siteFile??'none',DATA_DIR:at(inst.paths.data),STATE_DIR:at(inst.paths.state),HOME_HUB_PRIVATE_DIR:at(inst.paths.private),AUTH_FILE:at(inst.paths.authFile)};
   // A temporary site path must not move the implicit software watch list away from the live configuration.
@@ -593,7 +589,7 @@ function packageLayout(inst,request){
  if(!inst.home)throw new UpdateError('Managed package updates require HOME_HUB_HOME with configuration, state, private files and plugins outside core. Relocate the instance first (docs/updating.md).');
  const st=lstatSync(inst.root),parent=statSync(path.dirname(inst.root));if(!st.isDirectory()||st.isSymbolicLink()||st.dev!==parent.dev)throw new UpdateError('Package core must be a regular replaceable directory on its parent filesystem; symlinks and mount-point swaps are unsupported.');
  if(existsSync(path.join(inst.root,'.git'))){if(!lstatSync(path.join(inst.root,'.git')).isDirectory())throw new UpdateError('Linked Git worktrees cannot migrate. Use an independent checkout.');if(!request.migrateFromGit)throw new UpdateError('Git migration requires explicit --migrate-from-git; the complete old checkout is retained.');}
- for(const file of [...Object.values(inst.paths).filter(v=>typeof v==='string'),...inst.sources.slice(1).map(s=>s.dir),path.join(inst.home,'instance.json')])if(within(path.resolve(file),inst.root))throw new UpdateError(`Mutable instance path is inside replaceable core: ${file}. Relocate it before using packages.`);
+ for(const file of [...Object.values(inst.paths).filter(v=>typeof v==='string'),...inst.sources.slice(1).map(s=>s.dir),path.join(inst.home,'instance.json')])if(withinPath(path.resolve(file),inst.root))throw new UpdateError(`Mutable instance path is inside replaceable core: ${file}. Relocate it before using packages.`);
  try{refuseSocketReplacement(inst.root);}catch(e){throw new UpdateError(`Package core cannot be replaced: ${e.message}`);}
  if(inst.sources[0].plugins.length)throw new UpdateError('Move in-tree household plugins to an external plugin source before package migration.');
  if(Object.keys(request.plugins??{}).length||(request.addPluginSources??[]).length)throw new UpdateError('Package activation keeps external plugin sources fixed. Update them in a separate Git transaction.');
@@ -602,7 +598,7 @@ async function preflightPackage(inst,request,ctx,{forApply}){
  if(request.core)throw new UpdateError('Conflicting Git and package targets');packageLayout(inst,request);const initialSnapshot=sourceSnapshot(inst,ctx),installed=coreFacts(inst.root),run=readRun(inst),source=inspectSource(ctx,inst.sources[0]);
  if(source.dirty.length)throw new UpdateError('Git checkout has tracked edits; migration refuses to replace them.');
  const trustFile=selectTrustFile({home:inst.home,explicit:request.trust}),repository=updateRepository(inst);
- const options={trustFile,repository,manifestDigest:request.manifestDigest,stagingParent:path.dirname(inst.root),keepStage:true,forbidden:[inst.root,inst.paths.config,inst.paths.data,inst.paths.state,inst.paths.private,...inst.backupRoots]};
+ const options={trustFile,repository,manifestDigest:request.manifestDigest,stagingParent:path.dirname(inst.root),keepStage:true,forbidden:forbiddenTrustRoots(inst)};
  let verified,coverage;
  try{
   const {manifest}=authenticatePackageMetadata(request.package,options);
@@ -773,8 +769,8 @@ export async function apply(inst,request,ctx){
   for(const change of [plan.siteChange,plan.instanceChange])if(change)checkSiteUnchanged(change);
   if(JSON.stringify(sourceSnapshot(inst,ctx))!==JSON.stringify(plan.sourceSnapshot))throw new UpdateError('Installed source/plugin/configuration fingerprint changed since preflight; refusing before stop');
   for(const c of plan.changes){if(git(ctx,c.dir,'rev-parse','HEAD')!==c.from||tagCommit(ctx,c.dir,c.tag)!==c.to||git(ctx,c.dir,'rev-parse',`refs/tags/${c.tag}`)!==c.tagObject||inspectSource(ctx,c).dirty.length)throw new UpdateError('Source or target changed since preflight; refusing before stop');}
-  if(plan.trustFile){loadTrust(plan.trustFile,{forbidden:[inst.root,inst.paths.config,inst.paths.data,inst.paths.state,inst.paths.private,...inst.backupRoots]});if(sha256(readFileSync(plan.trustFile))!==plan.trustDigest)throw new UpdateError('Trust policy changed since preflight; refusing before stop');}
-  if(plan.package){verifyStagedTree(plan.package.staged,{files:plan.package.files},{receipt:true});const meta=authenticatePackageMetadata(plan.package.packageFile,{trustFile:plan.package.trustFile,repository:updateRepository(inst),manifestDigest:plan.package.manifestSha256,forbidden:[inst.root,inst.paths.config,inst.paths.data,inst.paths.state,inst.paths.private,...inst.backupRoots]});if(meta.manifestSha256!==plan.package.manifestSha256)throw new UpdateError('Package target changed since preflight');}
+  if(plan.trustFile){loadTrust(plan.trustFile,{forbidden:forbiddenTrustRoots(inst)});if(sha256(readFileSync(plan.trustFile))!==plan.trustDigest)throw new UpdateError('Trust policy changed since preflight; refusing before stop');}
+  if(plan.package){verifyStagedTree(plan.package.staged,{files:plan.package.files},{receipt:true});const meta=authenticatePackageMetadata(plan.package.packageFile,{trustFile:plan.package.trustFile,repository:updateRepository(inst),manifestDigest:plan.package.manifestSha256,forbidden:forbiddenTrustRoots(inst)});if(meta.manifestSha256!==plan.package.manifestSha256)throw new UpdateError('Package target changed since preflight');}
   for(const change of [plan.siteChange,plan.instanceChange])if(change)checkSiteUnchanged(change);
   ctx.checkpoint();
   const started=ctx.now(),run=readRun(inst);
@@ -800,7 +796,7 @@ export async function apply(inst,request,ctx){
    journal.backup=await makeArchive(inst,ctx,`pre-${plan.from.core.version}-to-${plan.to.core.version}-${stampOf(started)}`,{plan:sameCoverage(coverage,backupPlan(inst))});
    for(const key of ['site','instance'])if(plan[`${key}Change`]){
     const site=plan[`${key}Change`],original=checkSiteUnchanged(site),backup=journal.backup.file+`.${key}.json`;
-    if(original!==null)writeAtomic(backup,original);
+    if(original!==null)durableWrite(backup,original);
     journal[key]={file:site.file,backup:original===null?null:backup,baseHash:site.baseHash,mode:site.mode,status:'prepared'};
     writeJournal(inst,journal);
    }

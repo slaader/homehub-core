@@ -1,32 +1,17 @@
 // Multi-root replacement is journalled. The backup and stage data are streamed with bounded memory.
-import {constants,lstatSync,realpathSync,readFileSync,readlinkSync,readdirSync,mkdirSync,mkdtempSync,rmSync,cpSync,renameSync,openSync,readSync,closeSync,fchmodSync,fsyncSync,linkSync,symlinkSync,lchmodSync} from 'node:fs';
+import {lstatSync,realpathSync,readlinkSync,readdirSync,mkdirSync,mkdtempSync,rmSync,cpSync,renameSync,openSync,closeSync,fchmodSync,fsyncSync,linkSync,symlinkSync,lchmodSync} from 'node:fs';
 import path from 'node:path';
-import {createHash,randomUUID} from 'node:crypto';
+import {randomUUID} from 'node:crypto';
 import {extractArchive,ARCHIVE_LIMITS} from './release-archive.mjs';
-import {sha256,strictJson,durableWrite,syncDirectory} from './release-trust.mjs';
+import {sha256,fileHash,canonicalPath,cleanAbsolute,withinPath,boundedRegularFile,strictJson,durableWrite,syncDirectory} from './safe-fs.mjs';
 import {writeUpdateJournal} from './update-journal.mjs';
 import {UpdateError} from './update-errors.mjs';
 import {BACKUP_SCHEMA,writeBackupArchive,walkBackup,writeAll,validateIntegrity} from './backup-archive.mjs';
-import {cleanAbsolute,withinPath as within} from './backup-policy.mjs';
-import {canonical,exists,stat,inode,exactIdentity,scanBackup,protectedPaths,protectedDirectories,filesystem,checkSpace,verifyBackupRoots,verifyCurrentCoverage} from './backup-scan.mjs';
+import {exists,stat,inode,exactIdentity,scanBackup,protectedPaths,protectedDirectories,filesystem,checkSpace,verifyBackupRoots,verifyCurrentCoverage} from './backup-scan.mjs';
 import {activeRestoreUnits,checkSocketEntry,entryPath,hasPayload,planSocketRestore,prepareSocketAsides,refuseSocketReplacement,
  removeRestoreStage,resolveRestorePath,scanRestoreSockets,socketConflict,validateSocketRestore} from './restore-sockets.mjs';
-export {BACKUP_SCHEMA,canonical,scanBackup};
+export {BACKUP_SCHEMA,scanBackup};
 
-export function fileHash(file,expectedBytes=null){
- const h=createHash('sha256'),fd=openSync(file,constants.O_RDONLY|constants.O_NOFOLLOW),buffer=Buffer.alloc(65536);
- try{
-  let n,total=0;
-  while((n=readSync(fd,buffer,0,buffer.length,null))){
-   total+=n;
-   if(expectedBytes!==null&&total>expectedBytes)throw new Error('hash input exceeds its expected size');
-   h.update(buffer.subarray(0,n));
-  }
-  if(expectedBytes!==null&&total!==expectedBytes)throw new Error('hash input does not match its expected size');
- }
- finally{closeSync(fd);}
- return h.digest('hex');
-}
 export function backupRootSummary(roots){
  const names=roots.filter(r=>r.role!=='exact-file'&&!r.runtimeSocket).map(r=>r.name);
  const aliases=roots.filter(r=>r.role==='exact-file').length;
@@ -88,15 +73,15 @@ function validateRoots(inst,roots,progress=[],policyFile=null){
   return stat(file)?.isSymbolicLink()&&readlinkSync(file)===link&&resolveRestorePath(logical,locate)?.file===target;
  };
  for(const e of roots){if(!e||!/^root-\d{4}$/.test(e.id)||!path.isAbsolute(e.canonical)||e.canonical===path.parse(e.canonical).root||!path.isAbsolute(e.logical))throw new Error('invalid backup root roles');
-  if(canonical(path.dirname(e.canonical))!==path.dirname(e.canonical)||(exists(e.canonical)&&lstatSync(e.canonical).isSymbolicLink()))throw new Error('restore destination topology changed');
+  if(canonicalPath(path.dirname(e.canonical))!==path.dirname(e.canonical)||(exists(e.canonical)&&lstatSync(e.canonical).isSymbolicLink()))throw new Error('restore destination topology changed');
   for(const alias of e.aliases??[])if(alias.link!==null&&!linkMatches(alias.logical,alias.link,alias.canonical??e.canonical))throw new Error('restore alias topology changed');
-  for(const protectedPath of protectedRoots)if(within(protectedPath,e.canonical))throw new Error('restore would replace recovery metadata or trust');
-  if(e.role&&protectedDirs.some(p=>within(e.canonical,p)))throw new Error('restore would replace recovery metadata or trust');
-  if(e.role&&e.link===null&&(moved.size?resolveRestorePath(e.logical,locate)?.file:canonical(e.logical))!==e.canonical)throw new Error('restore logical root topology changed');
+  for(const protectedPath of protectedRoots)if(withinPath(protectedPath,e.canonical))throw new Error('restore would replace recovery metadata or trust');
+  if(e.role&&protectedDirs.some(p=>withinPath(e.canonical,p)))throw new Error('restore would replace recovery metadata or trust');
+  if(e.role&&e.link===null&&(moved.size?resolveRestorePath(e.logical,locate)?.file:canonicalPath(e.logical))!==e.canonical)throw new Error('restore logical root topology changed');
   if(stat(e.canonical)&&stat(e.canonical).dev!==stat(path.dirname(e.canonical)).dev)throw new Error('restore root is a mountpoint');
   if(e.link!==null&&e.link!==undefined&&!linkMatches(e.logical,e.link,e.canonical))throw new Error('top-level symlink topology changed; manual recovery required');
  }
- for(let i=0;i<roots.length;i++)for(let j=0;j<i;j++)if(within(roots[i].canonical,roots[j].canonical)||within(roots[j].canonical,roots[i].canonical))throw new Error('overlapping restore roots');
+ for(let i=0;i<roots.length;i++)for(let j=0;j<i;j++)if(withinPath(roots[i].canonical,roots[j].canonical)||withinPath(roots[j].canonical,roots[i].canonical))throw new Error('overlapping restore roots');
 }
 
 function inventory(roots){const files=[];let bytes=0;const walk=(source,name)=>{
@@ -114,7 +99,7 @@ async function restoreLegacy(inst,ctx,backup,journal,{manifest,legacy}){
   const entries=await extractArchive(backup.file,scratch,{release:false,legacy,expected:manifest.files?new Map(manifest.files.map(f=>[f.path,f])):null});
   if(legacy){const names=new Set(manifest.roots.map(r=>r.legacyName));if(entries.some(e=>!names.has(e.path.split('/')[0])))throw new Error('legacy archive has unplanned roots');}
   // Inspect link destinations as archive data, never by traversing a staged link into the live filesystem.
-  for(const e of entries.filter(e=>e.type==='symlink')){const r=manifest.roots.find(r=>e.path===(r.legacyName??r.id)||e.path.startsWith((r.legacyName??r.id)+'/'));if(!r)throw new Error('unmapped backup symlink');const relative=path.relative(r.legacyName??r.id,e.path),target=path.resolve(path.dirname(path.join(r.canonical,relative)),e.link);if(!manifest.roots.some(o=>o.existed&&within(target,o.canonical)))throw new Error('uncovered restore link target');}
+  for(const e of entries.filter(e=>e.type==='symlink')){const r=manifest.roots.find(r=>e.path===(r.legacyName??r.id)||e.path.startsWith((r.legacyName??r.id)+'/'));if(!r)throw new Error('unmapped backup symlink');const relative=path.relative(r.legacyName??r.id,e.path),target=path.resolve(path.dirname(path.join(r.canonical,relative)),e.link);if(!manifest.roots.some(o=>o.existed&&withinPath(target,o.canonical)))throw new Error('uncovered restore link target');}
   const aside=journal?.failedState??path.join(inst.backups,`failed-${new Date(ctx.now()).toISOString().replace(/[-:]/g,'').replace('T','-').slice(0,15)}`);
   if(journal){journal.failedState=aside;journal.restoreRoots??=[];save();}
   const progress=journal?.restoreRoots??[];
@@ -130,26 +115,20 @@ async function restoreLegacy(inst,ctx,backup,journal,{manifest,legacy}){
  }finally{rmSync(scratch,{recursive:true,force:true});}
 }
 
-function boundedMetadata(file,max){
- const st=stat(file);
- if(!st?.isFile()||st.size>BigInt(max))throw new Error(`backup metadata missing, too large or not a regular file: ${file}`);
- return readFileSync(file);
-}
-
 function restoreDescription(inst,backup){
  if(!backup||!cleanAbsolute(backup.file)||!stat(backup.file)?.isFile())throw new Error(`the archive ${backup?.file??'(none)'} is gone or is not a regular file`);
  const modern=backup.schemaVersion===BACKUP_SCHEMA||backup.manifest?.endsWith('.jsonl');
  if(modern){
   if(backup.manifest!==backup.file+'.manifest.jsonl'||backup.integrity!==backup.file+'.integrity.json'||
-   path.dirname(canonical(backup.file))!==canonical(inst.backups))throw new Error('invalid backup sidecar paths');
-  const bytes=boundedMetadata(backup.integrity,16384);
+   path.dirname(canonicalPath(backup.file))!==canonicalPath(inst.backups))throw new Error('invalid backup sidecar paths');
+  const bytes=boundedRegularFile(backup.integrity,16384,'backup metadata');
   if(sha256(bytes)!==backup.integritySha256)throw new Error('backup integrity sidecar mismatch');
   const integrity=validateIntegrity(strictJson(bytes,{limit:16384}));
   return {integrity};
  }
  if(backup.manifest||backup.integrity){
   if(!backup.manifest||!backup.integrity)throw new Error('backup integrity sidecar missing');
-  const bytes=boundedMetadata(backup.manifest,8*1024**2),integrity=strictJson(boundedMetadata(backup.integrity,16384));
+  const bytes=boundedRegularFile(backup.manifest,8*1024**2,'backup metadata'),integrity=strictJson(boundedRegularFile(backup.integrity,16384,'backup metadata'));
   if(integrity.schemaVersion!==1||sha256(bytes)!==integrity.manifestSha256||lstatSync(backup.file).size!==integrity.archiveBytes||
    fileHash(backup.file,integrity.archiveBytes)!==integrity.archiveSha256)throw new Error('backup integrity mismatch');
   const manifest=strictJson(bytes);
@@ -157,7 +136,7 @@ function restoreDescription(inst,backup){
   return {manifest,legacy:false};
  }
  const roots=backup.entries.map((e,i)=>({id:`root-${String(i+1).padStart(4,'0')}`,logical:path.join(e.parent,e.name),
-  canonical:canonical(path.join(e.parent,e.name)),link:null,existed:true,legacyName:e.name}));
+  canonical:canonicalPath(path.join(e.parent,e.name)),link:null,existed:true,legacyName:e.name}));
  return {manifest:{roots,files:null},legacy:true};
 }
 
@@ -174,7 +153,7 @@ function validateProgress(roots,progress,modern){
     !/^[a-f0-9-]{36}$/.test(p.aside.slice(p.live.length+8)))throw new Error('invalid streaming restore recovery paths');
    const stage=stat(p.stageDir);
    if(stage&&(!stage.isDirectory()||stage.uid!==BigInt(process.getuid())||(stage.mode&0o777n)!==0o700n))throw new Error('unsafe restore stage directory');
-   if(roots.some(r=>within(p.stageDir,r.canonical)||within(p.aside,r.canonical)))throw new Error('restore recovery paths overlap a live root');
+   if(roots.some(r=>withinPath(p.stageDir,r.canonical)||withinPath(p.aside,r.canonical)))throw new Error('restore recovery paths overlap a live root');
   }
  }
  if(modern&&progress.length&&(progress.length!==roots.length||
@@ -218,7 +197,7 @@ function installRoots(inst,ctx,roots,progress,aside,save){
 
 function validateLink(entry,root,roots){
  const target=path.resolve(path.dirname(entryPath(entry,root,root.canonical)),entry.link);
- if(!roots.some(r=>r.existed&&[r.canonical,r.logical,...r.aliases.map(a=>a.logical)].some(p=>within(target,p))))
+ if(!roots.some(r=>r.existed&&[r.canonical,r.logical,...r.aliases.map(a=>a.logical)].some(p=>withinPath(target,p))))
   throw new Error(`uncovered restore link target: ${entry.path}`);
 }
 const ensureSpace=fs=>checkSpace(fs,(_,message)=>{throw new Error(message);});
@@ -357,7 +336,7 @@ async function verifyStages(backup,integrity,progress,socketRestore){
   const live=entryPath(e,r,r.canonical);
   if(anchorPaths.has(live)||aliasPaths.has(live))return finished?live:entryPath(e,r,stageBases.get(r.id));
   awaitingPayload.delete(live);
-  for(let p=live;within(p,r.canonical);p=path.dirname(p)){
+  for(let p=live;withinPath(p,r.canonical);p=path.dirname(p)){
    if(locations.has(p))return path.join(locations.get(p),path.relative(p,live));
    if(anchorPaths.has(p))break;
   }

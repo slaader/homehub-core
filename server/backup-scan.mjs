@@ -2,15 +2,11 @@ import {lstatSync,realpathSync,readlinkSync,opendirSync,readdirSync,statfsSync} 
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {archivePath,header} from './release-archive.mjs';
-import {backupPolicy,cleanAbsolute,withinPath,MAX_BACKUP_ROOTS,POLICY_SCHEMA,MANIFEST_HEADER_LIMIT,MANIFEST_ENTRY_LIMIT,MANIFEST_LIMIT} from './backup-policy.mjs';
+import {backupPolicy,MAX_BACKUP_ROOTS,POLICY_SCHEMA,MANIFEST_HEADER_LIMIT,MANIFEST_ENTRY_LIMIT,MANIFEST_LIMIT} from './backup-policy.mjs';
+import {canonicalPath,cleanAbsolute,withinPath} from './safe-fs.mjs';
 
 export const stat=p=>{try{return lstatSync(p,{bigint:true});}catch(e){if(e.code==='ENOENT')return null;throw e;}};
 export const exists=p=>stat(p)!==null;
-export function canonical(p){
- p=path.resolve(p);
- if(exists(p))return realpathSync.native(p);
- return path.join(canonical(path.dirname(p)),path.basename(p));
-}
 export function existingAncestor(p){
  while(!exists(p))p=path.dirname(p);
  return p;
@@ -24,11 +20,11 @@ export const compressedBound=n=>n+Math.ceil(n/100)+65536;
 const fsMargin=16*1024**2;
 
 export function protectedDirectories(inst){
- return [inst.backups,inst.driver,inst.driverSource,...(inst.home?[path.join(inst.home,'update')]:[])].filter(Boolean).map(canonical);
+ return [inst.backups,inst.driver,inst.driverSource,...(inst.home?[path.join(inst.home,'update')]:[])].filter(Boolean).map(canonicalPath);
 }
 export function protectedPaths(inst,policyFile){
  return [inst.backups,inst.files.journal,inst.files.lock,inst.staging,inst.trustFile,inst.driver,inst.driverSource,
-  ...(inst.home?[path.join(inst.home,'update')]:[]),policyFile].filter(Boolean).map(canonical);
+  ...(inst.home?[path.join(inst.home,'update')]:[]),policyFile].filter(Boolean).map(canonicalPath);
 }
 
 function buildRoots(inst,policy,issue){
@@ -39,7 +35,7 @@ function buildRoots(inst,policy,issue){
  const candidates=[];
  for(const logical of new Set(required)){
   try{
-   const s=stat(logical),resolved=canonical(logical);
+   const s=stat(logical),resolved=canonicalPath(logical);
    if(!cleanAbsolute(resolved)){issue('UNSAFE_ROOT',`refusing filesystem-root or unsafe backup path: ${logical}`);continue;}
    const runtimeSocket=stat(resolved)?.isSocket();
    candidates.push({logical,canonical:resolved,existed:!!s,...(runtimeSocket?{runtimeSocket:true}:{}),link:s?.isSymbolicLink()?readlinkSync(logical):null,role:(inst.backupRoots??[]).includes(logical)?'extra':'instance'});
@@ -56,10 +52,10 @@ function buildRoots(inst,policy,issue){
   const root=roots.find(r=>withinPath(c.canonical,r.canonical));
   if(root&&root.logical!==c.logical&&c.link!==null)root.aliases.push({logical:c.logical,link:c.link,canonical:c.canonical});
  }
- const sources=[inst.root,...(inst.sources??[]).map(s=>s.dir)].filter(Boolean).map(canonical);
+ const sources=[inst.root,...(inst.sources??[]).map(s=>s.dir)].filter(Boolean).map(canonicalPath);
  for(const logical of policy.coverFiles){
   try{
-   const s=stat(logical),resolved=canonical(logical);
+   const s=stat(logical),resolved=canonicalPath(logical);
    if(!s?.isFile()||s.nlink<2n){issue('INVALID_EXACT_FILE',`coverFiles must name an existing hard-linked regular file: ${logical}`);continue;}
    if([...sources,...roots.map(r=>r.canonical)].some(p=>withinPath(resolved,p)||withinPath(p,resolved))){
     issue('POLICY_OVERLAP',`exact file overlaps a backup root or installed source: ${logical}`);continue;
@@ -141,7 +137,7 @@ export function checkSpace(filesystems,issue,space=statfsSync){
  }
 }
 export function filesystem(map,destination){
- const ancestor=existingAncestor(canonical(destination)),dev=String(stat(ancestor).dev);
+ const ancestor=existingAncestor(canonicalPath(destination)),dev=String(stat(ancestor).dev);
  if(!map.has(dev))map.set(dev,{dev,path:ancestor,backupBytes:0,restoreBytes:0,packageBytes:0,retainedBytes:0});
  return map.get(dev);
 }
@@ -186,7 +182,7 @@ export function scanBackup(inst,{searchRoots=[],searchMaxEntries=2000000,example
  const {budget}=policy,groups=new Map(),filesystems=new Map(),rootStats=[];
  const totals={entries:0,bytes:0,expanded:1024,groups:0},runtimeSockets={count:0,examples:[]};
  let visited=0;
- const managed=new Set([inst.files.history,inst.files.updates,inst.files.run].filter(Boolean).map(canonical));
+ const managed=new Set([inst.files.history,inst.files.updates,inst.files.run].filter(Boolean).map(canonicalPath));
  const digest=createHash('sha256');
  let manifestBytes=Buffer.byteLength(JSON.stringify(roots))+8192;
  if(manifestBytes>MANIFEST_HEADER_LIMIT)issue('MANIFEST_TOO_LARGE','backup root metadata exceeds manifest header limit');
@@ -247,7 +243,7 @@ export function scanBackup(inst,{searchRoots=[],searchMaxEntries=2000000,example
  }
  const missingNames=[...groups.values()].reduce((n,g)=>n+Math.max(0,g.expected-g.count),0);
  const {found,scanned}=discover(groups,roots,searchRoots,searchMaxEntries,warn),byParent=new Map();
- const excluded=[...protectedPaths(inst,policy.file),...[inst.root,...(inst.sources??[]).map(s=>s.dir)].filter(Boolean).map(canonical)];
+ const excluded=[...protectedPaths(inst,policy.file),...[inst.root,...(inst.sources??[]).map(s=>s.dir)].filter(Boolean).map(canonicalPath)];
  const eligible=candidates?[...found.keys()].filter(file=>cleanAbsolute(file)&&!excluded.some(p=>withinPath(file,p))).sort():[];
  const proposedRoots=roots.length+eligible.length;
  const candidatePolicy=eligible.length&&eligible.length===missingNames&&eligible.length===found.size&&proposedRoots<=MAX_BACKUP_ROOTS?
@@ -260,7 +256,7 @@ export function scanBackup(inst,{searchRoots=[],searchMaxEntries=2000000,example
  try{
   const archiveFs=filesystem(filesystems,inst.backups);
   archiveFs.backupBytes=compressedBound(totals.expanded)+manifestBytes;
-  const backupDir=canonical(inst.backups);
+  const backupDir=canonicalPath(inst.backups);
   if(stat(backupDir)?.isDirectory())for(const name of readdirSync(backupDir)){
    if(/^pre-.*\.tgz(?:\..*)?$/.test(name))archiveFs.retainedBytes+=Number(stat(path.join(backupDir,name))?.blocks??0n)*512;
   }

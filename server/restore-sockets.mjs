@@ -3,8 +3,7 @@ import {randomUUID} from 'node:crypto';
 import path from 'node:path';
 import {mkdirSync,readlinkSync,realpathSync,rmSync} from 'node:fs';
 import {children,exists,inode,stat,walkRoot} from './backup-scan.mjs';
-import {cleanAbsolute,withinPath} from './backup-policy.mjs';
-import {syncDirectory} from './release-trust.mjs';
+import {cleanAbsolute,withinPath,syncDirectory} from './safe-fs.mjs';
 
 const fail=(_,message)=>{throw new Error(message);};
 const identity=st=>inode(st)+':'+st.birthtimeNs;

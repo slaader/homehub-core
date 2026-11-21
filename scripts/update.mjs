@@ -31,7 +31,7 @@ import {scanBackup,backupRootSummary} from '../server/update-backup.mjs';
 import {acquireLock} from '../server/update-lock.mjs';
 import {verifyPackage} from '../server/release-package.mjs';
 import {downloadPackage,discoverReleases} from '../server/release-catalog.mjs';
-import {loadTrust,validateTrust,publicKey,gitPublicKey,trustDestination,durableWrite,selectTrustFile,rememberTrustSelection} from '../server/release-trust.mjs';
+import {loadTrust,selectTrustFile,rememberTrustSelection,forbiddenTrustRoots,importTrustKey} from '../server/release-trust.mjs';
 import {updateSettings,UPDATE_INTEGRATION} from '../server/update-check.mjs';
 import {loadGithubToken,createFetchJson} from '../server/systems-upstream.mjs';
 import {fileURLToPath} from 'node:url';
@@ -147,20 +147,18 @@ export async function main(argv,{env=process.env,ctx=null,out=line=>console.log(
   const trustFile=['verify-package','download','trust-import'].includes(args.command)?selectTrustFile({home:inst.home,explicit:args.values.trust})??(args.command==='trust-import'?inst.trustFile:null):args.values.trust??inst.trustFile;
   if(args.command==='trust-import'){
    const repo=args.values.repository??repository,role=args.values.role??'package',file=args.values['public-key'];if(!file||!args.values.fingerprint||!['package','git'].includes(role))throw new UsageError('trust-import needs --public-key FILE --fingerprint HASH [--repository OWNER/REPO] [--role package|git] and --trust FILE without an instance');if(!trustFile)throw new UsageError('trust-import requires --trust FILE or --home DIR');
-   trustDestination(trustFile,{forbidden:[inst.root,inst.paths.config,inst.paths.data,inst.paths.state,inst.paths.private,...inst.backupRoots]});const releaseTrustLock=acquireLock(trustFile+'.lock');try{const pem=readFileSync(file,'utf8').trim()+'\n',parsed=role==='package'?publicKey(pem):gitPublicKey(pem),id=parsed.id,fingerprint=parsed.fingerprint??id;if(fingerprint!==args.values.fingerprint)throw new UpdateError('Expected public-key fingerprint does not match');
-   const doc=existsSync(trustFile)?loadTrust(trustFile,{forbidden:[inst.root,inst.paths.config,inst.paths.data,inst.paths.state,inst.paths.private]}):{schemaVersion:1,publishers:{}};doc.publishers[repo]??={gitSigners:[],packageKeys:[]};const records=doc.publishers[repo][role==='package'?'packageKeys':'gitSigners'];if(records.some(k=>k.id===id))throw new UpdateError('Key already exists; import never reactivates retired or revoked keys. Review the local trust policy explicitly.');
-   records.push({id,publicKey:pem,fingerprint,role,status:'active',provenance:'Local import with independently supplied expected fingerprint'});validateTrust(doc);out(`Authorizing repository ${repo}, role ${role}, fingerprint ${id}`);durableWrite(trustFile,JSON.stringify(doc,null,1)+'\n');loadTrust(trustFile,{forbidden:[inst.root,inst.paths.config,inst.paths.data,inst.paths.state,inst.paths.private]});rememberTrustSelection(inst.home,trustFile);return 0;}finally{releaseTrustLock();}
+   importTrustKey({inst,trustFile,repository:repo,role,publicKeyFile:file,expectedFingerprint:args.values.fingerprint,lock:acquireLock,out});return 0;
   }
   if(args.command==='verify-package'){
    const site=inst.paths.siteConfig&&existsSync(inst.paths.siteConfig)?JSON.parse(readFileSync(inst.paths.siteConfig,'utf8')):null;
    const settings=updateSettings({site,version:{updates:{repo:repository}},env});
-   const result=await verifyPackage(args.values.package,{trustFile,repository:settings.repo,manifestDigest:request.manifestDigest,compatibility:false,forbidden:[inst.root,inst.paths.config,inst.paths.data,inst.paths.state,inst.paths.private,...inst.backupRoots]});rememberTrustSelection(inst.home,trustFile);out(JSON.stringify(result,null,1));return 0;
+   const result=await verifyPackage(args.values.package,{trustFile,repository:settings.repo,manifestDigest:request.manifestDigest,compatibility:false,forbidden:forbiddenTrustRoots(inst)});rememberTrustSelection(inst.home,trustFile);out(JSON.stringify(result,null,1));return 0;
   }
   if(args.command==='download'||args.flags.has('latest-published')){
    const disabled=updateSettings({env}).envOff||Object.hasOwn(JSON.parse(existsSync(path.join(inst.paths.state,'integrations.json'))?readFileSync(path.join(inst.paths.state,'integrations.json'),'utf8'):'{}')?.disabled??{},UPDATE_INTEGRATION);if(disabled)throw new UpdateError('Update discovery is disabled; no update network requests were made.');
    const site=inst.paths.siteConfig&&existsSync(inst.paths.siteConfig)?JSON.parse(readFileSync(inst.paths.siteConfig,'utf8')):null,settings=updateSettings({site,version:{updates:{repo:repository}},env});
    const token=(await loadGithubToken({env})).token,fetchJson=createFetchJson({token});
-   if(args.command==='download'){if(trustFile)loadTrust(trustFile,{forbidden:[inst.root,inst.paths.config,inst.paths.data,inst.paths.state,inst.paths.private,...inst.backupRoots]});const result=await downloadPackage({tag:args.tag,repository:settings.repo,trustFile,manifestDigest:request.manifestDigest,output:path.resolve(args.values.output??process.cwd()),fetchJson});rememberTrustSelection(inst.home,trustFile);out(`Verified download: ${result.file}\nManifest SHA-256: ${result.manifestSha256}`);return 0;}
+   if(args.command==='download'){if(trustFile)loadTrust(trustFile,{forbidden:forbiddenTrustRoots(inst)});const result=await downloadPackage({tag:args.tag,repository:settings.repo,trustFile,manifestDigest:request.manifestDigest,output:path.resolve(args.values.output??process.cwd()),fetchJson});rememberTrustSelection(inst.home,trustFile);out(`Verified download: ${result.file}\nManifest SHA-256: ${result.manifestSha256}`);return 0;}
    const found=await discoverReleases({repository:settings.repo,channel:settings.channel,fetchJson});request.core=found.found.tag;if(!request.core)throw new UpdateError('No published release selected');
   }
   if(args.command==='status'){

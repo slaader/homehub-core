@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {setTimeout as delay} from 'node:timers/promises';
-import {fileHash} from '../../server/update-backup.mjs';
+import {fileHash} from '../../server/safe-fs.mjs';
 import {powerLossPoints,invokeWithCheckpoint} from './backup-rehearsal-crash.mjs';
 import {sourceLockPath} from '../../server/update-lock.mjs';
 
