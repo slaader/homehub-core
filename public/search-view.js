@@ -72,18 +72,24 @@ export const citationOf=r=>r?.source==='attachment'&&typeof r.name==='string'&&r
 // requested = the mode the page asked for. → {tone, body, fallback} or null when the results are complete.
 export function searchNotice(data,requested='text'){
  const as=data?.attachmentSearch,state=as?.state,x=as?.extraction;
- const hasExtractionIssues=Boolean(x&&typeof x==='object'&&['oversize','invalid','missing','capacity','metadataCapacity','ticketCapacity'].some(k=>Number.isInteger(x[k])&&x[k]>0));
+ const hasPositive=keys=>Boolean(x&&typeof x==='object'&&keys.some(k=>Number.isInteger(x[k])&&x[k]>0));
+ const hasContentIssues=hasPositive(['oversize','invalid','missing','capacity']);
+ const hasLimitIssues=hasPositive(['metadataCapacity','ticketCapacity']);
  if(requested!=='text'&&data?.semanticAvailable!==true)return {tone:'warn',fallback:true,
   body:t('Hledání podle významu je vypnuté. Zapnout ho může správce v Nastavení platformy; do té doby hledej fulltextem.')};
  if(requested==='hybrid'&&data?.mode==='text'){
-  if(state==='degraded')return {tone:'warn',body:hasExtractionIssues
+  if(state==='degraded')return {tone:'warn',body:hasContentIssues
    ?t('Významová část selhala a část obsahu příloh není v indexu; výsledky jsou jen z fulltextu a nemusí být úplné.')
-   :t('Významová část selhala; výsledky jsou zatím jen z fulltextu.')};
+   :hasLimitIssues
+    ?t('Významová část selhala a část ticketů nebo metadat přesáhla limit indexu; výsledky jsou jen z fulltextu a nemusí být úplné.')
+    :t('Významová část selhala; výsledky jsou zatím jen z fulltextu.')};
   return {tone:'info',body:t('Významová část ještě není připravená; výsledky jsou zatím jen z fulltextu.')};
  }
- if(state==='degraded')return {tone:'warn',body:hasExtractionIssues
+ if(state==='degraded')return {tone:'warn',body:hasContentIssues
   ?t('Část obsahu příloh se do indexu nevešla nebo ji nešlo přečíst. Výsledky nemusí být úplné.')
-  :t('Index nebo poskytovatel hledání hlásí chyby. Výsledky nemusí být úplné.')};
+  :hasLimitIssues
+   ?t('Část ticketů nebo metadat příloh přesáhla limit indexu. Výsledky nemusí být úplné.')
+   :t('Index nebo poskytovatel hledání hlásí chyby. Výsledky nemusí být úplné.')};
  if(state==='indexing'||state==='closed')return {tone:'info',body:t('Index hledání ještě není úplný. Prázdný výsledek teď nemusí znamenat, že záznam neexistuje.')};
  return null;
 }

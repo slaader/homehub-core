@@ -61,9 +61,10 @@ function statusList(data){
 export function platformSettingsPage({me}){
  if(!me?.canAdmin)return emptyState({icon:'◇',title:t('Vyžaduje správce'),body:t('Nastavení platformy je jen pro správce přihlášeného heslem.')});
  const live=sessionTicket(),content=el('div',{'aria-live':'polite'},t('Načítám…'));
- let version=0;
+ let version=0,saving=false;
  // focus: which control gets the keyboard back after the card is drawn again ('toggle' | 'refresh').
  async function load(focus){
+  if(saving)return;
   const req=++version;
   try{const data=await request();if(live()&&req===version)draw(data,{focus});}
   catch(e){if(!live()||req!==version)return;const retry=el('button',{type:'button',class:'ui-button',onclick:()=>load('refresh')},t('Zkusit znovu'));
@@ -72,13 +73,13 @@ export function platformSettingsPage({me}){
  function draw(data,{focus,saved}={}){
   const {configured,model}=providerInfo(data);
   const status=el('p',{class:`set-status${saved?' good':''}`,role:'status'},saved?t('Uloženo.'):'');
-  const toggle=el('input',{id:'semantic-enabled',type:'checkbox',checked:data.enabled?'':null,disabled:!configured?'':null,'aria-describedby':configured?null:'semantic-provider-missing',onchange:async()=>{
-   const req=++version;
-   toggle.disabled=true;status.className='set-status';status.textContent=t('Ukládám…');
-   try{const next=await request({enabled:toggle.checked});if(live()&&req===version)draw(next,{focus:'toggle',saved:true});}
-   catch(e){if(live()&&req===version){toggle.checked=data.enabled;toggle.disabled=!configured;status.textContent=e.message;status.className='set-status bad';toggle.focus();}}
-  }});
   const refresh=el('button',{type:'button',class:'ui-button',onclick:()=>load('refresh')},t('Obnovit stav'));
+  const toggle=el('input',{id:'semantic-enabled',type:'checkbox',checked:data.enabled?'':null,disabled:!configured?'':null,'aria-describedby':configured?null:'semantic-provider-missing',onchange:async()=>{
+   const req=++version;saving=true;
+   toggle.disabled=true;refresh.disabled=true;status.className='set-status';status.textContent=t('Ukládám…');
+   try{const next=await request({enabled:toggle.checked});saving=false;if(live()&&req===version)draw(next,{focus:'toggle',saved:true});}
+   catch(e){saving=false;if(live()&&req===version){toggle.checked=data.enabled;toggle.disabled=!configured;refresh.disabled=false;status.textContent=e.message;status.className='set-status bad';toggle.focus();}}
+  }});
   const provider=configured?el('p',{class:'set-dim'},t('Poskytovatel je nastaven. Model: {model}',{model:model??'—'}))
    :banner({tone:'warn',body:t('Nejdřív nastav poskytovatele na serveru a restartuj Home Hub. Potom lze hledání zapnout tady.')});
   if(!configured)provider.setAttribute('id','semantic-provider-missing');

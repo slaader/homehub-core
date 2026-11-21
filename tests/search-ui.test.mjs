@@ -31,6 +31,9 @@ test('search notice: one line per readiness state, nothing when the results are 
  assert.equal(searchNotice({...ready,attachmentSearch:{state:'closed'}}).tone,'info');
  const degraded=searchNotice({...ready,attachmentSearch:{state:'degraded',extraction:{capacity:1}}});
  assert.equal(degraded.tone,'warn');assert.match(degraded.body,/attachment contents.*may be incomplete/i);
+ const degradedTicketLimit=searchNotice({...ready,attachmentSearch:{state:'degraded',extraction:{attachments:0,indexed:0,ticketCapacity:1}}},'text');
+ assert.equal(degradedTicketLimit.tone,'warn');assert.match(degradedTicketLimit.body,/tickets.*index limit/i);
+ assert.doesNotMatch(degradedTicketLimit.body,/attachment contents/i,'ticketCapacity alone does not report missing attachment contents');
  const degradedProvider=searchNotice({...ready,mode:'text',attachmentSearch:{state:'degraded',extraction:{attachments:0,indexed:0}}},'hybrid');
  assert.equal(degradedProvider.tone,'warn');assert.match(degradedProvider.body,/Meaning-based search failed.*full-text search only/);
  assert.doesNotMatch(degradedProvider.body,/attachment/i,'provider failure with zero attachment issues does not blame attachments');
@@ -186,6 +189,29 @@ test('platform settings: late refresh cannot overwrite a newer save, and status.
  await tick();
  assert.equal(document.activeElement.getAttribute('id'),'semantic-enabled','stale GET does not steal focus');
  assert.equal(document.activeElement.hasAttribute('checked'),false,'stale GET does not revert saved toggle');
+});
+
+test('platform settings: clicking Refresh while a save POST is pending cannot supersede the save',async()=>{
+ let releasePost;
+ const pendingPost=new Promise(r=>{releasePost=r;});
+ const methods=[];
+ globalThis.fetch=async(url,options={})=>{
+  const method=options.method||'GET';methods.push(method);
+  if(method==='POST')return pendingPost;
+  return reply({enabled:false,status:{state:'ready',lexicalReady:true,semanticState:'disabled',provider:{configured:true,model:'canonical-model'},coverage:{chunks:3,embedded:0}}});
+ };
+ document.body.replaceChildren(platformSettingsPage({me:admin}));await tick();
+ const toggle=find(document.body,n=>n.getAttribute?.('id')==='semantic-enabled');
+ const refresh=find(document.body,n=>n.tagName==='button'&&n.textContent==='Refresh status');
+ toggle.checked=true;fire(toggle,'change');
+ assert.equal(refresh.disabled,true,'refresh is disabled while saving');
+ fire(refresh,'click');
+ assert.deepEqual(methods,['GET','POST'],'refresh click during pending POST issues no GET');
+ releasePost(reply({enabled:true,status:{state:'ready',lexicalReady:true,semanticState:'indexing',provider:{configured:true,model:'canonical-model'},coverage:{chunks:3,embedded:1}}}));
+ await tick();
+ assert.equal(document.activeElement.getAttribute('id'),'semantic-enabled');
+ assert.equal(document.activeElement.getAttribute('checked'),'');
+ assert.match(document.body.textContent,/Saved\./);
 });
 
 test('both pages: text-safe DOM, shared components, design tokens',()=>{
