@@ -11,6 +11,7 @@
 //   backups   {"keep": 5}
 // A system service is stopped and started through `sudo -n` unless the command already runs as root: the rule that
 // allows it belongs to the device (sudoers), never to this file.
+import {readFileSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -68,4 +69,31 @@ export function parseBackups(raw={}){
  const keep=raw.keep??DEFAULT_KEEP;
  if(!Number.isSafeInteger(keep)||keep<1||keep>100)no('backups.keep must be a whole number from 1 to 100');
  return Object.freeze({keep});
+}
+
+export const INSTANCE_FILE='instance.json';
+const SOURCE_NAME=/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+/** <home>/instance.json, or null when there is none. Static-only so the updater never imports the plugin loader. */
+export function readInstance(home){
+ const file=path.join(home,INSTANCE_FILE);
+ let text;try{text=readFileSync(file,'utf8');}catch(e){if(e.code==='ENOENT')return null;no(`instance: cannot read ${file}: ${e.message}`);}
+ let raw;try{raw=JSON.parse(text);}catch(e){no(`instance: ${file} is not valid JSON: ${e.message}`);}
+ const bad=message=>no(`instance: ${file}: ${message}`);
+ if(!plain(raw))bad('must be an object');
+ const extra=Object.keys(raw).filter(k=>!['$comment','schemaVersion','sources','service','health','backups'].includes(k));if(extra.length)bad(`unknown field(s): ${extra.join(', ')}`);
+ if(raw.schemaVersion!==undefined&&raw.schemaVersion!==1)bad('schemaVersion must be 1');
+ const sources=raw.sources??{};if(!plain(sources))bad('sources must be an object');
+ const extraSources=Object.keys(sources).filter(k=>k!=='plugins'&&k!=='core');if(extraSources.length)bad(`sources has unknown field(s): ${extraSources.join(', ')}`);
+ const sourceName=n=>typeof n==='string'&&SOURCE_NAME.test(n)&&n!=='.'&&n!=='..';
+ if(sources.core!==undefined&&!sourceName(sources.core))bad(`sources.core must be the name of a directory in ${home}`);
+ let plugins=null;
+ if(sources.plugins!==undefined){
+  if(!Array.isArray(sources.plugins)||sources.plugins.length>16)bad('sources.plugins must be a list of at most 16 directory names');
+  plugins=sources.plugins.map((n,i)=>sourceName(n)?n:bad(`sources.plugins[${i}] must be the name of a directory in ${home}`));
+  if(new Set(plugins).size!==plugins.length)bad('sources.plugins names a directory twice');
+ }
+ if(plugins&&sources.core!==undefined&&plugins.includes(sources.core))bad('sources.core is also named in sources.plugins');
+ const part=(read,value)=>{if(value===undefined)return null;try{return read(value);}catch(e){if(e instanceof UpdateConfigError)bad(e.message);throw e;}};
+ const service=part(v=>parseService(v).spec,raw.service),health=part(parseHealth,raw.health),backups=part(parseBackups,raw.backups);
+ return Object.freeze({schemaVersion:1,sources:Object.freeze({core:sources.core??null,plugins:plugins&&Object.freeze(plugins)}),service,health,backups});
 }

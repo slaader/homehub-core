@@ -34,12 +34,10 @@ import path from 'node:path';
 import {convertSite} from '../scripts/convert-site.mjs';
 import {repoRoot} from './edition.mjs';
 import {resolvePaths} from './paths.mjs';
-import {readInstance} from './plugins.mjs';
-import {parse,compare,satisfies,validRange} from './semver.mjs';
-import {parseService,parseHealth,parseBackups,UpdateConfigError,DEFAULT_HEALTH_SECONDS} from './update-config.mjs';
+import {parseService,parseHealth,parseBackups,UpdateConfigError,DEFAULT_HEALTH_SECONDS,readInstance} from './update-config.mjs';
 import {loadTrust,authorizedKeys,selectTrustFile,rememberTrustSelection,forbiddenTrustRoots} from './release-trust.mjs';
 import {UPDATES_SCHEMA} from './update-check.mjs';
-
+import {parse,compare,satisfies,validRange} from './semver.mjs';
 import {verifyPackage,writePackageReceipt,authenticatePackageMetadata,verifyStagedTree} from './release-package.mjs';
 import {packageReceipt} from './build-info.mjs';
 import {sha256,withinPath,durableWrite,syncDirectory} from './safe-fs.mjs';

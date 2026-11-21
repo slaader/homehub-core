@@ -835,7 +835,21 @@ test('CLI discovery honors normalized environment and stored integration disable
 });
 
 test('trust-import refuses new and existing trust files inside --backup-root and accepts isolated trust paths',async t=>{
- const w=await world(t,{layout:'home'});
+ const {lstatSync,realpathSync}=await import('node:fs');
+ let temp=os.tmpdir();
+ for(const candidate of [os.tmpdir(),os.homedir(),process.cwd()]){
+  if(!candidate)continue;
+  try{
+   const real=realpathSync.native(candidate);
+   let ok=true;
+   for(let dir=real;dir!==path.dirname(dir);dir=path.dirname(dir)){
+    const st=lstatSync(dir);
+    if((st.mode&0o022)||![0,process.getuid?.()??st.uid].includes(st.uid)){ok=false;break;}
+   }
+   if(ok){temp=real;break;}
+  }catch{}
+ }
+ const w=await world(t,{layout:'home',temp});
  const {generateKeyPairSync}=await import('node:crypto');
  const {publicKey}=await import('../server/release-trust.mjs');
  const pair=generateKeyPairSync('ed25519'),pem=pair.publicKey.export({type:'spki',format:'pem'}),fp=publicKey(pem).id;
@@ -861,4 +875,22 @@ test('trust-import refuses new and existing trust files inside --backup-root and
  assert.equal(selectTrustFile({home:w.home}),safeTrust);
  // Re-importing the same key is refused without modifying the trust policy.
  assert.equal(await main(['trust-import','--public-key',keyFile,'--fingerprint',fp,'--backup-root',extraBackup,'--trust',safeTrust],{env:w.env,ctx:w.ctx,out:()=>{}}),1);
+});
+
+test('update journal accepts legacy schema-3 journals with unnormalized absolute paths',async t=>{
+ const {validateJournal,readUpdateJournal}=await import('../server/update-journal.mjs');
+ const dir=await realpath(await mkdtemp(path.join(os.tmpdir(),'hub-journal-compat-')));
+ t.after(()=>rm(dir,{recursive:true,force:true}));
+ const file=path.join(dir,'update-journal.json');
+ const legacy={
+  schemaVersion:3,id:'op-legacy-1',startedAt:'2026-01-01T00:00:00.000Z',step:'done',epochRose:false,
+  from:{label:'v1.0.0',core:{version:'1.0.0'},expect:{version:'1.0.0'}},
+  to:{label:'v1.1.0',core:{version:'1.1.0'},expect:{version:'1.1.0'}},
+  changes:[{id:'core',dir:'/srv/home-hub/./core',from:'a'.repeat(40),to:'b'.repeat(40)}],
+  settings:{root:'/srv/home-hub/./core',state:'/srv/home-hub/data/./state',service:{stop:['svc','stop'],start:['svc','start']},health:{url:'http://127.0.0.1:9/healthz',seconds:2}},
+  trustFile:'/srv/policy/./trust.json',
+ };
+ assert.deepEqual(validateJournal(legacy),legacy);
+ await writeFile(file,JSON.stringify(legacy)+'\n',{mode:0o600});
+ assert.deepEqual(readUpdateJournal(file),legacy);
 });

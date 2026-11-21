@@ -1,46 +1,48 @@
 // Schema 1 is read explicitly. Corrupt and future journals are evidence, never absence.
 import path from 'node:path';
-import {strictJson,durableWrite,cleanAbsolute,boundedRegularFile} from './safe-fs.mjs';
+import {strictJson,durableWrite,boundedRegularFile} from './safe-fs.mjs';
 import {parseService,parseHealth} from './update-config.mjs';
 import {UpdateError} from './update-errors.mjs';
 export const JOURNAL_SCHEMA=3;
 export const TERMINAL_STEPS=Object.freeze(['done','rolled-back','aborted']);
 const STEPS=[...TERMINAL_STEPS,'stopping','backup','backup-verified','switching','switched','starting','target-may-have-written','rolling-back','rollback-failed'];
+// Legacy read contract: previously-written journals (schemas 1..3) may contain unnormalized absolute paths such as /a/./b.
+const absolute=p=>typeof p==='string'&&path.isAbsolute(p)&&!p.includes('\0')&&path.resolve(p)!==path.parse(p).root;
 const hash=v=>typeof v==='string'&&/^[0-9a-f]{40}$/.test(v);
 export function validateJournal(j){
  if(!j||typeof j!=='object'||![1,2,JOURNAL_SCHEMA].includes(j.schemaVersion))throw new Error('unsupported/newer journal schema');
  const keys=['schemaVersion','id','startedAt','finishedAt','by','from','to','changes','epochRose','settings','step','started','backup','failure','stopRefused','quarantine','undoFrom','restored','failedState','rollbackError','site','instance','operations','targetMayHaveWritten','restoreRoots','package','driver','kind','previous',...(j.schemaVersion===3?['driverInfo','backupPolicy','trustFile','socketRestore']:[])];if(Object.keys(j).some(k=>!keys.includes(k)))throw new Error('unknown journal field');
  if(j.undoFrom!==undefined&&!STEPS.includes(j.undoFrom))throw new Error('invalid rollback origin');
  if(j.operations!==undefined&&(!Array.isArray(j.operations)||j.operations.length>100000||j.operations.some(o=>!/^op-\d+$/.test(o.id)||!['source-switch','source-restore'].includes(o.kind)||!['intent','complete'].includes(o.status))))throw new Error('invalid journal operations');
- if(j.restoreRoots!==undefined&&(!Array.isArray(j.restoreRoots)||j.restoreRoots.length>20000||j.restoreRoots.some(r=>![r.live,r.aside,r.staged,r.stageDir].every(cleanAbsolute)||path.dirname(r.live)!==path.dirname(r.aside)||path.dirname(r.stageDir)!==path.dirname(r.live)||path.dirname(r.staged)!==r.stageDir||!['prepared','moving-old','old-moved','installing','installed',...(j.schemaVersion===3?['preparing']:[])].includes(r.status))))throw new Error('invalid restore path roles or state');
+ if(j.restoreRoots!==undefined&&(!Array.isArray(j.restoreRoots)||j.restoreRoots.length>20000||j.restoreRoots.some(r=>![r.live,r.aside,r.staged,r.stageDir].every(absolute)||path.dirname(r.live)!==path.dirname(r.aside)||path.dirname(r.stageDir)!==path.dirname(r.live)||path.dirname(r.staged)!==r.stageDir||!['prepared','moving-old','old-moved','installing','installed',...(j.schemaVersion===3?['preparing']:[])].includes(r.status))))throw new Error('invalid restore path roles or state');
  if(j.socketRestore!==undefined){
   const layout=j.socketRestore;
   if(!layout||!Array.isArray(layout.anchors)||!Array.isArray(layout.sockets)||!Array.isArray(layout.units)||
-   (layout.aliases!==undefined&&(!Array.isArray(layout.aliases)||!layout.aliases.every(a=>a&&cleanAbsolute(a.live)&&cleanAbsolute(a.target))))||
+   (layout.aliases!==undefined&&(!Array.isArray(layout.aliases)||!layout.aliases.every(a=>a&&absolute(a.live)&&absolute(a.target))))||
    layout.anchors.length+layout.units.length+(layout.aliases?.length??0)>20000||layout.sockets.length>1000||
-   !layout.anchors.every(a=>a&&cleanAbsolute(a.live))||!layout.sockets.every(id=>typeof id==='string')||
-   !layout.units.every(u=>u&&[u.live,u.aside,u.staged,u.stageDir].every(cleanAbsolute)))
+   !layout.anchors.every(a=>a&&absolute(a.live))||!layout.sockets.every(id=>typeof id==='string')||
+   !layout.units.every(u=>u&&[u.live,u.aside,u.staged,u.stageDir].every(absolute)))
    throw new Error('invalid socket restore layout');
  }
  if(!STEPS.includes(j.step)||typeof j.id!=='string'||!/^[A-Za-z0-9-]{1,100}$/.test(j.id)||!Number.isFinite(Date.parse(j.startedAt)))throw new Error('invalid journal state or operation ID');
  for(const side of ['from','to'])if(!j[side]||typeof j[side].label!=='string'||typeof j[side].core?.version!=='string'||typeof j[side].expect?.version!=='string')throw new Error(`invalid journal ${side}`);
  if(!Array.isArray(j.changes)||j.changes.length>32||typeof j.epochRose!=='boolean')throw new Error('invalid source changes');
- for(const c of j.changes)if(!cleanAbsolute(c.dir)||typeof c.id!=='string'||!hash(c.from)||!hash(c.to))throw new Error('invalid source switch path/identity');
- if(!j.settings||!cleanAbsolute(j.settings.root)||!cleanAbsolute(j.settings.state))throw new Error('invalid journal path roles');
+ for(const c of j.changes)if(!absolute(c.dir)||typeof c.id!=='string'||!hash(c.from)||!hash(c.to))throw new Error('invalid source switch path/identity');
+ if(!j.settings||!absolute(j.settings.root)||!absolute(j.settings.state))throw new Error('invalid journal path roles');
  parseService(j.settings.service);parseHealth(j.settings.health);
- for(const name of ['site','instance'])if(j[name]){const s=j[name];if(!cleanAbsolute(s.file)||!(s.backup===null||cleanAbsolute(s.backup))||!['prepared','applying','applied','restored'].includes(s.status)||!(s.baseHash===null||/^[0-9a-f]{64}$/.test(s.baseHash)))throw new Error(`invalid ${name} recovery plan`);}
- if(j.backup&&(!cleanAbsolute(j.backup.file)||!Array.isArray(j.backup.entries)))throw new Error('invalid archive recovery plan');
- if(j.backup?.schemaVersion===2&&(j.schemaVersion!==3||!cleanAbsolute(j.backup.manifest)||!cleanAbsolute(j.backup.integrity)||
+ for(const name of ['site','instance'])if(j[name]){const s=j[name];if(!absolute(s.file)||!(s.backup===null||absolute(s.backup))||!['prepared','applying','applied','restored'].includes(s.status)||!(s.baseHash===null||/^[0-9a-f]{64}$/.test(s.baseHash)))throw new Error(`invalid ${name} recovery plan`);}
+ if(j.backup&&(!absolute(j.backup.file)||!Array.isArray(j.backup.entries)))throw new Error('invalid archive recovery plan');
+ if(j.backup?.schemaVersion===2&&(j.schemaVersion!==3||!absolute(j.backup.manifest)||!absolute(j.backup.integrity)||
    !/^[a-f0-9]{64}$/.test(j.backup.integritySha256)))throw new Error('invalid streaming backup reference');
- if(j.backupPolicy&&(!cleanAbsolute(j.backupPolicy.file)||!/^[a-f0-9]{64}$/.test(j.backupPolicy.digest)))throw new Error('invalid backup policy reference');
- if(j.trustFile!==undefined&&!cleanAbsolute(j.trustFile))throw new Error('invalid trust reference');
+ if(j.backupPolicy&&(!absolute(j.backupPolicy.file)||!/^[a-f0-9]{64}$/.test(j.backupPolicy.digest)))throw new Error('invalid backup policy reference');
+ if(j.trustFile!==undefined&&!absolute(j.trustFile))throw new Error('invalid trust reference');
  if(j.driverInfo){
   const d=j.driverInfo;
-  if(!cleanAbsolute(j.driver)||typeof d.version!=='string'||!/^([a-f0-9]{64})$/.test(d.treeSha256)||
+  if(!absolute(j.driver)||typeof d.version!=='string'||!/^([a-f0-9]{64})$/.test(d.treeSha256)||
     !Array.isArray(d.capabilities)||d.capabilities.length>32||!d.capabilities.every(c=>typeof c==='string')||
     (d.commit!==null&&!hash(d.commit)))throw new Error('invalid retained driver provenance');
  }
- if(j.package){const p=j.package;if(!['prepared','moving-old','old-moved','installing','installed','moving-failed','restoring','restored'].includes(p.status))throw new Error('invalid package state');if(![p.live,p.old,p.staged].every(cleanAbsolute)||p.live!==j.settings.root||new Set([p.live,p.old,p.staged]).size!==3||[p.old,p.staged].some(v=>path.dirname(v)!==path.dirname(p.live)))throw new Error('invalid package replacement roles');}
+ if(j.package){const p=j.package;if(!['prepared','moving-old','old-moved','installing','installed','moving-failed','restoring','restored'].includes(p.status))throw new Error('invalid package state');if(![p.live,p.old,p.staged].every(absolute)||p.live!==j.settings.root||new Set([p.live,p.old,p.staged]).size!==3||[p.old,p.staged].some(v=>path.dirname(v)!==path.dirname(p.live)))throw new Error('invalid package replacement roles');}
  return j;
 }
 export function readUpdateJournal(file){

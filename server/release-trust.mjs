@@ -10,6 +10,7 @@ import {UpdateError} from './update-errors.mjs';
 
 export const TRUST_SCHEMA=1;
 export const TRUST_REQUIREMENT_SCHEMA=1;
+export const TRUST_MAX_BYTES=1024*1024;
 export const MANIFEST_DOMAIN=Buffer.from('home-hub-release-manifest-v1\n');
 
 export function forbiddenTrustRoots(inst){
@@ -102,11 +103,14 @@ export function validateTrust(doc){
 
 export function loadTrust(file,{forbidden=[]}={}){
  const resolved=trustDestination(file,{forbidden});
- const named=path.resolve(file),st=lstatSync(named);
- if(!st.isFile()||st.isSymbolicLink()||(st.mode&0o022)||st.uid!==(process.getuid?.()??st.uid))throw new Error('trust must be an owner-controlled regular file, not writable by other users');
- const real=realpathSync.native(named);
- if(real!==resolved)trustDestination(real,{forbidden});
- return validateTrust(strictJson(boundedRegularFile(real,1024*1024,'trust'),{limit:1024*1024}));
+ const ownerError=()=>{throw new Error('trust must be an owner-controlled regular file, not writable by other users');};
+ const bytes=boundedRegularFile(resolved,TRUST_MAX_BYTES,'trust',{
+  onSymlink:ownerError,
+  checkStat:fst=>{
+   if(!fst.isFile()||(fst.mode&0o022)||fst.uid!==(process.getuid?.()??fst.uid))ownerError();
+  },
+ });
+ return validateTrust(strictJson(bytes,{limit:TRUST_MAX_BYTES}));
 }
 
 export function authorizedKeys(trust,repository,role,version){
@@ -128,23 +132,25 @@ export function verifyManifestSignature(bytes,sidecar,trust,repository,version){
 export function importTrustKey({inst,trustFile,repository,role='package',publicKeyFile,expectedFingerprint,lock=acquireLock,out=null}={}){
  if(!['package','git'].includes(role))throw new UpdateError('trust-import role must be package or git');
  const forbidden=forbiddenTrustRoots(inst);
- trustDestination(trustFile,{forbidden});
- const release=lock(trustFile+'.lock');
+ const target=trustDestination(trustFile,{forbidden});
+ const release=lock(target+'.lock');
  try{
   const pem=readFileSync(publicKeyFile,'utf8').trim()+'\n';
   const parsed=role==='package'?publicKey(pem):gitPublicKey(pem);
   const id=parsed.id,fingerprint=parsed.fingerprint??id;
   if(fingerprint!==expectedFingerprint)throw new UpdateError('Expected public-key fingerprint does not match');
-  const doc=present(trustFile)?loadTrust(trustFile,{forbidden}):{schemaVersion:TRUST_SCHEMA,publishers:{}};
+  const doc=present(target)?loadTrust(target,{forbidden}):{schemaVersion:TRUST_SCHEMA,publishers:{}};
   doc.publishers[repository]??={gitSigners:[],packageKeys:[]};
   const records=doc.publishers[repository][role==='package'?'packageKeys':'gitSigners'];
   if(records.some(k=>k.id===id))throw new UpdateError('Key already exists; import never reactivates retired or revoked keys. Review the local trust policy explicitly.');
   records.push({id,publicKey:pem,fingerprint,role,status:'active',provenance:'Local import with independently supplied expected fingerprint'});
   validateTrust(doc);
+  const serialized=Buffer.from(JSON.stringify(doc,null,1)+'\n','utf8');
+  if(serialized.length>TRUST_MAX_BYTES)throw new UpdateError('Trust policy exceeds its 1 MiB byte limit');
   out?.(`Authorizing repository ${repository}, role ${role}, fingerprint ${id}`);
-  durableWrite(trustFile,JSON.stringify(doc,null,1)+'\n');
-  const trust=loadTrust(trustFile,{forbidden});
-  rememberTrustSelection(inst?.home,trustFile);
-  return {repository,role,id,fingerprint,trustFile,trust};
+  durableWrite(target,serialized);
+  const trust=loadTrust(target,{forbidden});
+  rememberTrustSelection(inst?.home,target);
+  return {repository,role,id,fingerprint,trustFile:target,trust};
  }finally{release();}
 }

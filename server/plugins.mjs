@@ -16,7 +16,8 @@ import {repoRoot} from './edition.mjs';
 import {defineIntegrations} from './integrations.mjs';
 import {readPackage} from './version.mjs';
 import {parse as parseVersion,validRange,satisfies} from './semver.mjs';
-import {parseService,parseHealth,parseBackups,UpdateConfigError} from './update-config.mjs';
+import {parseService,parseHealth,parseBackups,UpdateConfigError,INSTANCE_FILE,readInstance} from './update-config.mjs';
+export {INSTANCE_FILE,readInstance};
 
 export const MODULE_ID=/^[a-z][a-z0-9-]{1,31}$/;
 // The version of this core (package.json → version): what a plugin's core range is checked against.
@@ -214,33 +215,6 @@ export function createRegistry(modules,{reservedTools=[]}={}){
 //                                  stopped, started and checked: sources.core, service, health, backups)
 //   <root>/local/plugins           the overlay inside the core checkout (deprecated, removed in 2.0)
 // Every directory holds <id>/index.mjs per plugin; ids are unique across all of them.
-export const INSTANCE_FILE='instance.json';
-const SOURCE_NAME=/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
-// <home>/instance.json, or null when there is none. A file that is there but wrong stops the start, naming the field.
-export function readInstance(home){
- const file=path.join(home,INSTANCE_FILE);
- let text;try{text=readFileSync(file,'utf8');}catch(e){if(e.code==='ENOENT')return null;throw new ModuleError(`instance: cannot read ${file}: ${e.message}`);}
- let raw;try{raw=JSON.parse(text);}catch(e){throw new ModuleError(`instance: ${file} is not valid JSON: ${e.message}`);}
- const no=message=>{throw new ModuleError(`instance: ${file}: ${message}`);};
- if(!plain(raw))no('must be an object');
- const extra=Object.keys(raw).filter(k=>!['$comment','schemaVersion','sources','service','health','backups'].includes(k));if(extra.length)no(`unknown field(s): ${extra.join(', ')}`);
- if(raw.schemaVersion!==undefined&&raw.schemaVersion!==1)no('schemaVersion must be 1');
- const sources=raw.sources??{};if(!plain(sources))no('sources must be an object');
- const extraSources=Object.keys(sources).filter(k=>k!=='plugins'&&k!=='core');if(extraSources.length)no(`sources has unknown field(s): ${extraSources.join(', ')}`);
- const sourceName=n=>typeof n==='string'&&SOURCE_NAME.test(n)&&n!=='.'&&n!=='..';
- if(sources.core!==undefined&&!sourceName(sources.core))no(`sources.core must be the name of a directory in ${home}`);
- let plugins=null;
- if(sources.plugins!==undefined){
-  if(!Array.isArray(sources.plugins)||sources.plugins.length>16)no('sources.plugins must be a list of at most 16 directory names');
-  plugins=sources.plugins.map((n,i)=>sourceName(n)?n:no(`sources.plugins[${i}] must be the name of a directory in ${home}`));
-  if(new Set(plugins).size!==plugins.length)no('sources.plugins names a directory twice');
- }
- if(plugins&&sources.core!==undefined&&plugins.includes(sources.core))no('sources.core is also named in sources.plugins');
- // What the update command needs (scripts/update.mjs, docs/updating.md); the server only checks that it is well formed.
- const part=(read,value)=>{if(value===undefined)return null;try{return read(value);}catch(e){if(e instanceof UpdateConfigError)no(e.message);throw e;}};
- const service=part(v=>parseService(v).spec,raw.service),health=part(parseHealth,raw.health),backups=part(parseBackups,raw.backups);
- return Object.freeze({schemaVersion:1,sources:Object.freeze({core:sources.core??null,plugins:plugins&&Object.freeze(plugins)}),service,health,backups});
-}
 export function pluginsDirectories(env=process.env,root=repoRoot){
  const chosen=env.HOME_HUB_PLUGINS_DIR;
  if(chosen==='none')return [];

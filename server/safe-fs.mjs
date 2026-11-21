@@ -45,17 +45,34 @@ export function canonicalPath(value){
  }
 }
 
-export function boundedRegularFile(file,maxBytes,label='file'){
+export function boundedRegularFile(file,maxBytes,label='file',{onSymlink=null,checkStat=null}={}){
  if(!Number.isSafeInteger(maxBytes)||maxBytes<0)throw new Error(`invalid byte limit for ${label}`);
- const st=lstatSync(file);
- if(!st.isFile()||st.isSymbolicLink()||st.size>maxBytes)throw new Error(`${label} must be a bounded regular file`);
- const fd=openSync(file,constants.O_RDONLY|constants.O_NOFOLLOW);
+ const flags=constants.O_RDONLY|constants.O_NOFOLLOW|(constants.O_NONBLOCK??0);
+ let fd;
+ try{fd=openSync(file,flags);}
+ catch(e){
+  if(e.code==='ELOOP'){
+   if(onSymlink)onSymlink();
+   throw new Error(`${label} must be a bounded regular file`);
+  }
+  throw e;
+ }
  try{
   const fst=fstatSync(fd);
+  if(checkStat)checkStat(fst);
   if(!fst.isFile()||fst.size>maxBytes)throw new Error(`${label} must be a bounded regular file`);
-  const bytes=readFileSync(fd);
-  if(bytes.length>maxBytes)throw new Error(`${label} exceeds its byte limit`);
-  return bytes;
+  const chunks=[],chunkSize=Math.min(65536,maxBytes+1);
+  let total=0;
+  while(true){
+   const remaining=maxBytes+1-total;
+   const buf=Buffer.allocUnsafe(Math.min(chunkSize,remaining));
+   const n=readSync(fd,buf,0,buf.length,null);
+   if(!n)break;
+   total+=n;
+   if(total>maxBytes)throw new Error(`${label} exceeds its byte limit`);
+   chunks.push(n===buf.length?buf:buf.subarray(0,n));
+  }
+  return chunks.length===1?chunks[0]:Buffer.concat(chunks,total);
  }finally{closeSync(fd);}
 }
 
