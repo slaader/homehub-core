@@ -7,7 +7,7 @@ import {el,onLeave} from './views.js';
 import {t,tp,locale} from './i18n.js';
 import {timeZone} from './site.js';
 import {authGuard,sessionTicket} from './session-cache.js';
-import {pageHeader,emptyState} from './ui.js';
+import {pageHeader,emptyState,banner} from './ui.js';
 
 const KINDS=()=>[['ticket',t('Položky')],['review','Review']];
 const TICKET_STATUS=()=>({open:[t('Otevřený'),'warn'],'in-progress':[t('Rozpracovaný'),'info'],done:[t('Hotovo'),'ok'],cancelled:[t('Zrušený'),'dim']});
@@ -65,14 +65,30 @@ export function titleOf(r){
  while(s[i]==='\u0002')i++;
  return s.slice(i).replace(/^\s+/,'')||s;
 }
+// Where an attachment-content hit was found: the file's name, shown as text (never markup).
+export const citationOf=r=>r?.source==='attachment'&&typeof r.name==='string'&&r.name?r.name:null;
+// The one line above the results that says how far to trust them, read from the response of GET /api/search:
+// semanticAvailable, mode and attachmentSearch.state (ready | indexing | degraded | disabled | closed).
+// requested = the mode the page asked for. → {tone, body, fallback} or null when the results are complete.
+export function searchNotice(data,requested='text'){
+ const state=data?.attachmentSearch?.state;
+ if(requested!=='text'&&data?.semanticAvailable!==true)return {tone:'warn',fallback:true,
+  body:t('Hledání podle významu je vypnuté. Zapnout ho může správce v Nastavení platformy; do té doby hledej fulltextem.')};
+ if(state==='degraded')return {tone:'warn',body:t('Část obsahu příloh se do indexu nevešla nebo ji nešlo přečíst. Výsledky nemusí být úplné.')};
+ if(state==='indexing'||state==='closed')return {tone:'info',body:t('Index hledání ještě není úplný. Prázdný výsledek teď nemusí znamenat, že záznam neexistuje.')};
+ if(requested==='hybrid'&&data?.mode==='text')return {tone:'info',body:t('Významová část ještě není připravená; výsledky jsou zatím jen z fulltextu.')};
+ return null;
+}
 const hit=r=>el('a',{class:`sr-hit ${r.kind}`,href:resultHref(r)},
- el('div',{class:'sr-hit-meta'},el('span',{class:'sr-id'},r.id),stateOf(r),r.project?el('span',{},r.project):null,r.meta?.assignee?el('span',{},r.meta.assignee):null,r.updatedAt?el('span',{class:'sr-date'},when(r.updatedAt)):null),
+ el('div',{class:'sr-hit-meta'},el('span',{class:'sr-id'},r.id),stateOf(r),r.project?el('span',{},r.project):null,r.meta?.assignee?el('span',{},r.meta.assignee):null,
+  citationOf(r)?el('span',{class:'sr-source',title:t('Nalezeno v obsahu přílohy')},el('span',{'aria-hidden':'true'},'📎 '),t('Příloha: {name}',{name:citationOf(r)})):null,
+  r.updatedAt?el('span',{class:'sr-date'},when(r.updatedAt)):null),
  el('b',{class:'sr-title'},...marked(titleOf(r))),
  r.snippet?el('p',{},...marked(r.snippet)):null);
 
 export function searchView(me,sub){
- const q=queryOf(sub),modePicker=el('div',{}),body=el('div',{class:'sr-body','aria-live':'polite'},el('p',{class:'sec-dim',role:'status'},q?t('Hledám…'):t('Načítám…')));
- const view=el('section',{class:'sec tk sr'},pageHeader({eyebrow:t('Hledání'),title:q?t('Hledání: {q}',{q}):t('Hledání'),lead:q?undefined:t('Napiš, co hledáš: slova z názvu, popisu, komentářů nebo poznámek.')}),modePicker,body);
+ const q=queryOf(sub),modePicker=el('div',{class:'sr-mode'}),notice=el('div',{class:'sr-notice'}),body=el('div',{class:'sr-body','aria-live':'polite'},el('p',{class:'sec-dim',role:'status'},q?t('Hledám…'):t('Načítám…')));
+ const view=el('section',{class:'sec tk sr'},pageHeader({eyebrow:t('Hledání'),title:q?t('Hledání: {q}',{q}):t('Hledání'),lead:q?undefined:t('Napiš, co hledáš: slova z názvu, popisu, komentářů nebo poznámek.')}),modePicker,notice,body);
  const live=sessionTicket(),lost=authGuard(live);
  let only='',mode='text';
  function chooseMode(data){
@@ -81,15 +97,18 @@ export function searchView(me,sub){
    [['text',t('Fulltext (výchozí)')],['semantic',t('Podle významu (tickety)')],['hybrid',t('Hybridní (tickety)')]].map(([id,label])=>el('option',{value:id,selected:mode===id?'':null},label)));
   modePicker.replaceChildren(el('label',{},t('Způsob hledání'),' ',select));
  }
+ function showNotice(data){
+  const n=searchNotice(data,mode);
+  notice.replaceChildren(...(n?[banner({tone:n.tone,body:n.body,actions:n.fallback?[{label:t('Hledat fulltextem'),primary:true,onclick:()=>{mode='text';search();}},
+   me?.canAdmin?{label:`${t('Nastavení platformy')} →`,href:'#platform-settings'}:null]:null})]:[]));
+ }
  const failed=text=>body.replaceChildren(emptyState({icon:'⚠',title:t('Hledání teď nejde'),body:text,actions:[{label:t('Zkusit znovu'),primary:true,onclick:()=>{location.hash=q?searchHash(q):'#search';view.replaceWith(searchView(me,sub));}}]}));
  // Nothing indexed: this hub has no tickets or review sets yet, so there is nothing to find.
  const nothingIndexed=()=>emptyState({icon:'⌕',title:t('Zatím není co prohledávat'),
   body:t('Hledání prochází položky Project Trackeru a sady Review. Na tomhle Home Hubu zatím žádné nejsou; jakmile vzniknou, najdou se tady hned.'),
   actions:[{label:`${t('Projekty')} →`,href:'#projects',primary:true},{label:'Review →',href:'#review'}]});
  function draw(data){
-  chooseMode(data);
-  const warning=data.attachmentSearch&&data.attachmentSearch.state!=='ready'?el('p',{class:'sec-dim',role:'status'},t('Index hledání ještě není úplný. Prázdný výsledek teď nemusí znamenat, že záznam neexistuje.')):null;
-  if(warning)modePicker.append(warning);
+  chooseMode(data);showNotice(data);
   const indexed=data.indexed||{},total=(indexed.ticket||0)+(indexed.review||0),groups=groupResults(data.results),names=Object.fromEntries(KINDS());
   // Even with nothing to find yet, the page says how search will read a query.
   if(data.indexed&&!total)return body.replaceChildren(nothingIndexed(),el('div',{class:'acc-card sr-help'},el('h3',{},t('Jak hledat')),tips()));
@@ -97,7 +116,9 @@ export function searchView(me,sub){
   if(!q)return body.replaceChildren(el('div',{class:'acc-card sr-help'},el('h3',{},t('Jak hledat')),tips()),...[scope].filter(Boolean));
   if(!data.results.length)return body.replaceChildren(el('div',{class:'acc-card sr-help'},el('h2',{class:'sr-none'},t('Nic nenalezeno')),el('p',{class:'sec-dim'},t('Na „{q}“ nic neodpovídá. Zkus to takhle:',{q})),tips()),...[scope].filter(Boolean));
   const shown=groups.filter(g=>!only||g.kind===only);
-  const chip=(kind,text,n)=>el('button',{type:'button',class:`sys-chip${only===kind?' on':''}`,'aria-pressed':String(only===kind),onclick:()=>{only=kind;draw(data);}},text,el('span',{class:'sr-count'},String(n)));
+  // A chip redraws the results; the focus stays on the chip that was pressed, so the keyboard does not lose its place.
+  const chip=(kind,text,n)=>el('button',{type:'button',class:`sys-chip${only===kind?' on':''}`,'data-kind':kind,'aria-pressed':String(only===kind),
+   onclick:()=>{only=kind;draw(data);[...body.querySelectorAll('.sys-chip')].find(b=>b.getAttribute('data-kind')===kind)?.focus();}},text,el('span',{class:'sr-count'},String(n)));
   body.replaceChildren(
    el('div',{class:'tk-toolbar'},el('div',{class:'sys-chips',role:'group','aria-label':t('Druh výsledku')},chip('',t('Vše'),data.results.length),groups.map(g=>chip(g.kind,names[g.kind]||g.kind,g.results.length))),
     el('span',{class:'sec-dim'},data.results.length>=100?t('Prvních {n} výsledků; upřesni hledání.',{n:data.results.length}):tp(data.results.length,'{n} výsledek|{n} výsledky|{n} výsledků'))),
@@ -119,10 +140,10 @@ export function searchView(me,sub){
  function search(){const request=++requestNumber;body.setAttribute('aria-busy','true');
  fetch('/api/search?'+new URLSearchParams({q,limit:'100',mode})).then(async r=>{
   lost(r);if(!live()||request!==requestNumber)return;
-  if(!r.ok)return failed(r.status===400?t('Tohle hledání nejde (nejvýš 200 znaků).'):t('Hledání teď nejde. Zkus to znovu.'));
+  if(!r.ok){body.removeAttribute('aria-busy');notice.replaceChildren();return failed(r.status===400?t('Tohle hledání nejde (nejvýš 200 znaků).'):t('Hledání teď nejde. Zkus to znovu.'));}
   const data=await r.json();if(!live()||request!==requestNumber)return;body.removeAttribute('aria-busy');
   draw({...data,results:Array.isArray(data.results)?data.results:[]});
- }).catch(()=>{if(live()&&request===requestNumber){body.removeAttribute('aria-busy');failed(t('Hledání teď nejde. Zkus to znovu.'));}});
+ }).catch(()=>{if(live()&&request===requestNumber){body.removeAttribute('aria-busy');notice.replaceChildren();failed(t('Hledání teď nejde. Zkus to znovu.'));}});
  }search();
  return view;
 }

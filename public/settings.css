@@ -40,5 +40,8 @@
 
 .set-section{font:600 var(--text-lg)/1.4 var(--sans);margin:4px 0 14px;color:var(--txt)}
 .set-toggle{display:flex;align-items:center;gap:10px;margin:16px 0;font-weight:600}
+.set-card .ui-banner,.set-card .set-dl{margin:var(--space-3) 0}
+.set-card .set-dl dd{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-1) var(--space-2);min-width:0;overflow-wrap:anywhere}
+@media(max-width:480px){.set-card .set-dl{grid-template-columns:1fr;gap:2px}.set-card .set-dl dd{margin-bottom:var(--space-2)}}
 .set-card ol{padding-left:22px;line-height:1.7;color:var(--dim)}
 .set-card pre{white-space:pre-wrap;overflow-wrap:anywhere}
