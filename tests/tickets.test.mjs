@@ -430,6 +430,75 @@ test('disabled project features keep assigned releases and existing review resul
  assert.deepEqual(updates,[{id:tk.id,rev:tk.rev,title:'Updated title'}]);
 });
 
+test('tickets UI: wiki pages that mention a ticket are listed once, under References and where used',async t=>{
+ dom(t);document.addEventListener=()=>{};
+ const {s}=await store(t),project='home-hub';
+ const tk=await s.create({project,title:'Mentioned ticket'},'a'),other=await s.create({project,title:'Mentioning ticket'},'a'),meta=await s.list();
+ const pages=[{project,id:'units',title:'Unit roster',updatedAt:'2026-11-20T10:00:00.000Z'},{project,id:'build',title:'Build notes',updatedAt:'2026-11-19T10:00:00.000Z'}];
+ const wikiSource=p=>({kind:'wiki',id:p.project+'/'+p.id,label:p.title,project:p.project,href:'#wiki/'+p.project+'/'+p.id});
+ const usages=[...pages.map(p=>({source:wikiSource(p),updatedAt:p.updatedAt,excerpt:'See '+tk.id})),
+  {source:{kind:'ticket',id:other.id,label:other.title,project,href:'#items/'+other.id},field:'description',updatedAt:'2026-11-18T10:00:00.000Z',excerpt:'Blocked by '+tk.id}];
+ const gets=[];
+ let releaseRef;
+ globalThis.fetch=async url=>{
+  gets.push(url);
+  if(url.startsWith('/api/references/item?')){
+   await new Promise(resolve=>{releaseRef=resolve;});
+   return Response.json({record:{kind:'ticket',id:tk.id,label:tk.title,project,scope:'local',href:'#items/'+tk.id},note:null,usages,usageTotal:usages.length});
+  }
+  if(url.startsWith('/api/review?'))return Response.json({sets:[]});
+  if(url==='/api/tickets/people')return Response.json({people:[]});
+  return Response.json(url==='/api/tickets/'+tk.id?tk:meta);
+ };
+ const root=trackerView({canWrite:true,scopes:['tickets:write']},'items',tk.id);document.body.append(root);await flush();
+ // No second Wiki card and no eager backlinks/references fetch before the disclosure is opened.
+ assert.equal(nodes(root,n=>n.tag==='h3'&&n.textContent==='Wiki').length,0);
+ const sections=nodes(root,n=>n.tag==='details'&&n.classList.contains('ref-section'));
+ assert.equal(sections.length,1);
+ const [section]=sections,summary=section.children[0];
+ assert.equal(summary.tag,'summary');
+ assert.equal(summary.textContent,'References and where used');
+ assert.equal(gets.filter(u=>u.startsWith('/api/wiki/')).length,0,'no eager backlinks request');
+ assert.equal(gets.filter(u=>u.startsWith('/api/references/item?')).length,0,'the usage list stays lazy');
+ // First expansion shows shared loadingState until the references response settles.
+ section.open=true;section.listeners.toggle();
+ assert.ok(nodes(section,n=>n.classList.contains('ui-loading')).length>=1,'shows loading state on first expansion');
+ releaseRef();await flush();
+ for(const p of pages)assert.equal(nodes(root,n=>n.tag==='a'&&n.attrs.href===wikiSource(p).href).length,1,p.title);
+ assert.equal(nodes(root,n=>n.tag==='a'&&n.attrs.href==='#items/'+other.id).length,1);
+ assert.ok(nodes(section,n=>n.tag==='h3'&&n.textContent==='Where used (3)').length);
+ // Re-opening keeps existing results visible while refreshing.
+ section.open=false;section.open=true;section.listeners.toggle();
+ assert.equal(nodes(section,n=>n.classList.contains('ui-loading')).length,0,'refresh keeps existing results visible');
+ assert.ok(nodes(section,n=>n.tag==='h3'&&n.textContent==='Where used (3)').length);
+ releaseRef();await flush();
+ // Drawing the ticket again (the edit form opens) keeps the same card and its list.
+ buttonText(root,'Edit').listeners.click();
+ assert.deepEqual(nodes(root,n=>n.tag==='details'&&n.classList.contains('ref-section')),[section]);
+});
+
+test('tickets UI: opening References handles empty usages and failed loads with retry',async t=>{
+ dom(t);document.addEventListener=()=>{};
+ const {s}=await store(t),tk=await s.create({project:'home-hub',title:'Lonely ticket'},'a'),meta=await s.list();
+ let failNext=true;
+ globalThis.fetch=async url=>{
+  if(url.startsWith('/api/references/item?')){
+   if(failNext){failNext=false;return Response.json({error:{message:'Reference nelze načíst.'}},{status:503});}
+   return Response.json({record:{kind:'ticket',id:tk.id,label:tk.title,project:'home-hub',scope:'local',href:'#items/'+tk.id},note:null,usages:[],usageTotal:0});
+  }
+  if(url.startsWith('/api/review?'))return Response.json({sets:[]});
+  if(url==='/api/tickets/people')return Response.json({people:[]});
+  return Response.json(url==='/api/tickets/'+tk.id?tk:meta);
+ };
+ const root=trackerView({canWrite:true},'items',tk.id);document.body.append(root);await flush();
+ const [section]=nodes(root,n=>n.tag==='details'&&n.classList.contains('ref-section'));
+ section.open=true;section.listeners.toggle();await flush();
+ assert.ok(nodes(section,n=>n.attrs.role==='alert').length>=1);
+ buttonText(section,'Try again').listeners.click();await flush();
+ assert.ok(nodes(section,n=>n.tag==='h3'&&n.textContent==='Where used (0)').length);
+ assert.equal(nodes(root,n=>n.tag==='h3'&&n.textContent==='Wiki').length,0);
+});
+
 test('tickets UI: edits send changed fields, oversized comments stay editable, text stays inert',async t=>{
  dom(t);const {s}=await store(t);const ticket=await s.create({project:'home-hub',title:'<img src=x onerror=alert(1)>',description:'ž'.repeat(7900),refs:['javascript:alert(1)','https://example.test/query?a=1,2']},'a');
  const posts=[];globalThis.fetch=async(url,options={})=>{
