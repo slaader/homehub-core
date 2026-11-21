@@ -17,7 +17,7 @@ function pager(offset,total,next){
  if(offset+50<total)actions.push(btn(t('Další'),()=>next(offset+50)));
  return actions.length?el('div',{class:'wiki-actions'},actions):null;
 }
-function form(record,done,reload){
+function form(record,done,reload,cancel){
  const label=el('input',{required:'',maxlength:200,value:record.label??''});
  const description=el('textarea',{rows:4,maxlength:8000},record.description??'');
  const message=el('p',{role:'alert',class:'acc-status error'}),local=record.scope==='local';
@@ -29,7 +29,7 @@ function form(record,done,reload){
     description:description.value,...(record.id?{id:record.id,rev:record.rev}:{}),...(local?{project:record.project}:{})});
    done(saved);
   }catch(error){message.textContent=error.message;if(error.status===409&&reload)message.append(' ',btn(t('Načíst znovu'),reload));}finally{submit.disabled=false;}
- }},field('Název',label),field('Popis',description),message,submit);
+ }},field('Název',label),field('Popis',description),message,el('div',{class:'acc-actions'},cancel?btn(t('Zrušit'),cancel):null,submit));
 }
 function details(kind,id,me,standalone=false){
  const box=el('div',{class:'ref-usages'});let request=0;
@@ -91,7 +91,8 @@ export function projectReferences(me,project){return catalog(me,project);}
 
 function catalog(me,fixedProject){
  const root=el('section',{class:fixedProject?'tk-project-refs':'sec tk'});
- const filter=el('select',{'aria-label':t('Druh reference')},el('option',{value:''},t('Všechny druhy')),referenceKinds.map(k=>el('option',{value:k},kindName(k))));
+ const kinds=fixedProject?['custom','wiki','ticket']:referenceKinds;
+ const filter=el('select',{'aria-label':t('Druh reference')},el('option',{value:''},t('Všechny druhy')),kinds.map(k=>el('option',{value:k},kindName(k))));
  const q=el('input',{type:'search','aria-label':t('Hledat'),placeholder:t('Hledat')});
  const scope=fixedProject?null:el('select',{'aria-label':t('Rozsah')},[['','Vše'],['global','Globální reference'],['local','Projektové reference']].map(([v,k])=>el('option',{value:v},t(k))));
  const project=fixedProject?null:el('select',{'aria-label':t('Projekt')},el('option',{value:''},t('Všechny projekty')));
@@ -115,7 +116,7 @@ function catalog(me,fixedProject){
   const add=may(me,'tickets:write')?btn(t('Přidat vlastní referenci'),()=>{
    edit.replaceChildren(form({kind:'custom',scope:'local',project:fixedProject},()=>{
     edit.replaceChildren();filter.value='';q.value='';draw();
-   }));
+   },null,()=>{edit.replaceChildren();add.focus();}));
    edit.querySelector('input')?.focus();
   }):null;
   root.append(el('div',{class:'tk-toolbar'},el('h2',{},t('Reference projektu')),add),

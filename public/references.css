@@ -16,7 +16,7 @@
 .ref-scope small{color:var(--color-text-dim);font-size:var(--text-xs)}
 .wiki-dialog .wiki-form,.wiki-dialog .wiki-form fieldset,.wiki-dialog .ref-editor{min-width:0}
 .wiki-ticket.ref-chip{display:inline;box-decoration-break:clone;-webkit-box-decoration-break:clone;background:var(--color-accent-soft);color:var(--color-accent-strong);border-color:color-mix(in srgb,var(--color-accent) 48%,var(--color-border));font-weight:var(--weight-semibold);overflow-wrap:anywhere}
-.ref-chip::before{content:"@";margin-inline-end:.08em}
+.ref-chip::before{content:"@";content:"@" / "";margin-inline-end:.08em}
 a.ref-chip[href]:hover{text-decoration:underline}
 a.ref-chip:focus-visible{outline:var(--focus-ring);outline-offset:var(--focus-offset)}
 .ref-chip.wiki-ticket-missing{background:var(--color-muted-soft);border-style:dashed;color:var(--color-text-dim);text-decoration:line-through}

@@ -17,6 +17,7 @@
 .tk-form textarea{resize:vertical;line-height:1.45}
 .tk-filters :focus,.tk-form :is(input,select,textarea):focus{outline:none;border-color:var(--accent)}
 .tk-form{display:flex;flex-direction:column;gap:10px}
+.tk-form label[hidden]{display:none}
 .tk-form label{display:flex;flex-direction:column;gap:6px;font:9.5px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--faint);min-width:0}
 .tk-grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .tk-grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
@@ -375,7 +376,7 @@ tr.tk-cursor td:first-child{box-shadow:inset 3px 0 0 var(--color-accent)}
 [data-project-color="violet"]{--project-color:var(--color-accent-2)}
 .tk-project-card[data-project-color],.tk-project-header[data-project-color]{border-inline-start:var(--space-1) solid var(--project-color)}
 .tk-project-header[data-project-color]{padding-inline-start:var(--space-3)}
-.tk-chips .dot[data-project-color]{background:var(--project-color);flex:none}
+.tk-chips [data-project-color] .dot{background:var(--project-color);flex:none}
 .tk-project-header .ui-head{margin:0}
 .tk-project-table,.tk-project-refs{display:grid;gap:var(--space-3);min-width:0}
 .tk-settings-tabs{display:flex;flex-wrap:wrap;gap:var(--space-1);border-bottom:1px solid var(--color-border)}

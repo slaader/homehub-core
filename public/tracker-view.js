@@ -162,8 +162,8 @@ function noProjects({canWrite},redraw){
 }
 function projectChips(projects,onPick,state=filters){
  return el('div',{class:'sys-chips tk-chips'},[['',t('Všechny projekty')],...projects.map(p=>[p.id,p.name,p.settings?.color])].map(([id,name,color])=>
-  el('button',{type:'button',class:`sys-chip${state.project===id?' on':''}`,'aria-pressed':String(state.project===id),'aria-label':id?t('Projekt {name}',{name}):name,onclick:()=>{state.project=id;if('release'in state)state.release='';onPick();}},
-   color?el('span',{class:'dot','aria-hidden':'true','data-project-color':color}):null,name)));
+  el('button',{type:'button',class:`sys-chip${state.project===id?' on':''}`,'aria-pressed':String(state.project===id),'data-project-color':color,'aria-label':id?t('Projekt {name}',{name}):name,onclick:()=>{state.project=id;if('release'in state)state.release='';onPick();}},
+   color?el('span',{class:'dot','aria-hidden':'true'}):null,name)));
 }
 
 // List ------------------------------------------------------------------------------------------
@@ -232,9 +232,21 @@ async function listPage(wrap,ctx,project=null,initial=null){
 // Status moves, shared by the table rows and the board cards: a select in the row, one-click buttons, drag and drop.
 const NEXT=()=>({open:[['in-progress','▶',t('Začít')],['done','✓',t('Hotovo')]],'in-progress':[['done','✓',t('Hotovo')]]});
 async function setStatus(tk,next,control,msg,redraw){
- if(control)control.disabled=true;const epoch=sessionEpoch;
- try{await api('/api/tickets/update',{id:tk.id,rev:tk.rev,status:next});}catch(e){if(epoch===sessionEpoch){fail(msg,e);if(control){control.disabled=false;if('value'in control&&control.tagName==='SELECT')control.value=tk.status;}}return;}
- if(epoch===sessionEpoch)await redraw();
+ const hadFocus=Boolean(control)&&document.activeElement===control,epoch=sessionEpoch;
+ if(control)control.disabled=true;
+ try{await api('/api/tickets/update',{id:tk.id,rev:tk.rev,status:next});}
+ catch(e){
+  if(epoch===sessionEpoch){
+   fail(msg,e);
+   if(control){
+    control.disabled=false;
+    if('value'in control&&control.tagName==='SELECT')control.value=tk.status;
+    if(hadFocus&&document.activeElement===document.body)control.focus();
+   }
+  }
+  return;
+ }
+ if(epoch===sessionEpoch)await redraw(hadFocus?control:null);
 }
 function statusSelect(tk,msg,redraw){
  const stop=e=>e.stopPropagation();
@@ -351,7 +363,8 @@ async function newTicket(projects,preset,ctx={}){
  const releaseField=field('Release',release);
  const projectInfo=()=>projects.find(p=>p.id===project.value);
  const fillReleases=()=>{
-  releaseField.hidden=projectInfo()?.settings?.releases===false;
+  release.disabled=projectInfo()?.settings?.releases===false;
+  releaseField.hidden=release.disabled;
   release.replaceChildren(...options((releasesData.releases||[]).filter(r=>r.project===project.value&&r.status==='planned').map(r=>[r.version,r.version]),'',t('Bez releasu')));
  };
  project.addEventListener('change',fillReleases);fillReleases();
@@ -383,7 +396,7 @@ async function newTicket(projects,preset,ctx={}){
  // While the item is created and its files go up there is nothing to cancel: the button says so by being off.
  const cancel=el('button',{type:'button',class:'acc-btn',onclick:()=>{if(!busy)dialog.close();}},t('Zrušit'));
  const form=el('form',{class:'tk-form',onsubmit:async e=>{e.preventDefault();if(busy)return;const f=e.currentTarget,b=f.querySelector('button[type=submit]');busy=true;b.disabled=true;cancel.disabled=true;
-   try{const made=await api('/api/tickets',{project:f.project.value,title:f.title.value,description:f.description.value,type:f.type.value,priority:f.priority.value,release:f.release.value||null,assignee:f.assignee.value.trim()||null,labels:splitList(f.labels.value)});
+   try{const made=await api('/api/tickets',{project:f.project.value,title:f.title.value,description:f.description.value,type:f.type.value,priority:f.priority.value,release:release.disabled?null:f.release.value||null,assignee:f.assignee.value.trim()||null,labels:splitList(f.labels.value)});
     // The item exists from here on. A file that does not upload is reported on its page; the dialog does not stay for it.
     const failed=[];
     for(const [i,item] of [...pending].entries()){
@@ -798,6 +811,7 @@ async function projectsPage(wrap,ctx){
     :el('div',{class:'tk-fresh'},el('div',{class:'tk-fresh-icon','aria-hidden':'true'},'✨'),el('p',{},t('Čistý štít — zatím tu nic není.')),
       canWrite?el('button',{type:'button',class:'acc-btn small primary',onclick:e=>{e.stopPropagation();newTicket(data.projects,p.id,{...ctx,lockProject:true});}},t('+ První položka')):null),
    el('div',{class:'tk-links'},el('a',{href:'#projects/'+p.id,class:'acc-btn small'},`${t('Detail projektu')} →`),
+    el('a',{class:'acc-btn small',href:'#items',onclick:()=>{Object.assign(filters,defaults,{project:p.id});}},`${t('Položky')} →`),
     p.settings?.releases!==false?el('a',{class:'acc-btn small',href:'#releases',onclick:()=>{releaseFilters.project=p.id;}},`${t('Releasy')} →`):null,
     p.settings?.reviews!==false?el('a',{class:'acc-btn small',href:'#review/'+p.id},'Review →'):null));
  };
@@ -828,6 +842,15 @@ async function projectPage(wrap,ctx){
  const add=canWrite?{label:t('+ Nová položka'),primary:true,onclick:newItem}:null;
  const wikiAction=wiki?.enabled===false?(ctx.canWriteWiki?setupWikiAction(id,error=>fail(msg,error)):null):{label:'Wiki →',href:wikiHref(id)};
  const itemsWrap=el('div',{class:'tk-project-table'});
+ const afterMove=async(previousControl)=>{
+  const active=document.activeElement;
+  const focus=active===document.body&&previousControl?previousControl:active;
+  const wasInside=itemsWrap.contains(focus),label=wasInside?focus.getAttribute('aria-label'):null;
+  await redraw();
+  if(!wasInside||!wrap.isConnected||document.activeElement!==document.body)return;
+  const restored=label?[...wrap.querySelectorAll('.tk-project-table [aria-label]')].find(node=>node.getAttribute('aria-label')===label):null;
+  (restored??wrap.querySelector('.tk-project-table [data-slash]'))?.focus();
+ };
  const header=pageHeader({title:p.name,lead:p.description||undefined,provenance:data.provenance,actions:[
   {label:'⚙ '+t('Nastavení projektu'),href:settingsHref(p)},
   p.settings?.releases!==false?{label:t('Releasy')+' →',onclick:()=>{releaseFilters.project=id;location.hash='#releases';}}:null,
@@ -839,7 +862,7 @@ async function projectPage(wrap,ctx){
   mine.length?el('div',{class:'acc-card tk-hero-row'},health(mine),activity(mine,4),p.settings?.releases!==false?nextBlock(data.releases,id):null):null,
   itemsWrap);
  if(!projectFilters.has(id))projectFilters.set(id,{...defaults,project:id});
- await listPage(itemsWrap,{...ctx,afterMove:redraw},p,data);
+ await listPage(itemsWrap,{...ctx,afterMove},p,data);
 }
 
 function renderProjectSettings(wrap,ctx,p,section,notice=''){
@@ -869,6 +892,7 @@ function renderProjectSettings(wrap,ctx,p,section,notice=''){
    toggle('globalReferences',t('Globální reference'),t('Nabízet sdílené reference a povolit jejich vytváření v tomto projektu.')));
  }else{
   controls.push(el('div',{class:'tk-grid2'},field('ID',el('input',{readonly:'',value:p.id})),field(t('Zkratka (prefix položek)'),el('input',{readonly:'',value:p.key}))),
+   el('p',{class:'acc-dim'},t('ID a zkratku položek nelze změnit.')),
    field(t('Název'),el('input',{name:'name',required:'',maxlength:80,value:p.name})),
    field(t('Popis'),el('textarea',{name:'description',rows:3,maxlength:500},p.description||'')),
    field(t('Typ'),el('select',{name:'type'},options(PROJECT_TYPES(),p.type||'',t('Bez typu')))));

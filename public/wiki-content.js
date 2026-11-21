@@ -67,8 +67,8 @@ export function ticketChip(id,ticket,editing=false){
   return chip;
  }
  const [label,tone]=ticketStates[ticket?.status]??[];
- const contents=[el('b',{class:'tk-mono'},id),ticket?.title,
-  label?el('span',{class:`sec-pill ${tone}`},t(label)):null];
+ const contents=[el('b',{class:'tk-mono'},id),ticket.title?' '+ticket.title:null,
+  label?[' ',el('span',{class:`sec-pill ${tone}`},t(label))]:null];
  if(editing)return el('span',{class:'wiki-ticket ref-chip',contenteditable:'false','data-ticket':id},contents);
  return el('a',{class:'wiki-ticket ref-chip',href:'#items/'+id},contents);
 }

@@ -4,7 +4,7 @@
 // Projekty, Releasy, Hledat, Hledání, Název, Stav, Typ, Popis, Verze, Upravit, Uložit, Zrušit, Požadavek selhal.
 export default {
  'Nastavení projektu':'Project settings','Nastavení projektu {name}':'Settings for {name}',
- 'Obecné':'General','Vzhled projektu':'Look and feel','Funkce projektu':'Additional settings','Stránka nastavení neexistuje.':'This settings page does not exist.','Barva projektu':'Project color',
+ 'Obecné':'General','Vzhled projektu':'Look and feel','Funkce projektu':'Additional settings','Stránka nastavení neexistuje.':'This settings page does not exist.','ID a zkratku položek nelze změnit.':'The project ID and ticket prefix are permanent.','Barva projektu':'Project color',
  'Výchozí barva':'Default','Břidlicová':'Slate','Červená':'Red','Oranžová':'Orange','Jantarová':'Amber',
  'Zelená':'Green','Tyrkysová':'Teal','Modrá':'Blue','Fialová':'Violet',
  'Zobrazit plánování releasů v projektu.':'Show release planning in this project.',
