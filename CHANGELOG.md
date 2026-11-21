@@ -6,11 +6,23 @@ Home Hub core, newest first. One section per release; the section is the text of
 number promises is in `AGENTS.md` → Versioning. The top section is the release being prepared, `## Unreleased`
 until the release gives it its number: a change to the public surface adds its line there in the same commit.
 
-## Unreleased
+## 1.6.0
+
+### Added
+
+- Projects have settings: a named color, a board or table view, whether the project pages show releases, reviews and the wiki, and whether reference suggestions offer global sources. Every project projection returns all six with defaults. `POST /api/tickets/projects` and MCP `project_save` take a partial `settings` object under the project's `rev` and `tickets:write`; omitted fields keep their values. See [project settings](docs/project-settings.md).
+
+### Changed
+
+- `GET /api/references/suggest` and MCP `references_suggest` offer only the project's own sources, machines and projects when its `settings.globalReferences` is `false`. Saving, resolving and listing references are unchanged.
 
 ### Plugin contract
 
 - Plugins can render device records and their edit form with the shared `/device-record.js` browser module. The plugin supplies edit access and saves.
+
+### Data
+
+- Data epoch 11 (hub.db schema 6) stores the settings on each project row. The upgrade adds the defaults to existing projects and keeps their revisions and ticket numbering. Rolling back to epoch 10 requires the pre-update backup.
 
 ## 1.5.0
 

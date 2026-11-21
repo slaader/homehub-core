@@ -54,10 +54,13 @@ export function referencePicker(node,{context,project,canGlobal=false}){
  function create(selection){
   formOpen=true;const owner=project(),label=el('input',{maxlength:200,value:selection.trim(),'aria-label':t('Název')});
   const note=el('textarea',{rows:2,maxlength:8000,'aria-label':t('Popis'),placeholder:t('Popis')});
-  const global=el('input',{type:'checkbox'}),error=el('span',{class:'acc-status error',role:'alert'});
+  const offerGlobal=owner&&(typeof canGlobal==='function'?canGlobal():canGlobal);
+  const hintId=id+'-scope-hint';
+  const global=el('input',{type:'checkbox',id:id+'-global','aria-describedby':hintId}),error=el('span',{class:'acc-status error',role:'alert'});
   const save=button(t('Uložit'),async()=>{
    if(save.disabled||!validLabel(label.value))return;
-   const local=owner&&!global.checked,selection=current;
+   if(owner!==project()||!current)return hide();
+   const local=owner&&!(offerGlobal&&global.checked),selection=current;
    if(selection.fits&&!selection.fits({kind:'custom',id:'r'+'0'.repeat(32),label:label.value})){
     error.textContent=t('Reference překračuje limit textu.');return;
    }
@@ -67,8 +70,12 @@ export function referencePicker(node,{context,project,canGlobal=false}){
     if(selection===current&&owner===project())choose(record);
    }catch(e){error.textContent=e.message;}finally{save.disabled=false;}
   });
-  const globalLabel=el('label',{onmousedown:e=>{global.focus();e.preventDefault();}},global,t('Globální reference'));
-  show(label,note,owner&&canGlobal?globalLabel:el('small',{},owner??t('Globální reference')),
+  const globalLabel=el('div',{class:'ref-scope'},
+   el('label',{class:'ref-scope-label',for:id+'-global',onmousedown:e=>{
+    if(e.target!==global){e.preventDefault();global.focus();}
+   }},global,el('span',{},t('Globální reference'))),
+   el('small',{id:hintId},t('Po zaškrtnutí bude reference dostupná ve všech projektech.')));
+  show(label,note,offerGlobal?globalLabel:el('small',{},owner??t('Globální reference')),
    error,el('div',{class:'wiki-actions'},save,button(t('Zrušit'),hide)));
   label.focus();
  }
@@ -129,7 +136,7 @@ export function referencePicker(node,{context,project,canGlobal=false}){
  node.addEventListener('compositionstart',hide);
  node.addEventListener('focusout',blur);panel.addEventListener('focusout',blur);
  panel.addEventListener('mousedown',e=>{if(!e.target.closest('input,textarea,label,button'))e.preventDefault();});
- panel.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.tagName==='INPUT'){e.preventDefault();panel.querySelector('button')?.click();}if(e.key==='Escape'){e.preventDefault();hide();node.focus();}});
+ panel.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.tagName==='INPUT'&&e.target.type!=='checkbox'){e.preventDefault();panel.querySelector('button')?.click();}if(e.key==='Escape'){e.preventDefault();hide();node.focus();}});
  return panel;
 }
 

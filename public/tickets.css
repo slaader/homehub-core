@@ -17,6 +17,7 @@
 .tk-form textarea{resize:vertical;line-height:1.45}
 .tk-filters :focus,.tk-form :is(input,select,textarea):focus{outline:none;border-color:var(--accent)}
 .tk-form{display:flex;flex-direction:column;gap:10px}
+.tk-form label[hidden]{display:none}
 .tk-form label{display:flex;flex-direction:column;gap:6px;font:9.5px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--faint);min-width:0}
 .tk-grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .tk-grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
@@ -363,3 +364,32 @@ tr.tk-cursor td:first-child{box-shadow:inset 3px 0 0 var(--color-accent)}
 .tk-table :is(th,td):nth-child(2){width:100%;min-width:220px}
 .tk .acc-status:empty{display:none}
 @media(max-width:700px){.tk-filters select{flex:1 1 calc(50% - var(--space-2));max-width:none}.tk-table :is(th,td):nth-child(2){min-width:0}}
+
+/* Project settings use native choice controls. Colour is decoration beside a named option. */
+[data-project-color="slate"]{--project-color:var(--color-muted)}
+[data-project-color="red"]{--project-color:var(--color-bad)}
+[data-project-color="orange"]{--project-color:var(--color-accent)}
+[data-project-color="amber"]{--project-color:var(--color-warn)}
+[data-project-color="green"]{--project-color:var(--color-good)}
+[data-project-color="teal"]{--project-color:color-mix(in srgb,var(--color-good),var(--color-info))}
+[data-project-color="blue"]{--project-color:var(--color-info)}
+[data-project-color="violet"]{--project-color:var(--color-accent-2)}
+.tk-project-card[data-project-color],.tk-project-header[data-project-color]{border-inline-start:var(--space-1) solid var(--project-color)}
+.tk-project-header[data-project-color]{padding-inline-start:var(--space-3)}
+.tk-chips [data-project-color] .dot{background:var(--project-color);flex:none}
+.tk-project-header .ui-head{margin:0}
+.tk-project-table,.tk-project-refs{display:grid;gap:var(--space-3);min-width:0}
+.tk-settings-tabs{display:flex;flex-wrap:wrap;gap:var(--space-1);border-bottom:1px solid var(--color-border)}
+.tk-settings-tabs a{padding:var(--space-2) var(--space-3);color:var(--color-text-dim);text-decoration:none}
+.tk-settings-tabs a[aria-current=page]{color:var(--color-text);font-weight:var(--weight-semibold);border-bottom:var(--space-0) solid var(--color-accent)}
+.tk-settings{max-width:46rem}
+.tk-settings-fields,.tk-choices{border:0;padding:0;margin:0;min-width:0;display:grid;gap:var(--space-3)}
+.tk-settings-fields>legend{padding:0;margin-bottom:var(--space-4);font-size:var(--text-l);font-weight:var(--weight-semibold)}
+.tk-choices{display:flex;flex-wrap:wrap;gap:var(--space-2)}
+.tk-choices legend{padding:0;margin-bottom:var(--space-2);font-size:var(--text-s)}
+.tk-form label.tk-choice{display:flex;flex-direction:row;align-items:center;gap:var(--space-2);font:var(--text-s)/var(--leading-body) var(--font-sans);letter-spacing:normal;text-transform:none;color:var(--color-text);cursor:pointer}
+.tk-choice small{display:block;color:var(--color-text-dim);font-size:var(--text-xs)}
+.tk-settings .tk-choice input{width:1rem;height:1rem;margin:0;flex:none;accent-color:var(--color-accent)}
+.tk-choices .tk-choice{padding:var(--space-1) var(--space-2);border:1px solid var(--color-border-strong);border-radius:var(--radius-s)}
+.tk-swatch{width:.875rem;height:.875rem;border-radius:50%;border:1px solid var(--color-border-strong);background:var(--project-color,var(--color-surface))}
+.tk-editor-field{display:grid;gap:var(--space-1);min-width:0}

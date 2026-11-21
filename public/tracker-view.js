@@ -1,11 +1,12 @@
-import {referencesSection} from './references-view.js';
+import {referencesSection,projectReferences} from './references-view.js';
 import {referencePicker} from './reference-picker.js';
 import {referenceToken} from './reference-format.js';
 import {editableMarkdownRange,markdownReferences} from './tracker-markdown-format.js';
 import {reviewDialog} from './review-guidance.js';
 // Project Tracker: a development tracker for your own projects.
-//   #projects        projects overview: health ring, activity, next release, create / edit a project
-//   #projects/<id>   one project: health, activity, next release and a board of its items
+//   #projects        projects overview: health ring, activity, next release, create a project
+//   #projects/<id>   one project's items in its saved board or table view
+//   #projects/<id>/settings[/look|features|references]   revisioned project settings
 //   #items           items (tickets) with project chips and quick filters, as a table or a board
 //   #items/<ID>      one item, read view first: description with its files under it, comments, history; "Edit"
 //                    (or e) swaps the description for the edit form, so every field is on the page once. Files
@@ -81,12 +82,13 @@ async function api(url,body){
 }
 // Filters survive navigation between list and detail within one page load.
 const defaults={project:'',status:'active',type:'',priority:'',release:'',assignee:'',label:'',q:''},filters={...defaults};
+const projectFilters=new Map(),releaseFilters={project:''};
 // notices: what is left to say on an item's page the next time it is shown (files that did not upload), by item id.
 const prefs={view:'table',focusComment:false,notices:new Map()};
 const leaveNotice=(id,text)=>prefs.notices.set(id,[prefs.notices.get(id),text].filter(Boolean).join(' '));
 try{if(globalThis.localStorage?.getItem('tk-view')==='board')prefs.view='board';}catch{}
 let sessionEpoch=0;const draws=new WeakMap(),dialogs=new Set();
-onSessionReset(()=>{sessionEpoch++;Object.assign(filters,defaults);prefs.focusComment=false;prefs.notices.clear();sendings.clear();for(const d of dialogs)d.close();});
+onSessionReset(()=>{sessionEpoch++;projectFilters.clear();releaseFilters.project='';Object.assign(filters,defaults);prefs.focusComment=false;prefs.notices.clear();sendings.clear();for(const d of dialogs)d.close();});
 // Only the latest load for this view and sign-in may replace its contents.
 async function load(wrap,request){
  const epoch=sessionEpoch,n=(draws.get(wrap)||0)+1;draws.set(wrap,n);
@@ -136,7 +138,7 @@ const keysHint=(...keys)=>el('p',{class:'tk-keys','aria-label':t('Klávesové zk
 export const TRACKER_PAGES=Object.freeze(['projects','items','releases']);
 export function trackerView(me,page,sub){
  const wrap=el('section',{class:'sec tk'},el('p',{class:'sec-dim',role:'status'},t('Načítám…')));
- const ctx={me,canWrite:me?.canWrite===true,canWriteWiki:canWriteWiki(me),user:typeof me?.username==='string'?me.username:'',id:sub};
+ const ctx={me,canWrite:me?.canWrite===true&&(!me.scopes||me.scopes.includes('tickets:write')),canWriteWiki:canWriteWiki(me),user:typeof me?.username==='string'?me.username:'',id:sub};
  const draw=page==='projects'?(sub?projectPage:projectsPage):page==='releases'?releasesPage:sub?ticketPage:listPage;
  // A failed load says what failed and offers the way out: try again, or back to the list.
  const run=()=>draw(wrap,ctx).catch(e=>show(wrap,emptyState({icon:'⚠',
@@ -158,71 +160,93 @@ function noProjects({canWrite},redraw){
   mcpSnippet:true,
   actions:canWrite?[{label:t('+ Nový projekt'),primary:true,onclick:()=>newProject(redraw)}]:[]});
 }
-function projectChips(projects,onPick){
- return el('div',{class:'sys-chips tk-chips'},[['',t('Všechny projekty')],...projects.map(p=>[p.id,p.name])].map(([id,name])=>
-  el('button',{type:'button',class:`sys-chip${filters.project===id?' on':''}`,'aria-pressed':String(filters.project===id),'aria-label':id?t('Projekt {name}',{name}):name,onclick:()=>{filters.project=id;filters.release='';onPick();}},name)));
+function projectChips(projects,onPick,state=filters){
+ return el('div',{class:'sys-chips tk-chips'},[['',t('Všechny projekty')],...projects.map(p=>[p.id,p.name,p.settings?.color])].map(([id,name,color])=>
+  el('button',{type:'button',class:`sys-chip${state.project===id?' on':''}`,'aria-pressed':String(state.project===id),'data-project-color':color,'aria-label':id?t('Projekt {name}',{name}):name,onclick:()=>{state.project=id;if('release'in state)state.release='';onPick();}},
+   color?el('span',{class:'dot','aria-hidden':'true'}):null,name)));
 }
 
 // List ------------------------------------------------------------------------------------------
-async function listPage(wrap,ctx){
- const {canWrite,user}=ctx,board=prefs.view==='board',picked={...filters,...(board?{status:''}:{})},query=new URLSearchParams(Object.entries(picked).filter(([,v])=>v));
- const result=await load(wrap,Promise.all([api('/api/tickets?'+query),api('/api/tickets'+(picked.project?'?project='+encodeURIComponent(picked.project):''))]));if(!result)return;
+async function listPage(wrap,ctx,project=null,initial=null){
+ const {canWrite,user}=ctx;
+ const local=project?projectFilters.get(project.id):filters,board=project?project.settings?.view!=='table':prefs.view==='board';
+ if(project?.settings?.releases===false)local.release='';
+ const picked={...local,...(board?{status:''}:{})},query=new URLSearchParams(Object.entries(picked).filter(([,v])=>v));
+ const result=await load(wrap,Promise.all([api('/api/tickets?'+query),initial??api('/api/tickets'+(picked.project?'?project='+encodeURIComponent(picked.project):''))]));if(!result)return;
  const [data,all]=result;
- const redraw=()=>listPage(wrap,ctx).catch(e=>fail(msg,e)),msg=status();
- const add=canWrite&&data.projects.length?{label:t('+ Nová položka'),primary:true,onclick:()=>newTicket(data.projects,null,ctx)}:null;
- const title=head(t('Položky'),t('Chyby, funkce a úkoly všech projektů. Filtry zůstávají, dokud stránku neopustíš.'),[add],all.provenance);
+ const redraw=()=>listPage(wrap,ctx,project).catch(e=>fail(msg,e)),msg=status();
+ const add=canWrite&&data.projects.length?{label:t('+ Nová položka'),primary:true,onclick:()=>newTicket(data.projects,project?.id,project?{...ctx,lockProject:true}:ctx)}:null;
+ const title=project?null:head(t('Položky'),t('Chyby, funkce a úkoly všech projektů. Filtry zůstávají, dokud stránku neopustíš.'),[add],all.provenance);
  if(!data.projects.length)return show(wrap,title,noProjects(ctx,redraw));
  const count=s=>all.tickets.filter(x=>s.includes(x.status)).length,bugs=activeBugs(all.tickets);
  const setView=v=>{if(prefs.view===v)return;prefs.view=v;try{globalThis.localStorage?.setItem('tk-view',v);}catch{}redraw();};
  // The numbers double as quick filters: one click narrows the table to that status.
- const stat=(k,v,s,tone,change)=>el('button',{type:'button',class:`sec-stat tk-stat ${tone}`,title:t('Zobrazit jen tyto položky'),onclick:()=>{Object.assign(filters,{type:'',priority:''},change);if(prefs.view!=='table'){prefs.view='table';try{globalThis.localStorage?.setItem('tk-view','table');}catch{}}redraw();}},
+ const stat=(k,v,s,tone,change)=>el('button',{type:'button',class:`sec-stat tk-stat ${tone}`,title:t('Zobrazit jen tyto položky'),onclick:()=>{
+   Object.assign(local,{type:'',priority:''},change);
+   if(!project&&prefs.view!=='table'){prefs.view='table';try{globalThis.localStorage?.setItem('tk-view','table');}catch{}}
+   redraw();
+  }},
   el('div',{class:'k'},k),el('div',{class:'v'},String(v)),el('div',{class:'s'},s));
- const select=(key,list,empty)=>el('select',{class:filters[key]?'on':'','aria-label':empty,onchange:e=>{filters[key]=e.target.value;redraw();}},options(list,filters[key],empty));
+ const select=(key,list,empty)=>el('select',{class:local[key]?'on':'','aria-label':empty,onchange:e=>{local[key]=e.target.value;redraw();}},options(list,local[key],empty));
+ const showReleases=project?.settings?.releases!==false;
+ const releaseColumn=showReleases||all.tickets.some(t=>t.release);
  const releases=[...new Set(data.releases.map(r=>r.version))].map(v=>[v,v]);
  const names=[...new Set([user,...all.tickets.map(x=>x.assignee)].filter(Boolean))],labels=[...new Set(all.tickets.flatMap(x=>x.labels||[]))].sort();
  let debounce;
- const search=el('input',{type:'search',maxlength:'100','data-slash':'',placeholder:t('Hledat (id, název, popis, štítek)'),value:filters.q,'aria-label':t('Hledat'),'aria-keyshortcuts':'/',oninput:e=>{filters.q=e.target.value.trim();clearTimeout(debounce);debounce=setTimeout(()=>{if(search.isConnected)redraw();},300);}});
- const narrowed=['type','priority','release','assignee','label','q'].some(k=>filters[k])||(!board&&filters.status!==defaults.status);
- const clear=narrowed?el('button',{type:'button',class:'acc-btn small tk-clear',onclick:()=>{Object.assign(filters,defaults,{project:filters.project});redraw();}},t('Zrušit filtry')):null;
+ const search=el('input',{type:'search',maxlength:'100','data-slash':'',placeholder:t('Hledat (id, název, popis, štítek)'),value:local.q,'aria-label':t('Hledat'),'aria-keyshortcuts':'/',oninput:e=>{local.q=e.target.value.trim();clearTimeout(debounce);debounce=setTimeout(()=>{if(search.isConnected)redraw();},300);}});
+ const narrowed=['type','priority','release','assignee','label','q'].some(k=>local[k])||(!board&&local.status!==defaults.status);
+ const clear=narrowed?el('button',{type:'button',class:'acc-btn small tk-clear',onclick:()=>{Object.assign(local,defaults,{project:local.project});redraw();}},t('Zrušit filtry')):null;
  const rows=data.tickets.map(tk=>el('tr',{class:`tk-row prio-${tk.priority}${CLOSED.includes(tk.status)?' tk-closed':''}`,'data-id':tk.id,onclick:()=>{location.hash='#items/'+tk.id;}},
   el('td',{class:'tk-id'},el('a',{href:'#items/'+tk.id},tk.id)),
   el('td',{},el('div',{class:'tk-name'},glyph(tk.type),' ',tk.title),tk.labels?.length?el('div',{class:'tk-labels'},tk.labels.map(l=>el('span',{class:'tk-label'},l))):null),
-  el('td',{},pill(PRIORITIES(),tk.priority)),el('td',{},canWrite?statusSelect(tk,msg,redraw):pill(STATUSES(),tk.status)),
-  el('td',{class:'tk-mono'},tk.release||'—'),el('td',{class:'tk-mono'},tk.assignee||'—'),
+  el('td',{},pill(PRIORITIES(),tk.priority)),el('td',{},canWrite?statusSelect(tk,msg,ctx.afterMove??redraw):pill(STATUSES(),tk.status)),
+  releaseColumn?el('td',{class:'tk-mono'},tk.release||'—'):null,el('td',{class:'tk-mono'},tk.assignee||'—'),
   el('td',{class:'tk-mono',title:t('Komentáře a přílohy')},[tk.comments?`💬 ${tk.comments}`:'',tk.attachments?`📎 ${tk.attachments}`:''].filter(Boolean).join(' ')),el('td',{class:'tk-mono tk-dim',title:when(tk.updatedAt)},ago(tk.updatedAt)),
-  el('td',{class:'tk-actions'},canWrite?quickActions(tk,msg,redraw):null)));
- const viewToggle=el('div',{class:'tk-view',role:'group','aria-label':t('Zobrazení')},[['table',`☰ ${t('Tabulka')}`],['board',`▦ ${t('Nástěnka')}`]].map(([v,text])=>
+  el('td',{class:'tk-actions'},canWrite?quickActions(tk,msg,ctx.afterMove??redraw):null)));
+ const viewToggle=project?null:el('div',{class:'tk-view',role:'group','aria-label':t('Zobrazení')},[['table',`☰ ${t('Tabulka')}`],['board',`▦ ${t('Nástěnka')}`]].map(([v,text])=>
   el('button',{type:'button',class:prefs.view===v?'on':'','aria-pressed':String(prefs.view===v),onclick:()=>setView(v)},text)));
  const focused=document.activeElement,focusLabel=wrap.contains(focused)?focused.getAttribute('aria-label'):null,caret=focused?.selectionStart;
  const nothing=()=>all.total
-  ?el('div',{class:'tk-none'},el('h2',{},t('Filtrům nic neodpovídá')),el('p',{class:'sec-dim'},t('Zkus ubrat filtr nebo hledat jinými slovy.')),clear?el('button',{type:'button',class:'acc-btn',onclick:()=>{Object.assign(filters,defaults,{project:filters.project});redraw();}},t('Zrušit filtry')):null)
+  ?el('div',{class:'tk-none'},el('h2',{},t('Filtrům nic neodpovídá')),el('p',{class:'sec-dim'},t('Zkus ubrat filtr nebo hledat jinými slovy.')),clear?el('button',{type:'button',class:'acc-btn',onclick:()=>{Object.assign(local,defaults,{project:local.project});redraw();}},t('Zrušit filtry')):null)
   :emptyState({icon:'✦',title:t('Zatím žádné položky'),body:t('Položka je chyba, funkce nebo úkol. Má stav, prioritu, řešitele, štítky a může patřit do releasu.'),
     agentPrompt:t('Přes MCP mého Home Hubu (scope tickets:write) založ nástrojem ticket_create položky pro práci, kterou v tomto repozitáři vidíš: project podle tickets_list → projects, title, description s kritérii přijetí, type bug|feature|task a priority. Než začneš na některé pracovat, nastav jí přes ticket_update stav in-progress a sebe jako assignee; po dokončení přidej ticket_comment s tím, co se změnilo.'),
     actions:[add].filter(Boolean)});
- show(wrap,title,el('div',{class:'tk-toolbar'},el('div',{class:'tk-toolbar-left'},projectChips(data.projects,redraw)),viewToggle),
-  el('div',{class:'sec-stats tk-stats'},stat(t('Otevřené'),count(['open']),t('čeká na práci'),'warn',{status:'open'}),stat(t('Rozpracované'),count(['in-progress']),t('právě se dělá'),'',{status:'in-progress'}),stat(t('Hotové'),count(['done']),t('uzavřeno'),'',{status:'done'}),
-   stat(t('Aktivní chyby'),bugs,t('otevřené + rozpracované'),bugs?'crit':'',{status:'active',type:'bug'}),el('div',{class:'sec-stat'},el('div',{class:'k'},t('Releasy')),el('div',{class:'v'},String(data.releases.filter(r=>r.status==='planned').length)),el('div',{class:'s'},t('naplánované')))),
+ show(wrap,title,project?null:el('div',{class:'tk-toolbar'},el('div',{class:'tk-toolbar-left'},projectChips(data.projects,redraw)),viewToggle),
+  project&&board?null:el('div',{class:'sec-stats tk-stats'},stat(t('Otevřené'),count(['open']),t('čeká na práci'),'warn',{status:'open'}),stat(t('Rozpracované'),count(['in-progress']),t('právě se dělá'),'',{status:'in-progress'}),stat(t('Hotové'),count(['done']),t('uzavřeno'),'',{status:'done'}),
+   stat(t('Aktivní chyby'),bugs,t('otevřené + rozpracované'),bugs?'crit':'',{status:'active',type:'bug'}),showReleases?el('div',{class:'sec-stat'},el('div',{class:'k'},t('Releasy')),el('div',{class:'v'},String(data.releases.filter(r=>r.status==='planned').length)),el('div',{class:'s'},t('naplánované'))):null),
   el('div',{class:'tk-filters'},
    board?null:select('status',[['active',t('Aktivní (otevřené + rozpracované)')],...STATUSES()],t('Všechny stavy')),select('type',TYPES(),t('Všechny typy')),
-   select('priority',PRIORITIES(),t('Všechny priority')),select('release',[['none',t('Bez releasu')],...releases],t('Všechny releasy')),
+   select('priority',PRIORITIES(),t('Všechny priority')),showReleases?select('release',[['none',t('Bez releasu')],...releases],t('Všechny releasy')):null,
    select('assignee',[['none',t('Nepřiřazené')],...names.map(n=>[n,n===user?t('{name} (já)',{name:n}):n])],t('Všichni řešitelé')),
-   labels.length||filters.label?select('label',[...new Set([...labels,filters.label].filter(Boolean))].map(l=>[l,'#'+l]),t('Všechny štítky')):null,search,clear),
+   labels.length||local.label?select('label',[...new Set([...labels,local.label].filter(Boolean))].map(l=>[l,'#'+l]),t('Všechny štítky')):null,search,clear),
   msg,
-  board&&all.total?boardView(data.tickets,{canWrite,msg,redraw,projects:data.projects,showProject:!picked.project}):
+  board&&all.total?boardView(data.tickets,{canWrite,msg,redraw:ctx.afterMove??redraw,projects:data.projects,showProject:!picked.project}):
   data.tickets.length?el('div',{class:'sec-scroll'},el('table',{class:'sec-table tk-table'},
-   el('thead',{},el('tr',{},['ID',t('Název položky'),t('Priorita'),t('Stav'),'Release',t('Řeší'),'',t('Změněno'),''].map(h=>el('th',{scope:'col'},h)))),el('tbody',{},rows)))
+   el('thead',{},el('tr',{},['ID',t('Název položky'),t('Priorita'),t('Stav'),...(releaseColumn?['Release']:[]),t('Řeší'),'',t('Změněno'),''].map(h=>el('th',{scope:'col'},h)))),el('tbody',{},rows)))
    :nothing(),
-  all.total?keysHint(['/',t('hledat')],['n',t('nová položka')],['j k',t('další / předchozí')],['Enter',t('otevřít')],['v',t('tabulka / nástěnka')]):null);
- shortcuts(wrap,{n:()=>add?void add.onclick():false,v:()=>setView(prefs.view==='board'?'table':'board'),j:()=>moveCursor(wrap,1),k:()=>moveCursor(wrap,-1),Enter:()=>openCursor(wrap)});
+  all.total?keysHint(['/',t('hledat')],['n',t('nová položka')],['j k',t('další / předchozí')],['Enter',t('otevřít')],...(project?[]:[['v',t('tabulka / nástěnka')]])):null);
+ shortcuts(wrap,{n:()=>add?void add.onclick():false,v:()=>project?false:setView(prefs.view==='board'?'table':'board'),j:()=>moveCursor(wrap,1),k:()=>moveCursor(wrap,-1),Enter:()=>openCursor(wrap)});
  if(focusLabel){const control=[...wrap.querySelectorAll('[aria-label]')].find(n=>n.getAttribute('aria-label')===focusLabel);control?.focus();if(control===search)search.setSelectionRange(caret??search.value.length,caret??search.value.length);}
 }
 
 // Status moves, shared by the table rows and the board cards: a select in the row, one-click buttons, drag and drop.
 const NEXT=()=>({open:[['in-progress','▶',t('Začít')],['done','✓',t('Hotovo')]],'in-progress':[['done','✓',t('Hotovo')]]});
 async function setStatus(tk,next,control,msg,redraw){
- if(control)control.disabled=true;const epoch=sessionEpoch;
- try{await api('/api/tickets/update',{id:tk.id,rev:tk.rev,status:next});}catch(e){if(epoch===sessionEpoch){fail(msg,e);if(control){control.disabled=false;if('value'in control&&control.tagName==='SELECT')control.value=tk.status;}}return;}
- if(epoch===sessionEpoch)await redraw();
+ const hadFocus=Boolean(control)&&document.activeElement===control,epoch=sessionEpoch;
+ if(control)control.disabled=true;
+ try{await api('/api/tickets/update',{id:tk.id,rev:tk.rev,status:next});}
+ catch(e){
+  if(epoch===sessionEpoch){
+   fail(msg,e);
+   if(control){
+    control.disabled=false;
+    if('value'in control&&control.tagName==='SELECT')control.value=tk.status;
+    if(hadFocus&&document.activeElement===document.body)control.focus();
+   }
+  }
+  return;
+ }
+ if(epoch===sessionEpoch)await redraw(hadFocus?control:null);
 }
 function statusSelect(tk,msg,redraw){
  const stop=e=>e.stopPropagation();
@@ -330,19 +354,27 @@ const attachHint=()=>el('p',{class:'tk-attach-hint'},t('Vlož ze schránky (Cmd/
 // New ticket dialog ------------------------------------------------------------------------------
 async function newTicket(projects,preset,ctx={}){
  const epoch=sessionEpoch;
- const [releasesData,peopleData]=await Promise.all([api('/api/tickets?limit=1').catch(()=>({releases:[]})),api('/api/tickets/people').catch(()=>null)]);if(epoch!==sessionEpoch)return;
+ const releaseQuery=new URLSearchParams({limit:1,...(ctx.lockProject?{project:preset}:{})});
+ const [releasesData,peopleData]=await Promise.all([api('/api/tickets?'+releaseQuery).catch(()=>({releases:[]})),api('/api/tickets/people').catch(()=>null)]);if(epoch!==sessionEpoch)return;
  const msg=status(),field=(text,...input)=>el('label',{},text,...input),keys=projects.map(p=>p.key);
- const project=el('select',{name:'project'},options(projects.map(p=>[p.id,p.name]),preset||filters.project||projects[0]?.id));
+ const choices=ctx.lockProject?projects.filter(p=>p.id===preset):projects;
+ const project=el('select',{name:'project'},options(choices.map(p=>[p.id,p.name]),preset||filters.project||projects[0]?.id));
  const release=el('select',{name:'release'});
- const fillReleases=()=>release.replaceChildren(...options((releasesData.releases||[]).filter(r=>r.project===project.value&&r.status==='planned').map(r=>[r.version,r.version]),'',t('Bez releasu')));
+ const releaseField=field('Release',release);
+ const projectInfo=()=>projects.find(p=>p.id===project.value);
+ const fillReleases=()=>{
+  release.disabled=projectInfo()?.settings?.releases===false;
+  releaseField.hidden=release.disabled;
+  release.replaceChildren(...options((releasesData.releases||[]).filter(r=>r.project===project.value&&r.status==='planned').map(r=>[r.version,r.version]),'',t('Bez releasu')));
+ };
  project.addEventListener('change',fillReleases);fillReleases();
  const assignee=assigneeInput('',peopleNames(peopleData),ctx.user);
  // Files wait here until the item exists; they are uploaded right after it is created. A paste into the
  // description also leaves a chip where the caret is.
  const pending=[],view=item=>{const i=pending.indexOf(item);if(i>=0)openViewer(pending,i,showDialog);};let busy=false;
- const descriptionField=el('textarea',{name:'description',rows:'7',maxlength:'12000',placeholder:t('Co a proč. U chyby kroky k reprodukci, u funkce kritéria přijetí.')});
+ const descriptionField=el('textarea',{name:'description','aria-label':t('Popis'),rows:'7',maxlength:'12000',placeholder:t('Co a proč. U chyby kroky k reprodukci, u funkce kritéria přijetí.')});
  const description=mdEditor(descriptionField,keys,
-  {project:()=>project.value,canGlobal:ctx.me?.scopes?.includes('references:write'),canReference:ctx.me?.scopes?.includes('tickets:write'),resolve:name=>pending.find(p=>p.name===name)||null,onOpen:view,label:t('Popis')});
+  {project:()=>project.value,canGlobal:()=>projectInfo()?.settings?.globalReferences!==false&&ctx.me?.scopes?.includes('references:write'),canReference:ctx.me?.scopes?.includes('tickets:write'),resolve:name=>pending.find(p=>p.name===name)||null,onOpen:view,label:t('Popis')});
  project.addEventListener('change',()=>{
   if(descriptionField.value.includes('@[')&&markdownReferences(descriptionField.value).length)msg.textContent=t('Projekt se změnil. Zkontroluj, zda jsou reference dostupné v novém projektu.');
  });
@@ -364,7 +396,7 @@ async function newTicket(projects,preset,ctx={}){
  // While the item is created and its files go up there is nothing to cancel: the button says so by being off.
  const cancel=el('button',{type:'button',class:'acc-btn',onclick:()=>{if(!busy)dialog.close();}},t('Zrušit'));
  const form=el('form',{class:'tk-form',onsubmit:async e=>{e.preventDefault();if(busy)return;const f=e.currentTarget,b=f.querySelector('button[type=submit]');busy=true;b.disabled=true;cancel.disabled=true;
-   try{const made=await api('/api/tickets',{project:f.project.value,title:f.title.value,description:f.description.value,type:f.type.value,priority:f.priority.value,release:f.release.value||null,assignee:f.assignee.value.trim()||null,labels:splitList(f.labels.value)});
+   try{const made=await api('/api/tickets',{project:f.project.value,title:f.title.value,description:f.description.value,type:f.type.value,priority:f.priority.value,release:release.disabled?null:f.release.value||null,assignee:f.assignee.value.trim()||null,labels:splitList(f.labels.value)});
     // The item exists from here on. A file that does not upload is reported on its page; the dialog does not stay for it.
     const failed=[];
     for(const [i,item] of [...pending].entries()){
@@ -377,8 +409,8 @@ async function newTicket(projects,preset,ctx={}){
     busy=false;dialog.close();location.hash='#items/'+made.id;}catch(err){fail(msg,err);}finally{busy=false;b.disabled=false;cancel.disabled=false;}}},
   el('div',{class:'tk-grid3'},field(t('Projekt'),project),field(t('Typ'),el('select',{name:'type'},options(TYPES(),'feature'))),field(t('Priorita'),el('select',{name:'priority'},options(PRIORITIES(),'normal')))),
   field(t('Název položky'),el('input',{name:'title',required:'',maxlength:'200',autocomplete:'off'})),
-  field(t('Popis'),description.node),mdHint(description.toggle),
-  el('div',{class:'tk-grid3'},field('Release',release),field(t('Řeší'),assignee.input,assignee.list),field(t('Štítky'),el('input',{name:'labels',placeholder:'ui, api, docs'}))),
+  el('div',{class:'tk-editor-field'},t('Popis'),description.node),mdHint(description.toggle),
+  el('div',{class:'tk-grid3'},releaseField,field(t('Řeší'),assignee.input,assignee.list),field(t('Štítky'),el('input',{name:'labels',placeholder:'ui, api, docs'}))),
   el('hr',{class:'tk-divider'}),filesBox,picker,
   msg,el('div',{class:'acc-actions'},cancel,el('button',{type:'submit',class:'acc-btn primary'},t('Založit položku'))));
  const dialog=el('dialog',{class:'acc-dialog wide tk-dialog','aria-label':t('Nová položka'),
@@ -397,7 +429,9 @@ export const ORIGIN_KEY='tk-origin';
 export function ticketOrigin(from,to,current){
  const ticket=h=>/^#items\/[^/]+$/.test(h||'');
  if(!ticket(to))return current;
- return ticket(from)?current:/^#(projects|review|releases|items|search)(\/[^/]*)?$/.test(from||'')?from:'';
+ if(ticket(from))return current;
+ if(/^#projects\/[a-z][a-z0-9-]{1,39}\/settings\/references$/.test(from))return from;
+ return /^#(projects|review|releases|items|search)(\/[^/]*)?$/.test(from||'')?from:'';
 }
 let originHash='';
 try{originHash=globalThis.sessionStorage?.getItem(ORIGIN_KEY)||'';}catch{}
@@ -409,6 +443,7 @@ if(typeof addEventListener==='function')addEventListener('hashchange',e=>{
 // The project in the path is the one the user came from: after APP-2 → GAME-7 it still leads back to the first project.
 export function backPath(tk,projects,origin=originHash){
  const sep=()=>el('span',{class:'tk-dim'},'/');
+ if(/^#projects\/[a-z][a-z0-9-]{1,39}\/settings\/references$/.test(origin))return el('a',{href:origin,class:'tk-back'},'← '+t('Reference projektu'));
  if(/^#projects(\/|$)/.test(origin)){
   const id=/^#projects\/([^/]+)$/.exec(origin)?.[1]||tk.project,p=projects.find(x=>x.id===id);
   return el('nav',{class:'tk-crumbs','aria-label':t('Drobečková navigace')},
@@ -427,6 +462,7 @@ async function ticketPage(wrap,ctx){
  // ended after its page was left) is said here, once.
  // It waits for a page of that item that is on the screen: a view the user already left does not use it up.
  const [tk,meta,people,reviews]=result,mine=wrap.isConnected&&prefs.notices.has(tk.id),notice=mine?{notice:prefs.notices.get(tk.id),noticeError:true}:{};if(mine)prefs.notices.delete(tk.id);
+ const project=meta.projects.find(p=>p.id===tk.project);
  const referenceLinks=referencesSection('ticket',tk.id,ctx.me);
  const wikiLinks=el('section',{class:'acc-card',hidden:''});
  renderTicket(wrap,{...ctx,meta,wikiLinks,referenceLinks,reviews:Array.isArray(reviews?.sets)?reviews:null,people:peopleNames(people)},tk,{fields:{},comment:'',...notice});
@@ -504,7 +540,7 @@ function renderTicket(wrap,ctx,tk,keep){
  const removed=new Set(tk.history.filter(h=>h.field==='attachment'&&h.to===null).map(h=>h.from));
  const resolve=name=>files.find(f=>f.name===name)||sendings.get(tk.id)?.get(name)||(removed.has(name)?{name,gone:true}:null);
  const view=item=>{const i=files.indexOf(item);if(i>=0)openViewer(files,i,showDialog);};
- const inText={resolve,onOpen:view,project:()=>tk.project,canGlobal:ctx.me?.scopes?.includes('references:write'),canReference:ctx.me?.scopes?.includes('tickets:write')},chips=chipsOf(inText);
+ const inText={resolve,onOpen:view,project:()=>tk.project,canGlobal:project?.settings?.globalReferences!==false&&ctx.me?.scopes?.includes('references:write'),canReference:ctx.me?.scopes?.includes('tickets:write')},chips=chipsOf(inText);
  const commentBox=canWrite?el('textarea',{name:'text',rows:'3',required:'',maxlength:'8000',placeholder:t('Komentář, postup, commit…'),'aria-label':t('Nový komentář'),'aria-keyshortcuts':'c'}):null;
  if(commentBox)commentBox.value=keep.comment||'';
  const commentEditor=commentBox?mdEditor(commentBox,keys,{...inText,history:keep.histories?.comment}):null;
@@ -583,6 +619,12 @@ function renderTicket(wrap,ctx,tk,keep){
    upload(list,field(e.target));
   };
   pastes.set(wrap,onPaste);addEventListener('paste',onPaste);onLeave(()=>removeEventListener('paste',onPaste));}
+ const reviewsEnabled=project?.settings?.reviews!==false;
+ const reviewBlock=reviewsEnabled||ctx.reviews?.sets.length||!ctx.reviews?el('section',{class:'acc-card'},
+  el('h3',{},'Review'+(ctx.reviews?' ('+ctx.reviews.sets.length+')':'')),
+  ctx.reviews?ctx.reviews.sets.map(s=>el('p',{},el('a',{href:'#review/'+s.id},s.id+' · '+s.title),s.feedbackPending?el('span',{class:'sec-pill warn'},'Review feedback available'):null)):
+   el('p',{},'Review links could not be loaded. Reopen this ticket to retry.'),
+  reviewsEnabled?(canWrite?el('button',{type:'button',class:'acc-btn',onclick:()=>reviewDialog({project:tk.project,ticket:tk})},'Request review · agent publishing instructions'):el('p',{},'Publishing requires review write access.')):null):null;
  const assignMe=canWrite&&user&&tk.assignee!==user&&!CLOSED.includes(tk.status)?el('button',{type:'button',class:'tk-inline-btn',onclick:e=>save({assignee:user},e.currentTarget)},t('Vezmu si to')):null;
  show(wrap,
   backPath(tk,meta.projects),
@@ -594,10 +636,10 @@ function renderTicket(wrap,ctx,tk,keep){
    el('div',{class:'tk-quick'},quick)),
   msg,
   el('div',{class:'tk-detail'},
-   el('div',{class:'acc-stack'},main,el('section',{class:'acc-card'},el('h3',{},'Review'+(ctx.reviews?' ('+ctx.reviews.sets.length+')':'')),ctx.reviews?ctx.reviews.sets.map(s=>el('p',{},el('a',{href:'#review/'+s.id},s.id+' · '+s.title),s.feedbackPending?el('span',{class:'sec-pill warn'},'Review feedback available'):null)):el('p',{},'Review links could not be loaded. Reopen this ticket to retry.'),canWrite?el('button',{type:'button',class:'acc-btn',onclick:()=>reviewDialog({project:tk.project,ticket:tk})},'Request review · agent publishing instructions'):el('p',{},'Publishing requires review write access.')),ctx.wikiLinks,ctx.referenceLinks,comments,timeline(tk)),
+   el('div',{class:'acc-stack'},main,reviewBlock,ctx.wikiLinks,ctx.referenceLinks,comments,timeline(tk)),
    el('div',{class:'acc-stack'},
     el('section',{class:'acc-card'},el('h3',{},t('Údaje')),el('dl',{class:'acc-dl'},
-     fact('Release',tk.release?el('a',{class:'sys-link',href:'#releases',onclick:()=>{filters.project=tk.project;}},tk.release):'—'),fact(t('Řeší'),el('span',{class:'tk-fact-row'},tk.assignee?[el('span',{class:'tk-avatar','aria-hidden':'true'},initials(tk.assignee)),tk.assignee]:'—',assignMe)),fact(t('Nahlásil'),tk.reporter||'—'),
+     project?.settings?.releases!==false||tk.release?fact('Release',tk.release?el('a',{class:'sys-link',href:'#releases',onclick:()=>{releaseFilters.project=tk.project;}},tk.release):'—'):null,fact(t('Řeší'),el('span',{class:'tk-fact-row'},tk.assignee?[el('span',{class:'tk-avatar','aria-hidden':'true'},initials(tk.assignee)),tk.assignee]:'—',assignMe)),fact(t('Nahlásil'),tk.reporter||'—'),
      fact(t('Odkazy'),tk.refs.length?el('div',{class:'tk-refs'},tk.refs.map(r=>/^https?:\/\//.test(r)?el('a',{href:r,target:'_blank',rel:'noopener noreferrer',class:'sys-link'},r):TICKETISH.test(r)?el('a',{href:'#items/'+r,class:'sys-link'},r):el('code',{},r))):'—'),
      fact(t('Založeno'),when(tk.createdAt)),fact(t('Změněno'),when(tk.updatedAt)),...(tk.closedAt?fact(t('Uzavřeno'),when(tk.closedAt)):[]),fact(t('Revize'),String(tk.rev)))))));
  shortcuts(wrap,{c:()=>editors.comment?void editors.comment.focusAt(null):false,e:openEdit});
@@ -635,25 +677,26 @@ function timeline(tk){
 // `attach` (the divider and the files) goes after the fields.
 function editForm(tk,meta,save,ctx={},onCancel,{draft={},files=null,attach=null}={}){
  const inputs={},field=(text,input,...more)=>{if(input.getAttribute('name'))inputs[input.getAttribute('name')]=input;return el('label',{},text,input,...more);};
+ const showRelease=meta.projects.find(p=>p.id===tk.project)?.settings?.releases!==false;
  const releases=meta.releases.filter(r=>r.project===tk.project&&(r.status==='planned'||r.version===tk.release)).map(r=>[r.version,r.status==='released'?t('{version} (vydáno)',{version:r.version}):r.version]);
  const assignee=assigneeInput(tk.assignee,ctx.people||[],ctx.user);
  // "Unchanged" is what the field makes of the saved text (its line ends); the draft goes in after that, and
  // before the editor draws the text.
- const description=el('textarea',{name:'description',rows:'8',maxlength:'12000'});description.value=tk.description;
+ const description=el('textarea',{name:'description','aria-label':t('Popis'),rows:'8',maxlength:'12000'});description.value=tk.description;
  const saved=description.value;if(typeof draft.description==='string')description.value=draft.description;
  const editor=mdEditor(description,meta.projects.map(p=>p.key),files&&{...files,label:t('Popis')});inputs.description=description;
  const form=el('form',{class:'acc-card tk-form tk-edit','aria-label':t('Upravit položku {id}',{id:tk.id}),onsubmit:e=>{e.preventDefault();const f=e.currentTarget;
-   const values={title:f.title.value.trim(),description:f.description.value.trim(),type:f.type.value,status:f.status.value,priority:f.priority.value,release:f.release.value||null,assignee:f.assignee.value.trim()||null,labels:[...new Set(splitList(f.labels.value).map(v=>v.toLowerCase()))],refs:[...new Set(f.refs.value.split(/\r?\n/).map(v=>v.trim()).filter(Boolean))]};
+   const values={title:f.title.value.trim(),description:f.description.value.trim(),type:f.type.value,status:f.status.value,priority:f.priority.value,...(showRelease?{release:f.release.value||null}:{}),assignee:f.assignee.value.trim()||null,labels:[...new Set(splitList(f.labels.value).map(v=>v.toLowerCase()))],refs:[...new Set(f.refs.value.split(/\r?\n/).map(v=>v.trim()).filter(Boolean))]};
    const changed=Object.fromEntries(Object.entries(values).filter(([k,v])=>JSON.stringify(v)!==JSON.stringify(tk[k])));
    if(Object.keys(changed).length)return save(changed,f.querySelector('button[type=submit]'),true);}},
   el('h3',{},t('Upravit')),
   field(t('Název položky'),el('input',{name:'title',required:'',maxlength:'200',value:tk.title})),
   el('div',{class:'tk-grid2'},field(t('Stav'),el('select',{name:'status'},options(STATUSES(),tk.status))),field(t('Typ'),el('select',{name:'type'},options(TYPES(),tk.type))),
-   field(t('Priorita'),el('select',{name:'priority'},options(PRIORITIES(),tk.priority))),field('Release',el('select',{name:'release'},options(releases,tk.release||'',t('Bez releasu'))))),
+   field(t('Priorita'),el('select',{name:'priority'},options(PRIORITIES(),tk.priority))),showRelease?field('Release',el('select',{name:'release'},options(releases,tk.release||'',t('Bez releasu')))):tk.release?el('div',{},'Release · ',tk.release):null),
   field(t('Řeší'),assignee.input,assignee.list),assignee.mine,
   field(t('Štítky (čárkou)'),el('input',{name:'labels',value:tk.labels.join(', ')})),
   field(t('Odkazy (commit, PR, položka; každý na vlastní řádek)'),(()=>{const a=el('textarea',{name:'refs',rows:'2'});a.value=tk.refs.join('\n');return a;})()),
-  el('label',{},t('Popis'),editor.node),mdHint(editor.toggle),
+  el('div',{class:'tk-editor-field'},t('Popis'),editor.node),mdHint(editor.toggle),
   attach,
   el('div',{class:'acc-actions'},onCancel?el('button',{type:'button',class:'acc-btn',onclick:onCancel},t('Zrušit úpravy')):null,el('button',{type:'submit',class:'acc-btn primary'},t('Uložit změny'))));
  const initial={...Object.fromEntries(Object.entries(inputs).map(([k,input])=>[k,input.value])),description:saved};
@@ -663,13 +706,13 @@ function editForm(tk,meta,save,ctx={},onCancel,{draft={},files=null,attach=null}
 
 // Releases --------------------------------------------------------------------------------------
 async function releasesPage(wrap,ctx){
- const data=await load(wrap,api('/api/tickets'+(filters.project?'?project='+encodeURIComponent(filters.project):'')));if(!data)return;
+ const data=await load(wrap,api('/api/tickets'+(releaseFilters.project?'?project='+encodeURIComponent(releaseFilters.project):'')));if(!data)return;
  renderReleases(wrap,ctx,data);
 }
 const NO_COUNTS=Object.freeze({open:0,'in-progress':0,done:0,cancelled:0});
 function renderReleases(wrap,ctx,data,notice=''){
  const {canWrite}=ctx,msg=status(),redraw=()=>releasesPage(wrap,ctx).catch(e=>fail(msg,e));if(notice)msg.textContent=notice;
- const add=canWrite&&data.projects.length?{label:t('+ Nová položka'),onclick:()=>newTicket(data.projects,filters.project||null,ctx)}:null;
+ const add=canWrite&&data.projects.length?{label:t('+ Nová položka'),onclick:()=>newTicket(data.projects,releaseFilters.project||null,ctx)}:null;
  const title=head(t('Releasy'),t('Verze, do kterých položky patří: co zbývá, co je hotové a kdy má release vyjít.'),[add],data.provenance);
  if(!data.projects.length)return show(wrap,title,noProjects(ctx,redraw));
  // The saved release is shown at once from the POST reply; the follow-up refresh (new counts) may fail on its own.
@@ -680,10 +723,10 @@ function renderReleases(wrap,ctx,data,notice=''){
   const same=r=>r.project===saved.project&&r.version===saved.version,old=data.releases.find(same);
   const releases=[...data.releases.filter(r=>!same(r)),{counts:{...NO_COUNTS},total:0,...old,...saved}].sort((a,b)=>a.project.localeCompare(b.project)||a.version.localeCompare(b.version,'en',{numeric:true,sensitivity:'base'}));
   renderReleases(wrap,ctx,{...data,releases},t('Uloženo.'));
-  try{const fresh=await load(wrap,api('/api/tickets'+(filters.project?'?project='+encodeURIComponent(filters.project):'')));if(fresh)renderReleases(wrap,ctx,fresh,t('Uloženo.'));}
+  try{const fresh=await load(wrap,api('/api/tickets'+(releaseFilters.project?'?project='+encodeURIComponent(releaseFilters.project):'')));if(fresh)renderReleases(wrap,ctx,fresh,t('Uloženo.'));}
   catch(e){const m=wrap.querySelector('p[role=status]');if(m)fail(m,new Error(t('Uloženo, ale přehled se nepodařilo obnovit: {error}',{error:e.message})));}
  };
- const projects=data.projects.filter(p=>!filters.project||p.id===filters.project);
+ const projects=data.projects.filter(p=>!releaseFilters.project||p.id===releaseFilters.project);
  const item=tk=>el('li',{class:CLOSED.includes(tk.status)?'tk-closed':''},glyph(tk.type),el('a',{href:'#items/'+tk.id},tk.id),el('span',{class:'tk-mini-title'},tk.title),pill(STATUSES(),tk.status));
  const card=(r,hero)=>{
   const mine=data.tickets.filter(x=>x.project===r.project&&x.release===r.version),scope=r.total-r.counts.cancelled,d=due(r);
@@ -706,14 +749,14 @@ function renderReleases(wrap,ctx,data,notice=''){
   el('label',{},t('Verze'),el('input',{name:'version',required:'',maxlength:'40',pattern:'(?!none$)[A-Za-z0-9][A-Za-z0-9._+\\-]{0,39}',placeholder:t('např. 2.4 nebo v0.5.0')})),
   el('label',{},t('Cílové datum'),el('input',{name:'targetDate',type:'date'})),el('label',{},t('Poznámka'),el('input',{name:'notes',maxlength:'2000',placeholder:t('Co release přináší')})),
   el('button',{type:'submit',class:'acc-btn primary'},t('Přidat release')));
- show(wrap,title,el('div',{class:'tk-toolbar'},el('div',{class:'tk-toolbar-left'},projectChips(data.projects,redraw))),msg,
+ show(wrap,title,el('div',{class:'tk-toolbar'},el('div',{class:'tk-toolbar-left'},projectChips(data.projects,redraw,releaseFilters))),msg,
   ...projects.map(p=>{
    const releases=data.releases.filter(r=>r.project===p.id),planned=releases.filter(r=>r.status==='planned').sort(plannedOrder),released=releases.filter(r=>r.status==='released').reverse();
    const unplanned=data.tickets.filter(x=>x.project===p.id&&!x.release&&ACTIVE.includes(x.status)).length,recent=released.slice(0,3),older=released.slice(3);
    return el('div',{class:'acc-stack tk-project'},el('h2',{class:'tk-project-name'},el('a',{href:'#projects/'+p.id},p.name),' ',el('span',{class:'sec-dim'},`${p.key} · ${t('aktivní položky bez releasu: {n}',{n:unplanned})}`)),
-    canWrite?addForm(p):null,
+    canWrite&&p.settings?.releases!==false?addForm(p):null,
     planned.length||released.length?el('ol',{class:'tk-timeline'},...planned.map((r,i)=>node(r,i===0)),...recent.map(r=>node(r,false)))
-     :el('p',{class:'tk-none-line'},canWrite?t('Zatím žádný release. Přidej první formulářem výše, nebo ho nech založit agenta nástrojem release_save.'):t('Zatím žádný release.')),
+     :el('p',{class:'tk-none-line'},canWrite&&p.settings?.releases!==false?t('Zatím žádný release. Přidej první formulářem výše, nebo ho nech založit agenta nástrojem release_save.'):t('Zatím žádný release.')),
     older.length?el('details',{class:'sec-findings'},el('summary',{},t('Starší vydané ({n})',{n:older.length})),el('ol',{class:'tk-timeline'},older.map(r=>node(r,false)))):null);
   }));
  shortcuts(wrap,{n:()=>add?void add.onclick():false});
@@ -749,7 +792,7 @@ function nextBlock(releases,project){
  const next=nextRelease(releases,project);
  if(!next)return el('p',{class:'sec-dim tk-next'},t('Žádný naplánovaný release.'));
  const scope=next.total-next.counts.cancelled,d=due(next);
- return el('div',{class:`tk-next${d?.tone?' tk-due-'+d.tone:''}`},el('div',{class:'tk-next-head'},el('span',{class:'tk-eyebrow'},t('Další release')),el('a',{href:'#releases',class:'tk-version',onclick:()=>{filters.project=project;}},next.version),
+ return el('div',{class:`tk-next${d?.tone?' tk-due-'+d.tone:''}`},el('div',{class:'tk-next-head'},el('span',{class:'tk-eyebrow'},t('Další release')),el('a',{href:'#releases',class:'tk-version',onclick:()=>{releaseFilters.project=project;}},next.version),
    d?el('span',{class:`sec-pill tk-countdown ${d.tone}`,title:t('cíl {date}',{date:dayText(next.targetDate)})},d.text):null),progressBar(next.counts,scope));
 }
 async function projectsPage(wrap,ctx){
@@ -758,49 +801,123 @@ async function projectsPage(wrap,ctx){
  const add=canWrite&&data.projects.length?{label:t('+ Nová položka'),primary:true,onclick:()=>newTicket(data.projects,null,ctx)}:null;
  const title=head(t('Projekty'),t('Na čem se pracuje: stav položek, aktivita a nejbližší release každého projektu.'),[canWrite&&data.projects.length?{label:t('+ Nový projekt'),onclick:()=>newProject(redraw)}:null,add],data.provenance);
  if(!data.projects.length)return show(wrap,title,noProjects(ctx,redraw));
- const open=(project,hash)=>e=>{e.stopPropagation();Object.assign(filters,defaults,{project});location.hash=hash;};
  const card=p=>{
   const mine=data.tickets.filter(x=>x.project===p.id);
-  return el('section',{class:'acc-card tk-project-card',onclick:e=>{if(!e.target?.closest?.('a,button'))location.hash='#projects/'+p.id;}},
+  return el('section',{class:'acc-card tk-project-card','data-project-color':p.settings?.color,onclick:e=>{if(!e.target?.closest?.('a,button'))location.hash='#projects/'+p.id;}},
    el('div',{class:'tk-release-head'},el('div',{},el('h2',{class:'tk-project-name'},el('a',{href:'#projects/'+p.id},p.name)),el('span',{class:'sec-pill'},p.key),p.type?el('span',{class:'sec-pill'},label(PROJECT_TYPES(),p.type)):null),
-    canWrite?el('button',{type:'button',class:'acc-btn small',onclick:e=>{e.stopPropagation();editProject(p,redraw);}},t('Upravit')):null),
+    el('a',{class:'acc-btn small',href:settingsHref(p),'aria-label':t('Nastavení projektu {name}',{name:p.name})},'⚙ ',t('Nastavení'))),
    p.description?el('p',{class:'tk-text acc-dim'},p.description):null,
-   mine.length?[health(mine),activity(mine,2),nextBlock(data.releases,p.id)]
+   mine.length?[health(mine),activity(mine,2),p.settings?.releases!==false?nextBlock(data.releases,p.id):null]
     :el('div',{class:'tk-fresh'},el('div',{class:'tk-fresh-icon','aria-hidden':'true'},'✨'),el('p',{},t('Čistý štít — zatím tu nic není.')),
-      canWrite?el('button',{type:'button',class:'acc-btn small primary',onclick:e=>{e.stopPropagation();newTicket(data.projects,p.id,ctx);}},t('+ První položka')):null),
-   el('div',{class:'tk-links'},el('a',{href:'#projects/'+p.id,class:'acc-btn small'},`${t('Detail projektu')} →`),el('button',{type:'button',class:'acc-btn small',onclick:open(p.id,'#items')},`${t('Položky')} →`),el('button',{type:'button',class:'acc-btn small',onclick:open(p.id,'#releases')},`${t('Releasy')} →`),el('a',{class:'acc-btn small',href:'#review/'+p.id},'Review →')));
+      canWrite?el('button',{type:'button',class:'acc-btn small primary',onclick:e=>{e.stopPropagation();newTicket(data.projects,p.id,{...ctx,lockProject:true});}},t('+ První položka')):null),
+   el('div',{class:'tk-links'},el('a',{href:'#projects/'+p.id,class:'acc-btn small'},`${t('Detail projektu')} →`),
+    el('a',{class:'acc-btn small',href:'#items',onclick:()=>{Object.assign(filters,defaults,{project:p.id});}},`${t('Položky')} →`),
+    p.settings?.releases!==false?el('a',{class:'acc-btn small',href:'#releases',onclick:()=>{releaseFilters.project=p.id;}},`${t('Releasy')} →`):null,
+    p.settings?.reviews!==false?el('a',{class:'acc-btn small',href:'#review/'+p.id},'Review →'):null));
  };
  show(wrap,title,msg,el('div',{class:'tk-projects'},data.projects.map(card)));
  shortcuts(wrap,{n:()=>add?void add.onclick():false});
 }
-// One project: health, activity and next release on top, then a board of its items.
+const settingsHref=(p,tab='')=>'#projects/'+p.id+'/settings'+(tab?'/'+tab:'');
+const projectColors=()=>[['',t('Výchozí barva')],['slate',t('Břidlicová')],['red',t('Červená')],['orange',t('Oranžová')],['amber',t('Jantarová')],
+ ['green',t('Zelená')],['teal',t('Tyrkysová')],['blue',t('Modrá')],['violet',t('Fialová')]];
+
 async function projectPage(wrap,ctx){
  const {canWrite,id}=ctx,encoded=encodeURIComponent(id);
+ const [route,routeId,section,tab,...extra]=location.hash.split('?')[0].split('/');
+ const sameProject=route==='#projects'&&routeId===id;
+ const settings=sameProject&&section==='settings';
+ if(sameProject&&section!==undefined&&(!settings||extra.length||tab!==undefined&&!['look','features','references'].includes(tab)))
+  throw Object.assign(new Error(t('Stránka nastavení neexistuje.')),{status:404});
  const result=await load(wrap,Promise.all([
-  api('/api/tickets?project='+encoded).catch(e=>{if(e.status===400)e.status=404;throw e;}),
-  wikiApi(wikiApiPath(encoded)).catch(()=>null),
+  api('/api/tickets?project='+encoded+(settings?'&limit=1':'')).catch(e=>{if(e.status===400)e.status=404;throw e;}),
+  settings?null:wikiApi(wikiApiPath(encoded)).catch(()=>null),
  ]));if(!result)return;
- const [data,wiki]=result;
- const p=data.projects.find(x=>x.id===id);
+ const [data,wiki]=result,p=data.projects.find(x=>x.id===id);
  if(!p){const e=new Error(t('Projekt „{id}“ v trackeru není.',{id}));e.status=404;throw e;}
+ if(settings)return renderProjectSettings(wrap,ctx,p,tab);
  const msg=status(),redraw=()=>projectPage(wrap,ctx).catch(e=>fail(msg,e));
  const mine=data.tickets.filter(x=>x.project===id);
- const to=hash=>()=>{Object.assign(filters,defaults,{project:id});location.hash=hash;};
- const add=canWrite?{label:t('+ Nová položka'),primary:true,onclick:()=>newTicket(data.projects,id,ctx)}:null;
- const wikiAction=wiki?.enabled===false?(ctx.canWriteWiki?setupWikiAction(id,error=>fail(msg,error)):null):
-  {label:'Wiki →',href:wikiHref(id)};
+ const newItem=()=>newTicket(data.projects,id,{...ctx,lockProject:true});
+ const add=canWrite?{label:t('+ Nová položka'),primary:true,onclick:newItem}:null;
+ const wikiAction=wiki?.enabled===false?(ctx.canWriteWiki?setupWikiAction(id,error=>fail(msg,error)):null):{label:'Wiki →',href:wikiHref(id)};
+ const itemsWrap=el('div',{class:'tk-project-table'});
+ const afterMove=async(previousControl)=>{
+  const active=document.activeElement;
+  const focus=active===document.body&&previousControl?previousControl:active;
+  const wasInside=itemsWrap.contains(focus),label=wasInside?focus.getAttribute('aria-label'):null;
+  await redraw();
+  if(!wasInside||!wrap.isConnected||document.activeElement!==document.body)return;
+  const restored=label?[...wrap.querySelectorAll('.tk-project-table [aria-label]')].find(node=>node.getAttribute('aria-label')===label):null;
+  (restored??wrap.querySelector('.tk-project-table [data-slash]'))?.focus();
+ };
+ const header=pageHeader({title:p.name,lead:p.description||undefined,provenance:data.provenance,actions:[
+  {label:'⚙ '+t('Nastavení projektu'),href:settingsHref(p)},
+  p.settings?.releases!==false?{label:t('Releasy')+' →',onclick:()=>{releaseFilters.project=id;location.hash='#releases';}}:null,
+  p.settings?.reviews!==false?{label:'Review →',href:'#review/'+id}:null,p.settings?.wiki!==false?wikiAction:null,add]});
  show(wrap,
   el('nav',{class:'tk-crumbs','aria-label':t('Drobečková navigace')},el('a',{href:'#projects'},t('Projekty')),el('span',{class:'tk-dim'},'/'),el('b',{},p.name),el('span',{class:'sec-pill'},p.key),p.type?el('span',{class:'sec-pill'},label(PROJECT_TYPES(),p.type)):null),
-  pageHeader({title:p.name,lead:p.description||undefined,provenance:data.provenance,actions:[canWrite?{label:t('Upravit'),onclick:()=>editProject(p,redraw)}:null,{label:`${t('Tabulka')} →`,onclick:to('#items')},{label:`${t('Releasy')} →`,onclick:to('#releases')},{label:'Review →',href:'#review/'+id},wikiAction,add].filter(Boolean)}),
-  msg,
+  el('div',{class:'tk-project-header','data-project-color':p.settings?.color},header),msg,
   referencesSection('project',id,ctx.me),
-  mine.length?el('div',{class:'acc-card tk-hero-row'},health(mine),activity(mine,4),nextBlock(data.releases,id)):null,
-  mine.length?boardView(mine,{canWrite,msg,redraw,projects:data.projects,showProject:false})
-   :emptyState({icon:'✨',title:t('Čistý štít'),body:t('V projektu zatím nejsou žádné položky.'),
-     agentPrompt:t('Přes MCP mého Home Hubu (scope tickets:write) založ nástrojem ticket_create první položky projektu {id}: title, description s kritérii přijetí, type bug|feature|task a priority.',{id}),
-     actions:canWrite?[{label:t('+ První položka'),primary:true,onclick:()=>newTicket(data.projects,id,ctx)}]:[]}),
-  mine.length?keysHint(['n',t('nová položka')],['j k',t('další / předchozí')],['Enter',t('otevřít')]):null);
- shortcuts(wrap,{n:()=>add?void add.onclick():false,j:()=>moveCursor(wrap,1),k:()=>moveCursor(wrap,-1),Enter:()=>openCursor(wrap)});
+  mine.length?el('div',{class:'acc-card tk-hero-row'},health(mine),activity(mine,4),p.settings?.releases!==false?nextBlock(data.releases,id):null):null,
+  itemsWrap);
+ if(!projectFilters.has(id))projectFilters.set(id,{...defaults,project:id});
+ await listPage(itemsWrap,{...ctx,afterMove},p,data);
+}
+
+function renderProjectSettings(wrap,ctx,p,section,notice=''){
+ const tabs=[['',t('Obecné')],['look',t('Vzhled projektu')],['features',t('Funkce projektu')],['references',t('Reference')]];
+ const tab=section??'',settings=p.settings??{};
+ const header=pageHeader({back:{label:p.name,href:'#projects/'+p.id},eyebrow:p.name,title:t('Nastavení projektu')});
+ const navigation=el('nav',{class:'tk-settings-tabs','aria-label':t('Nastavení projektu')},tabs.map(([key,title])=>
+  el('a',{href:settingsHref(p,key),'aria-current':tab===key?'page':null},title)));
+ if(tab==='references')return show(wrap,header,navigation,projectReferences(ctx.me,p.id));
+ const writable=ctx.me?.canWrite===true&&ctx.me.scopes?.includes('tickets:write');
+ const field=(title,input)=>el('label',{},title,input);
+ const group=(title,items)=>el('fieldset',{class:'tk-choices'},el('legend',{},title),items);
+ const toggle=(key,title,hint)=>el('label',{class:'tk-choice'},
+  el('input',{type:'checkbox',name:key,checked:settings[key]!==false?'':null}),
+  el('span',{},el('strong',{},title),el('small',{},hint)));
+ const choice=(name,value,selected,text,swatch=false)=>el('label',{class:'tk-choice'},
+  el('input',{type:'radio',name,value,checked:value===selected?'':null}),
+  swatch?el('span',{class:'tk-swatch','aria-hidden':'true','data-project-color':value}):null,text);
+ const controls=[];
+ if(tab==='look'){
+  controls.push(group(t('Barva projektu'),projectColors().map(([v,text])=>choice('color',v,settings.color??'',text,true))),
+   group(t('Výchozí pohled'),[['board',t('Nástěnka')],['table',t('Tabulka')]].map(([v,text])=>choice('view',v,settings.view??'board',text))));
+ }else if(tab==='features'){
+  controls.push(toggle('releases',t('Releasy'),t('Zobrazit plánování releasů v projektu.')),
+   toggle('reviews','Review',t('Nabízet vytvoření review pro položky projektu.')),
+   toggle('wiki','Wiki',t('Zobrazit odkaz na wiki nebo možnost ji založit.')),
+   toggle('globalReferences',t('Globální reference'),t('Nabízet sdílené reference a povolit jejich vytváření v tomto projektu.')));
+ }else{
+  controls.push(el('div',{class:'tk-grid2'},field('ID',el('input',{readonly:'',value:p.id})),field(t('Zkratka (prefix položek)'),el('input',{readonly:'',value:p.key}))),
+   el('p',{class:'acc-dim'},t('ID a zkratku položek nelze změnit.')),
+   field(t('Název'),el('input',{name:'name',required:'',maxlength:80,value:p.name})),
+   field(t('Popis'),el('textarea',{name:'description',rows:3,maxlength:500},p.description||'')),
+   field(t('Typ'),el('select',{name:'type'},options(PROJECT_TYPES(),p.type||'',t('Bez typu')))));
+ }
+ const msg=status();msg.textContent=notice;
+ const submit=el('button',{type:'submit',class:'acc-btn primary'},t('Uložit změny'));
+ const form=el('form',{class:'acc-card tk-form tk-settings',onsubmit:async event=>{
+  event.preventDefault();if(!writable||submit.disabled)return;
+  const fields=event.currentTarget.elements,body={id:p.id,rev:p.rev};
+  if(!tab)Object.assign(body,{name:fields.namedItem('name').value,description:fields.description.value,type:fields.type.value||null});
+  else if(tab==='look')body.settings={color:fields.color.value||null,view:fields.view.value};
+  else if(tab==='features')body.settings={
+   releases:fields.releases.checked,reviews:fields.reviews.checked,wiki:fields.wiki.checked,globalReferences:fields.globalReferences.checked};
+  submit.disabled=true;const epoch=sessionEpoch;
+  try{
+   const saved=await api('/api/tickets/projects',body);
+   if(epoch===sessionEpoch&&form.isConnected)renderProjectSettings(wrap,ctx,saved,tab,t('Uloženo.'));
+  }catch(error){
+   fail(msg,error);
+   if(error.status===409)msg.append(' ',el('button',{type:'button',class:'acc-btn small',onclick:()=>projectPage(wrap,ctx).catch(e=>fail(msg,e))},t('Načíst znovu')));
+  }finally{submit.disabled=false;}
+ }},el('fieldset',{class:'tk-settings-fields',disabled:writable?null:''},
+  el('legend',{},tabs.find(([key])=>key===tab)[1]),controls),
+  writable?el('div',{class:'acc-actions'},submit):el('p',{class:'acc-dim'},t('Nastavení je pouze pro čtení.')),msg);
+ show(wrap,header,navigation,form);
 }
 // A new project: the name proposes an id and a key until either is typed by hand; both are permanent.
 const slugOf=name=>name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^[^a-z]+|-+$/g,'').slice(0,40);
@@ -822,19 +939,12 @@ function newProject(done){
  const dialog=el('dialog',{class:'acc-dialog wide tk-dialog','aria-label':t('Nový projekt')},el('h3',{},t('Nový projekt')),form);
  showDialog(dialog);name.focus();
 }
-function editProject(p,done){
- const msg=status();
- const form=el('form',{class:'tk-form',onsubmit:async e=>{e.preventDefault();const f=e.currentTarget,b=f.querySelector('button[type=submit]');b.disabled=true;
-   try{await api('/api/tickets/projects',{id:p.id,rev:p.rev,name:f.name.value,description:f.description.value,type:f.type.value||null});dialog.close();await done();}catch(err){fail(msg,err);b.disabled=false;}}},
-  el('label',{},t('Název'),el('input',{name:'name',required:'',maxlength:'80',value:p.name})),
-  el('label',{},t('Popis'),(()=>{const a=el('textarea',{name:'description',rows:'3',maxlength:'500'});a.value=p.description||'';return a;})()),
-  el('label',{},t('Typ'),el('select',{name:'type'},options(PROJECT_TYPES(),p.type||'',t('Bez typu')))),
-  msg,el('div',{class:'acc-actions'},el('button',{type:'button',class:'acc-btn',onclick:()=>dialog.close()},t('Zrušit')),el('button',{type:'submit',class:'acc-btn primary'},t('Uložit'))));
- const dialog=el('dialog',{class:'acc-dialog tk-dialog','aria-label':t('Upravit projekt')},el('h3',{},`${p.name} (${p.key})`),form);
- showDialog(dialog);
-}
 // Page entry for the shell (app.js): every page module exports (context) => Node, and the server's UI
 // manifest names it. context = {me, page, sub, device, site}.
 export const trackerPage=({me,page,sub})=>trackerView(me,page,sub);
 
-export async function createReviewTicket(project){const meta=await api('/api/tickets?limit=1');return newTicket(meta.projects,project);}
+export async function createReviewTicket(project,me){
+ const query=new URLSearchParams({limit:1,...(project?{project}:{})});
+ const meta=await api('/api/tickets?'+query);
+ return newTicket(meta.projects,project,{me,user:me?.username,lockProject:Boolean(project)});
+}

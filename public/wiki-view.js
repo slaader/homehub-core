@@ -86,17 +86,17 @@ export function wikiPage({me,sub:project,onWikiTree}){
     wikiApi('/api/tickets?project='+project).catch(()=>null),
    ]);
    if(!live)return;
-   const projectName=tracker?.projects.find(p=>p.id===project)?.name??project;
+   const info=tracker?.projects.find(p=>p.id===project),projectName=info?.name??project;
    const tickets=new Map((tracker?.tickets??[]).map(ticket=>[ticket.id,ticket]));
    onWikiTree?.(project,meta,projectName);
    if(!meta.enabled){
     root.replaceChildren(emptyState({icon:'box',title:t('Wiki projektu zatím není založena.'),
-     actions:[writable?setupWikiAction(project,fail):null,{label:projectName,href:'#projects/'+project}]}));
+     actions:[writable&&info?.settings?.wiki!==false?setupWikiAction(project,fail):null,{label:projectName,href:'#projects/'+project}]}));
     return;
    }
    const page=await wikiApi(wikiApiPath(project,selected||meta.home));
    if(!live)return;
-   show(meta,page,{projectName,tickets},writable&&(wantsEdit||Boolean(savedDraft(draftKey(me,page)))));
+   show(meta,page,{projectName,tickets,globalReferences:Boolean(info)&&info.settings?.globalReferences!==false},writable&&(wantsEdit||Boolean(savedDraft(draftKey(me,page)))));
   }catch(error){if(live)fail(error);}
  }
 
@@ -226,7 +226,7 @@ export function wikiPage({me,sub:project,onWikiTree}){
   const title=el('input',{required:'',maxlength:WIKI_LIMITS.title,value:draft?.title??page.title});
   let conflict=rev!==page.rev?page:null,busy=false,dirty=Boolean(draft),disposed=false,copyRequest=null;
   const conflictNotice=el('div',{});
-  const editor=wikiEditor({page,doc:draft?.doc??page.doc,tickets,api:wikiApi,dialog,canGlobal:me?.scopes?.includes('references:write'),changed});
+  const editor=wikiEditor({page,doc:draft?.doc??page.doc,tickets,api:wikiApi,dialog,canGlobal:context.globalReferences&&me?.scopes?.includes('references:write'),changed});
   const read=()=>({rev,title:title.value,doc:editor.read()});
   const initialBody=JSON.stringify(editor.read());
   const original=draft?null:JSON.stringify(read());

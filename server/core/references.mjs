@@ -52,7 +52,7 @@ export default {
  mcpInstructions:'Find project mention targets with references_suggest.',
  mcpTools:[
   tool('references_search','read',{...search,limit:{...page.limit,maximum:100}},[],'List references by prefix, type, scope or owning project.',(s,i)=>s.search(i)),
-  tool('references_suggest','read',{...search,limit:{...page.limit,maximum:20}},[],'Suggest local and global sources for the project being edited. Wiki mentions use {t:"ref",kind,id,label} or {t:"ticket",id}. Ticket descriptions and comments use @[Label](ref:kind/id).',(s,i)=>s.search(i,true)),
+  tool('references_suggest','read',{...search,limit:{...page.limit,maximum:20}},[],'Suggest local and global sources for the project being edited. A project whose settings.globalReferences is false is offered only its own sources, machines and projects. Wiki mentions use {t:"ref",kind,id,label} or {t:"ticket",id}. Ticket descriptions and comments use @[Label](ref:kind/id).',(s,i)=>s.search(i,true)),
   tool('reference_get','read',{...identity,...page},['kind','id'],'Read a reference, description and paged incoming mentions.',(s,i)=>s.get(i)),
   ...writes.map(([,name,scope,props,required,description,run])=>tool(name,scope,props,required,description,run)),
  ],

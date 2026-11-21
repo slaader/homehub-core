@@ -118,7 +118,7 @@ export function reviewView(me,sub){
  stopClocks();onLeave(stopClocks);
  const wrap=el('section',{class:'sec tk rv'},el('p',{class:'sec-dim',role:'status'},t('Načítám…')));
  const canWrite=me?.canWrite===true,epoch=sessionEpoch;
- const run=()=>(sub&&SET_ID.test(sub)?setPage(wrap,{canWrite,id:sub,epoch,me:me?.username||null}):listPage(wrap,{canWrite,project:sub&&PROJECT_ID.test(sub)?sub:'',epoch}))
+ const run=()=>(sub&&SET_ID.test(sub)?setPage(wrap,{canWrite,id:sub,epoch,me:me?.username||null}):listPage(wrap,{canWrite,project:sub&&PROJECT_ID.test(sub)?sub:'',epoch,me}))
   .catch(e=>{if(epoch===sessionEpoch)wrap.replaceChildren(emptyState({icon:'⚠',title:e.status===404?t('Review neexistuje'):t('Review nejde načíst'),body:e.message,
    actions:[e.status===404?null:{label:t('Zkusit znovu'),primary:true,onclick:()=>{wrap.replaceChildren(el('p',{class:'sec-dim',role:'status'},t('Načítám…')));run();}},{label:`← ${t('Všechna review')}`,href:'#review'}]}));});
  run();
@@ -148,18 +148,19 @@ function noSets(project,hasProjects){
   actions:hasProjects?[]:[{label:`${t('Projekty')} →`,href:'#projects',primary:true}]});
 }
 // List ------------------------------------------------------------------------------------------
-async function listPage(wrap,{canWrite,project,epoch}){
+async function listPage(wrap,{canWrite,project,epoch,me}){
  const query=state=>new URLSearchParams({status:state,...(project?{project}:{}),...(filters.ticket?{ticket:filters.ticket}:{})});
  const [data,meta]=await Promise.all([api('/api/review?'+query(filters.status)),api('/api/tickets?limit=1')]);if(epoch!==sessionEpoch||!wrap.isConnected)return;
  // An empty tab is not an empty hub: only when no set exists at all does the page explain how to publish one.
  let any=data.sets.length>0||filters.status==='all';
  if(!data.sets.length&&filters.status!=='all'){try{any=(await api('/api/review?'+query('all'))).sets.length>0;}catch{any=true;}if(epoch!==sessionEpoch||!wrap.isConnected)return;}
- const projects=new Map(meta.projects.map(p=>[p.id,p])),redraw=()=>listPage(wrap,{canWrite,project,epoch}).catch(e=>fail(msg,e)),msg=status(),kinds=KINDS();
- const request=canWrite?el('button',{type:'button',class:'acc-btn primary',onclick:()=>reviewDialog({project,createTicket:()=>import('./tracker-view.js').then(m=>m.createReviewTicket(project))})},'Create review · agent instructions'):el('span',{class:'sec-dim'},'Publishing and ticket linking require review write access.');
+ const projects=new Map(meta.projects.map(p=>[p.id,p])),redraw=()=>listPage(wrap,{canWrite,project,epoch,me}).catch(e=>fail(msg,e)),msg=status(),kinds=KINDS();
+ const offerReview=project?projects.get(project)?.settings?.reviews!==false:!meta.projects.length||meta.projects.some(p=>p.settings?.reviews!==false);
+ const request=!offerReview?null:canWrite?el('button',{type:'button',class:'acc-btn primary',onclick:()=>reviewDialog({project,createTicket:me?.scopes?.includes('tickets:write')?selected=>import('./tracker-view.js').then(m=>m.createReviewTicket(selected,me)):null})},'Create review · agent instructions'):el('span',{class:'sec-dim'},'Publishing and ticket linking require review write access.');
  const ticketFilter=el('input',{value:filters.ticket,placeholder:'Ticket ID or unlinked','aria-label':'Filter reviews by ticket ID or unlinked',onchange:e=>{filters.ticket=e.target.value.trim();redraw();}});
  const reset=el('button',{type:'button',class:'acc-btn small',onclick:()=>{filters.ticket='';filters.status='all';redraw();}},'Reset filters');
  const title=pageHeader({eyebrow:'Project Tracker',title:'Review',lead:t('Varianty, které agenti navrhli: porovnej je, vyber a okomentuj. Rozhodnutí si agent přečte přes MCP.'),provenance:data.provenance});
- if(!any&&!data.sets.length)return wrap.replaceChildren(title,...(project?[el('div',{class:'tk-toolbar'},el('div',{class:'tk-toolbar-left'},crumbs(projects.get(project),project)))]:[]),request,ticketFilter,reset,noSets(project,meta.projects.length>0));
+ if(!any&&!data.sets.length)return wrap.replaceChildren(title,...(project?[el('div',{class:'tk-toolbar'},el('div',{class:'tk-toolbar-left'},crumbs(projects.get(project),project)))]:[]),...[request].filter(Boolean),ticketFilter,reset,offerReview?noSets(project,meta.projects.length>0):emptyState({compact:true,title:t('Zatím žádné review')}));
  const statusSwitch=segmented(t('Stav review'),[['active',t('Otevřená')],['done',t('Hotová')],['archived',t('Archiv')],['all',t('Vše')]],filters.status,v=>{filters.status=v;redraw();});
  // On hover a card shows a bin (archive) or, in the archive, a way back.
  const move=s=>canWrite?el('button',{type:'button',class:'rv-card-bin',title:s.status==='open'?t('Přesunout do archivu'):t('Vrátit z archivu'),'aria-label':s.status==='open'?t('Archivovat {id}',{id:s.id}):t('Vrátit {id} z archivu',{id:s.id}),
@@ -226,7 +227,7 @@ function renderSet(wrap,ctx,set){
  const goTo=item=>{if(item.kind!==kind){view.kind=item.kind;redraw();}requestAnimationFrame(()=>wrap.querySelector('#rv-item-'+item.id)?.scrollIntoView({behavior:'smooth',block:'start'}));};
  const summary=summaryBar(round,{actionable:!readOnly,goTo});
  const shown=round.items.filter(i=>i.kind===kind);
- const linkage=el('aside',{class:'rv-banner'},set.tickets.length?'Linked tickets: '+set.tickets.join(', '):'Link a ticket: this legacy review remains fully usable.',canWrite?el('button',{type:'button',class:'acc-btn small',onclick:()=>reviewDialog({project:set.project,set,onSaved:async saved=>{Object.assign(set,{tickets:saved.tickets,rev:saved.rev});try{const fresh=await api('/api/review/sets/'+set.id);if(ctx.epoch!==sessionEpoch||!wrap.isConnected)return;Object.assign(set,fresh);ctx.linked=await Promise.all(set.tickets.map(id=>api('/api/tickets/'+encodeURIComponent(id)).catch(()=>({id,unavailable:true}))));redraw();}catch(e){fail(msg,e);}}})},'Change ticket links'):el('span',{},' Ticket linking requires review write access.'),el('button',{type:'button',class:'acc-btn small',onclick:()=>reviewDialog({project:set.project,set,canLink:false})},'Publisher instructions'));
+ const linkage=project?.settings?.reviews===false?null:el('aside',{class:'rv-banner'},set.tickets.length?'Linked tickets: '+set.tickets.join(', '):'Link a ticket: this legacy review remains fully usable.',canWrite?el('button',{type:'button',class:'acc-btn small',onclick:()=>reviewDialog({project:set.project,set,onSaved:async saved=>{Object.assign(set,{tickets:saved.tickets,rev:saved.rev});try{const fresh=await api('/api/review/sets/'+set.id);if(ctx.epoch!==sessionEpoch||!wrap.isConnected)return;Object.assign(set,fresh);ctx.linked=await Promise.all(set.tickets.map(id=>api('/api/tickets/'+encodeURIComponent(id)).catch(()=>({id,unavailable:true}))));redraw();}catch(e){fail(msg,e);}}})},'Change ticket links'):el('span',{},' Ticket linking requires review write access.'),el('button',{type:'button',class:'acc-btn small',onclick:()=>reviewDialog({project:set.project,set,canLink:false})},'Publisher instructions'));
  wrap.replaceChildren(...[head,linkage,switches,old,notes,summary.node,msg].filter(Boolean),
   ...shown.map((item,index)=>itemSection({set,round,item,readOnly,me:ctx.me,latest:round===latest&&set.status==='open',answeredIn,epoch:ctx.epoch,index,count:shown.length,onSaved:summary.draw,
    // Comments of earlier rounds on this item that no round has answered yet.

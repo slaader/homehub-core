@@ -17,7 +17,7 @@ function pager(offset,total,next){
  if(offset+50<total)actions.push(btn(t('Další'),()=>next(offset+50)));
  return actions.length?el('div',{class:'wiki-actions'},actions):null;
 }
-function form(record,done,reload){
+function form(record,done,reload,cancel){
  const label=el('input',{required:'',maxlength:200,value:record.label??''});
  const description=el('textarea',{rows:4,maxlength:8000},record.description??'');
  const message=el('p',{role:'alert',class:'acc-status error'}),local=record.scope==='local';
@@ -29,7 +29,7 @@ function form(record,done,reload){
     description:description.value,...(record.id?{id:record.id,rev:record.rev}:{}),...(local?{project:record.project}:{})});
    done(saved);
   }catch(error){message.textContent=error.message;if(error.status===409&&reload)message.append(' ',btn(t('Načíst znovu'),reload));}finally{submit.disabled=false;}
- }},field('Název',label),field('Popis',description),message,submit);
+ }},field('Název',label),field('Popis',description),message,el('div',{class:'acc-actions'},cancel?btn(t('Zrušit'),cancel):null,submit));
 }
 function details(kind,id,me,standalone=false){
  const box=el('div',{class:'ref-usages'});let request=0;
@@ -80,29 +80,49 @@ export function referencesSection(kind,id,me){
  return section;
 }
 export function referencesPage({me}){
- const root=el('section',{class:'sec tk'}),[,kind,...parts]=location.hash.split('/');
+ const [,kind,...parts]=location.hash.split('/');
  if(kind){
-  const {box,load}=details(kind,parts.join('/'),me,true);root.append(box);load();return root;
+  const {box,load}=details(kind,parts.join('/'),me,true);load();return el('section',{class:'sec tk'},box);
  }
- const filter=el('select',{'aria-label':t('Druh reference')},el('option',{value:''},t('Všechny druhy')),referenceKinds.map(k=>el('option',{value:k},kindName(k))));
+ return catalog(me);
+}
+
+export function projectReferences(me,project){return catalog(me,project);}
+
+function catalog(me,fixedProject){
+ const root=el('section',{class:fixedProject?'tk-project-refs':'sec tk'});
+ const kinds=fixedProject?['custom','wiki','ticket']:referenceKinds;
+ const filter=el('select',{'aria-label':t('Druh reference')},el('option',{value:''},t('Všechny druhy')),kinds.map(k=>el('option',{value:k},kindName(k))));
  const q=el('input',{type:'search','aria-label':t('Hledat'),placeholder:t('Hledat')});
- const scope=el('select',{'aria-label':t('Rozsah')},[['','Vše'],['global','Globální reference'],['local','Projektové reference']].map(([v,k])=>el('option',{value:v},t(k))));
- const project=el('select',{'aria-label':t('Projekt')},el('option',{value:''},t('Všechny projekty')));
+ const scope=fixedProject?null:el('select',{'aria-label':t('Rozsah')},[['','Vše'],['global','Globální reference'],['local','Projektové reference']].map(([v,k])=>el('option',{value:v},t(k))));
+ const project=fixedProject?null:el('select',{'aria-label':t('Projekt')},el('option',{value:''},t('Všechny projekty')));
  const list=el('div',{class:'acc-card'}),edit=el('div',{});let sequence=0;
  async function draw(offset=0){
   const turn=++sequence,params=new URLSearchParams({offset});
-  for(const [key,v] of Object.entries({kind:filter.value,scope:scope.value,project:project.value,q:q.value}))if(v)params.set(key,v);
+  for(const [key,v] of Object.entries({kind:filter.value,scope:fixedProject?'local':scope.value,project:fixedProject||project.value,q:q.value}))if(v)params.set(key,v);
   try{
    const {items,total}=await referenceApi('?'+params);
    if(sequence!==turn)return;
    const result=items.length?el('table',{class:'ref-table'},
-    el('thead',{},el('tr',{},['Název','Druh reference','Rozsah'].map(k=>el('th',{scope:'col'},t(k))))),
-    el('tbody',{},items.map(r=>el('tr',{},el('td',{},el('a',{href:r.href},r.label)),el('td',{},kindName(r.kind)),el('td',{},scopeName(r)))))):
+    el('thead',{},el('tr',{},(fixedProject?['Název','Druh reference']:['Název','Druh reference','Rozsah']).map(k=>el('th',{scope:'col'},t(k))))),
+    el('tbody',{},items.map(r=>el('tr',{},el('td',{},el('a',{href:r.href,class:fixedProject?'wiki-ticket ref-chip':null,
+      'aria-label':fixedProject?r.label+', '+kindName(r.kind):null},r.label)),el('td',{},kindName(r.kind)),fixedProject?null:el('td',{},scopeName(r)))))):
     emptyState({icon:'box',compact:true,title:t('Žádné odpovídající reference.')});
    list.replaceChildren(result,...[pager(offset,total,draw)].filter(Boolean));
   }catch(e){if(sequence===turn)list.textContent=e.message;}
  }
- for(const input of [filter,scope,project,q])input.addEventListener('input',()=>draw());
+ for(const input of [filter,scope,project,q].filter(Boolean))input.addEventListener('input',()=>draw());
+ if(fixedProject){
+  const add=may(me,'tickets:write')?btn(t('Přidat vlastní referenci'),()=>{
+   edit.replaceChildren(form({kind:'custom',scope:'local',project:fixedProject},()=>{
+    edit.replaceChildren();filter.value='';q.value='';draw();
+   },null,()=>{edit.replaceChildren();add.focus();}));
+   edit.querySelector('input')?.focus();
+  }):null;
+  root.append(el('div',{class:'tk-toolbar'},el('h2',{},t('Reference projektu')),add),
+   el('div',{class:'tk-toolbar'},q,filter),edit,list);
+  draw();return root;
+ }
  const actions=may(me,'references:write')?['model','custom'].map(kind=>({label:kind==='model'?t('Přidat model'):t('Přidat vlastní referenci'),
   onclick:()=>edit.replaceChildren(form({kind,scope:'global'},r=>{location.hash='#references/'+kind+'/'+r.id;}))})):[];
  root.append(pageHeader({title:t('Reference'),eyebrow:t('Nastavení'),actions}),el('div',{class:'tk-toolbar'},q,filter,scope,project),edit,list);

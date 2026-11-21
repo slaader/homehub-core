@@ -9,7 +9,9 @@ import {mkdirSync,chmodSync,existsSync} from 'node:fs';
 import {readFile,rename} from 'node:fs/promises';
 import path from 'node:path';
 
-const SCHEMA=5,SEARCH_VERSION=1;
+const SCHEMA=6,SEARCH_VERSION=1;
+// Schema 6 gives every tracker project its settings (server/tickets-store.mjs → PROJECT_SETTINGS, the same values).
+export const PROJECT_SETTINGS_V6='{"color":null,"view":"board","releases":true,"reviews":true,"wiki":true,"globalReferences":true}';
 // The schema version of hub.db, for the data-epoch table (tests/data-epoch.test.mjs).
 export const DB_SCHEMA=SCHEMA;
 const open=new Map();
@@ -70,6 +72,11 @@ function migrate(db){
    const wiki=db.prepare("SELECT doc FROM meta WHERE kind='wiki'").get();
    if(wiki&&JSON.parse(wiki.doc).schema!==3)throw new Error('Unsupported wiki schema');
    db.exec("UPDATE meta SET doc=json_set(doc,'$.schema',4) WHERE kind='wiki'; PRAGMA user_version=5");
+  }
+  if(from<6){
+   // Only rows without settings change; a project's rev stays, so a client holding it can still save.
+   db.prepare("UPDATE docs SET doc=json_set(doc,'$.settings',json(?)) WHERE kind='tickets' AND coll='projects' AND json_type(doc,'$.settings') IS NULL").run(PROJECT_SETTINGS_V6);
+   db.exec('PRAGMA user_version=6');
   }
   db.exec('COMMIT');
  }catch(error){db.exec('ROLLBACK');throw error;}

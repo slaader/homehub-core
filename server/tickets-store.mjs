@@ -15,6 +15,25 @@ export const TICKET_STATUSES=Object.freeze(['open','in-progress','done','cancell
 export const TICKET_PRIORITIES=Object.freeze(['low','normal','high','urgent']);
 export const RELEASE_STATUSES=Object.freeze(['planned','released']);
 export const PROJECT_TYPES=Object.freeze(['app','game','other']);
+// Project settings (docs/project-settings.md): presentation choices kept on the project row and changed with the
+// project's rev. Every projection carries all six; a row without them (seeded, imported, written before epoch 11)
+// reads as these defaults. releases, reviews and wiki only show or hide those parts of the project's pages;
+// globalReferences decides whether reference suggestions in the project offer global and other projects' sources.
+export const PROJECT_COLORS=Object.freeze(['slate','red','orange','amber','green','teal','blue','violet']);
+export const PROJECT_VIEWS=Object.freeze(['board','table']);
+export const PROJECT_SETTINGS=Object.freeze({color:null,view:'board',releases:true,reviews:true,wiki:true,globalReferences:true});
+const SETTING_VALID={color:v=>v===null||PROJECT_COLORS.includes(v),view:v=>PROJECT_VIEWS.includes(v),
+ releases:v=>typeof v==='boolean',reviews:v=>typeof v==='boolean',wiki:v=>typeof v==='boolean',globalReferences:v=>typeof v==='boolean'};
+// The stored settings with every field present; a missing or unusable field takes its default.
+export function projectSettings(stored){
+ const own=plain(stored)?stored:{};
+ return Object.fromEntries(Object.entries(PROJECT_SETTINGS).map(([k,d])=>[k,Object.hasOwn(own,k)&&SETTING_VALID[k](own[k])?own[k]:d]));
+}
+// A partial change: only known fields, each with an allowed value. Omitted fields keep what the project has.
+function settingsPatch(v){
+ if(!plain(v)||!Object.entries(v).every(([k,x])=>Object.hasOwn(SETTING_VALID,k)&&SETTING_VALID[k](x)))fail('invalid');
+ return {...v};
+}
 export const CLOSED=Object.freeze(['done','cancelled']);
 export const TICKET_ID=/^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,5}$/;
 export const PROJECT_ID=/^[a-z][a-z0-9-]{1,39}$/;
@@ -38,8 +57,8 @@ function refs(v){if(!Array.isArray(v)||v.length>LIMITS.refs)fail('invalid');retu
 export const compareVersions=(a,b)=>a.localeCompare(b,'en',{numeric:true,sensitivity:'base'});
 
 // A new store starts with the projects the site asks for (site.json → tracker.projects); none by default.
-const empty=(seed=[])=>({schema:1,revision:0,updatedAt:null,projects:seed.map(p=>({...p,description:'',createdAt:null,rev:1,next:1})),releases:[],tickets:[]});
-const publicProject=({next,...p})=>({...p,type:p.type??null});
+const empty=(seed=[])=>({schema:1,revision:0,updatedAt:null,projects:seed.map(p=>({...p,description:'',settings:{...PROJECT_SETTINGS},createdAt:null,rev:1,next:1})),releases:[],tickets:[]});
+const publicProject=({next,...p})=>({...p,type:p.type??null,settings:projectSettings(p.settings)});
 const summary=({comments,history,attachments,...t})=>({...t,comments:comments.length,attachments:(attachments||[]).length});
 
 const rows=(list,key)=>(list||[]).map(x=>[key(x),x]),docs=list=>(list||[]).map(([,d])=>d);
@@ -276,25 +295,28 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
    r.updatedAt=now;r.rev++;if(!old)data.releases.push(r);return r;
   },{projects:null,releases:null});
  }
- // Create a project (no rev; id and key are permanent) or change its name/description/type (rev required).
+ // Create a project (no rev; id and key are permanent) or change its name/description/type/settings (rev required).
+ // settings is partial: the fields it names replace the project's, the others stay as they are.
  async function saveProject(input,by){
-  if(!writeInput(input,['id','key','name','description','type','rev'])||typeof input.id!=='string'||!PROJECT_ID.test(input.id))fail('invalid');
+  if(!writeInput(input,['id','key','name','description','type','settings','rev'])||typeof input.id!=='string'||!PROJECT_ID.test(input.id))fail('invalid');
   if(input.rev!==undefined&&!validRev(input.rev))fail('invalid');
   const name='name'in input?text(input.name,80):undefined,description='description'in input?text(input.description,500,{empty:true}):undefined;
   const type='type'in input?nullable(input.type,v=>oneOf(v,PROJECT_TYPES)):undefined;
+  const settings='settings'in input?settingsPatch(input.settings):{};
   return write((data,now)=>{
    const old=data.projects.find(p=>p.id===input.id);
    if(old){
     if(input.rev!==old.rev)fail('conflict');
     if('key'in input&&input.key!==old.key)fail('invalid');
     if(name!==undefined)old.name=name;if(description!==undefined)old.description=description;if(type!==undefined)old.type=type;
+    old.settings={...projectSettings(old.settings),...settings};
     old.updatedAt=now;old.rev++;return publicProject(old);
    }
    if(input.rev!==undefined)fail('not-found');
    if(typeof input.key!=='string'||!PROJECT_KEY.test(input.key)||name===undefined)fail('invalid');
    if(data.projects.some(p=>p.key===input.key))fail('conflict');
    if(data.projects.length>=LIMITS.projects)fail('limit');
-   const p={id:input.id,key:input.key,name,description:description??'',type:type??null,createdAt:now,createdBy:by,updatedAt:now,rev:1,next:1};data.projects.push(p);return publicProject(p);
+   const p={id:input.id,key:input.key,name,description:description??'',type:type??null,settings:{...PROJECT_SETTINGS,...settings},createdAt:now,createdBy:by,updatedAt:now,rev:1,next:1};data.projects.push(p);return publicProject(p);
   },{projects:null});
  }
  return {version:store.version,searchSnapshot:async()=>({revision:searchRevision,tickets:await store.list('tickets')}),searchRevision:()=>searchRevision,onSearchChange:fn=>{searchListeners.add(fn);return ()=>searchListeners.delete(fn);},validateSearchFilters:filter=>ticketFilter(filter),list,projects,get,search,people,create,update,comment,saveRelease,saveProject,attach,detach,attachment};

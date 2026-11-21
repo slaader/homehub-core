@@ -1,3 +1,4 @@
+import {referenceChip} from './reference-chip.js';
 import {el} from './views.js';
 import {t} from './i18n.js';
 
@@ -20,7 +21,16 @@ function cellText(runs,inline,compact){
  if(!runs?.length)return null;
  const text=el('p',{},inline(runs));
  if(!compact||(text.textContent.length<=160&&text.textContent.split('\n').length<=4))return text;
- const preview=el('span',{class:'wiki-cell-teaser','aria-hidden':'true'},text.textContent.replace(/\s+/g,' ').trim());
+ const preview=el('span',{class:'wiki-cell-teaser','aria-hidden':'true'});
+ let remaining=160;
+ for(const [i,run] of runs.entries()){
+  if(!remaining)break;
+  const part=text.childNodes[i]?.textContent??'';
+  if(run.t==='ref')preview.append(referenceChip(run,true));
+  else if(run.t==='ticket')preview.append(el('span',{class:'wiki-ticket ref-chip'},part));
+  else preview.append(part.slice(0,remaining).replace(/\s+/g,' '));
+  remaining=Math.max(0,remaining-part.length);
+ }
  return el('details',{class:'wiki-cell-text'},el('summary',{},t('Text buňky'),preview),text);
 }
 

@@ -99,6 +99,34 @@
         "finished_at": "2026-11-21T19:32:50Z",
         "result": "passed"
       }
+    },
+    "project-settings": {
+      "category": "feature",
+      "scope": "Project settings migration and writes, project-scoped layouts and filters, references and wiki UI, shell, localization and MCP",
+      "commands": [
+        "npm test -- tests/tickets.test.mjs tests/project-settings.test.mjs tests/references.test.mjs tests/reference-picker.test.mjs tests/wiki-inventory-media.test.mjs tests/wiki-view.test.mjs tests/wiki-navigation.test.mjs tests/i18n.test.mjs tests/mcp.test.mjs tests/data-epoch.test.mjs tests/shell.test.mjs tests/wiki.test.mjs"
+      ],
+      "budget_seconds": 120,
+      "budget_approval": null,
+      "last_run": {
+        "duration_seconds": 2.38,
+        "finished_at": "2026-11-21T17:12:38Z",
+        "result": "passed"
+      }
+    },
+    "project-settings-browser": {
+      "category": "ui-smoke",
+      "scope": "Real isolated project settings, scoped tracker layouts, reference creation and chip rendering, keyboard focus and persistence",
+      "commands": [
+        "node ~/.config/agent-workflows/studio/local-tests/home-hub/project-settings-smoke.mjs \"$(git rev-parse HEAD)\""
+      ],
+      "budget_seconds": 120,
+      "budget_approval": null,
+      "last_run": {
+        "duration_seconds": 4.546,
+        "finished_at": "2026-11-21T17:13:32Z",
+        "result": "passed"
+      }
     }
   }
 }

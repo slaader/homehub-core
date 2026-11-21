@@ -328,6 +328,108 @@ test('tickets UI: session reset closes dialogs and discards a pending dialog loa
  add();setPrincipal(null);resolve(Response.json(data));await flush();assert.equal(nodes(document.body,n=>n.tag==='dialog').length,0);
 });
 
+test('project settings and its table keep preferences, requests and new items scoped',async t=>{
+ dom(t);
+ document.addEventListener=()=>{};
+ const {s}=await store(t),project='home-hub',writer={canWrite:true,scopes:['tickets:write']};
+ const mine=await s.create({project,title:'Scoped item'},'a');
+ await s.create({project:'sample-game',title:'Foreign item'},'a');
+ const settings={view:'table',color:'blue',releases:false,reviews:false,wiki:false,globalReferences:false};
+ const get=[],post=[];
+ globalThis.fetch=async(raw,options={})=>{
+  const url=new URL(raw,'http://hub.test'),params=Object.fromEntries(url.searchParams);
+  if(options.method==='POST'){
+   const body=JSON.parse(options.body);post.push(body);
+   if(url.pathname==='/api/tickets/update')return Response.json(await s.update(body,'ui'));
+   Object.assign(settings,body.settings);
+   return Response.json({...((await s.list()).projects.find(p=>p.id===project)),rev:body.rev+1,settings});
+  }
+  if(url.pathname==='/api/tickets/people')return Response.json({people:[]});
+  if(url.pathname.startsWith('/api/wiki/'))return Response.json({enabled:false});
+  assert.equal(url.pathname,'/api/tickets');get.push(params);
+  const data=await s.list(params);data.projects.find(p=>p.id===project).settings=settings;
+  return Response.json(data);
+ };
+ const render=async(hash,me=writer)=>{
+  location.hash=hash;const [page,id]=hash.slice(1).split('/'),root=trackerView(me,page,id);
+  document.body.replaceChildren(root);await flush();return root;
+ };
+ const root=await render('#projects/'+project);
+ assert.ok(root.textContent.includes(mine.title));
+ assert.doesNotMatch(root.textContent,/Foreign item|Set up wiki|Review →|Next release/);
+ assert.equal(buttonText(root,'☰ Table'),undefined);
+ assert.ok(nodes(root,n=>n.attrs.href==='#projects/'+project+'/settings').length);
+ const filter=nodes(root,n=>n.attrs['aria-label']==='All statuses')[0];
+ filter.listeners.change({target:{value:'done'}});await flush();assert.ok(!root.textContent.includes(mine.title));
+ buttonText(root,'Clear filters').listeners.click();await flush();assert.ok(root.textContent.includes(mine.title));
+ const move=nodes(root,n=>n.attrs['aria-label']==='Status of '+mine.id)[0];
+ await move.listeners.change({stopPropagation(){},target:{value:'done'}});await flush();
+ assert.equal(post[0].id,mine.id);assert.ok(!root.textContent.includes('Scoped item'));
+ await buttonText(root,'+ New item').listeners.click();
+ const projectField=byName(nodes(document.body,n=>n.tag==='dialog')[0],'project');
+ assert.deepEqual(projectField.children.map(o=>o.attrs.value),[project]);
+ assert.ok(get.every(q=>q.project===project));
+ get.length=0;
+ const global=await render('#items');assert.ok(global.textContent.includes('Foreign item'));assert.ok(get.every(q=>!q.project));
+ assert.ok(nodes(global,n=>n.attrs.class?.includes('sys-chip')&&n.attrs['data-project-color']==='blue').length);
+ const look='#projects/'+project+'/settings/look';
+ const reader=await render(look,{canWrite:true,scopes:['read']});
+ assert.equal(buttonText(reader,'Save changes'),undefined);assert.ok(reader.textContent.includes('Look and feel'));
+ assert.ok(nodes(reader,n=>n.tag==='fieldset'&&n.attrs.disabled==='').length);
+ const edit=await render(look);
+ const form=nodes(edit,n=>n.tag==='form')[0];
+ await form.listeners.submit({preventDefault(){},currentTarget:{elements:{color:{value:'teal'},view:{value:'board'}}}});
+ assert.deepEqual(post.at(-1),{id:project,rev:1,settings:{color:'teal',view:'board'}});
+ assert.ok(nodes(edit,n=>n.tag==='input'&&n.attrs.value==='teal'&&n.attrs.checked==='').length);
+ const features=await render('#projects/'+project+'/settings/features');
+ assert.match(features.textContent,/Additional settings/);
+ assert.ok(byName(features,'globalReferences'));
+ for(const invalid of ['typo','look/extra']){
+  const unknown=await render('#projects/'+project+'/settings/'+invalid);
+  assert.match(unknown.textContent,/This settings page does not exist/);
+  assert.equal(nodes(unknown,n=>n.tag==='form').length,0);
+ }
+ get.length=0;
+ const board=await render('#projects/'+project);
+ assert.match(board.textContent,/Scoped item/);
+ assert.doesNotMatch(board.textContent,/Foreign item/);
+ const type=nodes(board,n=>n.attrs['aria-label']==='All types')[0];
+ type.listeners.change({target:{value:'bug'}});await flush();
+ assert.doesNotMatch(board.textContent,/Scoped item/);
+ assert.ok(get.every(q=>q.project===project));
+ assert.ok(get.some(q=>q.type==='bug'));
+});
+
+test('disabled project features keep assigned releases and existing review results on tickets',async t=>{
+ dom(t);document.addEventListener=()=>{};
+ const {s}=await store(t),project='home-hub';
+ await s.saveRelease({project,version:'kept'},'a');
+ const tk=await s.create({project,title:'Linked ticket',release:'kept'},'a'),meta=await s.list();
+ meta.projects.find(p=>p.id===project).settings={releases:false,reviews:false,wiki:false,globalReferences:false};
+ const updates=[];
+ globalThis.fetch=async(url,options={})=>{
+  if(options.method==='POST'){
+   const change=JSON.parse(options.body);updates.push(change);return Response.json(await s.update(change,'a'));
+  }
+  if(url.startsWith('/api/review?'))return Response.json({sets:[{id:'R-1',title:'Earlier decision'}]});
+  if(url.startsWith('/api/wiki/'))return Response.json({pages:[]});
+  if(url==='/api/tickets/people')return Response.json({people:[]});
+  return Response.json(url==='/api/tickets/'+tk.id?tk:meta);
+ };
+ const root=trackerView({canWrite:true,scopes:['tickets:write']},'items',tk.id);
+ document.body.append(root);await flush();
+ assert.ok(nodes(root,n=>n.attrs.href==='#review/R-1'&&n.textContent.includes('Earlier decision')).length);
+ assert.ok(nodes(root,n=>n.attrs.href==='#releases'&&n.textContent==='kept').length);
+ assert.doesNotMatch(root.textContent,/Request review/);
+ buttonText(root,'Edit').listeners.click();
+ const edit=nodes(root,n=>n.tag==='form'&&n.textContent.startsWith('Edit'))[0];
+ assert.equal(byName(edit,'release'),undefined);
+ const fields=Object.fromEntries(nodes(edit,n=>n.attrs.name).map(n=>[n.attrs.name,n]));
+ fields.title.value='Updated title';
+ await edit.listeners.submit({preventDefault(){},currentTarget:{...fields,querySelector:()=>({disabled:false})}});
+ assert.deepEqual(updates,[{id:tk.id,rev:tk.rev,title:'Updated title'}]);
+});
+
 test('tickets UI: edits send changed fields, oversized comments stay editable, text stays inert',async t=>{
  dom(t);const {s}=await store(t);const ticket=await s.create({project:'home-hub',title:'<img src=x onerror=alert(1)>',description:'ž'.repeat(7900),refs:['javascript:alert(1)','https://example.test/query?a=1,2']},'a');
  const posts=[];globalThis.fetch=async(url,options={})=>{

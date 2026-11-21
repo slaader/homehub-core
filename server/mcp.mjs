@@ -7,7 +7,7 @@
 // instructions are assembled from the modules' mcpInstructions, so a plugin describes its own tools.
 import {entryHash,entryInput} from '../scripts/knowledge-edit.mjs';
 import {toolError} from './tool-error.mjs';
-import {TICKET_ID,TICKET_TYPES,TICKET_STATUSES,TICKET_PRIORITIES,RELEASE_STATUSES,PROJECT_TYPES,TICKET_ATTACHMENTS} from './tickets-store.mjs';
+import {TICKET_ID,TICKET_TYPES,TICKET_STATUSES,TICKET_PRIORITIES,RELEASE_STATUSES,PROJECT_TYPES,PROJECT_COLORS,PROJECT_VIEWS,TICKET_ATTACHMENTS} from './tickets-store.mjs';
 import {cleanName} from './ticket-files.mjs';
 import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
@@ -52,7 +52,7 @@ export const MCP_TOOLS=Object.freeze([
    base:{type:'string',pattern:'^[a-f0-9]{64}$',description:'Hash from inventory_get. Required when the entry already exists.'}},required:['entry'],additionalProperties:false},
   annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false}},
  {name:'projects_list',scope:'read',title:'Tickets: list projects',
-  description:'List project ids, ticket prefixes, names, descriptions, types and revs without loading tickets or releases. Use this to find a project or its rev for project_save; use tickets_list for tickets and releases.',
+  description:'List project ids, ticket prefixes, names, descriptions, types, settings and revs without loading tickets or releases. Use this to find a project or its rev for project_save; use tickets_list for tickets and releases.',
   inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,openWorldHint:false}},
  {name:'tickets_list',scope:'read',title:'Tickets: list',
   description:'List tickets with field filters, plus every project and release (releases carry per-status ticket counts over all their tickets). Sorted by status, then priority, then latest change; total is the number of matches before limit. Tickets come without comment text, history or attachments (comments and attachments are counts); use ticket_get for the full record and its rev, and ticket_search to look for words in comments too.',
@@ -87,9 +87,13 @@ export const MCP_TOOLS=Object.freeze([
    status:{type:'string',enum:[...RELEASE_STATUSES]},targetDate:{type:['string','null'],pattern:'^\\d{4}-\\d{2}-\\d{2}$'},releasedAt:{type:['string','null'],pattern:'^\\d{4}-\\d{2}-\\d{2}$'},notes:{type:'string',maxLength:2000},rev:{type:'integer',minimum:1}},required:['project','version'],additionalProperties:false},
   annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false}},
  {name:'project_save',scope:'tickets:write',title:'Tickets: create or change a project',
-  description:'Create a project (id, key, name, type) or change the name, description or type of an existing one. The key is the ticket prefix (key APP → tickets APP-1, APP-2, …); id and key can never change, and both must be unused. Omit rev to create; to change a project pass the rev shown in tickets_list → projects.',
+  description:'Create a project (id, key, name, type) or change the name, description, type or settings of an existing one. The key is the ticket prefix (key APP → tickets APP-1, APP-2, …); id and key can never change, and both must be unused. Omit rev to create; to change a project pass the rev shown in projects_list. settings is partial: pass only the fields to change, the others keep their values. releases, reviews and wiki only show or hide those parts of the project pages; globalReferences:false limits reference suggestions in the project to its own sources, machines and projects.',
   inputSchema:{type:'object',properties:{id:{type:'string',pattern:'^[a-z][a-z0-9-]{1,39}$',description:'Lowercase id used in URLs and filters, e.g. my-app.'},key:{type:'string',pattern:'^[A-Z][A-Z0-9]{1,9}$',description:'Ticket prefix: 2-10 capital letters or digits, e.g. APP. Required when creating.'},
-   name:{type:'string',minLength:1,maxLength:80},description:{type:'string',maxLength:500},type:{type:['string','null'],enum:[...PROJECT_TYPES,null],description:'app, game or other; decides which kind of review variants a set opens on.'},rev:{type:'integer',minimum:1}},required:['id'],additionalProperties:false},
+   name:{type:'string',minLength:1,maxLength:80},description:{type:'string',maxLength:500},type:{type:['string','null'],enum:[...PROJECT_TYPES,null],description:'app, game or other; decides which kind of review variants a set opens on.'},
+   settings:{type:'object',description:'Fields to change; omitted fields keep their values. Defaults: color null, view board, the rest true.',properties:{
+    color:{type:['string','null'],enum:[...PROJECT_COLORS,null],description:'Named project color, or null for none.'},view:{type:'string',enum:[...PROJECT_VIEWS],description:'How the project page lists its tickets.'},
+    releases:{type:'boolean'},reviews:{type:'boolean'},wiki:{type:'boolean'},globalReferences:{type:'boolean',description:'Offer global references and other projects\' shared sources in suggestions.'}},additionalProperties:false},
+   rev:{type:'integer',minimum:1}},required:['id'],additionalProperties:false},
   annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false}},
  {name:'ticket_attachment_get',scope:'read',title:'Tickets: read an attachment',
   description:'Read a file attached to a ticket (ids come from ticket_get → attachments). Images up to 5 MB come back as an image, plain-text files up to 256 kB as text; anything else returns only its metadata and download path. In a ticket description or comment, ![name] points at the attachment with that name.',

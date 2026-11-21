@@ -929,7 +929,8 @@ stale `rev` / an existing release. HTTP POST bodies are limited to 16 KiB (UTF-8
 tracker write arguments have the same size limit over MCP. Text-field character limits do not override this byte limit.
 Send only changed fields when updating. Dates must be real calendar dates in `YYYY-MM-DD` form.
 
-- **Projects** `{id, key, name, description, type, rev}`; none exist until you create one in the UI, with `POST /api/tickets/projects` or MCP `project_save` (a new, empty tracker also takes the seeds listed in site.json → `tracker.projects`, once). Ticket ids are `<KEY>-<n>`, e.g. `APP-12`.
+- **Projects** `{id, key, name, description, type, settings, rev}`; none exist until you create one in the UI, with `POST /api/tickets/projects` or MCP `project_save` (a new, empty tracker also takes the seeds listed in site.json → `tracker.projects`, once). Ticket ids are `<KEY>-<n>`, e.g. `APP-12`.
+- **Project settings** `{color, view, releases, reviews, wiki, globalReferences}`, on every project in every answer (the list, `projects_list`, a save), each field filled with its default when the project has never set it: `color` `null` or one of `slate`, `red`, `orange`, `amber`, `green`, `teal`, `blue`, `violet` (default `null`); `view` `board` or `table` (default `board`); the rest booleans, default `true`. `releases`, `reviews` and `wiki` only show or hide those parts of the project's pages: turning one off removes no record, and its routes, links and MCP tools keep working. `globalReferences: false` narrows [reference suggestions](#references) in the project to its own sources, machines and projects. See [project-settings.md](project-settings.md).
 - **Ticket** `{id, project, title, description, type: bug|feature|task, status: open|in-progress|done|cancelled, priority: low|normal|high|urgent, release: <version>|null, assignee|null, labels[], refs[], reporter, createdAt, updatedAt, closedAt|null, rev, comments[], history[]}`. `closedAt` is set on entering `done`/`cancelled` and cleared on reopening. `history` retains the latest 200 field changes (title/description only as "changed").
 - **Release** `{project, version, status: planned|released, targetDate|null, releasedAt|null, notes, rev}`. A ticket's `release` must be an existing version of the same project. The literal `none` is reserved for filtering unassigned releases/assignees and cannot be used as a version or assignee name.
 
@@ -943,7 +944,7 @@ Routes:
 - `POST /api/tickets/update` `{id, rev, …fields to change}` → ticket. `rev` must be the one you read; otherwise `409`.
 - `POST /api/tickets/comment` `{id, text}` → ticket. Append-only, no `rev`.
 - `POST /api/tickets/releases` `{project, version, status?, targetDate?, releasedAt?, notes?, rev?}` → release. Omit `rev` to create; pass it to change. `released` without a date stamps today.
-- `POST /api/tickets/projects` `{id, key, name, description?}` → `201` new project; `{id, rev, name?, description?}` → `200` changed project. `id` and `key` never change.
+- `POST /api/tickets/projects` `{id, key, name, description?, type?, settings?}` → `201` new project; `{id, rev, name?, description?, type?, settings?}` → `200` changed project. `id` and `key` never change. `settings` is partial: the fields it names are validated and replace the project's, every other field keeps its value (`{}` changes none). An unknown field or value is `400` and writes nothing; every save, settings included, needs the current `rev` (otherwise `409`) and raises it by one. `tickets:write`, like every tracker write.
 
 MCP `tickets_list` uses `query` for text search and an integer `limit` of 1–200 (default 50); HTTP uses `q` and supports `limit` of 1–5000. `release_save` accepts `releasedAt` as well as `targetDate`. MCP `ticket_search` takes `query` plus the same filters as `GET /api/tickets/search` and returns the same document.
 
@@ -959,7 +960,7 @@ Attachments (stored in `state/tickets/attachments/<sha256>`, at most 20 per tick
 
 MCP tools (service-account key): `projects_list`, `tickets_list`, `ticket_search`, `ticket_get`, `ticket_attachment_get` (`read`; images up to 5 MB come back as an image, text up to 256 kB as text); `ticket_create`, `ticket_update`, `ticket_comment`, `release_save`, `project_save`, `ticket_attachment_put` (`tickets:write`).
 
-- `projects_list {}` returns `{projects:[...]}` with ids, keys, names, descriptions, types and revs, without loading tickets or releases. Use it for project discovery and revision checks; use `ticket_get` directly for a known ticket id. Reuse revs returned by successful creates/updates instead of fetching the same record again.
+- `projects_list {}` returns `{projects:[...]}` with ids, keys, names, descriptions, types, settings and revs, without loading tickets or releases. Use it for project discovery and revision checks; use `ticket_get` directly for a known ticket id. Reuse revs returned by successful creates/updates instead of fetching the same record again.
 - `ticket_attachment_put {id, name, data}` accepts canonical padded base64 for 1–32,768 bytes. It detects the content type from the bytes and returns the full saved ticket. Identical file bytes already attached to that ticket return the existing record, even if the supplied name differs; retries also work after a name collision or when the ticket is full. New content still uses the ordinary 20-file limit. The MCP request limit remains 64 KiB; this tool never reads server-local paths or remote URLs.
 - For local files up to 100 MiB, `node scripts/ticket-push.mjs APP-12 file [file ...]` streams the raw HTTP upload with `HOME_HUB_URL` (HTTPS origin; loopback HTTP for tests) and `HOME_HUB_TOKEN` (a service-account key with `tickets:write`) from the environment. It skips content already attached and checks the ticket after a lost response, without automatically replaying a write. Concurrent independent uploader processes can still attach the same file twice through the raw HTTP endpoint. Names come from the saved metadata. Credentials are never printed and redirects are refused.
 - Creation and comments are not idempotent: after an uncertain response, read/search before retrying. An unexpected ticket error does not promise that a prior write failed.
@@ -970,7 +971,7 @@ The web UI (`#projects`, `#projects/<id>`, `#items`, `#items/<ID>`, `#releases`)
 
 An agent that should file tickets needs `tickets:write`: a custom selection, the Editor preset or full access (see Access → service accounts).
 
-Projects carry `type`: `app`, `game`, `other` or `null` (`POST /api/tickets/projects` and MCP `project_save` accept it).
+Projects carry `type`: `app`, `game`, `other` or `null`, and `settings` (above). `POST /api/tickets/projects` and MCP `project_save` accept both, with the same partial-settings rules.
 
 
 ### Hybrid ticket search
@@ -1672,7 +1673,7 @@ A wiki ID is the full `project/pageId`; encode it as one query parameter. Model 
 | HTTP route | Scope | Input and result |
 |---|---|---|
 | `GET /api/references` | read | Filter by optional `kind` (machine, model, project, custom, wiki, ticket), `scope` (global, local), owning `project`, and prefix `q`. Returns `{items,total}` with offset/limit pagination (50 by default, 100 maximum). |
-| `GET /api/references/suggest` | read | Same filters, with `project` meaning the project being edited. Includes its local items and all global items. Default 8, maximum 20. Matches case- and accent-insensitive prefixes of labels, words and IDs. |
+| `GET /api/references/suggest` | read | Same filters, with `project` meaning the project being edited. Includes its local items and all global items; when that project's `settings.globalReferences` is `false`, only its own items (shared ones it owns included), machines and projects. Default 8, maximum 20. Matches case- and accent-insensitive prefixes of labels, words and IDs. |
 | `GET /api/references/item?kind=…&id=…` | read | Returns `{record,note,usages,usageTotal}`. Each usage has a source kind, ID, label, direct href, excerpt and update date. Ticket uses also identify the description or comment. Page with `offset` and `limit`. |
 | `POST /api/references/resolve` | read | `{refs:[{kind,id}]}`, maximum 100. Returns `{items}` with current labels and source links for known IDs. |
 | `POST /api/references/local/save` | tickets:write | `{kind:"custom",project,label,description?,id?,rev?}` creates or replaces a project record. |
@@ -1686,6 +1687,8 @@ A wiki ID is the full `project/pageId`; encode it as one query parameter. Model 
 Creation omits ID and revision. Updates send both. A stale revision or a duplicate label of the same
 kind in the destination returns 409. Labels accept 1–200 characters, descriptions up to 8,000.
 A record save supplies its full label and description. Read the current record before editing.
+
+A project's own References list is `GET /api/references?scope=local&project=<id>` (add `kind`, `q`, `offset`, `limit`); its order is stable (match, then label, then kind and ID), so offset pages of one query neither repeat nor skip. `globalReferences` changes suggestions only: saving a mention, resolving, listing, incoming uses and cross-project sharing are the same whatever it says.
 
 Agents can call `references_search` for the catalog, `references_suggest` for project-aware
 autocomplete, and `reference_get` for a source and its incoming uses. Each needs `read` and uses the

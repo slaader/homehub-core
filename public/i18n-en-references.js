@@ -1,4 +1,6 @@
 export default {
+ 'Reference projektu':'Project references',
+ 'Po zaškrtnutí bude reference dostupná ve všech projektech.':'When checked, this reference is available in all projects.',
  'Založení nebo úprava vlastní projektové reference.':'Create or revise a project-owned Custom record.',
  'Založení nebo úprava globální reference nebo modelu.':'Create or revise a global Custom or model record.',
  'Smazání vlastní projektové reference.':'Delete a project-owned Custom record.',
