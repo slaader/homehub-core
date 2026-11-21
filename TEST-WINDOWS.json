@@ -6,13 +6,13 @@
       "category": "full",
       "scope": "Core regression suite, including native thumbnail and video checks when FFmpeg is configured",
       "commands": [
-        "npm test"
+        "env HOME_HUB_WIKI_FFMPEG=\"$(command -v ffmpeg)\" npm test"
       ],
       "budget_seconds": 600,
       "budget_approval": "Owner approved up to ten minutes per full-suite run for the wiki inventory release.",
       "last_run": {
-        "duration_seconds": 139.609,
-        "finished_at": "2026-11-19T22:06:59Z",
+        "duration_seconds": 129.13,
+        "finished_at": "2026-11-21T14:54:45Z",
         "result": "passed"
       }
     },
@@ -39,8 +39,8 @@
       "budget_seconds": 120,
       "budget_approval": null,
       "last_run": {
-        "duration_seconds": 5.72,
-        "finished_at": "2026-11-21T14:45:54Z",
+        "duration_seconds": 8.73,
+        "finished_at": "2026-11-21T14:52:54Z",
         "result": "passed"
       }
     },

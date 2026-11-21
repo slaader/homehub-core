@@ -168,7 +168,7 @@ export function createMcpBusiness({version='2',ctx,tools:extraTools=[],instructi
  const orientation=principal=>{
   const lines=new Map();
   for(const part of instructions)if(!part.scope||principal.scopes.includes(part.scope))lines.set(part.module,[...(lines.get(part.module)||[]),part.text]);
-  return [`Home Hub: one site's devices and their runtime stacks, an inventory of what runs where, a project tracker and design review, kept current by people and agents. You are service account "${principal.username}" with scopes: ${principal.scopes.join(', ')}. tools/list shows only what these scopes allow.${principal.permission==='write'?' Read a thing before you change it: the change takes the hash or rev you read and is refused when that is stale; then read again, never force. Never store a secret (password, token, key) here: record where it is kept.':''}`,
+  return [`Home Hub: devices and runtimes, inventory, project tracking, and design review. You are service account "${principal.username}" with scopes: ${principal.scopes.join(', ')}. tools/list shows only what these scopes allow.${principal.permission==='write'?' Read a thing before you change it: the change takes the hash or rev you read and is refused when that is stale; then read again, never force. Never store a secret (password, token, key) here: record where it is kept.':''}`,
    ...[...lines.values()].map(parts=>parts.join(' '))].join('\n');
  };
  // Core tools first, then the tools modules registered; a name can only be claimed once (checked by the registry).

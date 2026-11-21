@@ -69,7 +69,7 @@ const SEARCH_ARGS=['query','project','status','type','priority','release','assig
 export default {
  id:'tracker',title:'Project Tracker',
  mcpInstructions:[
-  'Tracker: projects_list finds projects; tickets_list filters tickets/releases. ticket_search searches words; ticket_hybrid_search: attachment full-text by default; optional semantics (ticket_search_status: coverage). search includes reviews. Known id: ticket_get; ticket_attachment_get reads files.',
+  'Tracker: projects_list, tickets_list, ticket_get. ticket_search finds words; ticket_hybrid_search includes attachments (ticket_search_status: coverage). search includes reviews. ticket_attachment_get reads files.',
   {scope:'tickets:write',text:'With tickets:write: project_save then ticket_create. ticket_update uses the returned rev; ticket_comment appends. release_save/project_save: omit rev to create. ticket_attachment_put: up to 32 KiB; larger files use HTTP.'},
  ],
  assets:['tracker-view.js','tracker-md.js','tracker-attach.js','search-view.js','platform-settings-view.js','tickets.css','i18n-en-tracker.js'],
