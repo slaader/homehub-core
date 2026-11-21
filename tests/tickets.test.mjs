@@ -430,6 +430,63 @@ test('disabled project features keep assigned releases and existing review resul
  assert.deepEqual(updates,[{id:tk.id,rev:tk.rev,title:'Updated title'}]);
 });
 
+test('tickets UI: wiki pages that mention a ticket are listed once, under References and where used',async t=>{
+ dom(t);document.addEventListener=()=>{};
+ const {s}=await store(t),project='home-hub';
+ const tk=await s.create({project,title:'Mentioned ticket'},'a'),other=await s.create({project,title:'Mentioning ticket'},'a'),meta=await s.list();
+ const pages=[{project,id:'units',title:'Unit roster',updatedAt:'2026-11-20T10:00:00.000Z'},{project,id:'build',title:'Build notes',updatedAt:'2026-11-19T10:00:00.000Z'}];
+ const wikiSource=p=>({kind:'wiki',id:p.project+'/'+p.id,label:p.title,project:p.project,href:'#wiki/'+p.project+'/'+p.id});
+ const usages=[...pages.map(p=>({source:wikiSource(p),updatedAt:p.updatedAt,excerpt:'See '+tk.id})),
+  {source:{kind:'ticket',id:other.id,label:other.title,project,href:'#items/'+other.id},field:'description',updatedAt:'2026-11-18T10:00:00.000Z',excerpt:'Blocked by '+tk.id}];
+ const gets=[];
+ globalThis.fetch=async url=>{
+  gets.push(url);
+  if(url==='/api/wiki/tickets/'+tk.id+'/backlinks')return Response.json({pages});
+  if(url.startsWith('/api/references/item?'))return Response.json({record:{kind:'ticket',id:tk.id,label:tk.title,project,scope:'local',href:'#items/'+tk.id},note:null,usages,usageTotal:usages.length});
+  if(url.startsWith('/api/review?'))return Response.json({sets:[]});
+  if(url==='/api/tickets/people')return Response.json({people:[]});
+  return Response.json(url==='/api/tickets/'+tk.id?tk:meta);
+ };
+ const root=trackerView({canWrite:true,scopes:['tickets:write']},'items',tk.id);document.body.append(root);await flush();
+ // No second card lists the same pages: the closed References card only counts them.
+ assert.equal(nodes(root,n=>n.tag==='h3'&&n.textContent==='Wiki').length,0);
+ const sections=nodes(root,n=>n.tag==='details'&&n.classList.contains('ref-section'));
+ assert.equal(sections.length,1);
+ const [section]=sections,summary=section.children[0];
+ assert.equal(summary.tag,'summary');
+ assert.equal(summary.textContent,'References and where used2 wiki pages');
+ assert.equal(nodes(summary,n=>n.classList.contains('ref-summary-count')).length,1);
+ assert.equal(nodes(root,n=>n.tag==='a'&&n.attrs.href?.startsWith('#wiki/')).length,0,'no Wiki page link before the card is opened');
+ assert.equal(gets.filter(u=>u.startsWith('/api/references/item?')).length,0,'the usage list stays lazy');
+ // Opening it lists every incoming mention once: both Wiki pages and the ticket that mentions this one.
+ section.open=true;section.listeners.toggle();await flush();
+ for(const p of pages)assert.equal(nodes(root,n=>n.tag==='a'&&n.attrs.href===wikiSource(p).href).length,1,p.title);
+ assert.equal(nodes(root,n=>n.tag==='a'&&n.attrs.href==='#items/'+other.id).length,1);
+ assert.ok(nodes(section,n=>n.tag==='h3'&&n.textContent==='Where used (3)').length);
+ // Drawing the ticket again (the edit form opens) keeps the same card, its count and its list.
+ buttonText(root,'Edit').listeners.click();
+ assert.deepEqual(nodes(root,n=>n.tag==='details'&&n.classList.contains('ref-section')),[section]);
+ assert.equal(summary.textContent,'References and where used2 wiki pages');
+});
+
+test('tickets UI: a ticket with no wiki backlinks, or a failed backlinks read, shows no count',async t=>{
+ dom(t);document.addEventListener=()=>{};
+ const {s}=await store(t),tk=await s.create({project:'home-hub',title:'Lonely ticket'},'a'),meta=await s.list();
+ for(const backlinks of [()=>Response.json({pages:[]}),()=>Response.json({error:{message:'down'}},{status:503})]){
+  globalThis.fetch=async url=>{
+   if(url.startsWith('/api/wiki/'))return backlinks();
+   if(url.startsWith('/api/review?'))return Response.json({sets:[]});
+   if(url==='/api/tickets/people')return Response.json({people:[]});
+   return Response.json(url==='/api/tickets/'+tk.id?tk:meta);
+  };
+  const root=trackerView({canWrite:true},'items',tk.id);document.body.append(root);await flush();
+  const [section]=nodes(root,n=>n.tag==='details'&&n.classList.contains('ref-section'));
+  assert.equal(section.children[0].textContent,'References and where used');
+  assert.equal(nodes(root,n=>n.tag==='h3'&&n.textContent==='Wiki').length,0);
+  root.remove();
+ }
+});
+
 test('tickets UI: edits send changed fields, oversized comments stay editable, text stays inert',async t=>{
  dom(t);const {s}=await store(t);const ticket=await s.create({project:'home-hub',title:'<img src=x onerror=alert(1)>',description:'ž'.repeat(7900),refs:['javascript:alert(1)','https://example.test/query?a=1,2']},'a');
  const posts=[];globalThis.fetch=async(url,options={})=>{
