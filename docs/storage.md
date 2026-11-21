@@ -73,6 +73,9 @@ wiki directories and their metadata under `STATE_DIR`.
   the ticket store's `search()`, which filters the hits by ticket fields. None of them changes the schema.
 - `PRAGMA user_version` is the schema version. Newer code migrates forward; older code refuses a newer file
   rather than misreading it.
+- Schema 6 (data epoch 11) gives every tracker project row `settings` with its defaults (`color:null, view:'board'`,
+  the rest `true`); only rows without it change, and their `rev` and ticket counter stay. Releases before
+  epoch 11 refuse the file; going back needs the pre-update backup.
 
 Query by hand (read-only is enough; the server may keep running):
 

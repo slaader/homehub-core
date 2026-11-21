@@ -46,19 +46,23 @@ export function createReferences(hub){
     ...pages.map(p=>entry('wiki',p.project+'/'+p.id,p.title,p.project)),...records.brief()];
    cached={stamp,entries:entries.map(r=>{
     return {...r,href:referenceHref(r.kind,r.id),...(shared.has(referenceKey(r))?{scope:'global'}:{})};
-   })};
+   }),isolated:new Set(projects.filter(p=>!p.settings.globalReferences).map(p=>p.id))};
   }
-  return {entries:[...cached.entries,...await machines()]};
+  return {entries:[...cached.entries,...await machines()],isolated:cached.isolated};
  }
  async function search(input={},suggest=false){
   if(!exactKeys(input,['kind','project','scope','q','limit','offset'])||input.kind!==undefined&&!referenceKinds.includes(input.kind)||
     input.scope!==undefined&&!['local','global'].includes(input.scope)||input.project!==undefined&&!validReference('project',input.project)||
     input.q!==undefined&&(typeof input.q!=='string'||input.q.length>200))fail('invalid');
   const limit=number(input.limit,suggest?8:50,1,suggest?20:100),offset=number(input.offset,0,0,1000000),q=fold(input.q??'').trim();
-  const {entries}=await catalog(),matches=[];
+  const {entries,isolated}=await catalog(),matches=[];
+  // A project whose settings turn globalReferences off is offered its own sources, machines and projects only.
+  // Discovery alone: saving, resolving and listing references are unchanged.
+  const own=suggest&&isolated.has(input.project);
   for(const r of entries){
    if(input.kind&&input.kind!==r.kind||input.scope&&input.scope!==r.scope)continue;
    if(suggest?!available(r,input.project):input.project&&input.project!==r.project)continue;
+   if(own&&r.project!==input.project&&r.kind!=='machine'&&r.kind!=='project')continue;
    const label=fold(r.label),prefix=label.startsWith(q);
    if(!prefix&&!fold(r.id).startsWith(q)&&!label.split(/[^\p{L}\p{N}]+/u).some(word=>word.startsWith(q)))continue;
    matches.push({r,rank:(prefix?0:2)+(r.project===input.project?0:1)});
