@@ -33,6 +33,7 @@ import accessModule from './core/access.mjs';
 import homeModule from './core/home.mjs';
 import inventoryModule from './core/inventory.mjs';
 import trackerModule from './core/tracker.mjs';
+import referencesModule from './core/references.mjs';
 import wikiModule from './core/wiki.mjs';
 import reviewModule from './core/review.mjs';
 import securityModule from './core/security.mjs';
@@ -61,7 +62,7 @@ export const PAGE_CSP=`default-src 'self'; script-src 'self'; style-src 'self'${
 export const REQUEST_DEADLINE_MS=10_000,UPLOAD_TIMEOUT_MS=20*60_000;
 
 // Core modules, in set-up order (a later one may use the state of an earlier one).
-export const CORE_MODULES=Object.freeze([sessionModule,shellModule,accessModule,homeModule,runtimesModule,inventoryModule,trackerModule,wikiModule,reviewModule,securityModule,routerModule,integrationsModule,modelsModule,deviceCatalogModule,backupsModule,gitLfsModule,updatesModule,agentModule].map(m=>defineModule(m,{core:true})));
+export const CORE_MODULES=Object.freeze([sessionModule,shellModule,accessModule,homeModule,runtimesModule,inventoryModule,trackerModule,wikiModule,referencesModule,reviewModule,securityModule,routerModule,integrationsModule,modelsModule,deviceCatalogModule,backupsModule,gitLfsModule,updatesModule,agentModule].map(m=>defineModule(m,{core:true})));
 // Plugins found in the plugin directories when the process started (server/plugins.mjs → pluginsDirectories), each
 // checked against its plugin.json and the site's plugins.<id> settings.
 export const STARTUP_PLUGINS=Object.freeze(await loadPlugins(undefined,{site:loadedSite()}));

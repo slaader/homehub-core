@@ -1661,3 +1661,38 @@ Package entries include CLI download/preflight/apply instructions, hosting-provi
 only CLI preflight establishes real instance compatibility and independently configured signatures authorize code.
 There is no package upload, installation, trust-write or restart route or MCP tool. `/healthz` remains unauthenticated
 with exactly `{ok:true}`; `X-Home-Hub-Run-Id` correlates it with the local runtime identity file without exposing version.
+
+## References
+
+All readers can browse Settings → References, read model documentation and inspect incoming uses. A
+project-local reference is available for mentions in its owning project. Existing Home Hub read
+access covers all projects. A native wiki page, tracker ticket, project or machine keeps its source ID.
+A wiki ID is the full `project/pageId`; encode it as one query parameter. Model and Custom IDs are opaque.
+
+| HTTP route | Scope | Input and result |
+|---|---|---|
+| `GET /api/references` | read | Filter by optional `kind` (machine, model, project, custom, wiki, ticket), `scope` (global, local), owning `project`, and prefix `q`. Returns `{items,total}` with offset/limit pagination (50 by default, 100 maximum). |
+| `GET /api/references/suggest` | read | Same filters, with `project` meaning the project being edited. Includes its local items and all global items. Default 8, maximum 20. Matches case- and accent-insensitive prefixes of labels, words and IDs. |
+| `GET /api/references/item?kind=…&id=…` | read | Returns `{record,note,usages,usageTotal}`. Each usage has a source kind, ID, label, direct href, excerpt and update date. Ticket uses also identify the description or comment. Page with `offset` and `limit`. |
+| `POST /api/references/resolve` | read | `{refs:[{kind,id}]}`, maximum 100. Returns `{items}` with current labels and source links for known IDs. |
+| `POST /api/references/local/save` | tickets:write | `{kind:"custom",project,label,description?,id?,rev?}` creates or replaces a project record. |
+| `POST /api/references/global/save` | references:write | `{kind:"custom"\|"model",label,description?,id?,rev?}` creates or replaces a Settings record. Models are documentation for readers and agents. |
+| `POST /api/references/local/delete` | tickets:write | `{project,kind,id,rev}`. Existing mentions retain their saved labels. |
+| `POST /api/references/global/delete` | references:write | `{kind,id,rev}` for a Custom or model record. |
+| `POST /api/references/promote` | tickets:write + references:write | `{kind:"custom",project,id,rev}`. Atomically moves a local record to Settings with the same ID. |
+| `POST /api/references/share` | tickets:write + references:write | `{kind,id,rev}` allows a native wiki page or ticket to be mentioned across projects. Pass the annotation revision, initially zero. |
+| `POST /api/references/note` | references:write | `{kind,id,description,rev}` sets the optional description on a native source. Pass the annotation revision, initially zero. An empty description clears the text. |
+
+Creation omits ID and revision. Updates send both. A stale revision or a duplicate label of the same
+kind in the destination returns 409. Labels accept 1–200 characters, descriptions up to 8,000.
+A record save supplies its full label and description. Read the current record before editing.
+
+Agents can call `references_search` and `reference_get` with `read`. The corresponding mutation tools are
+`project_reference_save`, `reference_save`, `project_reference_delete`, `reference_delete`,
+`reference_promote`, `reference_share`, and `reference_note_save`. They use the same inputs, scopes and revision rules.
+
+Ticket description and comment mentions use `@[Label](ref:kind/id)`, for example
+`@[Build host](ref:machine/build-host)`. Escape brackets and backslashes within the label with a
+backslash. A backslash immediately before the token displays it literally. Fenced and inline code
+remain literal. Legacy ticket IDs keep their existing automatic links. Wiki mentions use typed inline
+runs as described in [Wiki](wiki.md). External Atlassian Jira tickets are outside the native tracker catalog.

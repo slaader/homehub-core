@@ -13,6 +13,7 @@ export const CORE_SCOPES=Object.freeze({
  'inventory:write':{label:'Inventář – zápis',desc:'Zakládat a měnit záznamy inventáře a služeb (s kontrolou otisku a bez tajemství).'},
  'home:settings':{label:'Nastavení přehledu',desc:'Měnit interval čtení Thermo.'},
  'tickets:write':{label:'Tickety – zápis',desc:'Zakládat a měnit tickety, komentáře, releasy, projekty a jejich wiki.'},
+ 'references:write':{label:'Reference – zápis',desc:'Měnit globální reference, dokumentaci modelů a poznámky ke zdrojům.',legacy:false},
  'review:write':{label:'Review – zápis',desc:'Nahrávat varianty k posouzení (mockupy, rendery) a ukládat rozhodnutí a připomínky.'},
  'security:read':{label:'Bezpečnost – čtení',desc:'Číst inventář SSH klíčů, verze systémů a ochranu zařízení.',readOnly:true,legacy:false},
 

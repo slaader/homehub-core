@@ -1,3 +1,4 @@
+import {referenceChip} from './reference-chip.js';
 import {el} from './views.js';
 import {t} from './i18n.js';
 import {authGuard,onSessionReset} from './session-cache.js';
@@ -60,12 +61,16 @@ const ticketStates={
  open:['Otevřený','warn'],'in-progress':['Rozpracovaný','info'],done:['Hotovo','ok'],cancelled:['Zrušený','dim'],
 };
 export function ticketChip(id,ticket,editing=false){
+ if(!ticket){
+  const chip=referenceChip({kind:'ticket',id,label:id},editing);
+  if(editing){chip.removeAttribute('data-ref-kind');chip.setAttribute('data-ticket',id);}
+  return chip;
+ }
  const [label,tone]=ticketStates[ticket?.status]??[];
  const contents=[el('b',{class:'tk-mono'},id),ticket?.title,
   label?el('span',{class:`sec-pill ${tone}`},t(label)):null];
  if(editing)return el('span',{class:'wiki-ticket',contenteditable:'false','data-ticket':id},contents);
- return ticket?el('a',{class:'wiki-ticket',href:'#items/'+id},contents):
-  el('span',{class:'wiki-ticket wiki-ticket-missing',title:t('Ticket se nepodařilo načíst.')},id);
+ return el('a',{class:'wiki-ticket',href:'#items/'+id},contents);
 }
 
 function textNode(run){
@@ -73,6 +78,7 @@ function textNode(run){
 }
 export function inlineNodes(runs,{tickets,editing}){
  return runs.map(run=>{
+  if(run.t==='ref')return referenceChip(run,editing);
   if(run.t==='ticket')return ticketChip(run.id,tickets.get(run.id),editing);
   if(run.t==='link')return el('a',{href:run.href,target:'_blank',rel:'noopener noreferrer'},run.c.map(textNode));
   return textNode(run);

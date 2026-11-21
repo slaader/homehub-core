@@ -1,3 +1,4 @@
+import {referencesSection} from './references-view.js';
 import {el,onLeave} from './views.js';
 import {t,locale} from './i18n.js';
 import {timeZone} from './site.js';
@@ -201,6 +202,7 @@ export function wikiPage({me,sub:project,onWikiTree}){
     })):
     emptyState({icon:'box',compact:true,title:t('Tahle stránka je prázdná.'),
      actions:writable?[{label:t('Upravit'),primary:true,onclick:edit}]:[]}));
+   content.append(referencesSection('wiki',project+'/'+page.id,me));
    const subpages=children.get(page.id)??[];
    if(subpages.length)content.append(el('section',{class:'acc-card wiki-linked'},
     el('h2',{},t('Podstránky')),el('ul',{},subpages.map(entry=>el('li',{},el('a',{href:wikiHref(project,entry.id)},entry.title))))));
@@ -224,7 +226,7 @@ export function wikiPage({me,sub:project,onWikiTree}){
   const title=el('input',{required:'',maxlength:WIKI_LIMITS.title,value:draft?.title??page.title});
   let conflict=rev!==page.rev?page:null,busy=false,dirty=Boolean(draft),disposed=false,copyRequest=null;
   const conflictNotice=el('div',{});
-  const editor=wikiEditor({page,doc:draft?.doc??page.doc,tickets,api:wikiApi,dialog,changed});
+  const editor=wikiEditor({page,doc:draft?.doc??page.doc,tickets,api:wikiApi,dialog,canGlobal:me?.scopes?.includes('references:write'),changed});
   const read=()=>({rev,title:title.value,doc:editor.read()});
   const initialBody=JSON.stringify(editor.read());
   const original=draft?null:JSON.stringify(read());

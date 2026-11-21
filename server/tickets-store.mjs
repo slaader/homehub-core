@@ -4,6 +4,8 @@
 // release carries `rev`; an update must send the rev it read, otherwise it is refused as a conflict (read
 // again, reapply). Comments are append-only and need no rev.
 // Errors are thrown as Error('invalid' | 'not-found' | 'conflict' | 'limit').
+import {referenceGuard} from './reference-records.mjs';
+import {markdownReferences} from '../public/tracker-markdown-format.js';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {openDb} from './db.mjs';
@@ -65,7 +67,7 @@ export function ticketFilter(filter,keys=FILTERS){
   return {f,match};
  }
 
-export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seedProjects=[]}={}){
+export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seedProjects=[],machines=async()=>[]}={}){
  let queue=Promise.resolve(),searchRevision=0;const searchListeners=new Set();
  const store=db.collection('tickets',{empty:()=>empty(seedProjects),legacy:path.join(root,'tickets.json'),searchKinds:['ticket'],search:ticketSearch,
   valid:d=>d?.schema===1&&Array.isArray(d.projects)&&Array.isArray(d.releases)&&Array.isArray(d.tickets),
@@ -211,10 +213,18 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
   if('refs'in input)out.refs=refs(input.refs);
   return out;
  }
+ async function guardText(value,attachments=[]){
+  if(typeof value!=='string'||!value.includes('@['))return ()=>{};
+  const options={attachmentNames:attachments.map(a=>a.name)};
+  const refs=markdownReferences(value,options);
+  const validate=await referenceGuard(db,machines,refs);
+  return (project,previous='')=>validate(project,markdownReferences(previous,options));
+ }
  async function create(input,by){
   if(!writeInput(input,['project',...TICKET_FIELDS])||typeof input.project!=='string'||!('title'in input))fail('invalid');
+  const validate=await guardText(input.description);
   return write((data,now,count)=>{
-   const project=projectOf(data,input.project);if(count('tickets')>=LIMITS.tickets)fail('limit');
+   const project=projectOf(data,input.project);validate(project.id);if(count('tickets')>=LIMITS.tickets)fail('limit');
    const f=fields(input,project.id,data),id=`${project.key}-${project.next}`;project.next++;
    const ticket={id,project:project.id,title:f.title,description:f.description??'',type:f.type??'task',status:f.status??'open',priority:f.priority??'normal',
     release:f.release??null,assignee:f.assignee??null,labels:f.labels??[],refs:f.refs??[],reporter:by,createdAt:now,updatedAt:now,
@@ -224,8 +234,12 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
  }
  async function update(input,by){
   if(!writeInput(input,['id','rev',...TICKET_FIELDS])||!validRev(input.rev)||!TICKET_FIELDS.some(k=>k in input))fail('invalid');
+  const current=typeof input.description==='string'&&input.description.includes('@[')?await get(input.id):null;
+  const validate=await guardText(input.description,current?.attachments);
   return write((data,now)=>{
-   const t=ticketOf(data,input.id);if(t.rev!==input.rev)fail('conflict');
+   const t=ticketOf(data,input.id);if(current&&JSON.stringify(current.attachments)!==JSON.stringify(t.attachments??[]))fail('conflict');
+   if(t.rev!==input.rev)fail('conflict');
+   validate(t.project,t.description);
    const f=fields(input,t.project,data),changed=Object.keys(f).filter(k=>JSON.stringify(f[k])!==JSON.stringify(t[k]));
    if(!changed.length)return t;
    // History keeps values for the short fields; title/description record only that they changed.
@@ -236,9 +250,12 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
  }
  async function comment(input,by){
   if(!writeInput(input,['id','text'])||!('text'in input))fail('invalid');
-  const body=text(input.text,8000);
+  const body=text(input.text,8000),current=body.includes('@[')?await get(input.id):null;
+  const validate=await guardText(body,current?.attachments);
   return write((data,now)=>{
-   const t=ticketOf(data,input.id);if(t.comments.length>=LIMITS.comments)fail('limit');
+   const t=ticketOf(data,input.id);if(current&&JSON.stringify(current.attachments)!==JSON.stringify(t.attachments??[]))fail('conflict');
+   validate(t.project);
+   if(t.comments.length>=LIMITS.comments)fail('limit');
    t.comments.push({id:randomUUID(),at:now,by,text:body});t.updatedAt=now;return t;
   },{tickets:typeof input.id==='string'?[input.id]:[]});
  }
@@ -281,5 +298,5 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
    const p={id:input.id,key:input.key,name,description:description??'',type:type??null,createdAt:now,createdBy:by,updatedAt:now,rev:1,next:1};data.projects.push(p);return publicProject(p);
   },{projects:null});
  }
- return {searchSnapshot:async()=>({revision:searchRevision,tickets:await store.list('tickets')}),searchRevision:()=>searchRevision,onSearchChange:fn=>{searchListeners.add(fn);return ()=>searchListeners.delete(fn);},validateSearchFilters:filter=>ticketFilter(filter),list,projects,get,search,people,create,update,comment,saveRelease,saveProject,attach,detach,attachment};
+ return {version:store.version,searchSnapshot:async()=>({revision:searchRevision,tickets:await store.list('tickets')}),searchRevision:()=>searchRevision,onSearchChange:fn=>{searchListeners.add(fn);return ()=>searchListeners.delete(fn);},validateSearchFilters:filter=>ticketFilter(filter),list,projects,get,search,people,create,update,comment,saveRelease,saveProject,attach,detach,attachment};
 }

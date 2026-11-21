@@ -1,3 +1,5 @@
+import {referenceChip} from './reference-chip.js';
+import {referencePicker,richSelection} from './reference-picker.js';
 import {el} from './views.js';
 import {t} from './i18n.js';
 import {htmlSource,normalizeDoc,wikiAssetIds,wikiUrl,WIKI_LIMITS} from './wiki-doc.js';
@@ -14,6 +16,7 @@ function inline(nodes,marks=[],tail=true){
   if(node.nodeType===3)return node.data?run(node.data,marks):[];
   if(node.nodeType!==1)return [];
   const last=tail&&i===list.length-1;
+  if(node.dataset.refKind)return {t:'ref',kind:node.dataset.refKind,id:node.dataset.refId,label:node.dataset.refLabel};
   if(node.dataset.ticket)return {t:'ticket',id:node.dataset.ticket};
   if(node.tagName==='BR')return last?[]:run('\n',marks);
   const mark=marksFor[node.tagName],style=node.style;
@@ -74,7 +77,7 @@ export function serializeWiki(root,islands){
     blocks.push({t:'quote',c:inlineBlocks(node)});
    }else if(tag==='PRE'){
     const c=inlineBlocks(node);
-    blocks.push({t:'code',text:c.map(part=>part.text??part.id??part.c.map(text=>text.text).join('')).join('')});
+    blocks.push({t:'code',text:c.map(part=>part.text??part.label??part.id??part.c.map(text=>text.text).join('')).join('')});
    }else if(tag==='HR'){
     blocks.push({t:'hr'});
    }else{
@@ -92,7 +95,7 @@ export function serializeWiki(root,islands){
 const newBlockId=()=> 'h'+Array.from(crypto.getRandomValues(new Uint8Array(8)),byte=>'abcdefghijklmnopqrstuvwxyz234567'[byte&31]).join('');
 const paragraph=()=>el('p',{},el('br'));
 
-export function wikiEditor({page,doc,tickets,api,dialog,changed,inlineOnly=false}){
+export function wikiEditor({page,doc,tickets,api,dialog,changed,canGlobal=false,inlineOnly=false}){
  const root=el('div',{class:'wiki-article wiki-editor',contenteditable:'true',role:'textbox',
   'aria-multiline':'true','aria-label':t(inlineOnly?'Text buňky':'Obsah stránky'),tabindex:'0'});
  if(inlineOnly)root.classList.add('wiki-inline-editor');
@@ -104,7 +107,7 @@ export function wikiEditor({page,doc,tickets,api,dialog,changed,inlineOnly=false
  if(!inlineOnly&&wikiAssetIds(doc).some(id=>!assets.has(id)))api('/api/wiki/'+page.project+'/assets')
   .then(data=>{for(const asset of data.assets)assets.set(asset.id,asset);}).catch(()=>{});
  const inventoryContext={project:page.project,dialog,assets,inline:runs=>inlineNodes(runs,{tickets,editing:false}),
-  richEditor:runs=>wikiEditor({page,doc:{v:1,blocks:[{t:'p',c:runs}]},tickets,api,dialog,changed:()=>{},inlineOnly:true})};
+  richEditor:runs=>wikiEditor({page,doc:{v:1,blocks:[{t:'p',c:runs}]},tickets,api,dialog,canGlobal,changed:()=>{},inlineOnly:true})};
 
  function htmlCard(block){
   const saved=page.doc.blocks.find(value=>value.t==='html'&&value.id===block.id&&value.source===block.source);
@@ -254,10 +257,10 @@ export function wikiEditor({page,doc,tickets,api,dialog,changed,inlineOnly=false
     if(label.value!==existing.textContent)existing.textContent=label.value||url;
     place(existing,{end:true});
     changed();
-   }else if(!range.collapsed&&label.value===range.toString()&&!range.cloneContents().querySelector('[data-ticket],.wiki-table,.wiki-html,.wiki-island')){
+   }else if(!range.collapsed&&label.value===range.toString()&&!range.cloneContents().querySelector('[data-ticket],[data-ref-id],.wiki-table,.wiki-html,.wiki-island')){
     command('createLink',url);
    }else{
-    if(!range.collapsed&&range.cloneContents().querySelector('[data-ticket],.wiki-table,.wiki-html,.wiki-island'))range.collapse(false);
+    if(!range.collapsed&&range.cloneContents().querySelector('[data-ticket],[data-ref-id],.wiki-table,.wiki-html,.wiki-island'))range.collapse(false);
     range.deleteContents();
     const anchor=el('a',{href:url},label.value||url);
     range.insertNode(anchor);
@@ -427,6 +430,14 @@ export function wikiEditor({page,doc,tickets,api,dialog,changed,inlineOnly=false
   }
  }
 
+ const picker=referencePicker(root,{project:()=>page.project,canGlobal,context:()=>richSelection(root,(range,record)=>{
+  const chip=record.kind==='ticket'?ticketChip(record.id,tickets.get(record.id),true):referenceChip(record,true);
+  const space=document.createTextNode(' ');
+  range.deleteContents();range.insertNode(space);range.insertNode(chip);
+  root.focus();range.setStartAfter(space);range.collapse(true);
+  const sel=getSelection();sel.removeAllRanges();sel.addRange(range);
+  syncTools();changed();
+ })});
  root.replaceChildren(...wikiBlocks(doc,context));
  ensureCaret();
  root.addEventListener('input',()=>{ensureCaret();syncTools();changed();});
@@ -461,7 +472,7 @@ export function wikiEditor({page,doc,tickets,api,dialog,changed,inlineOnly=false
   }
  });
  document.addEventListener('selectionchange',syncTools);
- return {node:el('div',{class:'wiki-form'},el('div',{class:'wiki-tool-stack'},toolbar,tableTools),root,error),error,
+ return {node:el('div',{class:'wiki-form'},el('div',{class:'wiki-tool-stack'},toolbar,tableTools),el('div',{class:'ref-editor'},root,picker),error),error,
   read:()=>inlineOnly?inlineBlocks(root):serializeWiki(root,islands),
   focus:()=>place([...root.children].find(node=>node.getAttribute('contenteditable')!=='false')??root),
   stop:()=>document.removeEventListener('selectionchange',syncTools)};

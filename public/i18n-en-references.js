@@ -1,0 +1,15 @@
+export default {
+ 'Načíst znovu':'Reload','Reference překračuje limit textu.':'This reference would exceed the text limit.',
+ 'Komentář':'Comment','Reference':'References','Druh reference':'Reference type','Vlastní':'Custom',
+ 'Vytvořit referenci':'Make reference','Přidat vlastní referenci':'Add custom reference','Přidat model':'Add model',
+ 'Globální reference':'Global','Projektové reference':'Project-local','Zpřístupnit ve všech projektech':'Share across all projects',
+ 'Upravit poznámku':'Edit note','Reference a místa použití':'References and where used','Místa použití ({n})':'Where used ({n})',
+ 'Zatím bez odkazů.':'No incoming references yet.','Žádné odpovídající reference.':'No matching references.',
+ 'Podrobnosti zařízení':'Device details','Neplatná reference nebo projekt.':'Invalid reference or project.',
+ 'Reference nebyla nalezena.':'Reference not found.','Reference se změnila nebo název už existuje.':'The reference changed or its name already exists.',
+ 'Byl dosažen limit referencí.':'The reference limit has been reached.','Chybí oprávnění pro sdílení reference.':'Sharing requires both ticket and reference write scopes.',
+ 'Reference nelze načíst.':'References are unavailable.','Reference – zápis':'References – write',
+ 'Měnit globální reference, dokumentaci modelů a poznámky ke zdrojům.':'Manage global references, model documentation and source notes.',
+ 'Reference podle druhu a projektu.':'List references by type and project.','Doplnění reference v projektu.':'Suggest references for this project.',
+ 'Zdroj reference a místa použití.':'Read a source and its incoming references.','Názvy odkazovaných záznamů.':'Resolve referenced record titles.',
+};

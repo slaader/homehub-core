@@ -6,6 +6,16 @@ Home Hub core, newest first. One section per release; the section is the text of
 number promises is in `AGENTS.md` → Versioning. The top section is the release being prepared, `## Unreleased`
 until the release gives it its number: a change to the public surface adds its line there in the same commit.
 
+## Unreleased
+
+### Added
+
+- Reference native projects, wiki pages, tracker tickets and machines, documented models, and project-owned Custom records from wiki text, inventory cells, ticket descriptions and comments. Settings and the read API/MCP expose current titles, source links, descriptions and incoming uses. The new `references:write` scope manages shared documentation. Authors holding both write scopes can promote a local record without changing its ID.
+
+### Data
+
+- Data epoch 10 adds revisioned reference records and native sharing annotations in SQLite, plus typed wiki runs and stable tracker Markdown tokens. The upgrade advances the database and wiki schema markers and preserves earlier documents. Rolling back to epoch 9 requires the pre-update backup.
+
 ## 1.4.0
 
 ### Added

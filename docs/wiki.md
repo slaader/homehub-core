@@ -250,3 +250,19 @@ the `stats` cell of the `scout` row.
 Include several columns in the same patch to update a row, or set a cell to null to remove it.
 The response includes the new revision and saved cells. If the revision is stale, read the relevant
 cells again and reapply the intended edit against the current revision.
+
+## References
+
+Type `@` and part of a label or ID in a paragraph or rich inventory cell, then select a result with
+the arrow keys and Enter. Ticket descriptions and comments offer the same picker. Select plain text
+and choose **Make reference** to name a Custom record and optionally describe it. The new record belongs
+to the current project by default. Save the page or ticket to publish its mention. **Settings → References** lists records by type and scope. Open a
+record to read its description and incoming uses. A project author with References write access can
+share a local record globally. Its ID and existing mentions stay the same.
+
+Inside any inline-run array, use `{t:"ref",kind,id,label}` for a machine, model, project, Custom record
+or wiki page. The label is a fallback. For wiki pages use the stable composite ID `project/pageId`.
+Ticket links keep their existing `{t:"ticket",id}` run. A page summary exposes unique typed targets
+in the optional `links.refs` array and ticket IDs in `links.tickets`. A mention opens the source. On a
+page, ticket or project, expand **References and where used** to read incoming links and their excerpts.
+Model documentation and minimal machine details are available to signed-in readers and agents.

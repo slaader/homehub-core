@@ -1,3 +1,7 @@
+import {referencesSection} from './references-view.js';
+import {referencePicker} from './reference-picker.js';
+import {referenceToken} from './reference-format.js';
+import {editableMarkdownRange} from './tracker-markdown-format.js';
 import {reviewDialog} from './review-guidance.js';
 // Project Tracker: a development tracker for your own projects.
 //   #projects        projects overview: health ring, activity, next release, create / edit a project
@@ -132,7 +136,7 @@ const keysHint=(...keys)=>el('p',{class:'tk-keys','aria-label':t('Klávesové zk
 export const TRACKER_PAGES=Object.freeze(['projects','items','releases']);
 export function trackerView(me,page,sub){
  const wrap=el('section',{class:'sec tk'},el('p',{class:'sec-dim',role:'status'},t('Načítám…')));
- const ctx={canWrite:me?.canWrite===true,canWriteWiki:canWriteWiki(me),user:typeof me?.username==='string'?me.username:'',id:sub};
+ const ctx={me,canWrite:me?.canWrite===true,canWriteWiki:canWriteWiki(me),user:typeof me?.username==='string'?me.username:'',id:sub};
  const draw=page==='projects'?(sub?projectPage:projectsPage):page==='releases'?releasesPage:sub?ticketPage:listPage;
  // A failed load says what failed and offers the way out: try again, or back to the list.
  const run=()=>draw(wrap,ctx).catch(e=>show(wrap,emptyState({icon:'⚠',
@@ -267,16 +271,32 @@ function boardCard(tk,{canWrite,msg,redraw,projects,showProject}){
 const chipsOf=files=>files?name=>{const item=files.resolve(name);return item?fileChip(item,{onOpen:files.onOpen}):null;}:null;
 function mdEditor(area,keys,files=null){
  const editor=files?chipEditor(area,files):null,field=editor?.node||area;
+ const picker=files?.project&&files.canReference?referencePicker(field,{project:files.project,canGlobal:files.canGlobal,context:()=>{
+  const range=editor?.rich?editor.selection():{start:area.selectionStart,end:area.selectionEnd};
+  if(!range||!Number.isInteger(range.start))return null;
+  const {start,end}=range,value=area.value;
+  const selection={selected:value.slice(start,end),before:value.slice(0,start),position:start,trim:0,
+   replace(record){
+    const from=start-selection.trim,piece=referenceToken(record)+' ';
+    if(area.value!==value||value.length-(end-from)+piece.length>Number(area.getAttribute('maxlength')))return;
+    if(editor?.rich){editor.replace(from,end,piece);field.focus();}
+    else {area.setRangeText(piece,from,end,'end');area.focus();area.dispatchEvent(new Event('input',{bubbles:true}));}
+   }};
+  if(selection.selected.includes('\n'))return null;
+  selection.fits=record=>value.length-(end-start+selection.trim)+referenceToken(record).length+1<=Number(area.getAttribute('maxlength'));
+  selection.accepts=trim=>editableMarkdownRange(value,start-trim,end,{keys,files:files.resolve});
+  return selection;
+ }}):null;
  const preview=el('div',{class:'tk-md-preview',hidden:''}),toggle=el('button',{type:'button',class:'tk-md-toggle','aria-pressed':'false',onclick:()=>{
    const on=toggle.getAttribute('aria-pressed')!=='true';
    // An empty field stays editable: there is nothing to preview, and a hidden required field cannot be submitted.
    if(on&&!area.value.trim()){field.focus();return;}
    toggle.setAttribute('aria-pressed',String(on));toggle.textContent=on?t('Upravit text'):t('Náhled');
-   if(on)preview.replaceChildren(markdown(area.value,{keys,files:chipsOf(files)}));
+   if(on)preview.replaceChildren(markdown(area.value,{keys,files:chipsOf(files),references:true}));
    preview.hidden=!on;field.hidden=on;if(!on)field.focus();}},t('Náhled'));
  // redraw(): the preview again, when what its chips stand for has changed while it is shown.
- const redraw=()=>{if(toggle.getAttribute('aria-pressed')==='true')preview.replaceChildren(markdown(area.value,{keys,files:chipsOf(files)}));};
- return {node:el('div',{class:'tk-md-edit'},area,field===area?null:field,preview),toggle,editor,redraw};
+ const redraw=()=>{if(toggle.getAttribute('aria-pressed')==='true')preview.replaceChildren(markdown(area.value,{keys,files:chipsOf(files),references:true}));};
+ return {node:el('div',{class:'tk-md-edit ref-editor'},area,field===area?null:field,picker,preview),toggle,editor,redraw};
 }
 const mdHint=toggle=>el('div',{class:'tk-md-hint'},el('span',{},t('Formátování: **tučně**, `kód`, - seznam, 1. kroky, APP-12 = odkaz')),toggle||null);
 const splitList=v=>v.split(/[,\n]/).map(s=>s.trim()).filter(Boolean);
@@ -321,7 +341,7 @@ async function newTicket(projects,preset,ctx={}){
  // description also leaves a chip where the caret is.
  const pending=[],view=item=>{const i=pending.indexOf(item);if(i>=0)openViewer(pending,i,showDialog);};let busy=false;
  const description=mdEditor(el('textarea',{name:'description',rows:'7',maxlength:'12000',placeholder:t('Co a proč. U chyby kroky k reprodukci, u funkce kritéria přijetí.')}),keys,
-  {resolve:name=>pending.find(p=>p.name===name)||null,onOpen:view,label:t('Popis')});
+  {project:()=>project.value,canGlobal:ctx.me?.scopes?.includes('references:write'),canReference:ctx.me?.scopes?.includes('tickets:write'),resolve:name=>pending.find(p=>p.name===name)||null,onOpen:view,label:t('Popis')});
  const picker=el('input',{type:'file',multiple:'',hidden:'','aria-label':t('+ Přidat soubor'),onchange:e=>{const list=[...e.target.files];e.target.value='';add(list);}});
  const filesBox=el('div',{class:'tk-attach'});
  const drawFiles=()=>show(filesBox,
@@ -403,14 +423,8 @@ async function ticketPage(wrap,ctx){
  // ended after its page was left) is said here, once.
  // It waits for a page of that item that is on the screen: a view the user already left does not use it up.
  const [tk,meta,people,reviews]=result,mine=wrap.isConnected&&prefs.notices.has(tk.id),notice=mine?{notice:prefs.notices.get(tk.id),noticeError:true}:{};if(mine)prefs.notices.delete(tk.id);
- const wikiLinks=el('section',{class:'acc-card',hidden:''});
- renderTicket(wrap,{...ctx,meta,wikiLinks,reviews:Array.isArray(reviews?.sets)?reviews:null,people:peopleNames(people)},tk,{fields:{},comment:'',...notice});
- wikiApi('/api/wiki/tickets/'+encodeURIComponent(tk.id)+'/backlinks').then(data=>{
-  if(!wrap.isConnected||!data.pages?.length)return;
-  wikiLinks.replaceChildren(el('h3',{},'Wiki'),...data.pages.map(page=>
-   el('p',{},el('a',{href:wikiHref(page.project,page.id)},page.title))));
-  wikiLinks.hidden=false;
- }).catch(()=>{});
+ const referenceLinks=referencesSection('ticket',tk.id,ctx.me);
+ renderTicket(wrap,{...ctx,meta,referenceLinks,reviews:Array.isArray(reviews?.sets)?reviews:null,people:peopleNames(people)},tk,{fields:{},comment:'',...notice});
 }
 // Unsaved input on a ticket page: the comment box and every edit-form field that differs from what was rendered,
 // whether the edit form is open, and which field the keyboard is in (and where). A write re-renders from
@@ -479,7 +493,7 @@ function renderTicket(wrap,ctx,tk,keep){
  const removed=new Set(tk.history.filter(h=>h.field==='attachment'&&h.to===null).map(h=>h.from));
  const resolve=name=>files.find(f=>f.name===name)||sendings.get(tk.id)?.get(name)||(removed.has(name)?{name,gone:true}:null);
  const view=item=>{const i=files.indexOf(item);if(i>=0)openViewer(files,i,showDialog);};
- const inText={resolve,onOpen:view},chips=chipsOf(inText);
+ const inText={resolve,onOpen:view,project:()=>tk.project,canGlobal:ctx.me?.scopes?.includes('references:write'),canReference:ctx.me?.scopes?.includes('tickets:write')},chips=chipsOf(inText);
  const commentBox=canWrite?el('textarea',{name:'text',rows:'3',required:'',maxlength:'8000',placeholder:t('Komentář, postup, commit…'),'aria-label':t('Nový komentář'),'aria-keyshortcuts':'c'}):null;
  if(commentBox)commentBox.value=keep.comment||'';
  const commentEditor=commentBox?mdEditor(commentBox,keys,{...inText,history:keep.histories?.comment}):null;
@@ -534,7 +548,7 @@ function renderTicket(wrap,ctx,tk,keep){
   files.length?fileStrip(files,{onOpen:i=>openViewer(files,i,showDialog),onRemove:canWrite?removeFile:null}):null,canWrite?attachHint():null)]:null;
  const edit=editing?editForm(tk,meta,save,ctx,closeEdit,{draft:keep.fields||{},files:{...inText,history:keep.histories?.description},attach}):null;
  // While editing, the form takes the place of the rendered description: the text is never shown twice.
- const main=edit?edit.form:el('section',{class:'acc-card tk-desc'},el('h3',{},t('Popis')),tk.description?markdown(tk.description,{keys,files:chips}):el('p',{class:'acc-dim'},t('Bez popisu.')),attach);
+ const main=edit?edit.form:el('section',{class:'acc-card tk-desc'},el('h3',{},t('Popis')),tk.description?markdown(tk.description,{keys,files:chips,references:true}):el('p',{class:'acc-dim'},t('Bez popisu.')),attach);
  const editors=Object.fromEntries(Object.entries({comment:commentEditor?.editor,description:edit?.editor}).filter(([,editor])=>editor));
  pages.set(wrap,{ticket:tk,ctx,comment:commentBox,editing,inputs:edit?.inputs||{},initial:edit?.initial||{},editors,msg,upload});
  // Files dropped anywhere on the page are attached (a file dropped beside a drop target would replace the page
@@ -545,7 +559,7 @@ function renderTicket(wrap,ctx,tk,keep){
  const comments=el('section',{class:'acc-card'},el('h3',{},t('Komentáře ({n})',{n:tk.comments.length})),
   tk.comments.length?el('ol',{class:'tk-comments'},tk.comments.map(c=>el('li',{class:'tk-comment'},
    el('div',{class:'tk-comment-head'},el('span',{class:'tk-avatar','aria-hidden':'true'},initials(c.by)||'?'),el('b',{},c.by),el('span',{class:'tk-dim',title:when(c.at)},ago(c.at))),
-   markdown(c.text,{keys,files:chips})))):el('p',{class:'acc-dim'},t('Zatím bez komentářů.')),
+   markdown(c.text,{keys,files:chips,references:true})))):el('p',{class:'acc-dim'},t('Zatím bez komentářů.')),
   // The comment box is required, but as a hidden field behind the chip editor the browser cannot say so: an empty one just gets the caret.
   canWrite?el('form',{class:'tk-form',onsubmit:e=>{e.preventDefault();const f=e.currentTarget,text=f.text.value;if(!text.trim()){editors.comment.focusAt(null);return;}
     return write(f.querySelector('button[type=submit]'),()=>api('/api/tickets/comment',{id:tk.id,text}),next=>{if(next.comment===text)next.comment='';});}},
@@ -569,7 +583,7 @@ function renderTicket(wrap,ctx,tk,keep){
    el('div',{class:'tk-quick'},quick)),
   msg,
   el('div',{class:'tk-detail'},
-   el('div',{class:'acc-stack'},main,el('section',{class:'acc-card'},el('h3',{},'Review'+(ctx.reviews?' ('+ctx.reviews.sets.length+')':'')),ctx.reviews?ctx.reviews.sets.map(s=>el('p',{},el('a',{href:'#review/'+s.id},s.id+' · '+s.title),s.feedbackPending?el('span',{class:'sec-pill warn'},'Review feedback available'):null)):el('p',{},'Review links could not be loaded. Reopen this ticket to retry.'),canWrite?el('button',{type:'button',class:'acc-btn',onclick:()=>reviewDialog({project:tk.project,ticket:tk})},'Request review · agent publishing instructions'):el('p',{},'Publishing requires review write access.')),ctx.wikiLinks,comments,timeline(tk)),
+   el('div',{class:'acc-stack'},main,el('section',{class:'acc-card'},el('h3',{},'Review'+(ctx.reviews?' ('+ctx.reviews.sets.length+')':'')),ctx.reviews?ctx.reviews.sets.map(s=>el('p',{},el('a',{href:'#review/'+s.id},s.id+' · '+s.title),s.feedbackPending?el('span',{class:'sec-pill warn'},'Review feedback available'):null)):el('p',{},'Review links could not be loaded. Reopen this ticket to retry.'),canWrite?el('button',{type:'button',class:'acc-btn',onclick:()=>reviewDialog({project:tk.project,ticket:tk})},'Request review · agent publishing instructions'):el('p',{},'Publishing requires review write access.')),ctx.referenceLinks,comments,timeline(tk)),
    el('div',{class:'acc-stack'},
     el('section',{class:'acc-card'},el('h3',{},t('Údaje')),el('dl',{class:'acc-dl'},
      fact('Release',tk.release?el('a',{class:'sys-link',href:'#releases',onclick:()=>{filters.project=tk.project;}},tk.release):'—'),fact(t('Řeší'),el('span',{class:'tk-fact-row'},tk.assignee?[el('span',{class:'tk-avatar','aria-hidden':'true'},initials(tk.assignee)),tk.assignee]:'—',assignMe)),fact(t('Nahlásil'),tk.reporter||'—'),
@@ -768,6 +782,7 @@ async function projectPage(wrap,ctx){
   el('nav',{class:'tk-crumbs','aria-label':t('Drobečková navigace')},el('a',{href:'#projects'},t('Projekty')),el('span',{class:'tk-dim'},'/'),el('b',{},p.name),el('span',{class:'sec-pill'},p.key),p.type?el('span',{class:'sec-pill'},label(PROJECT_TYPES(),p.type)):null),
   pageHeader({title:p.name,lead:p.description||undefined,provenance:data.provenance,actions:[canWrite?{label:t('Upravit'),onclick:()=>editProject(p,redraw)}:null,{label:`${t('Tabulka')} →`,onclick:to('#items')},{label:`${t('Releasy')} →`,onclick:to('#releases')},{label:'Review →',href:'#review/'+id},wikiAction,add].filter(Boolean)}),
   msg,
+  referencesSection('project',id,ctx.me),
   mine.length?el('div',{class:'acc-card tk-hero-row'},health(mine),activity(mine,4),nextBlock(data.releases,id)):null,
   mine.length?boardView(mine,{canWrite,msg,redraw,projects:data.projects,showProject:false})
    :emptyState({icon:'✨',title:t('Čistý štít'),body:t('V projektu zatím nejsou žádné položky.'),

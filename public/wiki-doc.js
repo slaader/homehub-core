@@ -1,3 +1,4 @@
+import {validReference,validLabel,referenceKey} from './reference-format.js';
 // The browser and the wiki store share the same structured document format.
 export const PAGE_ID=/^w[a-z2-7]{11}$/;
 export const HTML_ID=/^h[a-z2-7]{8}$/;
@@ -66,6 +67,9 @@ function inline(value){
    case 'link':
     if(!exactKeys(run,['t','href','c']))invalid();
     return {t:'link',href:wikiUrl(run.href),c:array(run.c).map(textRun)};
+   case 'ref':
+    if(!exactKeys(run,['t','kind','id','label'])||run.kind==='ticket'||!validReference(run.kind,run.id)||!validLabel(run.label))invalid();
+    return {t:'ref',kind:run.kind,id:run.id,label:run.label};
    case 'ticket':
     if(!exactKeys(run,['t','id'])||typeof run.id!=='string'||!/^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,5}$/.test(run.id))invalid();
     return {t:'ticket',id:run.id};
@@ -89,7 +93,7 @@ function table(block){
 
 function cellRuns(value){
  const runs=inline(value);
- const chars=runs.reduce((sum,run)=>sum+(run.text?.length??run.id?.length??run.c.reduce((n,text)=>n+text.text.length,0)),0);
+ const chars=runs.reduce((sum,run)=>sum+(run.text?.length??run.label?.length??run.id?.length??run.c.reduce((n,text)=>n+text.text.length,0)),0);
  if(chars>WIKI_LIMITS.cell)fail('limit');
  return runs;
 }
@@ -206,16 +210,22 @@ export function normalizeDoc(doc){
  return result;
 }
 
-export function extractLinks(doc){
- const tickets=new Set();
- const visit=runs=>{for(const run of runs)if(run.t==='ticket')tickets.add(run.id);};
+export function* wikiInlineGroups(doc){
  for(const block of doc.blocks){
-  if(block.c)visit(block.c);
-  for(const item of block.items??[])visit(item);
-  if(block.t==='table')for(const row of block.rows)for(const cell of row)visit(cell);
-  if(block.t==='inventory')for(const row of block.rows)for(const cell of Object.values(row.cells))visit(cell.c??[]);
+  if(block.c)yield block.c;
+  yield* block.items??[];
+  if(block.t==='table')for(const row of block.rows)yield* row;
+  if(block.t==='inventory')for(const row of block.rows)for(const cell of Object.values(row.cells))if(cell.c)yield cell.c;
  }
- return {tickets:[...tickets]};
+}
+
+export function extractLinks(doc){
+ const tickets=new Set(),refs=new Map();
+ for(const runs of wikiInlineGroups(doc))for(const run of runs){
+  if(run.t==='ticket')tickets.add(run.id);
+  if(run.t==='ref')refs.set(referenceKey(run),{kind:run.kind,id:run.id});
+ }
+ return {tickets:[...tickets],...(refs.size?{refs:[...refs.values()]}:{})};
 }
 
 export function* wikiAttachmentRefs(doc){

@@ -110,7 +110,7 @@ export function settingsView(me){
   load();
  }else zone.append(el('section',{class:'set-card'},el('h3',{},t('Časové pásmo')),el('p',{class:'set-dim'},t('Časy se ukazují v pásmu webu ({zone}). Vlastní pásmo si nastavíš po přihlášení heslem v prohlížeči.',{zone:site().timeZone||browserZone()}))));
  return el('div',{class:'set'},
-  pageHeader({eyebrow:t('Účet'),title:t('Nastavení'),lead:t('Tvůj účet, jazyk, vzhled, časové pásmo a heslo.')}),
+  pageHeader({eyebrow:t('Účet'),title:t('Nastavení'),actions:[{label:t('Reference'),href:'#references'}],lead:t('Tvůj účet, jazyk, vzhled, časové pásmo a heslo.')}),
   el('section',{'aria-label':t('Informace')},el('h2',{class:'set-section'},t('Informace')),
    el('div',{class:'set-grid'},account,
     el('section',{class:'set-card'},el('h3',{},t('Změna hesla')),

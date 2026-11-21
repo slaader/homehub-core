@@ -363,7 +363,7 @@ export function chipEditor(area,{resolve=()=>null,onOpen=null,label='',history=n
   back();setTimeout(back,0);
  });
  render(area.value);
- return {node:box,rich:true,has,caret:()=>caret(),history:()=>({steps:steps.map(h=>({...h})),step}),
+ return {node:box,rich:true,has,selection,replace:splice,caret:()=>caret(),history:()=>({steps:steps.map(h=>({...h})),step}),
   refresh(){render(area.value);steps=[{text:area.value,at:null}];step=0;run='';},
   focusAt(n){const to=n??(left==null?read().length:null);box.focus();if(to!=null){left=Math.min(to,read().length);place(left);}},
   insert(name){

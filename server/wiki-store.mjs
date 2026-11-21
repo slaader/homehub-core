@@ -2,7 +2,8 @@ import {createHash,randomBytes} from 'node:crypto';
 import {exactKeys,extractLinks,normalizeDoc,PAGE_ID,WIKI_LIMITS,wikiTitle,wikiAssetIds,wikiAttachment,wikiAttachmentRefs,wikiDisplayType} from '../public/wiki-doc.js';
 import {PROJECT_ID,TICKET_ID} from './tickets-store.mjs';
 
-export const WIKI_SCHEMA=3;
+import {referenceGuard} from './reference-records.mjs';
+export const WIKI_SCHEMA=4;
 const ALPHABET='abcdefghijklmnopqrstuvwxyz234567';
 const fail=code=>{throw new Error(code);};
 const pageId=()=> 'w'+Array.from(randomBytes(11),byte=>ALPHABET[byte&31]).join('');
@@ -146,7 +147,7 @@ function orderedTree(pages){
  return ordered;
 }
 
-export function createWikiStore(db,tickets){
+export function createWikiStore(db,tickets,machines=async()=>[]){
  const store=wikiCollection(db);
  let cached=null;
 
@@ -204,22 +205,17 @@ export function createWikiStore(db,tickets){
   });
  }
 
- async function checkedDoc(input,project){
-  const doc=normalizeDoc(input);
-  await Promise.all(extractLinks(doc).tickets.map(async id=>{
-   if(!id.startsWith(project.key+'-'))fail('invalid');
-   let ticket;
-   try{ticket=await tickets.get(id);}catch(error){if(error.message==='not-found')fail('invalid');throw error;}
-   if(ticket.project!==project.id)fail('invalid');
-  }));
-  return doc;
+ function docRefs(doc){
+  const {tickets,refs=[]}=extractLinks(doc);
+  return [...refs,...tickets.map(id=>({kind:'ticket',id}))];
  }
 
  async function create(input,by,actor=by,{requireRequestId=false}={}){
   if(!exactKeys(input,['project','parentId','title','doc','requestId']))fail('invalid');
   const title=wikiTitle(input.title),project=await projectOf(input.project),id=pageId(),key=wikiKey(project.id,id);
   const parent=input.parentId===undefined?undefined:parentOf(input.parentId);
-  const doc=input.doc===undefined?emptyDoc():await checkedDoc(input.doc,project);
+  const doc=input.doc===undefined?emptyDoc():normalizeDoc(input.doc);
+  const validate=await referenceGuard(db,machines,docRefs(doc));
   const receipt=retryKey(project.id,'create',input.requestId,actor,requireRequestId),fingerprint=hash([parent,title,doc]);
   const selection={wikis:[project.id],pages:[key],summaries:project.id+'/',assets:wikiAssetIds(doc).map(id=>wikiKey(project.id,id)),
    receipts:receipt?[receipt]:[]};
@@ -232,6 +228,7 @@ export function createWikiStore(db,tickets){
    const parentId=parent??wiki.home;
    if(!data.summaries.some(page=>page.id===parentId))fail('invalid-parent');
    if(data.pages.length)fail('conflict');
+   validate(project.id);
    updateAssets(data,doc,null,actor);
    const page=makePage(project.id,id,parentId,title,doc,by,now());
    wiki.count++;
@@ -248,7 +245,8 @@ export function createWikiStore(db,tickets){
   const title=input.title===undefined?undefined:wikiTitle(input.title),project=await projectOf(input.project);
   const key=wikiKey(project.id,input.id);
   // Read only the previous asset IDs here. The revision is checked again inside the write transaction.
-  const doc=input.doc===undefined?undefined:await checkedDoc(input.doc,project);
+  const doc=input.doc===undefined?undefined:normalizeDoc(input.doc);
+  const validate=await referenceGuard(db,machines,doc?docRefs(doc):[]);
   const old=doc===undefined?null:await get(project.id,input.id);
   if(old)checkRevision(old,input.rev);
   const assets=old?[...new Set([...wikiAssetIds(old.doc),...wikiAssetIds(doc)])].map(id=>wikiKey(project.id,id)):[];
@@ -258,6 +256,7 @@ export function createWikiStore(db,tickets){
    const fields=[];
    if(title!==undefined&&title!==page.title){page.title=title;fields.push('title');}
    if(doc!==undefined&&JSON.stringify(doc)!==JSON.stringify(page.doc)){
+    validate(project.id,docRefs(page.doc));
     updateAssets(data,doc,page.doc,actor);
     page.doc=doc;
     page.links=extractLinks(doc);
@@ -330,7 +329,7 @@ export function createWikiStore(db,tickets){
   if(typeof id!=='string'||!TICKET_ID.test(id))fail('invalid');
   let ticket;
   try{ticket=await tickets.get(id);}catch(error){if(error.message==='not-found')return [];throw error;}
-  return (await summaries()).filter(page=>page.project===ticket.project&&page.links.tickets.includes(id))
+  return (await summaries()).filter(page=>page.links.tickets.includes(id))
    .map(({project,id,title,updatedAt})=>({project,id,title,updatedAt}))
    .sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)||a.title.localeCompare(b.title)||a.id.localeCompare(b.id));
  }
@@ -344,5 +343,5 @@ export function createWikiStore(db,tickets){
   });
  }
 
- return {projectOf,index,list,get,withAssets,setup,create,update,move,attach,backlinks,pruneReceipts};
+ return {summaries,version:store.version,projectOf,index,list,get,withAssets,setup,create,update,move,attach,backlinks,pruneReceipts};
 }
