@@ -85,7 +85,7 @@ test('precise policy refuses unrelated files and alternate spellings of the same
 });
 
 test('space checks reserve the backup and one payload per inode on the destination filesystem',async t=>{
- const f=fixture(t),{scanBackup}=await import('../server/backup-scan.mjs');
+ const f=fixture(t),{scanBackup}=await import('../server/update-backup.mjs');
  const {resolveInstance}=await import('../server/update-apply.mjs');
  writeFileSync(f.policy,JSON.stringify({schemaVersion:1,coverFiles:[f.exact],budget:{maxFileBytes:128*1024**2}}),{mode:0o600});
  truncateSync(f.media,70*1024**2);

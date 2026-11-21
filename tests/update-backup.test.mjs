@@ -314,3 +314,96 @@ test('resume rejects a shutdown write to an already installed root',async t=>{
  await assert.rejects(restoreBackup(inst,ctx,backup,persisted,assessed),/staging content/);
  assert.equal(readFileSync(path.join(inst.paths.data,'legitimate.tgz'),'utf8'),'shutdown write');
 });
+
+test('assessRestore().coversFile works identically across v2 (including exact-file alias roots), v1 and legacy archives',async t=>{
+ const {dir,inst,ctx}=fixture(t,'/tmp');
+ const payload=path.join(inst.paths.data,'payload'),aliasDir=path.join(dir,'legacy'),alias=path.join(aliasDir,'alias.bin');
+ const link=path.join(inst.paths.private,'payload-link'),outside=path.join(dir,'outside.txt');
+ const sock=path.join(inst.paths.state,'live.sock');
+ mkdirSync(aliasDir);
+ writeFileSync(payload,'exact payload',{mode:0o640});
+ linkSync(payload,alias);
+ symlinkSync('../data/payload',link);
+ writeFileSync(outside,'outside');
+ await listen(t,sock);
+ const policyDir=mkdtempSync(path.join(os.homedir(),'.home-hub-backup-test-'));
+ t.after(()=>rmSync(policyDir,{recursive:true,force:true}));
+ inst.backupPolicyFile=path.join(policyDir,'policy.json');
+ writeFileSync(inst.backupPolicyFile,JSON.stringify({schemaVersion:1,coverFiles:[alias]}),{mode:0o600});
+ const backup=await createBackup(inst,ctx,'covers-v2');
+ const assessed=await assessRestore(inst,backup);
+ const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
+ const payloadHash=digest('exact payload'),instanceHash=digest('{}');
+ const instanceFile=path.join(dir,'instance.json');
+ assert.equal(assessed.coversFile(payload),true);
+ assert.equal(assessed.coversFile(payload,{sha256:payloadHash,mode:0o640}),true);
+ assert.equal(assessed.coversFile(payload,{sha256:payloadHash,mode:0o600}),false);
+ assert.equal(assessed.coversFile(payload,{sha256:digest('other'),mode:0o640}),false);
+ assert.equal(assessed.coversFile(alias),true);
+ assert.equal(assessed.coversFile(alias,{sha256:payloadHash,mode:0o640}),true);
+ assert.equal(assessed.coversFile(alias,{sha256:payloadHash,mode:0o600}),false);
+ assert.equal(assessed.coversFile(instanceFile),true);
+ assert.equal(assessed.coversFile(instanceFile,{sha256:instanceHash}),true);
+ assert.equal(assessed.coversFile(inst.paths.data),false,'directories are not covered regular files');
+ assert.equal(assessed.coversFile(link),false,'symlinks are not covered regular files');
+ assert.equal(assessed.coversFile(sock),false,'runtime sockets are not covered regular files');
+ assert.equal(assessed.coversFile(outside),false,'uncovered paths return false');
+ assert.equal(assessed.coversFile(path.join(inst.paths.data,'nonexistent')),false);
+
+ // v1 sidecar archive and legacy sidecar-less archive (separate fixture without live sockets)
+ const v1=fixture(t);
+ const old=JSON.parse(readFileSync(new URL('./fixtures/update/backup-v1.json',import.meta.url),'utf8'));
+ const v1File=path.join(v1.inst.backups,'v1-covers.tgz'),v1Manifest=v1File+'.manifest.json',v1Integrity=v1File+'.integrity.json';
+ Object.assign(old.manifest.roots[0],{canonical:v1.inst.paths.data,logical:v1.inst.paths.data,parent:v1.dir});
+ const relocated=JSON.stringify(old.manifest,null,1)+'\n';
+ writeFileSync(v1File,Buffer.from(old.archiveBase64,'base64'));
+ writeFileSync(v1Manifest,relocated);
+ writeFileSync(v1Integrity,JSON.stringify({...old.integrity,manifestSha256:digest(relocated)}));
+ const v1Assessed=await assessRestore(v1.inst,{file:v1File,manifest:v1Manifest,integrity:v1Integrity,entries:old.manifest.roots});
+ const v1Payload=path.join(v1.inst.paths.data,'payload');
+ assert.equal(v1Assessed.coversFile(v1Payload),true);
+ assert.equal(v1Assessed.coversFile(v1Payload,{sha256:old.manifest.files[1].sha256,mode:0o640}),true);
+ assert.equal(v1Assessed.coversFile(v1Payload,{sha256:old.manifest.files[1].sha256,mode:0o600}),false);
+ assert.equal(v1Assessed.coversFile(v1Payload,{sha256:digest('wrong'),mode:0o640}),false);
+ assert.equal(v1Assessed.coversFile(v1.inst.paths.data),false);
+ assert.equal(v1Assessed.coversFile(path.join(v1.dir,'outside.txt')),false);
+
+ // Legacy archive without sidecar manifest has no authenticated entry inventory
+ const legacyRoot=path.join(v1.dir,'legacy-root');mkdirSync(legacyRoot);
+ const legacyAssessed=await assessRestore(v1.inst,{file:v1File,entries:[{parent:v1.dir,name:'legacy-root'}]});
+ assert.equal(legacyAssessed.coversFile(path.join(legacyRoot,'payload')),false);
+});
+
+test('updater closure rooted at scripts/update.mjs is 100% static, acyclic, and update-backup exports stay narrow',async()=>{
+ const repoRoot=path.resolve(path.dirname(new URL(import.meta.url).pathname),'..');
+ const entry=path.join(repoRoot,'scripts','update.mjs');
+ const visited=new Set(),stack=[],cycles=[],dynamics=[];
+ const deleted=['backup-scan.mjs','backup-archive.mjs','backup-policy.mjs','restore-sockets.mjs'];
+ function walk(file){
+  if(stack.includes(file)){cycles.push([...stack.slice(stack.indexOf(file)),file].map(f=>path.relative(repoRoot,f)));return;}
+  if(visited.has(file))return;
+  visited.add(file);
+  const src=readFileSync(file,'utf8');
+  const stripped=src.replace(/\/\*[\s\S]*?\*\//g,'').replace(/^\s*\/\/.*$/gm,'');
+  if(/\bimport\s*\(/.test(stripped))dynamics.push(path.relative(repoRoot,file));
+  stack.push(file);
+  for(const m of stripped.matchAll(/(?:import|export)\s+(?:[^'"]*?\s+from\s+)?['"](\.[^'"]+)['"]/g)){
+   const target=path.resolve(path.dirname(file),m[1]);
+   assert.ok(!deleted.includes(path.basename(target)),`unexpected import of removed module: ${target}`);
+   walk(target);
+  }
+  stack.pop();
+ }
+ walk(entry);
+ assert.deepEqual(cycles,[],'updater import graph must be acyclic');
+ assert.deepEqual(dynamics,[],'updater import closure must have zero dynamic import() calls');
+ for(const name of deleted)assert.equal(existsSync(path.join(repoRoot,'server',name)),false,`${name} must remain deleted`);
+ const mod=await import('../server/update-backup.mjs');
+ assert.deepEqual(Object.keys(mod).sort(),[
+  'BACKUP_SCHEMA','DRIVER_CAPABILITIES','POLICY_SCHEMA',
+  'assessRestore','backupPlan','backupRootSummary','createBackup','refuseSocketReplacement','restoreBackup','scanBackup'
+ ]);
+ assert.equal(mod.BACKUP_SCHEMA,2);
+ assert.equal(mod.POLICY_SCHEMA,1);
+ assert.deepEqual(mod.DRIVER_CAPABILITIES,['backup-v1','backup-v2','hardlinks','budget','journal-3','staged-fsync','socket-aware']);
+});

@@ -5,25 +5,33 @@ import {parseService,parseHealth} from './update-config.mjs';
 import {UpdateError} from './update-errors.mjs';
 export const JOURNAL_SCHEMA=3;
 export const TERMINAL_STEPS=Object.freeze(['done','rolled-back','aborted']);
+export const RESTORE_STATUSES=Object.freeze(['prepared','moving-old','old-moved','installing','installed']);
 const STEPS=[...TERMINAL_STEPS,'stopping','backup','backup-verified','switching','switched','starting','target-may-have-written','rolling-back','rollback-failed'];
 // Legacy read contract: previously-written journals (schemas 1..3) may contain unnormalized absolute paths such as /a/./b.
 const absolute=p=>typeof p==='string'&&path.isAbsolute(p)&&!p.includes('\0')&&path.resolve(p)!==path.parse(p).root;
 const hash=v=>typeof v==='string'&&/^[0-9a-f]{40}$/.test(v);
+export function validateRestoreRoots(restoreRoots,schemaVersion=JOURNAL_SCHEMA){
+ const allowed=schemaVersion===JOURNAL_SCHEMA?[...RESTORE_STATUSES,'preparing']:RESTORE_STATUSES;
+ if(!Array.isArray(restoreRoots)||restoreRoots.length>20000||restoreRoots.some(r=>!r||typeof r!=='object'||
+   ![r.live,r.aside,r.staged,r.stageDir].every(absolute)||path.dirname(r.live)!==path.dirname(r.aside)||
+   path.dirname(r.stageDir)!==path.dirname(r.live)||path.dirname(r.staged)!==r.stageDir||!allowed.includes(r.status)))
+  throw new Error('invalid restore path roles or state');
+}
+export function validateSocketRestoreLayout(layout){
+ if(!layout||typeof layout!=='object'||!Array.isArray(layout.anchors)||!Array.isArray(layout.sockets)||!Array.isArray(layout.units)||
+   (layout.aliases!==undefined&&(!Array.isArray(layout.aliases)||!layout.aliases.every(a=>a&&absolute(a.live)&&absolute(a.target))))||
+   layout.anchors.length+layout.units.length+(layout.aliases?.length??0)>20000||layout.sockets.length>1000||
+   !layout.anchors.every(a=>a&&absolute(a.live))||!layout.sockets.every(id=>typeof id==='string')||
+   !layout.units.every(u=>u&&[u.live,u.aside,u.staged,u.stageDir].every(absolute)))
+  throw new Error('invalid socket restore layout');
+}
 export function validateJournal(j){
  if(!j||typeof j!=='object'||![1,2,JOURNAL_SCHEMA].includes(j.schemaVersion))throw new Error('unsupported/newer journal schema');
  const keys=['schemaVersion','id','startedAt','finishedAt','by','from','to','changes','epochRose','settings','step','started','backup','failure','stopRefused','quarantine','undoFrom','restored','failedState','rollbackError','site','instance','operations','targetMayHaveWritten','restoreRoots','package','driver','kind','previous',...(j.schemaVersion===3?['driverInfo','backupPolicy','trustFile','socketRestore']:[])];if(Object.keys(j).some(k=>!keys.includes(k)))throw new Error('unknown journal field');
  if(j.undoFrom!==undefined&&!STEPS.includes(j.undoFrom))throw new Error('invalid rollback origin');
  if(j.operations!==undefined&&(!Array.isArray(j.operations)||j.operations.length>100000||j.operations.some(o=>!/^op-\d+$/.test(o.id)||!['source-switch','source-restore'].includes(o.kind)||!['intent','complete'].includes(o.status))))throw new Error('invalid journal operations');
- if(j.restoreRoots!==undefined&&(!Array.isArray(j.restoreRoots)||j.restoreRoots.length>20000||j.restoreRoots.some(r=>![r.live,r.aside,r.staged,r.stageDir].every(absolute)||path.dirname(r.live)!==path.dirname(r.aside)||path.dirname(r.stageDir)!==path.dirname(r.live)||path.dirname(r.staged)!==r.stageDir||!['prepared','moving-old','old-moved','installing','installed',...(j.schemaVersion===3?['preparing']:[])].includes(r.status))))throw new Error('invalid restore path roles or state');
- if(j.socketRestore!==undefined){
-  const layout=j.socketRestore;
-  if(!layout||!Array.isArray(layout.anchors)||!Array.isArray(layout.sockets)||!Array.isArray(layout.units)||
-   (layout.aliases!==undefined&&(!Array.isArray(layout.aliases)||!layout.aliases.every(a=>a&&absolute(a.live)&&absolute(a.target))))||
-   layout.anchors.length+layout.units.length+(layout.aliases?.length??0)>20000||layout.sockets.length>1000||
-   !layout.anchors.every(a=>a&&absolute(a.live))||!layout.sockets.every(id=>typeof id==='string')||
-   !layout.units.every(u=>u&&[u.live,u.aside,u.staged,u.stageDir].every(absolute)))
-   throw new Error('invalid socket restore layout');
- }
+ if(j.restoreRoots!==undefined)validateRestoreRoots(j.restoreRoots,j.schemaVersion);
+ if(j.socketRestore!==undefined)validateSocketRestoreLayout(j.socketRestore);
  if(!STEPS.includes(j.step)||typeof j.id!=='string'||!/^[A-Za-z0-9-]{1,100}$/.test(j.id)||!Number.isFinite(Date.parse(j.startedAt)))throw new Error('invalid journal state or operation ID');
  for(const side of ['from','to'])if(!j[side]||typeof j[side].label!=='string'||typeof j[side].core?.version!=='string'||typeof j[side].expect?.version!=='string')throw new Error(`invalid journal ${side}`);
  if(!Array.isArray(j.changes)||j.changes.length>32||typeof j.epochRose!=='boolean')throw new Error('invalid source changes');
