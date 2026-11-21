@@ -10,7 +10,7 @@ import {packageFixture} from './package-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,writeFile,readFile,rm,realpath} from 'node:fs/promises';
-import {existsSync,readFileSync,readdirSync,writeFileSync,statSync,chmodSync,rmSync,symlinkSync} from 'node:fs';
+import {existsSync,readFileSync,readdirSync,writeFileSync,statSync,lstatSync,realpathSync,chmodSync,rmSync,symlinkSync} from 'node:fs';
 import {execFileSync,spawnSync} from 'node:child_process';
 import {createConnection,createServer} from 'node:net';
 import os from 'node:os';
@@ -61,7 +61,23 @@ function clone(from,to){execFileSync('git',['clone','-q',from,to],{stdio:'ignore
  * as STATE_DIR puts it). layout 'home': <home>/core, <home>/household (a plugin source of its own), config/, data/,
  * private/ and instance.json. upstream has v1.0.0; the test adds what it needs.
  */
-async function world(t,{layout='checkout',instance={},temp=os.tmpdir()}={}){
+function safeTempParent(){
+ for(const candidate of [os.tmpdir(),os.homedir(),process.cwd()]){
+  if(!candidate)continue;
+  try{
+   const real=realpathSync.native(candidate);
+   let ok=true;
+   for(let dir=real;dir!==path.dirname(dir);dir=path.dirname(dir)){
+    const st=lstatSync(dir);
+    if((st.mode&0o022)||![0,process.getuid?.()??st.uid].includes(st.uid)){ok=false;break;}
+   }
+   if(ok)return real;
+  }catch{}
+ }
+ return os.tmpdir();
+}
+
+async function world(t,{layout='checkout',instance={},temp=safeTempParent()}={}){
  const dir=await realpath(await mkdtemp(path.join(temp,'hub-update-')));t.after(()=>rm(dir,{recursive:true,force:true}));
  const upstream=await init(path.join(dir,'upstream'));
  const v100=await upstream.commit('1.0.0',tree('1.0.0'),{tag:'v1.0.0'});
@@ -835,21 +851,7 @@ test('CLI discovery honors normalized environment and stored integration disable
 });
 
 test('trust-import refuses new and existing trust files inside --backup-root and accepts isolated trust paths',async t=>{
- const {lstatSync,realpathSync}=await import('node:fs');
- let temp=os.tmpdir();
- for(const candidate of [os.tmpdir(),os.homedir(),process.cwd()]){
-  if(!candidate)continue;
-  try{
-   const real=realpathSync.native(candidate);
-   let ok=true;
-   for(let dir=real;dir!==path.dirname(dir);dir=path.dirname(dir)){
-    const st=lstatSync(dir);
-    if((st.mode&0o022)||![0,process.getuid?.()??st.uid].includes(st.uid)){ok=false;break;}
-   }
-   if(ok){temp=real;break;}
-  }catch{}
- }
- const w=await world(t,{layout:'home',temp});
+ const w=await world(t,{layout:'home'});
  const {generateKeyPairSync}=await import('node:crypto');
  const {publicKey}=await import('../server/release-trust.mjs');
  const pair=generateKeyPairSync('ed25519'),pem=pair.publicKey.export({type:'spki',format:'pem'}),fp=publicKey(pem).id;

@@ -101,9 +101,12 @@ test('safe-fs: strictJson rejects duplicate keys, invalid UTF-8, trailing data a
  assert.throws(()=>strictJson(Buffer.from('{"a":"12345"}'),{limit:8}),/exceeds local byte limit/);
 });
 
-test('safe-fs: fields rejects non-objects, arrays and unexpected properties',()=>{
+test('safe-fs: fields rejects non-objects, arrays, non-plain objects and unexpected properties',()=>{
  assert.doesNotThrow(()=>fields({a:1,b:2},['a','b','c'],'sample'));
+ assert.doesNotThrow(()=>fields(Object.assign(Object.create(null),{a:1}),['a'],'sample'));
  assert.throws(()=>fields({a:1,extra:true},['a','b'],'sample'),/invalid sample fields/);
  assert.throws(()=>fields([],['a'],'sample'),/invalid sample fields/);
+ assert.throws(()=>fields(new Date(),[],'sample'),/invalid sample fields/);
+ assert.throws(()=>fields(new Map(),[],'sample'),/invalid sample fields/);
  assert.throws(()=>fields(null,['a'],'sample'),/invalid sample fields/);
 });

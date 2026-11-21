@@ -66,8 +66,25 @@ export function trustDestination(file,{forbidden=[]}={}){
   catch(e){if(e.code!=='ENOENT')throw e;suffix.unshift(path.basename(parent));parent=path.dirname(parent);}
  }
  const realParent=realpathSync.native(parent);
- const resolved=path.join(realParent,...suffix,path.basename(named));
- for(const root of forbidden)if(root&&withinPath(resolved,canonicalPath(root)))throw new Error(`trust must be outside replaced/restored root: ${root}`);
+ let resolved=path.join(realParent,...suffix,path.basename(named));
+ let leafStat=null;
+ if(!suffix.length){
+  try{
+   leafStat=lstatSync(resolved);
+   if(!leafStat.isSymbolicLink())resolved=realpathSync.native(resolved);
+  }catch(e){if(e.code!=='ENOENT')throw e;}
+ }
+ for(const root of forbidden){
+  if(!root)continue;
+  const cRoot=canonicalPath(root);
+  if(withinPath(resolved,cRoot))throw new Error(`trust must be outside replaced/restored root: ${root}`);
+  if(leafStat&&!leafStat.isSymbolicLink()){
+   try{
+    const rStat=lstatSync(cRoot);
+    if(leafStat.dev===rStat.dev&&leafStat.ino===rStat.ino)throw new Error(`trust must be outside replaced/restored root: ${root}`);
+   }catch(e){if(e.code!=='ENOENT'&&e.code!=='ENOTDIR')throw e;}
+  }
+ }
  // Parent directories must not permit another account to substitute the file.
  for(let dir=realParent;dir!==path.dirname(dir);dir=path.dirname(dir)){
   const st=lstatSync(dir);

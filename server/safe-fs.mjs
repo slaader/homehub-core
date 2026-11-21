@@ -143,5 +143,7 @@ export function strictJson(bytes,{limit=8*1024*1024}={}){
 }
 
 export function fields(value,names,where){
- if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!names.includes(k)))throw new Error(`invalid ${where} fields`);
+ if(!value||typeof value!=='object')throw new Error(`invalid ${where} fields`);
+ const proto=Object.getPrototypeOf(value);
+ if((proto!==Object.prototype&&proto!==null)||Object.keys(value).some(k=>!names.includes(k)))throw new Error(`invalid ${where} fields`);
 }

@@ -68,6 +68,20 @@ test('trust: forbiddenTrustRoots includes backupRoots and loadTrust enforces sym
  assert.throws(()=>importTrustKey({inst,trustFile:inBackup,repository:'example/core',role:'package',publicKeyFile:keyFile,expectedFingerprint:id}),/outside replaced\/restored root/);
  writeFileSync(inBackup,JSON.stringify(doc()),{mode:0o600});
  assert.throws(()=>importTrustKey({inst,trustFile:inBackup,repository:'example/core',role:'package',publicKeyFile:keyFile,expectedFingerprint:id}),/outside replaced\/restored root/);
+ // An individual file configured as a backup root is refused by both loadTrust and importTrustKey, including alternate casing on case-insensitive filesystems.
+ const fileRoot=path.join(safeDir,'backed-up-trust.json');
+ writeFileSync(fileRoot,JSON.stringify(doc()),{mode:0o600});
+ const instFileRoot={...inst,backupRoots:[...inst.backupRoots,fileRoot]};
+ const fileForbidden=forbiddenTrustRoots(instFileRoot);
+ assert.throws(()=>loadTrust(fileRoot,{forbidden:fileForbidden}),/outside replaced\/restored root/);
+ assert.throws(()=>importTrustKey({inst:instFileRoot,trustFile:fileRoot,repository:'example/core',role:'package',publicKeyFile:keyFile,expectedFingerprint:id}),/outside replaced\/restored root/);
+ const altCase=path.join(safeDir,'BACKED-UP-TRUST.JSON');
+ let caseInsensitive=false;
+ try{const st=lstatSync(altCase),orig=lstatSync(fileRoot);caseInsensitive=st.dev===orig.dev&&st.ino===orig.ino;}catch{}
+ if(caseInsensitive){
+  assert.throws(()=>loadTrust(altCase,{forbidden:fileForbidden}),/outside replaced\/restored root/);
+  assert.throws(()=>importTrustKey({inst:instFileRoot,trustFile:altCase,repository:'example/core',role:'package',publicKeyFile:keyFile,expectedFingerprint:id}),/outside replaced\/restored root/);
+ }
 });
 test('trust: importTrustKey refuses writes exceeding the 1 MiB trust policy limit without modifying the existing policy',t=>{
  const dir=safeTempDir(t,'.hub-trust-limit-');
