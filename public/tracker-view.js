@@ -463,10 +463,8 @@ async function ticketPage(wrap,ctx){
  // It waits for a page of that item that is on the screen: a view the user already left does not use it up.
  const [tk,meta,people,reviews]=result,mine=wrap.isConnected&&prefs.notices.has(tk.id),notice=mine?{notice:prefs.notices.get(tk.id),noticeError:true}:{};if(mine)prefs.notices.delete(tk.id);
  const project=meta.projects.find(p=>p.id===tk.project);
- // Wiki pages that mention the ticket are listed once, under References and where used. The backlinks answer only
- // counts them on the closed card, so the page needs no second list of the same pages.
- const wikiPages=wikiApi('/api/wiki/tickets/'+encodeURIComponent(tk.id)+'/backlinks').then(data=>Array.isArray(data?.pages)?data.pages.length:0);
- const referenceLinks=referencesSection('ticket',tk.id,ctx.me,{wikiPages});
+ // Wiki pages that mention the ticket are listed once, under References and where used.
+ const referenceLinks=referencesSection('ticket',tk.id,ctx.me);
  renderTicket(wrap,{...ctx,meta,referenceLinks,reviews:Array.isArray(reviews?.sets)?reviews:null,people:peopleNames(people)},tk,{fields:{},comment:'',...notice});
 }
 // Unsaved input on a ticket page: the comment box and every edit-form field that differs from what was rendered,

@@ -15,7 +15,6 @@ export default {
  'Vytvořit referenci':'Make reference','Přidat vlastní referenci':'Add custom reference','Přidat model':'Add model',
  'Globální reference':'Global','Projektové reference':'Project-local','Zpřístupnit ve všech projektech':'Share across all projects',
  'Upravit poznámku':'Edit note','Reference a místa použití':'References and where used','Místa použití ({n})':'Where used ({n})',
- '{n} stránka wiki|{n} stránky wiki|{n} stránek wiki':'{n} wiki page|{n} wiki pages',
  'Zatím bez odkazů.':'No incoming references yet.','Žádné odpovídající reference.':'No matching references.',
  'Podrobnosti zařízení':'Device details','Neplatná reference nebo projekt.':'Invalid reference or project.',
  'Reference nebyla nalezena.':'Reference not found.','Reference se změnila nebo název už existuje.':'The reference changed or its name already exists.',

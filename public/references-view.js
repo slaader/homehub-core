@@ -1,7 +1,7 @@
 import {el} from './views.js';
-import {locale,t,tp} from './i18n.js';
+import {locale,t} from './i18n.js';
 import {timeZone} from './site.js';
-import {pageHeader,emptyState} from './ui.js';
+import {pageHeader,emptyState,loadingState} from './ui.js';
 import {referenceApi} from './reference-chip.js';
 import {kindName} from './reference-picker.js';
 import {markdown} from './tracker-md.js';
@@ -32,12 +32,14 @@ function form(record,done,reload,cancel){
  }},field('Název',label),field('Popis',description),message,el('div',{class:'acc-actions'},cancel?btn(t('Zrušit'),cancel):null,submit));
 }
 function details(kind,id,me,standalone=false){
- const box=el('div',{class:'ref-usages'});let request=0;
+ const box=el('div',{class:'ref-usages'});let request=0,loaded=false;
  async function load(offset=0){
   const turn=++request;
+  if(!loaded)box.replaceChildren(loadingState());
   try{
    const {record:r,note,usages,usageTotal}=await referenceApi('/item?'+new URLSearchParams({kind,id,offset}));
    if(turn!==request)return;
+   loaded=true;
    const error=el('p',{class:'acc-status error',role:'alert'}),edit=el('div',{}),global=may(me,'references:write'),local=may(me,'tickets:write');
    const action=(label,path,args)=>btn(t(label),async e=>{
     if(!window.confirm(t(label)))return;
@@ -74,16 +76,11 @@ function details(kind,id,me,standalone=false){
  }
  return {box,load};
 }
-// The one place a source's incoming mentions are listed, Wiki pages included. `wikiPages`, when given, resolves to how
-// many Wiki pages mention the source: a cheap count shown on the closed summary, so the list stays lazy and no
-// second card repeats the same pages.
-export function referencesSection(kind,id,me,{wikiPages}={}){
+// The one place a source's incoming mentions are listed, Wiki pages included. Stays lazy until opened.
+export function referencesSection(kind,id,me){
  const {box,load}=details(kind,id,me),summary=el('summary',{},t('Reference a místa použití'));
  const section=el('details',{class:'acc-card ref-section'},summary,box);
  section.addEventListener('toggle',()=>{if(section.open)load();});
- if(wikiPages)Promise.resolve(wikiPages).then(n=>{
-  if(Number.isSafeInteger(n)&&n>0)summary.append(el('span',{class:'ref-summary-count'},tp(n,'{n} stránka wiki|{n} stránky wiki|{n} stránek wiki')));
- }).catch(()=>{});
  return section;
 }
 export function referencesPage({me}){
