@@ -1,5 +1,6 @@
 import {el} from './views.js';
-import {t} from './i18n.js';
+import {locale,t} from './i18n.js';
+import {timeZone} from './site.js';
 import {pageHeader,emptyState} from './ui.js';
 import {referenceApi} from './reference-chip.js';
 import {kindName} from './reference-picker.js';
@@ -56,6 +57,7 @@ function details(kind,id,me,standalone=false){
     });edit.replaceChildren(field('Popis',text),save);
    }));
    const description=authored?r.description:note?.description;
+   const day=new Intl.DateTimeFormat(locale(),{dateStyle:'medium',timeZone:timeZone()});
    box.replaceChildren(...[
     standalone?pageHeader({title:r.label,eyebrow:kindName(kind),back:{href:'#references',label:t('Reference')}}):null,
     standalone?el('p',{},scopeName(r),' · ',r.id):null,
@@ -64,7 +66,7 @@ function details(kind,id,me,standalone=false){
     description?markdown(description):null,controls.length?el('div',{class:'wiki-actions'},controls):null,edit,error,
     el('h3',{},t('Místa použití ({n})',{n:usageTotal})),
     usages.length?el('ul',{},usages.map(u=>el('li',{},el('a',{href:u.source.href},u.source.label),
-     el('small',{},' · '+(u.field?.startsWith('comment/')?t('Komentář'):kindName(u.source.kind))+' · '+u.updatedAt.slice(0,10)),
+     el('small',{},' · '+(u.field?.startsWith('comment/')?t('Komentář'):kindName(u.source.kind))+' · '+day.format(new Date(u.updatedAt))),
      el('p',{},u.excerpt)))):el('p',{class:'tk-dim'},t('Zatím bez odkazů.')),
     pager(offset,usageTotal,load),
    ].filter(Boolean));

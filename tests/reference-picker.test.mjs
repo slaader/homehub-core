@@ -12,6 +12,7 @@ test('picker ignores literals and replaces a project selection or @ prefix using
  const node=document.createElement('textarea'),panel=referencePicker(node,{project:()=>'sample-game',canGlobal:true,context:()=>{
   const ctx={...selection,replace(r){inserted={r,trim:ctx.trim};}};return ctx;
  }});
+ node.setAttribute('role','textbox');node.setAttribute('aria-multiline','true');
  document.body.append(node,panel);
  const next=()=>new Promise(r=>setImmediate(r));
  globalThis.fetch=async(url,opts)=>{
@@ -19,12 +20,14 @@ test('picker ignores literals and replaces a project selection or @ prefix using
   requested={url,body:JSON.parse(opts.body)};return Response.json({...record,...requested.body});
  };
  fire(node,'input');await next();
+ assert.equal(node.getAttribute('role'),'textbox');
+ assert.equal(node.getAttribute('aria-multiline'),'true');
  assert.equal(node.getAttribute('aria-expanded'),'true');
  assert.ok(node.getAttribute('aria-activedescendant'));
  fire(node,'keyup',{key:'o'});fire(node,'keydown',{key:'Enter'});
  assert.deepEqual(inserted,{r:record,trim:4});
  selection={selected:'Trooper',before:'',position:0};
- fire(node,'pointerup');fire(panel.children[0],'click');
+ document.activeElement=node;fire(document,'selectionchange');fire(panel.children[0],'click');
  const [label,note]=panel.children;
  // This fixture stores the input's value in attributes until a user edits it.
  label.value=label.getAttribute('value');note.value='Unit documentation';

@@ -33,7 +33,7 @@ export async function referenceGuard(db,machines,refs){
     const native=kind==='wiki'?get('wiki','summaries',id):get('tickets','tickets',id);
     ok=native&&(native.project===project||get('references','notes',referenceKey(ref))?.shared);
    }
-   if(!ok)fail('invalid');
+   if(!ok)fail('unavailable-reference');
   }
  };
 }

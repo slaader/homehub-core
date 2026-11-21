@@ -268,7 +268,7 @@ export function createMcpBusiness({version='2',ctx,tools:extraTools=[],instructi
   review_set_save:args=>reviews(r=>r.saveSet(args)),
   review_publish:(args,principal)=>reviews(r=>r.publish(args,principal.username)),
  };
- const TICKET_ERRORS={invalid:'Invalid ticket request: check the field values, that the project exists and that the release exists in that project.',
+ const TICKET_ERRORS={'unavailable-reference':'A reference is missing or unavailable in this project.',invalid:'Invalid ticket request: check the field values, that the project exists and that the release exists in that project.',
   'not-found':'No such ticket or release. Use tickets_list to find the right id.',
   conflict:'It changed since you read it (or already exists). Read it again (ticket_get / tickets_list), then reapply your change with the new rev.',limit:'A ticket limit was reached; nothing was changed.'};
  async function tickets(fn){if(!ctx.tickets)throw new ToolError('Tickets are not available on this Home Hub.');try{return await fn(ctx.tickets);}catch(e){if(TICKET_ERRORS[e.message])throw new ToolError(TICKET_ERRORS[e.message]);throw new ToolError('Tickets are not available right now. Read the target before retrying a write; a previous attempt may have succeeded.');}}

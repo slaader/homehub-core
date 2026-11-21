@@ -14,6 +14,7 @@ import {toolError} from '../mcp.mjs';
 // Messages come in two languages: Czech source text for the web UI (which translates it through its
 // dictionary, like every other string) and English for an API key, i.e. a script or an agent.
 const TICKET_MESSAGES={
+ 'unavailable-reference':['Reference neexistuje nebo není dostupná v tomto projektu.','A reference is missing or unavailable in this project.'],
  'too-large':['Soubor je příliš velký (nejvýš 100 MB).','The file is too large (100 MB at most).'],
  invalid:['Neplatný požadavek na ticket (zkontroluj pole, projekt a release).','Invalid ticket request (check the fields, the project and the release).'],
  'not-found':['Ticket neexistuje.','The ticket does not exist.'],
@@ -26,7 +27,7 @@ const SEARCH_MESSAGES={
  unavailable:['Hledání teď nejde.','Search is unavailable right now.'],
 };
 const say=(pair,c)=>pair[c?.principal?.authKind==='api-key'?1:0];
-const ticketsError=(e,c)=>[({'too-large':413,invalid:400,'not-found':404,conflict:409,limit:409})[e.message]||503,'TICKETS_FAILED',say(TICKET_MESSAGES[e.message]||TICKET_MESSAGES.unavailable,c)];
+const ticketsError=(e,c)=>[({'too-large':413,'unavailable-reference':400,invalid:400,'not-found':404,conflict:409,limit:409})[e.message]||503,'TICKETS_FAILED',say(TICKET_MESSAGES[e.message]||TICKET_MESSAGES.unavailable,c)];
 const searchError=(e,c)=>[e.message==='invalid'?400:503,'SEARCH_FAILED',say(SEARCH_MESSAGES[e.message]||SEARCH_MESSAGES.unavailable,c)];
 // Provenance (server/provenance.mjs): who made and changed the records, people or service accounts, read from
 // the records themselves. The list counts projects, releases and items together (unit records); projects the

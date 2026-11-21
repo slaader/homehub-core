@@ -34,7 +34,7 @@ export function referenceChip(ref,editing=false){
  const key=referenceKey(ref),item=waiting.get(key)??{kind:ref.kind,id:ref.id,listeners:[]};
  waiting.set(key,item);
  item.listeners.push(record=>{
-  if(record){chip.textContent=record.label;return;}
+  if(record){chip.textContent=record.label;chip.setAttribute('data-ref-label',record.label);return;}
   chip.removeAttribute('href');chip.classList.add('wiki-ticket-missing');chip.title=t('Reference nebyla nalezena.');
  });
  return chip;

@@ -1,7 +1,7 @@
 import {referencesSection} from './references-view.js';
 import {referencePicker} from './reference-picker.js';
 import {referenceToken} from './reference-format.js';
-import {editableMarkdownRange} from './tracker-markdown-format.js';
+import {editableMarkdownRange,markdownReferences} from './tracker-markdown-format.js';
 import {reviewDialog} from './review-guidance.js';
 // Project Tracker: a development tracker for your own projects.
 //   #projects        projects overview: health ring, activity, next release, create / edit a project
@@ -340,8 +340,12 @@ async function newTicket(projects,preset,ctx={}){
  // Files wait here until the item exists; they are uploaded right after it is created. A paste into the
  // description also leaves a chip where the caret is.
  const pending=[],view=item=>{const i=pending.indexOf(item);if(i>=0)openViewer(pending,i,showDialog);};let busy=false;
- const description=mdEditor(el('textarea',{name:'description',rows:'7',maxlength:'12000',placeholder:t('Co a proč. U chyby kroky k reprodukci, u funkce kritéria přijetí.')}),keys,
+ const descriptionField=el('textarea',{name:'description',rows:'7',maxlength:'12000',placeholder:t('Co a proč. U chyby kroky k reprodukci, u funkce kritéria přijetí.')});
+ const description=mdEditor(descriptionField,keys,
   {project:()=>project.value,canGlobal:ctx.me?.scopes?.includes('references:write'),canReference:ctx.me?.scopes?.includes('tickets:write'),resolve:name=>pending.find(p=>p.name===name)||null,onOpen:view,label:t('Popis')});
+ project.addEventListener('change',()=>{
+  if(descriptionField.value.includes('@[')&&markdownReferences(descriptionField.value).length)msg.textContent=t('Projekt se změnil. Zkontroluj, zda jsou reference dostupné v novém projektu.');
+ });
  const picker=el('input',{type:'file',multiple:'',hidden:'','aria-label':t('+ Přidat soubor'),onchange:e=>{const list=[...e.target.files];e.target.value='';add(list);}});
  const filesBox=el('div',{class:'tk-attach'});
  const drawFiles=()=>show(filesBox,

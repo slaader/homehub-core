@@ -1,4 +1,5 @@
 const messages={
+ 'unavailable-reference':[400,'Reference neexistuje nebo není dostupná v tomto projektu.','A reference is missing or unavailable in this project.'],
  invalid:[400,'Neplatný požadavek na wiki.','Invalid wiki request. Check the fields and document format.'],
  'not-found':[404,'Stránka nebo wiki neexistuje.','The page, wiki or attachment does not exist.'],
  conflict:[409,'Stránka se mezitím změnila.','The page changed while you were editing. Read the current revision and reapply your changes.'],

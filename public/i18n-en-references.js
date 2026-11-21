@@ -1,4 +1,6 @@
 export default {
+ 'Projekt se změnil. Zkontroluj, zda jsou reference dostupné v novém projektu.':'The project changed. Check that the references are available in the new project.',
+ 'Reference neexistuje nebo není dostupná v tomto projektu.':'A reference is missing or unavailable in this project.',
  'Načíst znovu':'Reload','Reference překračuje limit textu.':'This reference would exceed the text limit.',
  'Komentář':'Comment','Reference':'References','Druh reference':'Reference type','Vlastní':'Custom',
  'Vytvořit referenci':'Make reference','Přidat vlastní referenci':'Add custom reference','Přidat model':'Add model',

@@ -4,6 +4,19 @@ import {referenceApi} from './reference-chip.js';
 import {validLabel} from './reference-format.js';
 
 let serial=0;
+const selectionEditors=new WeakMap(),observedDocuments=new WeakSet();
+function observeSelection(node,update){
+ const doc=node.ownerDocument??document;
+ selectionEditors.set(node,update);
+ if(observedDocuments.has(doc))return;
+ observedDocuments.add(doc);
+ doc.addEventListener('selectionchange',()=>{
+  for(let focused=doc.activeElement;focused;focused=focused.parentElement){
+   const refresh=selectionEditors.get(focused);
+   if(refresh){refresh();break;}
+  }
+ });
+}
 const trigger=/(?:^|[\s(])@([\p{L}\p{N}_.\/-]{0,120})$/u;
 const button=(label,action)=>el('button',{type:'button',class:'acc-btn small',onmousedown:e=>e.preventDefault(),onclick:action},label);
 export const kindName=kind=>t(({custom:'Vlastní',model:'Model',project:'Projekt',machine:'Zařízení',wiki:'Wiki',ticket:'Ticket'})[kind]);
@@ -11,12 +24,12 @@ export const kindName=kind=>t(({custom:'Vlastní',model:'Model',project:'Projekt
 // Each editor supplies a snapshot of its actual selection and a replacement operation against that snapshot.
 export function referencePicker(node,{context,project,canGlobal=false}){
  const id='reference-picker-'+(++serial),panel=el('div',{class:'ref-picker',hidden:''}),list=el('div',{id,role:'listbox'});
- let sequence=0,current=null,items=[],active=0,formOpen=false,last=null;
+ let sequence=0,current=null,items=[],active=0,formOpen=false,last=null,createButton=null;
  const hide=()=>{
   sequence++;current=null;last=null;items=[];formOpen=false;panel.hidden=true;panel.replaceChildren();
-  node.setAttribute('aria-expanded','false');node.removeAttribute('aria-activedescendant');
+  createButton=null;
+  for(const attr of ['aria-expanded','aria-controls','aria-activedescendant','aria-keyshortcuts'])node.removeAttribute(attr);
  };
- node.setAttribute('role','combobox');node.setAttribute('aria-haspopup','listbox');node.setAttribute('aria-autocomplete','list');node.setAttribute('aria-controls',id);node.setAttribute('aria-expanded','false');
  function show(...parts){
   panel.replaceChildren(...parts);panel.hidden=false;
   const editor=node.getBoundingClientRect?.(),range=globalThis.getSelection?.();
@@ -49,7 +62,8 @@ export function referencePicker(node,{context,project,canGlobal=false}){
     if(selection===current&&owner===project())choose(record);
    }catch(e){error.textContent=e.message;}finally{save.disabled=false;}
   });
-  show(label,note,owner&&canGlobal?el('label',{},global,t('Globální reference')):el('small',{},owner??t('Globální reference')),
+  const globalLabel=el('label',{onmousedown:e=>{global.focus();e.preventDefault();}},global,t('Globální reference'));
+  show(label,note,owner&&canGlobal?globalLabel:el('small',{},owner??t('Globální reference')),
    error,el('div',{class:'wiki-actions'},save,button(t('Zrušit'),hide)));
   label.focus();
  }
@@ -70,7 +84,10 @@ export function referencePicker(node,{context,project,canGlobal=false}){
   current=selection;
   if(last===identity)return;
   hide();current=selection;last=identity;
-  if(selected){show(button(t('Vytvořit referenci'),()=>create(selected)));return;}
+  if(selected){
+   createButton=button(t('Vytvořit referenci'),()=>create(selected));
+   node.setAttribute('aria-keyshortcuts','Alt+Shift+R');show(createButton);return;
+  }
 
   const turn=sequence;
   try{
@@ -80,11 +97,15 @@ export function referencePicker(node,{context,project,canGlobal=false}){
    if(!items.length)return hide();
    list.replaceChildren(...items.map((r,i)=>el('button',{type:'button',role:'option',id:id+'-'+i,tabindex:'-1',
     onmousedown:e=>e.preventDefault(),onclick:()=>choose(r)},el('strong',{},r.label),' · '+kindName(r.kind)+' · '+(r.project??r.id))));
-   show(list);node.setAttribute('aria-expanded','true');highlight();
+   show(list);node.setAttribute('aria-controls',id);node.setAttribute('aria-expanded','true');highlight();
   }catch{if(turn===sequence)hide();}
  }
  function key(e){
-  if(e.isComposing||e.ctrlKey||e.metaKey||e.altKey)return;
+  if(e.isComposing||e.ctrlKey||e.metaKey)return;
+  if(e.altKey&&e.shiftKey&&e.code==='KeyR'&&createButton){
+   e.preventDefault();e.stopImmediatePropagation();createButton.click();return;
+  }
+  if(e.altKey)return;
   if(e.key==='Escape'&&!panel.hidden){e.preventDefault();e.stopImmediatePropagation();hide();return;}
   if(!items.length)return;
   if(e.key==='ArrowDown'||e.key==='ArrowUp'){
@@ -92,12 +113,14 @@ export function referencePicker(node,{context,project,canGlobal=false}){
   }
   if(e.key==='Enter'||e.key==='Tab'){e.preventDefault();e.stopImmediatePropagation();choose(items[active]);}
  }
+ observeSelection(node,update);
  node.addEventListener('input',update);node.addEventListener('pointerup',update);node.addEventListener('select',update);
  node.addEventListener('keyup',e=>{if(!['Escape','Enter','Tab','ArrowDown','ArrowUp'].includes(e.key))update();});
  node.addEventListener('keydown',key,true);
  const blur=e=>{if(!panel.contains(e.relatedTarget)&&!node.contains(e.relatedTarget))hide();};
  node.addEventListener('compositionstart',hide);
  node.addEventListener('focusout',blur);panel.addEventListener('focusout',blur);
+ panel.addEventListener('mousedown',e=>{if(!e.target.closest('input,textarea,label,button'))e.preventDefault();});
  panel.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.tagName==='INPUT'){e.preventDefault();panel.querySelector('button')?.click();}if(e.key==='Escape'){e.preventDefault();hide();node.focus();}});
  return panel;
 }

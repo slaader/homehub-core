@@ -81,8 +81,8 @@
       "budget_seconds": 120,
       "budget_approval": null,
       "last_run": {
-        "duration_seconds": 8.16,
-        "finished_at": "2026-11-21T14:32:43Z",
+        "duration_seconds": 2.99,
+        "finished_at": "2026-11-21T14:36:55Z",
         "result": "passed"
       }
     }

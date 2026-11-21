@@ -213,12 +213,11 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
   if('refs'in input)out.refs=refs(input.refs);
   return out;
  }
- async function guardText(value,attachments=[]){
+ async function guardText(value){
   if(typeof value!=='string'||!value.includes('@['))return ()=>{};
-  const options={attachmentNames:attachments.map(a=>a.name)};
-  const refs=markdownReferences(value,options);
-  const validate=await referenceGuard(db,machines,refs);
-  return (project,previous='')=>validate(project,markdownReferences(previous,options));
+  // Only explicit reference tokens enter the guard. Attachment tokens cannot contain brackets.
+  const validate=await referenceGuard(db,machines,markdownReferences(value));
+  return (project,previous='')=>validate(project,markdownReferences(previous));
  }
  async function create(input,by){
   if(!writeInput(input,['project',...TICKET_FIELDS])||typeof input.project!=='string'||!('title'in input))fail('invalid');
@@ -236,10 +235,9 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
  async function update(input,by){
   if(!writeInput(input,['id','rev',...TICKET_FIELDS])||!validRev(input.rev)||!TICKET_FIELDS.some(k=>k in input))fail('invalid');
   const description='description'in input?text(input.description,12000,{empty:true}):undefined;
-  const current=description?.includes('@[')?await get(input.id):null;
-  const validate=await guardText(description,current?.attachments);
+  const validate=await guardText(description);
   return write((data,now)=>{
-   const t=ticketOf(data,input.id);if(current&&JSON.stringify(current.attachments)!==JSON.stringify(t.attachments??[]))fail('conflict');
+   const t=ticketOf(data,input.id);
    if(t.rev!==input.rev)fail('conflict');
    validate(t.project,t.description);
    const f=fields(input,t.project,data),changed=Object.keys(f).filter(k=>JSON.stringify(f[k])!==JSON.stringify(t[k]));
@@ -252,10 +250,9 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
  }
  async function comment(input,by){
   if(!writeInput(input,['id','text'])||!('text'in input))fail('invalid');
-  const body=text(input.text,8000),current=body.includes('@[')?await get(input.id):null;
-  const validate=await guardText(body,current?.attachments);
+  const body=text(input.text,8000),validate=await guardText(body);
   return write((data,now)=>{
-   const t=ticketOf(data,input.id);if(current&&JSON.stringify(current.attachments)!==JSON.stringify(t.attachments??[]))fail('conflict');
+   const t=ticketOf(data,input.id);
    validate(t.project);
    if(t.comments.length>=LIMITS.comments)fail('limit');
    t.comments.push({id:randomUUID(),at:now,by,text:body});t.updatedAt=now;return t;

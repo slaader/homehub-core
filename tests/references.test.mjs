@@ -47,7 +47,9 @@ test('source and storage permissions, atomic promotion, incoming uses and live r
  const {id:ticket}=await post('/api/tickets',{project,title:'Unit guide',description:'Description '+token},writer,201);
  await post('/api/tickets/comment',{id:ticket,text:'Comment '+token});
  const otherTicket=await post('/api/tickets',{project:other,title:'Other item'},writer,201);
- await post('/api/tickets/comment',{id:otherTicket.id,text:token},writer,400);
+ const invalidComment=await post('/api/tickets/comment',{id:otherTicket.id,text:token},writer,400);
+ assert.match(invalidComment.error.message,/reference is missing or unavailable/i);
+ await post('/api/tickets',{project:other,title:'Unavailable reference',description:token},writer,400);
  await post('/api/tickets/update',{id:otherTicket.id,rev:1,description:token},writer,400);
  const {home}=await post('/api/wiki/setup',{project},writer,201);
  const saved=await post('/api/wiki/pages/update',{project,id:home,rev:1,doc:doc([{t:'text',text:'Inventory '},run(first)])});
@@ -77,7 +79,7 @@ test('source and storage permissions, atomic promotion, incoming uses and live r
  await post('/api/tickets/comment',{id:otherTicket.id,text:token});
  const pageRef={kind:'wiki',id:project+'/'+home,label:'Guide'};
  const notShared=await post('/api/wiki/pages/update',{project:other,id:otherHome,rev:1,doc:doc([run(pageRef)])},writer,400);
- assert.equal(notShared.error.code,'WIKI_FAILED');
+ assert.equal(notShared.error.reason,'unavailable-reference');
  await post(base+'/share',{kind:'wiki',id:pageRef.id,rev:0},h.admin);
  await post('/api/wiki/pages/update',{project:other,id:otherHome,rev:1,doc:doc([run(pageRef)])});
  assert.equal((await item('wiki',pageRef.id)).usages[0].source.href,'#wiki/'+other+'/'+otherHome);
