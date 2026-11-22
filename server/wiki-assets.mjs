@@ -2,16 +2,18 @@ import {createHash,randomBytes} from 'node:crypto';
 import {closeSync,createReadStream,existsSync,fsyncSync,linkSync,mkdirSync,openSync,readSync,statSync,unlinkSync,writeSync,ftruncateSync} from 'node:fs';
 import {open,readdir} from 'node:fs/promises';
 import path from 'node:path';
-import {ASSET_ID,exactKeys,normalizeDoc,WIKI_LIMITS,wikiAssetIds,wikiAttachmentRefs,wikiDisplayType} from '../public/wiki-doc.js';
+import {ASSET_ID,exactKeys,normalizeDoc,WIKI_LIMITS} from '../public/wiki-doc.js';
 import {validImportPath} from './git-lfs-git.mjs';
 import {validFullName} from './git-lfs-providers.mjs';
 import {LIMITS,matchesReviewMedia,SHA} from './review-store.mjs';
-import {collectionPage,wikiAssetView,wikiCollection,wikiKey} from './wiki-store.mjs';
-import {grantMatches,isConnectionId} from './wiki-sources.mjs';
+import {canUseAsset,checkWikiAttachment,collectionPage,publishWikiAsset,updateAssetReferences,usableAsset,wikiAssetView,wikiCollection,wikiKey} from './wiki-store.mjs';
 
+export {canUseAsset,usableAsset,checkWikiAttachment,publishWikiAsset,updateAssetReferences};
+export const CONNECTION_ID=/^c[a-f0-9]{10}$/;
+export function isConnectionId(id){return typeof id==='string'&&CONNECTION_ID.test(id);}
 export const UPLOAD_ID=/^u[a-f0-9]{32}$/;
 export const MCP_CHUNK=32*1024;
-export const RAW_CHUNK=8*1024*1024;
+export const RAW_CHUNK=LIMITS.chunk;
 export const MANIFEST_FILES=50;
 export const UPLOAD_TTL=24*60*60*1000;
 export const ASSET_GRACE=7*UPLOAD_TTL;
@@ -61,42 +63,6 @@ export function sanitizeWikiFilename(value,fallback){
   if(name&&name.length<=200&&name!=='.'&&name!=='..')return name;
  }
  return wikiFilename(fallback);
-}
-
-export function canUseAsset(asset,actor){
- return Boolean(asset)&&(asset.references>0||Boolean(actor)&&asset.owner===actor);
-}
-
-export function usableAsset(assets,id,actor){
- const asset=assets instanceof Map?assets.get(id):assets;
- if(!canUseAsset(asset,actor))fail('invalid-asset');
- return asset;
-}
-
-export function checkWikiAttachment(ref,assets,actor){
- const asset=usableAsset(assets,ref.assetId,actor);
- if(ref.initialClip&&asset.type!=='model/gltf-binary')fail('invalid-asset');
- if(ref.displayAssetId&&!wikiDisplayType(asset.type,usableAsset(assets,ref.displayAssetId,actor).type))fail('invalid-asset');
-}
-
-export function publishWikiAsset(asset){
- asset.references++;
- asset.published=true;
- asset.orphanedAt=null;
-}
-
-export function updateAssetReferences(assetList,doc,previous,actor,at=Date.now()){
- const before=new Set(previous?wikiAssetIds(previous):[]),after=new Set(wikiAssetIds(doc));
- const assets=new Map(assetList.map(asset=>[asset.id,asset]));
- for(const ref of wikiAttachmentRefs(doc))checkWikiAttachment(ref,assets,actor);
- for(const id of after){
-  if(!before.has(id))publishWikiAsset(assets.get(id));
- }
- for(const id of before){
-  if(after.has(id))continue;
-  const asset=assets.get(id);
-  if(asset&&--asset.references===0)asset.orphanedAt=at;
- }
 }
 
 export function wikiArchiveMember(input){
@@ -395,7 +361,7 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
   });
  }
 
- async function finish(id,actor,{source,grant}={}){
+ async function finish(id,actor,{source,grant,checkGrant}={}){
   const upload=await getUpload(id,actor);
   const assetKey=()=>wikiKey(upload.project,upload.assetId);
   if(upload.assetId){
@@ -409,7 +375,7 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
   try{await verify(file,upload);}
   catch(error){
    const current=await getUpload(id,actor);
-   if(current.assetId||current.finished)return finish(id,actor,{source,grant});
+   if(current.assetId||current.finished)return finish(id,actor,{source,grant,checkGrant});
    if(['digest-mismatch','invalid-media','invalid','limit'].includes(error.message))await abandon(id,actor);
    throw error;
   }
@@ -421,7 +387,7 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
     return {...uploadView(current,current.size),asset:wikiAssetView(asset)};
    }
    if(current.finished)return uploadView(current,current.size);
-   if(grant&&!grantMatches(data.grants[0],grant))fail('denied');
+   if(grant&&!(checkGrant?checkGrant(data.grants[0],grant):false))fail('denied');
    current.finished=true;
    if(current.purpose==='document'){
     syncFile(file);
@@ -478,7 +444,7 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
   if(abandoned)remove(part(id));
  }
 
- async function ingest(project,{name,type,size,digest,body,source},actor,grant){
+ async function ingest(project,{name,type,size,digest,body,source},actor,grant,checkGrant){
   const {uploadId}=await beginUpload({project,name,type,size,digest},actor,{importing:true});
   let offset=0,buffered=0,pending=[];
   async function flush(){
@@ -501,7 +467,7 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
     }
    }
    if(buffered)await flush();
-   return await finish(uploadId,actor,{source,grant});
+   return await finish(uploadId,actor,{source,grant,checkGrant});
   }catch(error){await abandon(uploadId,actor);throw error;}
  }
 

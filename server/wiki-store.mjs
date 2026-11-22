@@ -1,8 +1,7 @@
 import {createHash,randomBytes} from 'node:crypto';
-import {exactKeys,extractLinks,normalizeDoc,PAGE_ID,WIKI_ITEM_ID,WIKI_LIMITS,wikiTitle,wikiAssetIds,wikiAttachment} from '../public/wiki-doc.js';
+import {exactKeys,extractLinks,normalizeDoc,PAGE_ID,WIKI_ITEM_ID,WIKI_LIMITS,wikiTitle,wikiAssetIds,wikiAttachment,wikiAttachmentRefs,wikiDisplayType} from '../public/wiki-doc.js';
 import {PROJECT_ID,TICKET_ID} from './tickets-store.mjs';
 import {createMentionGuard} from './references.mjs';
-import {checkWikiAttachment,publishWikiAsset,updateAssetReferences} from './wiki-assets.mjs';
 
 export const WIKI_SCHEMA=4;
 export const MAX_LIST=100,MAX_ROWS=20;
@@ -26,6 +25,37 @@ const now=()=>new Date().toISOString();
 export function wikiPageUrl(project,id){return `#wiki/${project}${id?'/'+id:''}`;}
 export function wikiAssetView({id,project,name,type,size,digest,source}){
  return {id,project,name,type,size,digest,...(source?{source}:{}),url:`/api/wiki/${project}/assets/${id}`};
+}
+export function canUseAsset(asset,actor){
+ return Boolean(asset)&&(asset.references>0||Boolean(actor)&&asset.owner===actor);
+}
+export function usableAsset(assets,id,actor){
+ const asset=assets instanceof Map?assets.get(id):assets;
+ if(!canUseAsset(asset,actor))fail('invalid-asset');
+ return asset;
+}
+export function checkWikiAttachment(ref,assets,actor){
+ const asset=usableAsset(assets,ref.assetId,actor);
+ if(ref.initialClip&&asset.type!=='model/gltf-binary')fail('invalid-asset');
+ if(ref.displayAssetId&&!wikiDisplayType(asset.type,usableAsset(assets,ref.displayAssetId,actor).type))fail('invalid-asset');
+}
+export function publishWikiAsset(asset){
+ asset.references++;
+ asset.published=true;
+ asset.orphanedAt=null;
+}
+export function updateAssetReferences(assetList,doc,previous,actor,at=Date.now()){
+ const before=new Set(previous?wikiAssetIds(previous):[]),after=new Set(wikiAssetIds(doc));
+ const assets=new Map(assetList.map(asset=>[asset.id,asset]));
+ for(const ref of wikiAttachmentRefs(doc))checkWikiAttachment(ref,assets,actor);
+ for(const id of after){
+  if(!before.has(id))publishWikiAsset(assets.get(id));
+ }
+ for(const id of before){
+  if(after.has(id))continue;
+  const asset=assets.get(id);
+  if(asset&&--asset.references===0)asset.orphanedAt=at;
+ }
 }
 export function wikiActor(input){
  const p=input?.principal??input;
@@ -201,6 +231,8 @@ export function createWikiStore(db,tickets,{mentionGuard=null,readDocument=null}
  const store=wikiCollection(db);
  const wikiProjectSync=createWikiProjectLookup(db);
  const guardMentions=mentionGuard??createMentionGuard({db,tickets,wiki:{wikiProjectSync}});
+ const getAssetRow=db.db.prepare("SELECT doc FROM docs WHERE kind='wiki' AND coll='assets' AND id=?");
+ const putAssetRow=db.db.prepare("INSERT INTO docs(kind,coll,id,doc) VALUES('wiki','assets',?,?) ON CONFLICT(kind,coll,id) DO UPDATE SET doc=excluded.doc");
  let cached=null;
 
  async function projectOf(id){
@@ -338,7 +370,6 @@ export function createWikiStore(db,tickets,{mentionGuard=null,readDocument=null}
 
  async function save(input,by,actor=by){
   if(input?.documentUploadId===undefined)return update(input,by,actor);
-  if(!exactKeys(input,['project','id','rev','title','doc','documentUploadId']))fail('invalid');
   const {documentUploadId,...rest}=input;
   if(rest.doc!==undefined||!readDocument)fail('invalid');
   return update({...rest,doc:await readDocument(documentUploadId,rest.project,actor)},by,actor);
@@ -349,28 +380,72 @@ export function createWikiStore(db,tickets,{mentionGuard=null,readDocument=null}
   checkedIdentity(input);
   const {id,rev,patch:edit}=input;
   if(!exactKeys(edit,['tableId','rowId','cells'])||!itemId(edit.rowId))fail('invalid');
-  const title=input.title===undefined?undefined:wikiTitle(input.title);
   const project=await projectOf(input.project),key=wikiKey(project.id,id);
   const validate=await guardMentions(patchCandidateRefs(edit.cells));
-  return store.change({pages:[key],summaries:[key],assets:project.id+'/'},data=>{
+  return store.change({pages:[key],summaries:[key]},data=>{
    const page=data.pages[0];
    checkRevision(page,rev);
    const table=inventory(page,edit.tableId),row=table.rows.find(row=>row.id===edit.rowId);
    if(!row||!exactKeys(edit.cells,table.columns.map(column=>column.id)))fail('invalid-target');
    const edits=Object.entries(edit.cells);
    if(!edits.length)fail('invalid-target');
-   const nextCells={...row.cells};
+   const title=input.title===undefined?undefined:wikiTitle(input.title);
+   const nonNull=edits.filter(([,cell])=>cell!==null);
+   const normalized=nonNull.length
+    ?normalizeDoc({v:1,blocks:[{t:'inventory',id:table.id,columns:nonNull.map(([column])=>({id:column,label:'c'})),
+     rows:[{id:row.id,cells:Object.fromEntries(nonNull)}]}]}).blocks[0].rows[0].cells
+    :{};
+   const merged={...row.cells};
    for(const [column,cell] of edits){
-    if(cell===null)delete nextCells[column];
-    else nextCells[column]=cell;
+    if(cell===null)delete merged[column];
+    else merged[column]=normalized[column];
    }
+   const nextCells={};
+   for(const column of table.columns)if(Object.hasOwn(merged,column.id))nextCells[column.id]=merged[column.id];
    const nextTable={...table,rows:table.rows.map(entry=>entry===row?{...row,cells:nextCells}:entry)};
-   const nextDoc=normalizeDoc({...page.doc,blocks:page.doc.blocks.map(block=>block===table?nextTable:block)});
+   const nextDoc={...page.doc,blocks:page.doc.blocks.map(block=>block===table?nextTable:block)};
+   if(Buffer.byteLength(JSON.stringify(nextDoc))>WIKI_LIMITS.docBytes)fail('limit');
    const fields=[];
    if(title!==undefined&&title!==page.title){page.title=title;fields.push('title');}
    if(JSON.stringify(nextDoc)!==JSON.stringify(page.doc)){
     validate(project.id,docRefs(page.doc));
-    updateAssetReferences(data.assets,nextDoc,page.doc,actor);
+    const editedRefs=[],oldEditedIds=new Set(),newEditedIds=new Set();
+    for(const [column] of edits){
+     for(const ref of row.cells[column]?.attachments??[]){
+      oldEditedIds.add(ref.assetId);
+      if(ref.displayAssetId)oldEditedIds.add(ref.displayAssetId);
+     }
+     for(const ref of nextCells[column]?.attachments??[]){
+      editedRefs.push(ref);
+      newEditedIds.add(ref.assetId);
+      if(ref.displayAssetId)newEditedIds.add(ref.displayAssetId);
+     }
+    }
+    if(oldEditedIds.size||newEditedIds.size){
+     const before=new Set(wikiAssetIds(page.doc)),after=new Set(wikiAssetIds(nextDoc));
+     const added=[...newEditedIds].filter(assetId=>!before.has(assetId));
+     const removed=[...oldEditedIds].filter(assetId=>!after.has(assetId));
+     const needed=[...new Set([...newEditedIds,...removed])];
+     const loaded=new Map();
+     for(const assetId of needed){
+      const raw=getAssetRow.get(wikiKey(project.id,assetId));
+      if(raw)loaded.set(assetId,JSON.parse(raw.doc));
+     }
+     for(const ref of editedRefs)checkWikiAttachment(ref,loaded,actor);
+     const at=Date.now(),dirty=new Set();
+     for(const assetId of added){
+      publishWikiAsset(loaded.get(assetId));
+      dirty.add(assetId);
+     }
+     for(const assetId of removed){
+      const asset=loaded.get(assetId);
+      if(asset){
+       if(--asset.references===0)asset.orphanedAt=at;
+       dirty.add(assetId);
+      }
+     }
+     for(const assetId of dirty)putAssetRow.run(wikiKey(project.id,assetId),JSON.stringify(loaded.get(assetId)));
+    }
     page.doc=nextDoc;
     page.links=extractLinks(nextDoc);
     fields.push('content');

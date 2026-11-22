@@ -277,11 +277,11 @@ test('atomic wiki_page_save patch enforces mentions, asset ref-counts and confli
   patch:{tableId:'items',rowId:'row-1',cells:{notes:{c:[{t:'ticket',id:foreignTicket.id}]}}}},'unavailable-reference');
  assert.equal((await h.handler.hub.state('wiki').wiki.get(project,pageId)).rev,init.rev);
 
- // Mention guard allows local ticket and updates backlinks atomically in one store.change without pre-reading pages.
+ // Mention guard allows local ticket and updates backlinks atomically in one store.change without pre-reading pages or loading assets.
  const origGet=store.get,origChange=store.change;
- let pageGets=0,changes=0;
+ let pageGets=0,changes=0,selectionAssets=null;
  store.get=(coll,id)=>{if(coll==='pages')pageGets++;return origGet(coll,id);};
- store.change=(selection,fn,opts)=>{changes++;return origChange(selection,fn,opts);};
+ store.change=(selection,fn,opts)=>{changes++;selectionAssets=selection.assets;return origChange(selection,fn,opts);};
  let patched;
  try{
   patched=await h.handler.hub.state('wiki').wiki.patch({project,id:pageId,rev:init.rev,
@@ -290,8 +290,24 @@ test('atomic wiki_page_save patch enforces mentions, asset ref-counts and confli
  }finally{store.get=origGet;store.change=origChange;}
  assert.equal(pageGets,0);
  assert.equal(changes,1);
+ assert.equal(selectionAssets,undefined,'text-only patch does not select the assets collection');
  assert.deepEqual(patched.page.links,{tickets:[localTicket.id]});
  assert.equal((await (await fetch(h.origin+`/api/wiki/tickets/${localTicket.id}/backlinks`,{headers:reader.headers})).json()).pages[0].id,pageId);
+
+ // Validation order matches prior behavior: conflict, not-found and invalid-target precede title validation,
+ // and staged save checks upload expiry before rejecting extra fields.
+ const staleWithBadTitle=await data(h,writer,'page_save',{project,pageId,rev:init.rev,title:'   ',
+  patch:{tableId:'items',rowId:'row-1',cells:{notes:{c:[{t:'text',text:'stale'}]}}}},'conflict');
+ assert.equal(staleWithBadTitle.current.rev,patched.page.rev);
+ await data(h,writer,'page_save',{project,pageId:'wmissingpag2',rev:1,title:'   ',
+  patch:{tableId:'items',rowId:'row-1',cells:{notes:{c:[{t:'text',text:'missing'}]}}}},'not-found');
+ await data(h,writer,'page_save',{project,pageId,rev:patched.page.rev,title:'   ',
+  patch:{tableId:'items',rowId:'no-such-row',cells:{notes:{c:[{t:'text',text:'bad row'}]}}}},'invalid-target');
+ await assert.rejects(
+  h.handler.hub.state('wiki').wiki.save({project,id:pageId,rev:patched.page.rev,
+   documentUploadId:'u'+'0'.repeat(32),extraField:true},writer.account.username,'api-key:'+writer.account.id),
+  {message:'upload-expired'},
+ );
 
  // Asset visibility rejects another writer's private draft without mutating existing ref-counts.
  await data(h,writer,'page_save',{project,pageId,rev:patched.page.rev,
@@ -405,9 +421,20 @@ test('wiki authoring module is folded, HTTP-to-MCP inversion is removed, and sha
   connection:'c0123456789',kind:'lfs',project:'sample-game',key:lfsGrant.key};
  assert.equal(grantMatches(reordered,lfsGrant),true);
  assert.equal(grantMatches({...lfsGrant,identity:'id-2'},lfsGrant),false);
+ assert.equal(grantMatches({...lfsGrant,extra:true},lfsGrant),false);
  assert.equal(grantMatches({...lfsGrant,downloadOrigin:undefined},lfsGrant),false);
+ const noOrigin={key:lfsGrant.key,project:'sample-game',kind:'lfs',connection:'c0123456789',repo:'alice/media',identity:'id-1'};
+ assert.equal(grantMatches({...noOrigin,downloadOrigin:null},noOrigin),false);
+ assert.equal(grantMatches({...noOrigin,downloadOrigin:undefined},noOrigin),false);
  assert.equal(grantMatches(undefined,lfsGrant),false);
  const reviewGrant={key:'sample-game/review/R-1',project:'sample-game',kind:'review',set:'R-1'};
  assert.equal(grantMatches({...reviewGrant},reviewGrant),true);
  assert.equal(grantMatches({...reviewGrant,set:'R-2'},reviewGrant),false);
+ assert.equal(grantMatches({...reviewGrant,extra:'x'},reviewGrant),false);
+
+ // Wiki modules form a clean acyclic graph: store <- assets <- sources (no mutual imports).
+ const storeSrc=readFileSync(new URL('../server/wiki-store.mjs',import.meta.url),'utf8');
+ const assetsSrc=readFileSync(new URL('../server/wiki-assets.mjs',import.meta.url),'utf8');
+ assert.doesNotMatch(storeSrc,/from\s+['"]\.\/wiki-(assets|sources)\.mjs['"]/);
+ assert.doesNotMatch(assetsSrc,/from\s+['"]\.\/wiki-sources\.mjs['"]/);
 });
