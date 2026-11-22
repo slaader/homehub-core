@@ -3,24 +3,37 @@
 import path from 'node:path';
 import {createTicketSearch} from '../ticket-search.mjs';
 import {createReadStream} from 'node:fs';
+import {readFile} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
 import {pipeline} from 'node:stream/promises';
-import {createTicketStore,ticketAuthors,TICKET_ID,TICKET_TYPES,TICKET_PRIORITIES,TICKET_ATTACHMENTS} from '../tickets-store.mjs';
+import {createTicketStore,ticketAuthors,TICKET_ID,TICKET_TYPES,TICKET_STATUSES,TICKET_PRIORITIES,RELEASE_STATUSES,PROJECT_TYPES,PROJECT_COLORS,PROJECT_VIEWS,TICKET_ATTACHMENTS} from '../tickets-store.mjs';
 import {authoredProvenance} from '../provenance.mjs';
-import {createTicketFiles,inline as inlineFile,FILE_LIMITS} from '../ticket-files.mjs';
+import {createTicketFiles,cleanName,inline as inlineFile,FILE_LIMITS} from '../ticket-files.mjs';
 import {byteRange} from '../http-range.mjs';
-import {toolError} from '../mcp.mjs';
+import {toolError} from '../tool-error.mjs';
 
 // Messages come in two languages: Czech source text for the web UI (which translates it through its
-// dictionary, like every other string) and English for an API key, i.e. a script or an agent.
+// dictionary, like every other string) and English for an API key, i.e. a script or an agent. An optional
+// third string gives the MCP tool refusal phrasing; otherwise MCP shares the English API message.
 const TICKET_MESSAGES={
  'unavailable-reference':['Reference neexistuje nebo není dostupná v tomto projektu.','A reference is missing or unavailable in this project.'],
  'too-large':['Soubor je příliš velký (nejvýš 100 MB).','The file is too large (100 MB at most).'],
- invalid:['Neplatný požadavek na ticket (zkontroluj pole, projekt a release).','Invalid ticket request (check the fields, the project and the release).'],
- 'not-found':['Ticket neexistuje.','The ticket does not exist.'],
- conflict:['Záznam se mezitím změnil nebo už existuje. Načti ho znovu a změnu zopakuj.','The record changed in the meantime or already exists. Read it again and repeat the change.'],
- limit:['Byl dosažen limit počtu záznamů.','The record limit has been reached.'],
- unavailable:['Tickety teď nejdou načíst ani uložit.','Tickets cannot be loaded or saved right now.'],
+ invalid:['Neplatný požadavek na ticket (zkontroluj pole, projekt a release).','Invalid ticket request (check the fields, the project and the release).','Invalid ticket request: check the field values, that the project exists and that the release exists in that project.'],
+ 'not-found':['Ticket neexistuje.','The ticket does not exist.','No such ticket or release. Use tickets_list to find the right id.'],
+ conflict:['Záznam se mezitím změnil nebo už existuje. Načti ho znovu a změnu zopakuj.','The record changed in the meantime or already exists. Read it again and repeat the change.','It changed since you read it (or already exists). Read it again (ticket_get / tickets_list), then reapply your change with the new rev.'],
+ limit:['Byl dosažen limit počtu záznamů.','The record limit has been reached.','A ticket limit was reached; nothing was changed.'],
+ unavailable:['Tickety teď nejdou načíst ani uložit.','Tickets cannot be loaded or saved right now.','Tickets are not available right now. Read the target before retrying a write; a previous attempt may have succeeded.'],
 };
+const TICKET_MCP_CODES=new Set(['unavailable-reference','invalid','not-found','conflict','limit']);
+async function runTickets(state,fn){
+ if(!state?.tickets)throw toolError('Tickets are not available on this Home Hub.');
+ try{return await fn(state.tickets);}
+ catch(e){
+  if(e?.toolError===true)throw e;
+  const row=TICKET_MCP_CODES.has(e.message)?TICKET_MESSAGES[e.message]:TICKET_MESSAGES.unavailable;
+  throw toolError(row[2]??row[1]);
+ }
+}
 const SEARCH_MESSAGES={
  invalid:['Neplatné hledání (nejvýš 200 znaků, kind ticket|review, limit 1–100).','Invalid search (200 characters at most, kind ticket|review, limit 1-100).'],
  unavailable:['Hledání teď nejde.','Search is unavailable right now.'],
@@ -70,6 +83,13 @@ async function describeHits(results,{state,hub}){
  });
 }
 const SEARCH_ARGS=['query','project','status','type','priority','release','assignee','label','limit'];
+const TICKET_PROPS={
+ title:{type:'string',minLength:1,maxLength:200},description:{type:'string',maxLength:12000,description:'What and why: steps to reproduce, acceptance criteria, notes. Shown as light Markdown (lists, **bold**, `code`, ``` fences, links); ticket ids such as APP-12 become links.'},
+ type:{type:'string',enum:[...TICKET_TYPES]},status:{type:'string',enum:[...TICKET_STATUSES]},priority:{type:'string',enum:[...TICKET_PRIORITIES]},
+ release:{type:['string','null'],maxLength:40,description:'Version of an existing release in the project, or null for unplanned.'},
+ assignee:{type:['string','null'],maxLength:60,description:'Who works on it: the name of a user or service account of this hub (free text is accepted); null for nobody. The word none is reserved for filtering.'},
+ labels:{type:'array',maxItems:10,items:{type:'string',pattern:'^[a-z0-9][a-z0-9-]{0,29}$'},description:'Lowercase tags (a-z, 0-9, hyphen), e.g. ui, api, docs.'},
+ refs:{type:'array',maxItems:20,items:{type:'string',minLength:1,maxLength:300},description:'Commits, pull-request links, related ticket ids.'}};
 
 export default {
  id:'tracker',title:'Project Tracker',
@@ -89,7 +109,7 @@ export default {
   const dir=path.join(hub.stateDirectory,'tickets');
   const tickets=createTicketStore(dir,{db:hub.db,seedProjects:hub.site.tracker.projects,mentionGuard:refs=>hub.state('references').prepareMentionGuard(refs)}),ticketFiles=createTicketFiles(dir);
   const ticketSearch=createTicketSearch(dir,{db:hub.db,tickets,ticketFiles,...hub.options.ticketSearch});
-  return {tickets,ticketFiles,ticketSearch,fullTextSearch:input=>ticketSearch.searchAll(input)};
+  return {tickets,ticketFiles,ticketSearch};
  },
  pollers:[{id:'ticket-search',start:state=>state.ticketSearch.start(),stop:state=>state.ticketSearch.close()}],
  routes:[
@@ -135,6 +155,103 @@ export default {
     return json(200,{...found,results:await describeHits(found.results,c),indexed:hub.db.searchStats()});}},
  ],
  mcpTools:[
+  {name:'projects_list',scope:'read',title:'Tickets: list projects',
+   description:'List project ids, ticket prefixes, names, descriptions, types, settings and revs without loading tickets or releases. Use this to find a project or its rev for project_save; use tickets_list for tickets and releases.',
+   inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,openWorldHint:false},
+   run:(_args,{state})=>runTickets(state,t=>t.projects()).then(projects=>({projects}))},
+  {name:'tickets_list',scope:'read',title:'Tickets: list',
+   description:'List tickets with field filters, plus every project and release (releases carry per-status ticket counts over all their tickets). Sorted by status, then priority, then latest change; total is the number of matches before limit. Tickets come without comment text, history or attachments (comments and attachments are counts); use ticket_get for the full record and its rev, and ticket_search to look for words in comments too.',
+   inputSchema:{type:'object',properties:{
+    project:{type:'string',maxLength:40,description:'Project id as listed in projects, e.g. my-app.'},
+    status:{type:'string',maxLength:60,description:'open, in-progress, done, cancelled, or "active" (open + in-progress); comma-separated for several.'},
+    type:{type:'string',enum:[...TICKET_TYPES]},priority:{type:'string',enum:[...TICKET_PRIORITIES]},
+    release:{type:'string',maxLength:40,description:'Release version, or "none" for unplanned tickets.'},
+    assignee:{type:'string',maxLength:60,description:'Assignee name, or "none".'},label:{type:'string',maxLength:30},
+    query:{type:'string',maxLength:100,description:'Text contained in the id, title, description or a label (case-insensitive substring).'},
+    limit:{type:'integer',minimum:1,maximum:200,description:'Maximum tickets (default 50).'}},additionalProperties:false},
+   annotations:{readOnlyHint:true,openWorldHint:false},
+   async run({query,limit=50,...args},{state}){
+    if(!Number.isInteger(limit)||limit<1||limit>200||'q'in args)throw toolError('Invalid ticket filters: limit must be an integer from 1 to 200; use query for text search.');
+    const data=await runTickets(state,t=>t.list({...args,...(query!==undefined?{q:query}:{}),limit}));
+    return {...data,releases:data.releases.map(({createdBy,createdAt,...r})=>r)};
+   }},
+  {name:'ticket_get',scope:'read',title:'Tickets: read one',
+   description:'Read one ticket in full: description, comments, attachments (metadata), change history and rev (needed for ticket_update).',
+   inputSchema:{type:'object',properties:{id:{type:'string',pattern:TICKET_ID.source,description:'Ticket id: the project key, a hyphen and a number, e.g. APP-12.'}},required:['id'],additionalProperties:false},
+   annotations:{readOnlyHint:true,openWorldHint:false},
+   run:(args,{state})=>{if(Object.keys(args).some(k=>k!=='id'))throw toolError('Invalid ticket request.');return runTickets(state,t=>t.get(args.id));}},
+  {name:'ticket_create',scope:'tickets:write',title:'Tickets: create',
+   description:'File a new ticket in an existing project (create the project first with project_save). Defaults: type task, status open, priority normal. A release must already exist in that project (see tickets_list → releases, or create it with release_save). Returns the new ticket with its id and rev.',
+   inputSchema:{type:'object',properties:{...TICKET_PROPS,project:{type:'string',maxLength:40,description:'Project id as listed by tickets_list → projects, e.g. my-app.'}},required:['project','title'],additionalProperties:false},
+   annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false},
+   run:(args,{state,principal})=>runTickets(state,t=>t.create(args,principal.username))},
+  {name:'ticket_update',scope:'tickets:write',title:'Tickets: change fields',
+   description:'Change fields of a ticket (status, release, assignee, …). Pass only the fields to change and the rev from ticket_get; if the ticket changed in between, the update is refused and you must read it again. Pass null to clear release or assignee. Every change is recorded in the ticket history.',
+   inputSchema:{type:'object',properties:{id:{type:'string',pattern:TICKET_ID.source},rev:{type:'integer',minimum:1,description:'rev from ticket_get.'},...TICKET_PROPS},required:['id','rev'],additionalProperties:false},
+   annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false},
+   run:(args,{state,principal})=>runTickets(state,t=>t.update(args,principal.username))},
+  {name:'ticket_comment',scope:'tickets:write',title:'Tickets: add comment',
+   description:'Add a comment to a ticket, e.g. what was done, the commit or a finding (light Markdown, as in the description). Comments need no rev and cannot be edited or removed.',
+   inputSchema:{type:'object',properties:{id:{type:'string',pattern:TICKET_ID.source},text:{type:'string',minLength:1,maxLength:8000}},required:['id','text'],additionalProperties:false},
+   annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false},
+   run:(args,{state,principal})=>runTickets(state,t=>t.comment(args,principal.username))},
+  {name:'release_save',scope:'tickets:write',title:'Tickets: create or change a release',
+   description:'Create a release (a version tickets can be planned into) in a project, or change one. Omit rev to create; to change an existing release pass the rev shown in tickets_list → releases. Setting status "released" stamps today as releasedAt unless you pass one; "planned" clears it. Dates are YYYY-MM-DD.',
+   inputSchema:{type:'object',properties:{project:{type:'string',maxLength:40},version:{type:'string',pattern:'^(?!none$)[A-Za-z0-9][A-Za-z0-9._+-]{0,39}$',description:'e.g. 2.4 or v0.5.0.'},
+    status:{type:'string',enum:[...RELEASE_STATUSES]},targetDate:{type:['string','null'],pattern:'^\\d{4}-\\d{2}-\\d{2}$'},releasedAt:{type:['string','null'],pattern:'^\\d{4}-\\d{2}-\\d{2}$'},notes:{type:'string',maxLength:2000},rev:{type:'integer',minimum:1}},required:['project','version'],additionalProperties:false},
+   annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false},
+   run:(args,{state,principal})=>runTickets(state,t=>t.saveRelease(args,principal.username))},
+  {name:'project_save',scope:'tickets:write',title:'Tickets: create or change a project',
+   description:'Create a project (id, key, name, type) or change the name, description, type or settings of an existing one. The key is the ticket prefix (key APP → tickets APP-1, APP-2, …); id and key can never change, and both must be unused. Omit rev to create; to change a project pass the rev shown in projects_list. settings is partial: pass only the fields to change, the others keep their values. releases, reviews and wiki only show or hide those parts of the project pages; globalReferences:false limits reference suggestions in the project to its own sources, machines and projects.',
+   inputSchema:{type:'object',properties:{id:{type:'string',pattern:'^[a-z][a-z0-9-]{1,39}$',description:'Lowercase id used in URLs and filters, e.g. my-app.'},key:{type:'string',pattern:'^[A-Z][A-Z0-9]{1,9}$',description:'Ticket prefix: 2-10 capital letters or digits, e.g. APP. Required when creating.'},
+    name:{type:'string',minLength:1,maxLength:80},description:{type:'string',maxLength:500},type:{type:['string','null'],enum:[...PROJECT_TYPES,null],description:'app, game or other; decides which kind of review variants a set opens on.'},
+    settings:{type:'object',description:'Fields to change; omitted fields keep their values. Defaults: color null, view board, the rest true.',properties:{
+     color:{type:['string','null'],enum:[...PROJECT_COLORS,null],description:'Named project color, or null for none.'},view:{type:'string',enum:[...PROJECT_VIEWS],description:'How the project page lists its tickets.'},
+     releases:{type:'boolean'},reviews:{type:'boolean'},wiki:{type:'boolean'},globalReferences:{type:'boolean',description:'Offer global references and other projects\' shared sources in suggestions.'}},additionalProperties:false},
+    rev:{type:'integer',minimum:1}},required:['id'],additionalProperties:false},
+   annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false},
+   run:(args,{state,principal})=>runTickets(state,t=>t.saveProject(args,principal.username))},
+  {name:'ticket_attachment_get',scope:'read',title:'Tickets: read an attachment',
+   description:'Read a file attached to a ticket (ids come from ticket_get → attachments). Images up to 5 MB come back as an image, plain-text files up to 256 kB as text; anything else returns only its metadata and download path. In a ticket description or comment, ![name] points at the attachment with that name.',
+   inputSchema:{type:'object',properties:{id:{type:'string',pattern:TICKET_ID.source,description:'Ticket id, e.g. APP-12.'},attachment:{type:'string',pattern:'^[0-9a-f-]{36}$'}},required:['id','attachment'],additionalProperties:false},
+   annotations:{readOnlyHint:true,openWorldHint:false},
+   async run({id,attachment,...rest},{state}){
+    if(Object.keys(rest).length)throw toolError('Invalid attachment request.');
+    const a=await runTickets(state,t=>t.attachment(id,attachment));if(!state.ticketFiles)throw toolError('Attachments are not available on this Home Hub.');
+    const meta={id:a.id,ticket:id,name:a.name,type:a.type,size:a.size,by:a.by,at:a.at,url:`/api/tickets/${id}/attachments/${a.id}`};
+    let f;try{f=await state.ticketFiles.read(a.sha256);}catch{throw toolError('The attachment file is missing on the server.');}
+    if(a.type.startsWith('image/')&&f.size<=5*1024*1024)return {mcpContent:[{type:'text',text:JSON.stringify(meta)},{type:'image',data:(await readFile(f.path)).toString('base64'),mimeType:a.type}],meta};
+    if(a.type==='text/plain'&&f.size<=256*1024)return {mcpContent:[{type:'text',text:JSON.stringify(meta)},{type:'text',text:await readFile(f.path,'utf8')}],meta};
+    return {...meta,note:'Binary or large file: only metadata is returned. Download it from url with a session or API key.'};
+   }},
+  {name:'ticket_attachment_put',scope:'tickets:write',title:'Tickets: attach a small file',
+   description:'Attach up to 32 KiB of file bytes, encoded as canonical base64, to an existing ticket. The server detects the type from bytes; no server-local paths or remote URLs. If these bytes are already attached, returns the existing ticket without duplication (even if the file name differs). Returns the full saved ticket; use its stored attachment name. For larger files stream PUT /api/tickets/<ID>/attachments?name=<name> (up to 100 MiB), or use scripts/ticket-push.mjs. Never generate base64 for a large file in conversation.',
+   inputSchema:{type:'object',properties:{id:{type:'string',pattern:TICKET_ID.source},name:{type:'string',minLength:1,maxLength:120},data:{type:'string',minLength:4,maxLength:43692,description:'Canonical padded base64 for 1..32768 file bytes.'}},required:['id','name','data'],additionalProperties:false},
+   annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:true,openWorldHint:false},
+   async run({id,name,data},{state,principal}){
+    if(typeof name!=='string'||!name.trim()||name.length>120||typeof data!=='string'||!data.length||data.length>43692)throw toolError('Use a file name and canonical base64 for 1-32768 bytes; stream larger files with PUT /api/tickets/<ID>/attachments?name=<name>.');
+    const bytes=Buffer.from(data,'base64');
+    if(!bytes.length||bytes.length>32768||bytes.toString('base64')!==data)throw toolError('data must be canonical padded base64 for 1-32768 bytes.');
+    if(!state.ticketFiles)throw toolError('Attachments are not available on this Home Hub.');
+    return runTickets(state,async t=>{
+     const ticket=await t.get(id),own=cleanName(name);
+     // A retry still succeeds when the ticket is full. Hashing here avoids an unnecessary blob write.
+     const sha=createHash('sha256').update(bytes).digest('hex');
+     if(ticket.attachments.some(a=>a.sha256===sha))return ticket;
+     if(ticket.attachments.length>=TICKET_ATTACHMENTS)throw new Error('limit');
+     const file=await state.ticketFiles.put([bytes],{name:own,declaredLength:bytes.length});
+     return t.attach(id,file,principal.username,{deduplicate:true});
+    });
+   }},
+  {name:'search',scope:'read',title:'Home Hub: full-text search',
+   description:'Full-text search across tickets (id, title, description, comments, attachment metadata and supported UTF-8 contents, labels, refs, people) and review sets (title, description, round notes, item and variant texts, decisions and comments). Plain words, never query syntax: every word must match as a prefix; case and diacritics are ignored (resume finds Résumé). Best match first, a title hit above a body hit; matched words are wrapped in \\u0001…\\u0002 in title and snippet. Use ticket_get or review_get for the full record, and ticket_search to narrow tickets by status, assignee, label or release.',
+   inputSchema:{type:'object',properties:{query:{type:'string',minLength:1,maxLength:200,description:'Up to 12 words.'},kind:{type:'string',enum:['ticket','review'],description:'Only tickets or only review sets.'},project:{type:'string',maxLength:40,description:'Project id.'},limit:{type:'integer',minimum:1,maximum:100,description:'Maximum results (default 20).'}},required:['query'],additionalProperties:false},
+   annotations:{readOnlyHint:true,openWorldHint:false},
+   async run({query,kind,project,limit=20,...rest},{state}){
+    if(!state?.ticketSearch)throw toolError('Search is not available on this Home Hub.');
+    if(Object.keys(rest).length)throw toolError('Invalid search: use query, kind, project, limit.');
+    try{return await state.ticketSearch.searchAll({q:query,kind,project,limit});}catch{throw toolError('Invalid search: query is 1-200 characters, kind ticket|review, limit 1-100.');}
+   }},
   {name:'ticket_search_status',scope:'read',description:'Ticket search readiness, semantic availability and attachment content coverage.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,openWorldHint:false},run(args,{state}){if(Object.keys(args).length)throw toolError('Invalid ticket search status request.');return state.ticketSearch.status();}},
   {name:'ticket_hybrid_search',scope:'read',description:'Search ticket text and attachment metadata and complete bounded UTF-8 text. Full-text mode is the default; optional hybrid/semantic modes require administrator opt-in and a configured provider. Returns source citations and explicit readiness/coverage.',
    inputSchema:{type:'object',properties:{query:{type:'string',minLength:1,maxLength:200},project:{type:'string'},status:{type:'string'},type:{type:'string'},priority:{type:'string'},release:{type:'string'},assignee:{type:'string'},label:{type:'string'},limit:{type:'integer',minimum:1,maximum:100},mode:{enum:['text','hybrid','semantic'],default:'text'},minScore:{type:'number',minimum:0,maximum:1}},required:['query'],additionalProperties:false},annotations:{readOnlyHint:true,openWorldHint:false},

@@ -31,9 +31,11 @@ import {buildHome,mergeRuntimeReports,homeHistory,homeHistoryQuery,loadDeviceDes
 import {readRouterFor} from '../router-data.mjs';
 import {siteConfigPath,hubAddress,DEVICE_ID,DEVICE_ROLES,siteDeviceIds} from '../site-config.mjs';
 import {privateFile} from '../paths.mjs';
-import {toolError} from '../mcp.mjs';
+import {toolError} from '../tool-error.mjs';
 import {createReachabilityPoller,reachTargets,reachabilityOf} from '../reachability.mjs';
 
+const round=(v,d=0)=>Number.isFinite(v)?Math.round(v*10**d)/10**d:null;
+const gb=b=>Number.isFinite(b)?round(b/1e9,1):null;
 const homeError=e=>[e.message==='invalid'?400:503,'HOME_UNAVAILABLE',e.message==='invalid'?'Neplatný požadavek na data domovské stránky.':'Data domovské stránky jsou dočasně nedostupná.'];
 // The overview's forms (add, connect, picture): one code, DEVICE_FAILED. A refusal that names its field (e.detail, English)
 // carries it as details, like the device API.
@@ -464,6 +466,16 @@ export default {
   {scope:'home:write',text:'With home:write: device_upsert adds or replaces a device and device_remove removes one (pass the hash from device_list as base; devices from the site configuration are read-only). runtime_publish replaces the runtime stack drawn on a device\'s page: what clients call, launchers, model servers, engines and the chip.'},
  ],
  mcpTools:[
+  {name:'home_status',scope:'read',title:'Home Hub: device status',
+   description:'Current state of the devices this Home Hub watches (computers, NAS, router): online/offline, CPU and GPU load in %, chip temperature in °C, memory in GB and running services.',
+   inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,openWorldHint:false},
+   async run(_args,{state}){
+    const home=await state.payload();
+    return {generatedAt:home.generatedAt||null,devices:(home.devices||[]).map(m=>({id:m.id,name:m.name,ip:m.ip||null,online:m.online||'unknown',
+     cpuPercent:round(m.quad?.cpu),gpuPercent:round(m.quad?.gpu),chipTempC:round(m.quad?.temp),
+     memoryUsedGb:gb(m.quad?.memUsed??m.memoryUsedBytes),memoryTotalGb:gb(m.quad?.memTotal??m.memoryTotalBytes),
+     services:(m.services||[]).map(s=>({id:s.id,name:s.name,status:s.status||null})).slice(0,30)}))};
+   }},
   {name:'device_list',scope:'read',title:'Overview: list devices',
    description:'The devices on the Home Hub overview: those from the site configuration (source "site", read-only here; the owner may override their display name, address, hardware and picture in the web UI, listed in siteOverride) and those added in the web UI or by an agent (source "ui" / "agent"), each with its hash, telemetry state, reachability, push agent (agent: when it last reported and whether that is fresh or no news, its version; null without an agent key) and where its runtime stack comes from. Also returns the built-in picture ids, the roles, the site networks an ip must lie in and the telemetry agent to install. Pass runtime:true to get each published runtime stack as well.',
    inputSchema:{type:'object',properties:{runtime:{type:'boolean',description:'Include the published runtime stack of each device.'}},additionalProperties:false},annotations:{readOnlyHint:true,openWorldHint:false},

@@ -10,7 +10,7 @@ import path from 'node:path';
 import {readFile} from 'node:fs/promises';
 import {check,describe,forwardInventory} from '../../scripts/check-knowledge.mjs';
 import {createKnowledgeEditor,editInput,entryInput,deleteInput,bulkInput,entryHash,emptyDoc,LIMITS} from '../../scripts/knowledge-edit.mjs';
-import {toolError} from '../mcp.mjs';
+import {toolError} from '../tool-error.mjs';
 import {inventoryProvenance} from '../provenance.mjs';
 import {inventoryFacet} from '../device-facet-sources.mjs';
 import {FACETS_POINT} from '../device-facets.mjs';
@@ -63,11 +63,61 @@ async function bulk(c){
  return c.json(200,{ok:true,...(change.dryRun?{dryRun:true}:{published:result.published}),summary:result.summary,entries:result.results});
 }
 
-// --- MCP tools (inventory_search, inventory_get and inventory_update are in server/mcp.mjs) ----
+// --- MCP tools ---------------------------------------------------------------------------------------
+const ID=/^[a-z][a-z0-9-]{0,63}$/;
+const text=(v,n=200)=>typeof v==='string'?v.slice(0,n):'';
+async function readInventory(state){const doc=await state.read();if(!doc)throw toolError('The inventory has not been deployed on this Home Hub.');return doc;}
 const WRITE_ERRORS={busy:'Another inventory write is in progress; nothing was changed. Try again.',unsupported:UNSUPPORTED+' Nothing was changed.'};
 const unavailable=e=>toolError(WRITE_ERRORS[e.message]||'The inventory is not available right now; nothing was changed.');
 const known=(args,allowed)=>{const extra=Object.keys(args).filter(k=>!allowed.includes(k));if(extra.length)throw toolError(`Unknown argument(s): ${extra.join(', ')}. Use: ${allowed.join(', ')||'no arguments'}.`);};
 const tools=[
+ {name:'inventory_search',scope:'read',title:'Home inventory: search',
+  description:'Search the home inventory (devices, runtimes/services, tools, models, network, outside services). Matches id, name, kind, device, address and notes. Returns id, kind, name, device, address and the entry hash.',
+  inputSchema:{type:'object',properties:{
+   query:{type:'string',minLength:1,maxLength:100,description:'Text to look for, e.g. a service name, a port such as "8081" or a device id.'},
+   kind:{type:'string',maxLength:40,description:'Only entries of this kind, e.g. device, runtime, tool.'},
+   device:{type:'string',maxLength:64,description:'Only entries on this device id, e.g. server or nas.'},
+   limit:{type:'integer',minimum:1,maximum:50,description:'Maximum results (default 20).'}},required:['query'],additionalProperties:false},
+  annotations:{readOnlyHint:true,openWorldHint:false},
+  async run(args,{state}){
+   const query=text(args.query,100).toLowerCase().trim();if(!query)throw toolError('query must not be empty.');
+   const limit=Number.isInteger(args.limit)?Math.min(50,Math.max(1,args.limit)):20;
+   const doc=await readInventory(state);
+   const hits=doc.entries.filter(e=>(!args.kind||e.kind===args.kind)&&(!args.device||e.device===args.device)&&
+    [e.id,e.name,e.kind,e.device,e.address,e.notes,e.category].filter(v=>typeof v==='string').join('\n').toLowerCase().includes(query));
+   return {updatedAt:doc.updated_at||null,count:hits.length,entries:hits.slice(0,limit).map(e=>({id:e.id,kind:e.kind,name:e.name,device:e.device||null,address:e.address||null,hash:entryHash(e)}))};
+  }},
+ {name:'inventory_get',scope:'read',title:'Home inventory: read entry',
+  description:'Read one inventory entry in full, with its hash (needed for inventory_update) and the entries that depend on it or run on it.',
+  inputSchema:{type:'object',properties:{id:{type:'string',pattern:ID.source,description:'Entry id, e.g. server-llama-swap.'}},required:['id'],additionalProperties:false},
+  annotations:{readOnlyHint:true,openWorldHint:false},
+  async run(args,{state}){
+   if(typeof args.id!=='string'||!ID.test(args.id))throw toolError('id must be an inventory id such as server-llama-swap.');
+   const doc=await readInventory(state),entry=doc.entries.find(e=>e.id===args.id);
+   if(!entry)throw toolError(`No inventory entry "${args.id}". Use inventory_search to find the right id.`);
+   const dependents=doc.entries.flatMap(e=>[...(Array.isArray(e.depends_on)?e.depends_on.filter(d=>d?.id===entry.id).map(d=>({id:e.id,via:d.kind||'depends_on'})):[]),...(e.device===entry.id?[{id:e.id,via:'runs-on'}]:[])]).slice(0,100);
+   return {entry,hash:entryHash(entry),dependents};
+  }},
+ {name:'inventory_update',scope:'inventory:write',title:'Home inventory: create or replace entry',
+  description:'Create or replace one whole inventory entry. To change an existing entry, call inventory_get, edit the returned entry and pass its hash as base; if the entry changed in between, the update is refused and you must read it again. Omit base only to create a new entry. The checker rejects invalid entries and anything that looks like a secret: record where a password, token or key is stored, never its value.',
+  inputSchema:{type:'object',properties:{
+   entry:{type:'object',description:'The complete entry (id, kind, name, device, address, version, depends_on, notes, …).'},
+   base:{type:'string',pattern:'^[a-f0-9]{64}$',description:'Hash from inventory_get. Required when the entry already exists.'}},required:['entry'],additionalProperties:false},
+  annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false},
+  subject:args=>typeof args?.entry?.id==='string'&&ID.test(args.entry.id)?args.entry.id:undefined,
+  async run(args,{state,principal}){
+   let change;try{change=entryInput({entry:args.entry,...(args.base!==undefined?{base:args.base}:{})});}
+   catch{throw toolError('Invalid request: entry must be an object with a valid id (lowercase letters, digits, hyphens), and base must be a 64-character hash.');}
+   let result;
+   try{result=await state.put(change,principal.accountId?principal.username:null);}
+   catch(e){
+    if(e.message==='conflict')throw toolError(change.base?'The entry changed since you read it, or it does not exist yet (omit base to create it). Read it again with inventory_get and reapply your change.':'An entry with this id already exists. Read it with inventory_get and pass its hash as base.');
+    if(e.message==='invalid')throw toolError('The entry was rejected as invalid.');
+    throw toolError('The inventory is not available right now; nothing was changed.');
+   }
+   if(!result?.ok)throw toolError(`The inventory checker rejected the entry, nothing was changed: ${(result?.errors||[]).map(String).slice(0,10).join('; ')||'invalid entry'}`);
+   return {ok:true,id:result.entry?.id||change.entry.id,hash:result.hash,published:result.published!==false,by:principal.username};
+  }},
  {name:'inventory_describe',scope:'read',title:'Home inventory: schema and rules',
   description:'How to fill the home inventory correctly, as data: the entry fields, the kinds, categories and dependency (link) kinds, the secret stores an entry may point at, the places (devices) entries can live on, the validation rules the checker enforces, the limits and a few example entries. Call it once before writing with inventory_update or inventory_bulk_upsert.',
   inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,openWorldHint:false},

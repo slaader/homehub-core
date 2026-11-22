@@ -64,6 +64,8 @@ test('MCP tools follow scopes; inventory_update is hash-checked, secret-proof an
  assert.equal(stale.isError,true);assert.match(stale.content[0].text,/changed since you read it/);
  const secret=await call(h,agent.headers,'inventory_update',{entry:{...entry.entry,notes:'password=hunter2hunter2'},base:entry.hash});
  assert.equal(secret.isError,true);assert.match(secret.content[0].text,/rejected/);
+ const badId=await call(h,agent.headers,'inventory_update',{entry:{id:'BAD ID',kind:'runtime',name:'Bad'}});
+ assert.equal(badId.isError,true);assert.match(badId.content[0].text,/Invalid request/);
  const done=await call(h,agent.headers,'inventory_update',{entry:{...entry.entry,version:'v191'},base:entry.hash});
  assert.equal(done.isError,false,done.content[0].text);assert.equal(done.structuredContent.by,'agent-studio');
  const onDisk=JSON.parse(await readFile(path.join(h.dir,'knowledge.json'),'utf8')).entries.find(e=>e.id==='studio-llama-swap');
@@ -78,12 +80,18 @@ test('MCP tools follow scopes; inventory_update is hash-checked, secret-proof an
  const audit=await (await fetch(h.origin+'/api/admin/audit',{headers:h.admin})).json();
  const mcp=audit.events.filter(e=>e.event==='mcp-call').map(e=>[e.subject,e.detail,e.status]).sort();
  // the reader's refused call never ran the tool but is logged as denied (no entry id from its arguments);
- // the agent's two failures and two writes are all logged
+ // the agent's three failures (two with a valid entry id, one with an invalid id) and two writes are all logged
  assert.deepEqual(mcp,[['agent-studio','inventory_update · studio-llama-swap','error'],['agent-studio','inventory_update · studio-llama-swap','error'],
-  ['agent-studio','inventory_update · studio-llama-swap','ok'],['agent-studio','inventory_update · studio-omlx','ok'],['reader-mini','inventory_update','denied']]);
- const raw=(await readFile(path.join(h.dir,'api-audit.jsonl'),'utf8')).trim().split('\n').map(l=>JSON.parse(l)).find(e=>e.status==='denied');
+  ['agent-studio','inventory_update · studio-llama-swap','ok'],['agent-studio','inventory_update · studio-omlx','ok'],
+  ['agent-studio','inventory_update','error'],['reader-mini','inventory_update','denied']]);
+ const rawLines=(await readFile(path.join(h.dir,'api-audit.jsonl'),'utf8')).trim().split('\n').map(l=>JSON.parse(l));
+ const raw=rawLines.find(e=>e.status==='denied');
  assert.equal(raw.tool,'inventory_update');assert.equal(raw.name,'reader-mini');assert.ok(raw.account&&raw.key);assert.equal(raw.subject,undefined,'no request contents');
+ assert.equal(rawLines.filter(e=>e.status==='error'&&e.subject==='studio-llama-swap').length,2,'validated entry.id is recorded on error');
+ assert.equal(rawLines.filter(e=>e.status==='error'&&e.subject===undefined).length,1,'invalid entry.id is omitted from audit subject');
+ assert.deepEqual(rawLines.filter(e=>e.status==='ok').map(e=>e.subject),['studio-llama-swap','studio-omlx'],'validated entry.id is recorded on success');
  assert.ok(audit.events.filter(e=>e.event==='mcp-call').every(e=>e.subject!=='reader-mini'||e.status==='denied'),'read-only tool calls are not logged');
+ assert.ok(h.handler.mcpBusiness.catalog().every(t=>!('run'in t)&&!('module'in t)&&!('subject'in t)),'catalog exposes no internal hooks');
 });
 
 // Users and API → Connect draws its tool table from the UI manifest. That list is the registry itself:
@@ -102,8 +110,12 @@ test('the UI manifest lists the MCP tools of the running registry, without handl
   assert.ok(manifest.modules.some(m=>m.id===tool.module),`${tool.name}: module ${tool.module} is a loaded module`);
  }
  const by=Object.fromEntries(manifest.tools.map(x=>[x.name,x]));
- assert.deepEqual([by.home_status.scope,by.home_status.write,by.home_status.module],['read',false,'core']);
+ assert.deepEqual([by.home_status.scope,by.home_status.write,by.home_status.module],['read',false,'home']);
  assert.deepEqual([by.device_upsert.scope,by.device_upsert.write,by.device_upsert.module],['home:write',true,'home']);
+ assert.deepEqual([by.inventory_update.scope,by.inventory_update.write,by.inventory_update.module],['inventory:write',true,'inventory']);
+ assert.deepEqual([by.tickets_list.scope,by.tickets_list.write,by.tickets_list.module],['read',false,'tracker']);
+ assert.deepEqual([by.search.scope,by.search.write,by.search.module],['read',false,'tracker']);
+ assert.deepEqual([by.review_list.scope,by.review_list.write,by.review_list.module],['read',false,'review']);
  assert.deepEqual([by.software_watch_put.scope,by.software_watch_put.write],['software:write',true]);
  // a reader's manifest carries the same reference (what exists and what it needs), a signed-out one nothing
  assert.equal((await (await fetch(h.origin+'/api/ui/manifest')).json()).tools,undefined);
@@ -111,6 +123,9 @@ test('the UI manifest lists the MCP tools of the running registry, without handl
  assert.equal(/MCP_TOOLS\s*=/.test(await readFile(path.join(import.meta.dirname,'..','public','access-view.js'),'utf8')),false,'the page keeps no tool list of its own');
  const rows=view.toolRows(manifest.tools,manifest.modules);
  assert.equal(rows.length,listed.length);assert.ok(rows.every(r=>r.plugin===null),'core modules are not shown as plugins');
+ // server/mcp.mjs is a domain-free dispatcher: every tool lives in its owning module.
+ const mcpSource=await readFile(path.join(import.meta.dirname,'..','server','mcp.mjs'),'utf8');
+ assert.doesNotMatch(mcpSource,/knowledge-edit|tickets-store|ticket-files|review-store|node:fs|node:crypto/,'server/mcp.mjs has zero domain store imports');
 });
 
 // What an agent reads on connect: short, generic, and only about tools its key can see.
@@ -135,4 +150,80 @@ test('initialize instructions: an orientation assembled from the modules, cut to
  const {SITE}=await import('./hub-helper.mjs');
  for(const m of SITE.devices)assert.ok(!all.includes(m.name)&&!all.includes(m.hostname||'\u0000'),m.id);
  assert.ok(!all.includes(SITE.siteName));
+});
+
+test('registered MCP tools preserve method this-binding and ignore non-string or throwing subject hooks',async()=>{
+ const {createMcp,toolError}=await import('../server/mcp.mjs');
+ const {defineModule,createRegistry}=await import('../server/plugins.mjs');
+ const logged=[];
+ const strictLog=async entry=>{
+  // Mimic access-store logApi stringifying subject if defined (null-prototype objects throw on String(x)).
+  if(entry.subject!==undefined)String(entry.subject);
+  logged.push(entry);
+ };
+ const schema={type:'object',properties:{fail:{type:'boolean'}},additionalProperties:false};
+ const mod=defineModule({
+  id:'demo',
+  scopes:{'demo:write':{label:'Demo',desc:'Demo',write:true}},
+  mcpTools:[
+   {name:'demo_write',scope:'demo:write',title:'Demo write',description:'Writes demo.',inputSchema:schema,
+    subject:()=>Object.create(null),
+    run(args){if(args.fail)throw toolError('refused');return {name:this.name};}},
+   {name:'demo_throw_subject',scope:'demo:write',title:'Demo throw',description:'Throws subject.',inputSchema:schema,
+    subject:()=>{throw new Error('boom');},
+    run(args){if(args.fail)throw toolError('refused');return {ok:true};}},
+   {name:'demo_reject_subject',scope:'demo:write',title:'Demo reject',description:'Rejects subject.',inputSchema:schema,
+    subject:async()=>{throw new Error('async boom');},
+    run(args){if(args.fail)throw toolError('refused');return {ok:true};}},
+  ],
+ });
+ const reg=createRegistry([mod]);
+ const mcp=createMcp({tools:reg.tools,instructions:reg.instructions,ctx:{log:strictLog,moduleContext:()=>({state:{},hub:{}})}});
+ const principal={id:'k1',accountId:'a1',username:'bot',permission:'write',scopes:['demo:write']};
+ const call=async(name,args)=>JSON.parse((await mcp(JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}}),principal)).body);
+
+ const unhandled=[];
+ const onUnhandled=reason=>unhandled.push(reason);
+ process.on('unhandledRejection',onUnhandled);
+ try{
+  const okNullProto=await call('demo_write',{});
+  assert.equal(okNullProto.error,undefined);
+  assert.equal(okNullProto.result.isError,false);
+  assert.deepEqual(okNullProto.result.structuredContent,{name:'demo_write'},'preserves registered tool this-binding');
+
+  const errNullProto=await call('demo_write',{fail:true});
+  assert.equal(errNullProto.error,undefined);
+  assert.equal(errNullProto.result.isError,true);
+  assert.equal(errNullProto.result.content[0].text,'refused');
+
+  const okThrow=await call('demo_throw_subject',{});
+  assert.equal(okThrow.error,undefined);
+  assert.equal(okThrow.result.isError,false);
+
+  const errThrow=await call('demo_throw_subject',{fail:true});
+  assert.equal(errThrow.error,undefined);
+  assert.equal(errThrow.result.isError,true);
+
+  const okReject=await call('demo_reject_subject',{});
+  assert.equal(okReject.error,undefined);
+  assert.equal(okReject.result.isError,false);
+  assert.deepEqual(okReject.result.structuredContent,{ok:true});
+
+  const errReject=await call('demo_reject_subject',{fail:true});
+  assert.equal(errReject.error,undefined);
+  assert.equal(errReject.result.isError,true);
+  assert.equal(errReject.result.content[0].text,'refused');
+
+  await new Promise(resolve=>setImmediate(resolve));
+ }finally{process.off('unhandledRejection',onUnhandled);}
+ assert.deepEqual(unhandled,[],'rejected subject hook never triggers unhandledRejection');
+
+ assert.deepEqual(logged.map(e=>[e.tool,e.status,e.subject]),[
+  ['demo_write','ok',undefined],
+  ['demo_write','error',undefined],
+  ['demo_throw_subject','ok',undefined],
+  ['demo_throw_subject','error',undefined],
+  ['demo_reject_subject','ok',undefined],
+  ['demo_reject_subject','error',undefined],
+ ]);
 });

@@ -32,6 +32,8 @@ test('a module is validated field by field, and the message names the module',()
  assert.throws(()=>defineModule(mod({routes:[{method:'PUT',path:'/api/p',scope:null,handler:ok}]})),/raw uploads/);
  assert.throws(()=>defineModule(mod({routes:[{method:'GET',path:'/api/p',handler:ok,typo:true}]})),/unknown field\(s\): typo/);
  assert.throws(()=>defineModule(mod({mcpTools:[{name:'p_tool',scope:'read',description:'d',inputSchema:{type:'object'}}]})),/needs run/);
+ assert.throws(()=>defineModule(mod({mcpTools:[{name:'p_tool',scope:'read',description:'d',inputSchema:{type:'object'},run:ok,subject:'nope'}]})),/subject must be a function/);
+ assert.equal(typeof defineModule(mod({mcpTools:[{name:'p_tool',scope:'read',description:'d',inputSchema:{type:'object'},run:ok,subject:()=>'x'}]})).mcpTools[0].subject,'function');
  assert.throws(()=>defineModule(mod({pollers:[{id:'x'}]})),/pollers\[0\]/);
  // mcpInstructions: one short text, or parts {text, scope?}
  assert.throws(()=>defineModule(mod({mcpInstructions:['']})),/mcpInstructions\[0\] needs a text/);
@@ -59,7 +61,7 @@ test('clashes between modules are start-up errors that name both sides',()=>{
  assert.throws(()=>createRegistry([...core,plug('p-one',{scopes:{'tickets:write':{label:'x',desc:'y'}}})]),/scope "tickets:write" is registered twice: by module "core" and by module "p-one"/);
  assert.throws(()=>createRegistry([...core,plug('p-one',{scopes:{'p:w':{label:'x',desc:'y'}}}),plug('p-two',{scopes:{'p:w':{label:'x',desc:'y'}}})]),/by module "p-one" and by module "p-two"/);
  assert.throws(()=>createRegistry([...core,plug('p-one'),plug('p-one')]),/module id "p-one" is registered twice/);
- assert.throws(()=>buildRegistry([{id:'p-one',mcpTools:[{name:'home_status',scope:'read',description:'d',inputSchema:{type:'object'},run:ok}]}]),/MCP tool "home_status" is registered twice: by module "core" and by module "p-one"/);
+ assert.throws(()=>buildRegistry([{id:'p-one',mcpTools:[{name:'home_status',scope:'read',description:'d',inputSchema:{type:'object'},run:ok}]}]),/MCP tool "home_status" is registered twice: by module "home" and by module "p-one"/);
  assert.throws(()=>createRegistry([...core,plug('p-one',{routes:[{method:'POST',path:'/api/p',scope:'nobody:defined',handler:ok}]})]),/uses scope "nobody:defined", which no module defines/);
  assert.throws(()=>createRegistry([...core,plug('p-one',{mcpInstructions:[{text:'x',scope:'nobody:defined'}]})]),/mcpInstructions uses scope "nobody:defined", which no module defines/);
  // A plugin may use a core scope, and another plugin's.
@@ -148,7 +150,7 @@ test('a loaded plugin: routes, scope checks, write log, MCP tool, manifest, asse
  assert.equal(m.inventory.places[0].id,'studio');
  // the MCP tools as people read them (Users and API → Connect): the plugin's tool next to the core ones, nothing callable
  assert.deepEqual(m.tools.find(x=>x.name==='demo_notes'),{name:'demo_notes',title:'Demo: notes',scope:'read',write:false,description:'The notes kept by the demo plugin.',module:'demo'});
- assert.equal(m.tools.find(x=>x.name==='home_status').module,'core');
+ assert.equal(m.tools.find(x=>x.name==='home_status').module,'home');
  const user=await h.post('/api/admin/users',{username:'viewer1',name:'V',password:'viewer-password-123'},cookie);assert.equal(user.status,201);
  const vLogin=await h.post('/api/session',{username:'viewer1',password:'viewer-password-123'}),vCookie={Cookie:vLogin.headers.get('set-cookie').split(';')[0]};
  const vm=await (await get('/api/ui/manifest',vCookie)).json();

@@ -79,6 +79,7 @@ export function defineModule(raw,{core=false,directory=null,manifest=null}={}){
   if(typeof tool.scope!=='string'||!SCOPE_ID.test(tool.scope))bad(id,`${where} (${tool.name}) needs a scope`);
   if(typeof tool.description!=='string'||!tool.description||!plain(tool.inputSchema)||tool.inputSchema.type!=='object')bad(id,`${where} (${tool.name}) needs a description and an object inputSchema`);
   if(!fn(tool.run))bad(id,`${where} (${tool.name}) needs run(args, context)`);
+  if(tool.subject!==undefined&&!fn(tool.subject))bad(id,`${where} (${tool.name}).subject must be a function`);
   return Object.freeze({...tool,module:id});
  });
  // Orientation for agents: this module's lines in the MCP initialize instructions (server/mcp.mjs). One short
@@ -151,14 +152,13 @@ export function defineModule(raw,{core=false,directory=null,manifest=null}={}){
 }
 
 // All modules together. Throws on any clash; the message names both sides.
-// reservedTools: MCP tool names already taken (the core tools defined in server/mcp.mjs).
-export function createRegistry(modules,{reservedTools=[]}={}){
+export function createRegistry(modules){
  const byId=new Map(),scopes=new Map(),tools=new Map(),assets=new Map(),hashes=new Map(),exact=new Map(),patterns=[],integrations=new Map();
  const clash=(what,a,b)=>{throw new ModuleError(`${what} is registered twice: by module "${a}" and by module "${b}"`);};
  for(const m of modules){
   if(byId.has(m.id))clash(`module id "${m.id}"`,m.id,m.id);byId.set(m.id,m);
   for(const [id,meta] of Object.entries(m.scopes)){if(scopes.has(id))clash(`scope "${id}"`,scopes.get(id).module,m.id);scopes.set(id,{...meta,module:m.id});}
-  for(const t of m.mcpTools){if(reservedTools.includes(t.name))clash(`MCP tool "${t.name}"`,'core',m.id);if(tools.has(t.name))clash(`MCP tool "${t.name}"`,tools.get(t.name).module,m.id);tools.set(t.name,t);}
+  for(const t of m.mcpTools){if(tools.has(t.name))clash(`MCP tool "${t.name}"`,tools.get(t.name).module,m.id);tools.set(t.name,t);}
   for(const a of m.assets){if(assets.has(a.url))clash(`asset ${a.url}`,assets.get(a.url).module,m.id);assets.set(a.url,a);}
   for(const n of m.nav)if(n.hash){if(hashes.has(n.hash))clash(`page #${n.hash}`,hashes.get(n.hash).module,m.id);hashes.set(n.hash,n);}
   for(const i of m.integrations??[]){if(integrations.has(i.id))clash(`integration "${i.id}"`,integrations.get(i.id).module,m.id);integrations.set(i.id,i);}

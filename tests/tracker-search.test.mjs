@@ -9,7 +9,7 @@ import path from 'node:path';
 import {DB_SCHEMA,openDb} from '../server/db.mjs';
 import {createTicketStore} from '../server/tickets-store.mjs';
 import {createReviewStore} from '../server/review-store.mjs';
-import {MCP_TOOLS} from '../server/mcp.mjs';
+import {buildRegistry} from '../server/index.mjs';
 import {hub} from './hub-helper.mjs';
 
 const SEED=[{id:'home-hub',key:'HH',name:'Home Hub',type:'app'},{id:'sample-game',key:'GAME',name:'Sample Game',type:'game'}];
@@ -115,7 +115,7 @@ test('MCP: ticket_search is a read tool with the list filters; descriptions carr
  const audit=await (await fetch(h.origin+'/api/admin/audit',{headers:h.admin})).json();
  assert.ok(!audit.events.some(e=>e.event==='mcp-call'),'reading is not logged');
  // Tool texts are for any hub: no ticket ids, project names or people of one household.
- const texts=JSON.stringify([...MCP_TOOLS.filter(x=>/^(ticket|tickets|release|project|review|search)/.test(x.name)),tool]);
+ const texts=JSON.stringify([...buildRegistry([]).tools.filter(x=>/^(ticket|tickets|release|project|review|search)/.test(x.name)),tool]);
  assert.doesNotMatch(texts,/\bHH-\d|home-hub|\bOB-?\d|ob1|claude|codex|Přihlášení/i);
  assert.match((await rpc('initialize',{protocolVersion:'2025-06-18'})).instructions,/ticket_search/);
 });
