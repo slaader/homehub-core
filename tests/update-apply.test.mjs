@@ -18,7 +18,8 @@ import path from 'node:path';
 
 // No global git configuration reaches these repositories (a signing key, a hooks path, an identity).
 Object.assign(process.env,{GIT_CONFIG_GLOBAL:'/dev/null',GIT_CONFIG_SYSTEM:'/dev/null',GIT_AUTHOR_NAME:'Alice',GIT_AUTHOR_EMAIL:'alice@example.com',GIT_COMMITTER_NAME:'Alice',GIT_COMMITTER_EMAIL:'alice@example.com'});
-const {resolveInstance,preflight,apply,rollback,recover,backup,status,formatStatus,readJournal,setQuarantine,readQuarantine,archiveEntries,runMismatch,coreFacts,pluginFacts,realExec,UpdateError,RollbackFailed}=await import('../server/update-apply.mjs');
+const {resolveInstance,preflight,apply,rollback,recover,backup,status,formatStatus,readJournal,setQuarantine,readQuarantine,runMismatch,coreFacts,pluginFacts,realExec,UpdateError,RollbackFailed}=await import('../server/update-apply.mjs');
+const {backupPlan}=await import('../server/update-backup.mjs');
 const {parseService,parseHealth,parseBackups,UpdateConfigError}=await import('../server/update-config.mjs');
 const {readInstance}=await import('../server/plugins.mjs');
 const {satisfies}=await import('../server/semver.mjs');
@@ -162,15 +163,15 @@ test('the instance: a checkout with its data inside, or an instance directory; f
  const w=await world(t),inst=w.inst();
  assert.deepEqual({root:inst.root,home:inst.home,data:inst.paths.data,state:inst.paths.state,private:inst.paths.private,backups:inst.backups,journal:inst.files.journal,sources:inst.sources.map(s=>s.id)},
   {root:w.root,home:null,data:path.join(w.root,'data'),state:path.join(w.root,'state'),private:path.join(w.root,'private'),backups:path.join(w.root,'backups'),journal:path.join(w.root,'backups','update-journal.json'),sources:['core']});
- assert.deepEqual(archiveEntries(inst).filter(e=>e.existed).map(e=>e.name),['data','state','private'],'state beside data is archived on its own');
- assert.deepEqual(archiveEntries(resolveInstance({env:{},root:w.root})).filter(e=>e.existed).map(e=>e.name),['data','private'],'state inside data comes with it');
- assert.throws(()=>archiveEntries(w.inst({backups:path.join(w.root,'private','backups')})),/inside .*private, which is archived/);
+ assert.deepEqual(backupPlan(inst).roots.filter(e=>e.existed).map(e=>e.name),['data','state','private'],'state beside data is archived on its own');
+ assert.deepEqual(backupPlan(resolveInstance({env:{},root:w.root})).roots.filter(e=>e.existed).map(e=>e.name),['data','private'],'state inside data comes with it');
+ assert.throws(()=>backupPlan(w.inst({backups:path.join(w.root,'private','backups')})),/inside .*private, which is archived/);
  assert.throws(()=>resolveInstance({env:{},root:path.join(w.dir,'nowhere')}),/not a Home Hub checkout/);
  const h=await world(t,{layout:'home'}),hi=h.inst();
  assert.deepEqual({root:hi.root,home:hi.home,state:hi.paths.state,backups:hi.backups,journal:hi.files.journal,staging:hi.staging,sources:hi.sources.map(s=>[s.id,s.kind,s.plugins]),service:hi.service.stop,health:hi.health.seconds},
   {root:path.join(h.home,'core'),home:h.home,state:path.join(h.home,'data','state'),backups:path.join(h.home,'backups'),journal:path.join(h.home,'update-journal.json'),staging:path.join(h.home,'staging'),
    sources:[['core','core',[]],['household','plugins',['plugins']]],service:['svc','stop'],health:2});
- assert.deepEqual(archiveEntries(hi).filter(e=>e.existed).map(e=>e.name),['data','private','config','instance.json']);
+ assert.deepEqual(backupPlan(hi).roots.filter(e=>e.existed).map(e=>e.name),['data','private','config','instance.json']);
  const flagged=h.inst({service:'systemd:hub.service',health:'http://127.0.0.1:1/x',healthSeconds:9,keep:2,backups:path.join(h.dir,'elsewhere')});
  assert.deepEqual({kind:flagged.service.kind,health:{...flagged.health},keep:flagged.keep,backups:flagged.backups},{kind:'systemd',health:{url:'http://127.0.0.1:1/x',seconds:9},keep:2,backups:path.join(h.dir,'elsewhere')});
  assert.equal(resolveInstance({env:{...h.env,HOME_HUB_PLUGINS_DIR:'none'},root:h.root}).sources.length,1);

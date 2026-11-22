@@ -3,7 +3,7 @@ import {lstatSync,readdirSync,mkdirSync,copyFileSync,openSync,closeSync,fsyncSyn
 import path from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 import {fileHash,canonicalPath,withinPath,syncDirectory} from './safe-fs.mjs';
-import {DRIVER_CAPABILITIES} from './backup-policy.mjs';
+import {DRIVER_CAPABILITIES} from './update-backup.mjs';
 
 const closure=['package.json','public','scripts','server'];
 function digestTree(root,destination=null){

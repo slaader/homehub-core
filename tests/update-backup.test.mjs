@@ -314,3 +314,219 @@ test('resume rejects a shutdown write to an already installed root',async t=>{
  await assert.rejects(restoreBackup(inst,ctx,backup,persisted,assessed),/staging content/);
  assert.equal(readFileSync(path.join(inst.paths.data,'legitimate.tgz'),'utf8'),'shutdown write');
 });
+
+test('assessRestore().coversFile works identically across v2 (including exact-file alias roots), v1 and legacy archives',async t=>{
+ const {dir,inst,ctx}=fixture(t,'/tmp');
+ const payload=path.join(inst.paths.data,'payload'),aliasDir=path.join(dir,'legacy'),alias=path.join(aliasDir,'alias.bin');
+ const link=path.join(inst.paths.private,'payload-link'),outside=path.join(dir,'outside.txt');
+ const sock=path.join(inst.paths.state,'live.sock');
+ mkdirSync(aliasDir);
+ writeFileSync(payload,'exact payload',{mode:0o640});
+ linkSync(payload,alias);
+ symlinkSync('../data/payload',link);
+ writeFileSync(outside,'outside');
+ await listen(t,sock);
+ const policyDir=mkdtempSync(path.join(os.homedir(),'.home-hub-backup-test-'));
+ t.after(()=>rmSync(policyDir,{recursive:true,force:true}));
+ inst.backupPolicyFile=path.join(policyDir,'policy.json');
+ writeFileSync(inst.backupPolicyFile,JSON.stringify({schemaVersion:1,coverFiles:[alias]}),{mode:0o600});
+ const backup=await createBackup(inst,ctx,'covers-v2');
+ const assessed=await assessRestore(inst,backup);
+ const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
+ const payloadHash=digest('exact payload'),instanceHash=digest('{}');
+ const instanceFile=path.join(dir,'instance.json');
+ assert.equal(assessed.coversFile(payload),true);
+ assert.equal(assessed.coversFile(payload,{sha256:payloadHash,mode:0o640}),true);
+ assert.equal(assessed.coversFile(payload,{sha256:payloadHash,mode:0o600}),false);
+ assert.equal(assessed.coversFile(payload,{sha256:digest('other'),mode:0o640}),false);
+ assert.equal(assessed.coversFile(alias),true);
+ assert.equal(assessed.coversFile(alias,{sha256:payloadHash,mode:0o640}),true);
+ assert.equal(assessed.coversFile(alias,{sha256:payloadHash,mode:0o600}),false);
+ assert.equal(assessed.coversFile(instanceFile),true);
+ assert.equal(assessed.coversFile(instanceFile,{sha256:instanceHash}),true);
+ assert.equal(assessed.coversFile(inst.paths.data),false,'directories are not covered regular files');
+ assert.equal(assessed.coversFile(link),false,'symlinks are not covered regular files');
+ assert.equal(assessed.coversFile(sock),false,'runtime sockets are not covered regular files');
+ assert.equal(assessed.coversFile(outside),false,'uncovered paths return false');
+ assert.equal(assessed.coversFile(path.join(inst.paths.data,'nonexistent')),false);
+
+ // Moving an archived directory (or subdirectory) and leaving a symlink at its old path — EVEN when combined with
+ // an outer path alias (symlinked parent) and pointing the inner symlink into ANOTHER archived root — must match
+ // the original archived root's entry, never the target root's file.
+ const movedConfig=path.join(dir,'config-moved');
+ const subDir=path.join(inst.paths.config,'sub'),otherSub=path.join(inst.paths.data,'sub');
+ mkdirSync(subDir);mkdirSync(otherSub);
+ const subFile=path.join(subDir,'nested.json'),otherFile=path.join(otherSub,'nested.json');
+ writeFileSync(subFile,'{"from":"config"}\n',{mode:0o640});
+ writeFileSync(otherFile,'{"from":"data"}\n',{mode:0o640});
+ const movedBackup=await createBackup(inst,ctx,'covers-moved');
+ const movedAssessed=await assessRestore(inst,movedBackup);
+ const subHash=digest('{"from":"config"}\n'),otherHash=digest('{"from":"data"}\n');
+ const outerAlias=path.join(os.tmpdir(),'hub-outer-alias-'+process.pid+'-'+Date.now());
+ symlinkSync(dir,outerAlias);
+ t.after(()=>rmSync(outerAlias,{force:true}));
+ const aliasedSubFile=path.join(outerAlias,'config','sub','nested.json');
+ rmSync(subDir,{recursive:true});
+ symlinkSync(otherSub,subDir);
+ assert.equal(movedAssessed.coversFile(subFile,{sha256:subHash,mode:0o640}),true,'canonical path matches archived config root');
+ assert.equal(movedAssessed.coversFile(aliasedSubFile,{sha256:subHash,mode:0o640}),true,'outer alias + inner symlink into another archived root still matches config root');
+ assert.equal(movedAssessed.coversFile(aliasedSubFile,{sha256:otherHash,mode:0o640}),false,'must not match the other archived root file via inner symlink');
+ rmSync(subDir);mkdirSync(subDir);writeFileSync(subFile,'{"from":"config"}\n',{mode:0o640});
+ renameSync(inst.paths.config,movedConfig);
+ symlinkSync(movedConfig,inst.paths.config);
+ assert.equal(movedAssessed.coversFile(subFile,{sha256:subHash,mode:0o640}),true,'coversFile matches archived root even when live root dir was replaced by a symlink');
+ rmSync(inst.paths.config);renameSync(movedConfig,inst.paths.config);
+
+ // v1 sidecar archive and legacy sidecar-less archive (separate fixture without live sockets)
+ const v1=fixture(t);
+ const old=JSON.parse(readFileSync(new URL('./fixtures/update/backup-v1.json',import.meta.url),'utf8'));
+ const v1File=path.join(v1.inst.backups,'v1-covers.tgz'),v1Manifest=v1File+'.manifest.json',v1Integrity=v1File+'.integrity.json';
+ Object.assign(old.manifest.roots[0],{canonical:v1.inst.paths.data,logical:v1.inst.paths.data,parent:v1.dir});
+ const relocated=JSON.stringify(old.manifest,null,1)+'\n';
+ writeFileSync(v1File,Buffer.from(old.archiveBase64,'base64'));
+ writeFileSync(v1Manifest,relocated);
+ writeFileSync(v1Integrity,JSON.stringify({...old.integrity,manifestSha256:digest(relocated)}));
+ const v1Assessed=await assessRestore(v1.inst,{file:v1File,manifest:v1Manifest,integrity:v1Integrity,entries:old.manifest.roots});
+ const v1Payload=path.join(v1.inst.paths.data,'payload');
+ assert.equal(v1Assessed.coversFile(v1Payload),true);
+ assert.equal(v1Assessed.coversFile(v1Payload,{sha256:old.manifest.files[1].sha256,mode:0o640}),true);
+ assert.equal(v1Assessed.coversFile(v1Payload,{sha256:old.manifest.files[1].sha256,mode:0o600}),false);
+ assert.equal(v1Assessed.coversFile(v1Payload,{sha256:digest('wrong'),mode:0o640}),false);
+ assert.equal(v1Assessed.coversFile(v1.inst.paths.data),false);
+ assert.equal(v1Assessed.coversFile(path.join(v1.dir,'outside.txt')),false);
+ // A v1 sidecar manifest listing an extra root/file missing from the tar is rejected during read-only assessRestore().
+ const extraV1Root=path.join(v1.dir,'v1-extra');mkdirSync(extraV1Root);
+ const badManifest=structuredClone(old.manifest);
+ badManifest.roots.push({id:'root-0002',canonical:extraV1Root,logical:extraV1Root,parent:v1.dir,existed:true,link:null});
+ badManifest.files.push({path:'root-0002',type:'directory',mode:0o700,bytes:0,sha256:null},{path:'root-0002/missing.json',type:'file',mode:0o640,bytes:4,sha256:digest('test')});
+ const badManifestText=JSON.stringify(badManifest,null,1)+'\n';
+ const badManifestPath=v1File+'.bad.manifest.json',badIntegrityPath=v1File+'.bad.integrity.json';
+ writeFileSync(badManifestPath,badManifestText);
+ writeFileSync(badIntegrityPath,JSON.stringify({...old.integrity,manifestSha256:digest(badManifestText)}));
+ await assert.rejects(assessRestore(v1.inst,{file:v1File,manifest:badManifestPath,integrity:badIntegrityPath,entries:badManifest.roots}),/archive incomplete/);
+ // A v1 sidecar manifest whose directory mode disagrees with the tar is also rejected during read-only assessRestore().
+ const badDirManifest=structuredClone(old.manifest);
+ badDirManifest.files[0].mode=0o750;
+ const badDirText=JSON.stringify(badDirManifest,null,1)+'\n';
+ const badDirPath=v1File+'.baddir.manifest.json',badDirIntegrity=v1File+'.baddir.integrity.json';
+ writeFileSync(badDirPath,badDirText);
+ writeFileSync(badDirIntegrity,JSON.stringify({...old.integrity,manifestSha256:digest(badDirText)}));
+ await assert.rejects(assessRestore(v1.inst,{file:v1File,manifest:badDirPath,integrity:badDirIntegrity,entries:badDirManifest.roots}),/unlisted or mismatched archive entry/);
+
+ // Genuine sidecar-less legacy archive created with the historical `tar -czf` writer (including macOS PAX/AppleDouble headers)
+ // assesses and restores cleanly, and read-only assessment rejects missing roots and collisions.
+ const legacyRoot=path.join(v1.dir,'legacy-root');mkdirSync(legacyRoot);
+ const legacySrc=path.join(legacyRoot,'site.json');
+ writeFileSync(legacySrc,'{"legacy":1}\n',{mode:0o640});
+ const legacyArchive=path.join(v1.inst.backups,'legacy-only.tgz');
+ const tarRes=spawnSync('tar',['-czf',legacyArchive,'-C',v1.dir,'legacy-root'],{encoding:'utf8'});
+ assert.equal(tarRes.status,0,tarRes.stderr);
+ const legacyBackup={file:legacyArchive,entries:[{parent:v1.dir,name:'legacy-root'}]};
+ const legacyAssessed=await assessRestore(v1.inst,legacyBackup);
+ const legacyHash=digest('{"legacy":1}\n');
+ assert.equal(legacyAssessed.coversFile(legacySrc),true);
+ assert.equal(legacyAssessed.coversFile(legacySrc,{sha256:legacyHash,mode:0o640}),true);
+ assert.equal(legacyAssessed.coversFile(legacySrc,{sha256:legacyHash,mode:0o600}),false);
+ assert.equal(legacyAssessed.coversFile(legacySrc,{sha256:digest('wrong'),mode:0o640}),false);
+ assert.equal(legacyAssessed.coversFile(legacyRoot),false);
+ assert.equal(legacyAssessed.coversFile(path.join(v1.dir,'outside.txt')),false);
+
+ // Missing declared root in a legacy archive is rejected during read-only assessRestore() before service stop.
+ const extraMissing=path.join(v1.dir,'legacy-missing');mkdirSync(extraMissing);
+ await assert.rejects(assessRestore(v1.inst,{file:legacyArchive,entries:[{parent:v1.dir,name:'legacy-root'},{parent:v1.dir,name:'legacy-missing'}]}),/missing archive root: root-0002/);
+
+ // Explicit GNU-format tar fixture ('ustar  \0' header) including an ordinary '._notes' regular file assesses and restores cleanly on macOS and Linux.
+ const {gzipSync}=await import('node:zlib');
+ const gnuHeader=(name,type,mode,bytes)=>{
+  const b=Buffer.alloc(512);
+  const put=(s,off,len)=>Buffer.from(s).copy(b,off,0,len);
+  put(name,0,100);put(mode.toString(8).padStart(7,'0')+'\0',100,8);put('0000000\0',108,8);put('0000000\0',116,8);
+  put(bytes.toString(8).padStart(11,'0')+'\0',124,12);put('00000000000\0',136,12);b.fill(32,148,156);
+  put(type,156,1);put('ustar  \0',257,8);
+  const sum=b.reduce((a,v)=>a+v,0);put(sum.toString(8).padStart(6,'0')+'\0 ',148,8);
+  return b;
+ };
+ const gnuRoot=path.join(v1.dir,'gnu-root');mkdirSync(gnuRoot);
+ const gnuFile=path.join(gnuRoot,'cfg.json'),gnuBytes=Buffer.from('{"gnu":true}\n');
+ const gnuNotes=path.join(gnuRoot,'._notes'),gnuNotesBytes=Buffer.from('ordinary notes\n');
+ writeFileSync(gnuFile,'{"mutated":true}\n',{mode:0o640});
+ const padFor=len=>Buffer.alloc((512-len%512)%512);
+ const gnuTar=Buffer.concat([
+  gnuHeader('gnu-root/','5',0o700,0),
+  gnuHeader('gnu-root/cfg.json','0',0o640,gnuBytes.length),gnuBytes,padFor(gnuBytes.length),
+  gnuHeader('gnu-root/._notes','0',0o640,gnuNotesBytes.length),gnuNotesBytes,padFor(gnuNotesBytes.length),
+  Buffer.alloc(1024),
+ ]);
+ const gnuArchive=path.join(v1.inst.backups,'gnu-legacy.tgz');
+ writeFileSync(gnuArchive,gzipSync(gnuTar));
+ const gnuBackup={file:gnuArchive,entries:[{parent:v1.dir,name:'gnu-root'}]};
+ const gnuAssessed=await assessRestore(v1.inst,gnuBackup);
+ assert.equal(gnuAssessed.coversFile(gnuFile,{sha256:digest(gnuBytes),mode:0o640}),true,'GNU-format legacy archive passes coversFile');
+ assert.equal(gnuAssessed.coversFile(gnuNotes,{sha256:digest(gnuNotesBytes),mode:0o640}),true,'ordinary ._ file without AppleDouble magic passes coversFile');
+ await restoreBackup(v1.inst,v1.ctx,gnuBackup,null,gnuAssessed);
+ assert.equal(readFileSync(gnuFile,'utf8'),'{"gnu":true}\n','GNU-format legacy archive restores cleanly');
+ assert.equal(readFileSync(gnuNotes,'utf8'),'ordinary notes\n','ordinary ._ file restores with intact text');
+
+ // Case-fold collision inside a legacy archive is rejected during read-only assessRestore() before restore/stop.
+ const {writeArchive}=await import('../server/release-archive.mjs');
+ const collidingArchive=path.join(v1.inst.backups,'legacy-collide.tgz');
+ await writeArchive(collidingArchive,[
+  {path:'legacy-root',type:'directory',mode:0o700,bytes:0},
+  {path:'legacy-root/File.txt',type:'file',mode:0o640,bytes:Buffer.byteLength('{"legacy":1}\n'),source:legacySrc},
+  {path:'legacy-root/file.txt',type:'file',mode:0o640,bytes:Buffer.byteLength('{"legacy":1}\n'),source:legacySrc},
+ ],{release:false});
+ await assert.rejects(assessRestore(v1.inst,{file:collidingArchive,entries:[{parent:v1.dir,name:'legacy-root'}]}),/case-fold archive path collision/);
+
+ // Resumed legacy restore uses empty-directory removal on stageDir and preserves unexpected files inside it.
+ const stageDir=path.join(v1.dir,'.hub-restore-legacy-extra');
+ const stagedRoot=path.join(stageDir,'root');
+ mkdirSync(stagedRoot,{recursive:true,mode:0o700});
+ writeFileSync(path.join(stagedRoot,'site.json'),'{"legacy":1}\n',{mode:0o640});
+ const unrelated=path.join(stageDir,'keep-me.txt');
+ writeFileSync(unrelated,'do not delete');
+ writeFileSync(legacySrc,'{"mutated":2}\n',{mode:0o640});
+ const legacyJournal={
+  schemaVersion:2,id:'legacy-resume',startedAt:new Date(v1.ctx.now()).toISOString(),step:'rolling-back',epochRose:true,
+  from:{label:'v1.0.0',core:{version:'1.0.0'},expect:{version:'1.0.0'}},
+  to:{label:'v1.1.0',core:{version:'1.1.0'},expect:{version:'1.1.0'}},
+  changes:[],settings:{root:v1.inst.root,state:v1.inst.paths.state,service:{stop:['true'],start:['true']},health:{url:'http://127.0.0.1:1/healthz',seconds:2}},
+  restoreRoots:[{id:'root-0001',live:legacyRoot,stageDir,staged:stagedRoot,aside:legacyRoot+'.failed-legacy',existed:true,status:'prepared'}],
+ };
+ await restoreBackup(v1.inst,v1.ctx,legacyBackup,legacyJournal);
+ assert.equal(readFileSync(legacySrc,'utf8'),'{"legacy":1}\n');
+ assert.equal(readFileSync(unrelated,'utf8'),'do not delete','legacy stageDir cleanup preserves unexpected files');
+});
+
+test('updater closure rooted at scripts/update.mjs is 100% static, acyclic, and update-backup exports stay narrow',async()=>{
+ const repoRoot=path.resolve(import.meta.dirname,'..');
+ const entry=path.join(repoRoot,'scripts','update.mjs');
+ const visited=new Set(),stack=[],cycles=[],dynamics=[];
+ const deleted=['backup-scan.mjs','backup-archive.mjs','backup-policy.mjs','restore-sockets.mjs'];
+ function walk(file){
+  if(stack.includes(file)){cycles.push([...stack.slice(stack.indexOf(file)),file].map(f=>path.relative(repoRoot,f)));return;}
+  if(visited.has(file))return;
+  visited.add(file);
+  const src=readFileSync(file,'utf8');
+  const stripped=src.replace(/\/\*[\s\S]*?\*\//g,'').replace(/^\s*\/\/.*$/gm,'');
+  if(/\bimport\s*\(/.test(stripped))dynamics.push(path.relative(repoRoot,file));
+  stack.push(file);
+  for(const m of stripped.matchAll(/(?:import|export)\s+(?:[^'"]*?\s+from\s+)?['"](\.[^'"]+)['"]/g)){
+   const target=path.resolve(path.dirname(file),m[1]);
+   assert.ok(!deleted.includes(path.basename(target)),`unexpected import of removed module: ${target}`);
+   walk(target);
+  }
+  stack.pop();
+ }
+ walk(entry);
+ assert.deepEqual(cycles,[],'updater import graph must be acyclic');
+ assert.deepEqual(dynamics,[],'updater import closure must have zero dynamic import() calls');
+ for(const name of deleted)assert.equal(existsSync(path.join(repoRoot,'server',name)),false,`${name} must remain deleted`);
+ const mod=await import('../server/update-backup.mjs');
+ assert.deepEqual(Object.keys(mod).sort(),[
+  'BACKUP_SCHEMA','DRIVER_CAPABILITIES','POLICY_SCHEMA',
+  'assessRestore','backupPlan','backupRootSummary','createBackup','refuseSocketReplacement','restoreBackup','scanBackup'
+ ]);
+ assert.equal(mod.BACKUP_SCHEMA,2);
+ assert.equal(mod.POLICY_SCHEMA,1);
+ assert.deepEqual(mod.DRIVER_CAPABILITIES,['backup-v1','backup-v2','hardlinks','budget','journal-3','staged-fsync','socket-aware']);
+});

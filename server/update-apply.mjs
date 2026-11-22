@@ -43,9 +43,8 @@ import {packageReceipt} from './build-info.mjs';
 import {sha256,withinPath,durableWrite,syncDirectory} from './safe-fs.mjs';
 import {identityMismatch,observeReadiness,healthSample} from './update-readiness.mjs';
 import {contentFingerprint,pluginSourceFingerprint} from './runtime-identity.mjs';
-import {backupPlan,createBackup,restoreBackup,assessRestore,backupRootSummary} from './update-backup.mjs';
+import {backupPlan,createBackup,restoreBackup,assessRestore,backupRootSummary,refuseSocketReplacement} from './update-backup.mjs';
 import {UpdateError,RollbackFailed} from './update-errors.mjs';
-import {refuseSocketReplacement} from './restore-sockets.mjs';
 import {retainDriver,checkRetainedDriver} from './update-driver.mjs';
 import {acquireLock,acquireSourceLocks} from './update-lock.mjs';
 import {JOURNAL_SCHEMA,TERMINAL_STEPS,readUpdateJournal,writeUpdateJournal,unfinished,recordMutation} from './update-journal.mjs';
@@ -109,11 +108,7 @@ function verifyConfigurationRecovery(journal,assessed){
   if(!site||!['applying','applied'].includes(site.status))continue;
   verifyConfigurationPath(site.file);
   if(site.baseHash===null)continue;
-  if(assessed?.restorableSettings?.has(site.file))continue;
-  if(assessed?.manifest?.files?.some(e=>{
-   const r=assessed.manifest.roots.find(r=>e.path===r.id||e.path.startsWith(r.id+'/'));
-   return r&&path.join(r.canonical,e.path.slice(r.id.length+1))===site.file&&e.sha256===site.baseHash&&e.mode===site.mode;
-  }))continue;
+  if(assessed?.coversFile(site.file,{sha256:site.baseHash,mode:site.mode}))continue;
   if(!assessed&&currentSiteMatches(site))continue;
   if(hashOf(siteBytes(site.backup))!==site.baseHash)throw new Error(`the original ${key} configuration is missing or changed: ${site.backup}`);
  }
@@ -340,9 +335,6 @@ async function waitHealthy(inst,ctx,expect,since,{interruptible=true}={}){
 }
 
 // --- the archive ---------------------------------------------------------------------------------------
-export const archiveEntries=inst=>backupPlan(inst).roots;
-export const makeArchive=(inst,ctx,name,options)=>createBackup(inst,ctx,name,options);
-export const restoreArchive=(inst,ctx,backup,journal,assessed)=>restoreBackup(inst,ctx,backup,journal,assessed);
 function pruneArchives(inst,ctx,keepFile){
  try{
   const regular=file=>{
@@ -712,7 +704,7 @@ async function undo(inst,ctx,journal){
    for(const c of journal.changes)if(head(c)!==c.from||c.branch){ctx.log(`  ${c.id}: back to ${short(c.from)}${c.branch?` (${c.branch})`:''}`);if(inspectSource(ctx,c).dirty.length)throw new Error(`Unrelated tracked edits in ${c.dir}; refusing forced rollback`);const current=head(c);if(current!==c.from&&current!==c.to)throw new Error(`Unexpected source identity in ${c.dir}; manual recovery required`);recordMutation(inst,journal,'source-restore',{source:c.id,from:current,to:c.from},()=>switchTo(ctx,c,c.from,{branch:c.branch}));}
    if(assessed){
     ctx.log(`  restoring ${journal.backup.file} (the data epoch rose, and the new version has written its state)`);
-    journal.failedState=await restoreArchive(inst,ctx,journal.backup,journal,assessed);journal.restored=true;writeJournal(inst,journal);
+    journal.failedState=await restoreBackup(inst,ctx,journal.backup,journal,assessed);journal.restored=true;writeJournal(inst,journal);
    }
    // The site may have changed before the new code ever started; restore it independently of the data epoch.
    for(const key of ['site','instance'])restoreSite(inst,journal,key);
@@ -791,7 +783,7 @@ export async function apply(inst,request,ctx){
    ctx.checkpoint();
    journal.step='backup';writeJournal(inst,journal);
    ctx.log('Archiving, with the hub stopped:');
-   journal.backup=await makeArchive(inst,ctx,`pre-${plan.from.core.version}-to-${plan.to.core.version}-${stampOf(started)}`,{plan:sameCoverage(coverage,backupPlan(inst))});
+   journal.backup=await createBackup(inst,ctx,`pre-${plan.from.core.version}-to-${plan.to.core.version}-${stampOf(started)}`,{plan:sameCoverage(coverage,backupPlan(inst))});
    for(const key of ['site','instance'])if(plan[`${key}Change`]){
     const site=plan[`${key}Change`],original=checkSiteUnchanged(site),backup=journal.backup.file+`.${key}.json`;
     if(original!==null)durableWrite(backup,original);
@@ -874,7 +866,7 @@ export async function backup(inst,ctx){
   await stopService(inst,ctx,run?.pid??null);ctx.checkpoint('manual-backup-stopped');
   journal.step='backup';writeJournal(inst,journal);
   let made=null,error=null;
-  try{made=await makeArchive(inst,ctx,`manual-${version}-${stampOf(ctx.now())}`,{plan:sameCoverage(coverage,backupPlan(inst))});}catch(e){error=e;}
+  try{made=await createBackup(inst,ctx,`manual-${version}-${stampOf(ctx.now())}`,{plan:sameCoverage(coverage,backupPlan(inst))});}catch(e){error=e;}
   journal.backup=made;journal.step='starting';writeJournal(inst,journal);
   ctx.log('Starting it again:');
   const since=ctx.now();
