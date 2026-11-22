@@ -10,6 +10,7 @@ import {toolError} from './tool-error.mjs';
 import {SCOPES} from './scopes.mjs';
 import {renamedKey} from './state-forward.mjs';
 
+export const MCP_REQUEST_BYTES=64*1024;
 export const MCP_PROTOCOLS=Object.freeze(['2025-11-25','2025-06-18','2025-03-26']);
 const text=(v,n=200)=>typeof v==='string'?v.slice(0,n):'';
 
@@ -108,9 +109,16 @@ export function createMcpBusiness({version='2',ctx,tools=[],instructions=[]}){
 
 export function createMcp(options){
  const business=createMcpBusiness(options),{dispatch}=business;
- // Returns {status, headers, body}; the HTTP layer does auth, origin and size checks first.
- const handle=async function handle(raw,principal){
-  let msg;try{msg=JSON.parse(raw);}catch{return reply(400,{jsonrpc:'2.0',id:null,error:{code:-32700,message:'Parse error'}});}
+ // The HTTP layer checks auth, origin and the maximum bytes it may buffer. Here the parsed
+ // method and tool select a request limit before dispatch.
+ const requestLimits=options.requestLimits??new Map();
+ const handle=async function handle(raw,principal,bytes=Buffer.byteLength(raw)){
+  let msg;try{msg=JSON.parse(raw);}catch{
+   if(bytes>MCP_REQUEST_BYTES)return tooLarge();
+   return reply(400,{jsonrpc:'2.0',id:null,error:{code:-32700,message:'Parse error'}});
+  }
+  const limit=msg?.method==='tools/call'?requestLimits.get(msg.params?.name):undefined;
+  if(bytes>(limit??MCP_REQUEST_BYTES))return tooLarge();
   if(Array.isArray(msg))return reply(400,{jsonrpc:'2.0',id:null,error:{code:-32600,message:'Batch requests are not supported.'}});
   if(!msg||typeof msg!=='object'||msg.jsonrpc!=='2.0'||typeof msg.method!=='string'){
    if(msg&&typeof msg==='object'&&('result'in msg||'error'in msg))return {status:202};
@@ -122,6 +130,8 @@ export function createMcp(options){
  };
  handle.business=business;return handle;
 }
+const tooLarge=()=>({status:413,headers:{'Content-Type':'application/json',Connection:'close'},
+ body:JSON.stringify({error:{code:'TOO_LARGE',message:'Request too large.'}})});
 const reply=(status,body)=>({status,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 // toolError (server/tool-error.mjs): for a module tool's run(), an error whose message goes back to the agent as the
 // tool result (isError: true). Anything else a tool throws is reported as an internal error.

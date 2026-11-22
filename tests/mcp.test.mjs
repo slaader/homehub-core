@@ -28,6 +28,11 @@ test('MCP handshake, auth and transport rules',async t=>{
  assert.equal(oversized.status,413);
  assert.equal(oversized.headers.get('connection'),'close');
  assert.equal((await oversized.json()).error.code,'TOO_LARGE');
+ const tracker=await h.account('tracker-writer',['tickets:write']);
+ const oversizedWiki=await rpc(h,tracker.headers,'tools/call',{name:'wiki_page_save',arguments:{title:'x'.repeat(96000)}});
+ assert.equal(oversizedWiki.status,413,'the larger Epic envelope does not enlarge other tool requests');
+ assert.equal(oversizedWiki.headers.get('connection'),'close');
+
  assert.deepEqual((await (await rpc(h,agent.headers,'ping')).json()).result,{});
  const bad=await fetch(h.origin+'/mcp',{method:'POST',headers:{'Content-Type':'application/json',...agent.headers},body:'{'});
  assert.equal((await bad.json()).error.code,-32700);

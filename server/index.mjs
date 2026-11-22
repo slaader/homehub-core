@@ -15,7 +15,7 @@ import {createAuth} from './auth.mjs';
 import {openDb} from './db.mjs';
 import {createAccessStore,apiBearerOf,validCredentials} from './access-store.mjs';
 import {registerScopes,scopeFor,scopeIds,sessionOnly,useRoutes} from './scopes.mjs';
-import {createMcp} from './mcp.mjs';
+import {createMcp,MCP_REQUEST_BYTES} from './mcp.mjs';
 import {createAppTokens,bearerOf} from './app-tokens.mjs';
 import {APP_AUTHOR} from './provenance.mjs';
 import {createAgentStore,agentBearerOf} from './agent-store.mjs';
@@ -60,6 +60,9 @@ export const PAGE_CSP=`default-src 'self'; script-src 'self'; style-src 'self'${
 // How long a request may take to arrive: any request, and one that streams a file (a ticket attachment of up to
 // 100 MB, a review chunk) into a route marked `raw`.
 export const REQUEST_DEADLINE_MS=10_000,UPLOAD_TIMEOUT_MS=20*60_000;
+// Epic specs can contain 64 KiB before JSON escaping; other tools keep the default request cap.
+const EPIC_MCP_REQUEST_BYTES=512*1024;
+const MCP_REQUEST_LIMITS=new Map([['epic_create',EPIC_MCP_REQUEST_BYTES],['epic_update',EPIC_MCP_REQUEST_BYTES]]);
 
 // Core modules, in set-up order (a later one may use the state of an earlier one).
 export const CORE_MODULES=Object.freeze([sessionModule,shellModule,accessModule,homeModule,runtimesModule,inventoryModule,trackerModule,wikiModule,referencesModule,reviewModule,securityModule,routerModule,integrationsModule,modelsModule,deviceCatalogModule,backupsModule,gitLfsModule,updatesModule,agentModule].map(m=>defineModule(m,{core:true})));
@@ -134,7 +137,7 @@ export function createHandler(options) {
   const assets=new Map(registry.assets);
   for(const image of siteImages(siteImagesDirectory===undefined?(options.site?null:siteConfigPath()&&path.join(path.dirname(siteConfigPath()),'images')):siteImagesDirectory)){
    if(assets.has(image.url))throw new Error(`site image ${image.url} clashes with an asset of module "${assets.get(image.url).module}"`);assets.set(image.url,image);}
-  const mcp=createMcp({version:version.version,tools:registry.tools,instructions:registry.instructions,ctx:{log:entry=>accessStore.logApi(entry),moduleContext:id=>({state:states.get(id),hub})}});
+  const mcp=createMcp({version:version.version,tools:registry.tools,instructions:registry.instructions,requestLimits:MCP_REQUEST_LIMITS,ctx:{log:entry=>accessStore.logApi(entry),moduleContext:id=>({state:states.get(id),hub})}});
   // A request has ten seconds to arrive whole, answered or not: a refusal that went out at once does not let the
   // rest of the request trickle in for longer. Only a raw upload may take longer: a file streamed by its route,
   // which is reached after the sign-in, origin and scope checks (the server's requestTimeout bounds that one).
@@ -178,9 +181,10 @@ export function createHandler(options) {
         if(!/^application\/json\b/.test(req.headers['content-type']||''))return error(415,'UNSUPPORTED_MEDIA_TYPE','Send JSON-RPC as application/json.');
         req.setEncoding('utf8');
         let raw='',size=0;
+        const limit=principal.scopes.includes('tickets:write')?EPIC_MCP_REQUEST_BYTES:MCP_REQUEST_BYTES;
         for await(const chunk of req.iterator({destroyOnReturn:false})){
           size+=Buffer.byteLength(chunk);
-          if(size>65536){
+          if(size>limit){
             // Let the client finish reading the refusal before retiring this connection.
             res.setHeader('Connection','close');
             req.resume();
@@ -188,7 +192,7 @@ export function createHandler(options) {
           }
           raw+=chunk;
         }
-        const out=await mcp(raw,principal);res.writeHead(out.status,out.headers||{});return res.end(out.body||'');
+        const out=await mcp(raw,principal,size);res.writeHead(out.status,out.headers||{});return res.end(out.body||'');
       }
       // People and app tokens are held to the route's scope like keys are: a role is a set of scopes (server/scopes.mjs).
       // A route with people:'write' asks a person or an app only for write access; an API key still needs the scope.
