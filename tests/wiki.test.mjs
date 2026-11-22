@@ -85,7 +85,7 @@ test('wiki HTTP setup is atomic and idempotent, and writes require the tracker s
  assert.equal(canWriteWiki({canWrite:true,scopes:['read','tickets:write']}),true);
  assert.equal(canWriteWiki({canWrite:true,scopes:['read','review:write']}),false);
  assert.equal(canWriteWiki({canWrite:false,scopes:['read']}),false);
- assert.deepEqual(await response(get(h,wiki,reader.headers),200),{projects:[]});
+ assert.deepEqual(await response(get(h,wiki,reader.headers),200),{projects:[],spaces:[]});
  await response(get(h,wiki,{}),401);
  assert.deepEqual(await response(get(h,list,reader.headers),200),{enabled:false});
  await response(get(h,list,{}),401);
@@ -98,7 +98,11 @@ test('wiki HTTP setup is atomic and idempotent, and writes require the tracker s
  assert.equal(homes.size,1);
  const [home]=homes;
  assert.match(home,PAGE_ID);
- assert.deepEqual(await response(get(h,wiki,reader.headers),200),{projects:[{id:project,name:'Home Hub',home}]});
+ const idx=await response(get(h,wiki,reader.headers),200);
+ assert.deepEqual(idx.projects,[{id:project,name:'Home Hub',home}]);
+ assert.equal(idx.spaces.length,1);
+ assert.deepEqual({id:idx.spaces[0].id,name:idx.spaces[0].name,projectId:idx.spaces[0].projectId,home:idx.spaces[0].home,count:idx.spaces[0].count},
+  {id:project,name:'Home Hub',projectId:project,home,count:1});
  assert.equal(results.filter(reply=>reply.created).length,1);
  const meta=await response(get(h,list,reader.headers),200);
  assert.equal(meta.home,home);

@@ -31,7 +31,7 @@ function describeDeletion(project,tracker,wiki,review,references,wikiAdapter,ref
  const space=wikiAdapter.space(wiki,project.id);
  const pages=space?recordsIn(wiki,'summaries',space.id):[];
  const local=recordsIn(references,'local',project.id);
- const collisions=refsAdapter.planPromotion(references,project);
+ const collisions=refsAdapter.planPromotion(references,project).collisions.map(({id,from,to})=>({id,label:from,newLabel:to}));
  const counts={...tracker.counts,wikiPages:pages.length,reviewSets:sets.length,localReferences:local.length};
  const dependencies=[
   [project.id,project.key,project.createdAt,project.rev],space?.id??null,
@@ -67,7 +67,7 @@ export function createProjectLifecycle(hub,tickets){
   const w=wiki(),fields=prepared.createWiki?{...input,settings:{...input.settings,wiki:true}}:input;
   return hub.db.changeCollections([
    {store:a.store,selection:{projects:null}},
-   {store:w.store,selection:w.select(input.id,'save')},
+   {store:w.store,selection:w.select(input.id,prepared.createWiki?'create':'rename')},
   ],([data,wikis])=>{
    const at=new Date().toISOString(),{project,previous,createWiki}=a.save(data,fields,by,at);
    if(createWiki)w.create(wikis,project,by,at);
@@ -108,7 +108,7 @@ export function createProjectLifecycle(hub,tickets){
   if(input.deleteReviews)requireScope(principal,'review:write');
   if(input.promoteReferences)requireScope(principal,'references:write');
 
-  const {result,reviewCleanup,trackerCleanup}=await deletion(input.id,(project,details,stores)=>{
+  const {result,wikiCleanup,reviewCleanup,trackerCleanup}=await deletion(input.id,(project,details,stores)=>{
    const {preview,space}=details;
    if(input.rev!==project.rev||input.snapshot!==preview.snapshot)fail('conflict');
    if(input.confirmation!==project.key&&input.confirmation!==project.name)fail('invalid');
@@ -116,18 +116,17 @@ export function createProjectLifecycle(hub,tickets){
    const {a,w,r,f,trackerData,wikiData,reviewData,refsData}=stores;
    const at=new Date().toISOString();
    const trackerCleanup=a.remove(trackerData,project,by,at);
-   if(space){
-    if(input.deleteWiki)w.remove(wikiData,space);
-    else w.detach(wikiData,space,project.name);
-   }
+   const wikiCleanup=space&&(input.deleteWiki?w.remove(wikiData,space,at):w.detach(wikiData,space,project.name,at));
    const reviewCleanup=r.removeProject(reviewData,project,input.deleteReviews===true,by,at);
    f.removeProject(refsData,project,{promote:input.promoteReferences===true,collisions:preview.collisions,
-    ticketIds:trackerCleanup.ticketIds,epicIds:trackerCleanup.epicIds,by,at});
+    ticketIds:trackerCleanup.ticketIds,epicIds:trackerCleanup.epicIds,
+    wikiPageKeys:wikiCleanup?.pageKeys,wikiSpaceId:wikiCleanup?.spaceId,by,at});
    const result={id:project.id,deleted:trackerCleanup.counts,counts:preview.counts,renamedReferences:input.promoteReferences?preview.collisions:[]};
-   return {result,trackerCleanup,reviewCleanup};
+   return {result,trackerCleanup,wikiCleanup,reviewCleanup};
   });
   tracker().notify();
-  await Promise.allSettled([trackerCleanup.cleanup(),review().notify(reviewCleanup)]);
+  refs().notify();
+  await Promise.allSettled([trackerCleanup.cleanup(),wiki().notify(wikiCleanup),review().notify(reviewCleanup)]);
   return result;
  }
 
@@ -145,7 +144,7 @@ export function createProjectLifecycle(hub,tickets){
    const at=new Date().toISOString(),space=w.space(wikis,input.id);
    if(input.renameWikiHome){
     if(!space)fail('conflict');
-    w.renameHome(wikis,space,'Home',project.name+' Home',by,at);
+    if(!w.renameHome(wikis,space,'Home',project.name+' Home',by,at).renamed)fail('conflict');
    }
    return a.upgrade(data,prepared,by,at,count);
   },{durable:true});

@@ -2,12 +2,12 @@
 // side by side and decided by the owner. The index (sets → rounds → items → variants → media, plus one decision
 // per item) is one row per set in state/hub.db (server/db.mjs; an old state/review/review.json is imported once);
 // files are content-addressed blobs in state/review/blobs/.
-// Writes to the index go through one queue and one transaction (with the search index); sets and decisions carry `rev`.
+// Writes to the index go through atomic SQLite transactions (with the search index); sets and decisions carry `rev`.
 // Uploads arrive in ordered chunks (small requests: a chunk that fails is sent again, not the whole file).
-// Errors are thrown as Error('invalid' | 'not-found' | 'conflict' | 'limit' | 'too-large').
+// Errors are thrown as Error('invalid' | 'not-found' | 'conflict' | 'detached' | 'limit' | 'too-large').
 // See docs/review.md.
 import {mkdir,readFile,writeFile,rename,rm,stat,open,readdir} from 'node:fs/promises';
-import {createReadStream} from 'node:fs';
+import {createReadStream,unlinkSync} from 'node:fs';
 import {createHash,randomUUID} from 'node:crypto';
 import path from 'node:path';
 import {TICKET_ID} from './tickets-store.mjs';
@@ -91,25 +91,47 @@ export function reviewSearch(coll,s){
 export const setAuthors=s=>({created:(s.rounds||[]).map(r=>[r.publishedBy,r.publishedAt]),
  changes:(s.rounds||[]).flatMap(r=>Object.values(r.feedback||{}).flatMap(d=>[...(d.updatedBy?[[d.updatedBy,d.updatedAt]]:[]),...(d.comments||[]).map(c=>[c.by,c.at])]))});
 
+function setBlobShas(s){
+ const shas=new Set();
+ for(const r of s.rounds||[]){
+  for(const item of r.items||[]){
+   for(const v of item.variants||[]){
+    for(const m of v.media||[]){
+     if(m.sha256)shas.add(m.sha256);
+     if(m.poster?.sha256)shas.add(m.poster.sha256);
+    }
+   }
+  }
+  for(const d of Object.values(r.feedback||{})){
+   for(const a of d.attachments||[])if(a.sha256)shas.add(a.sha256);
+   for(const c of d.comments||[])for(const a of c.attachments||[])if(a.sha256)shas.add(a.sha256);
+  }
+ }
+ return shas;
+}
+
+function parseDetachedFilter(value){
+ if(value===undefined||value==='')return undefined;
+ if(value===true||value==='true')return true;
+ if(value===false||value==='false')return false;
+ fail('invalid');
+}
+
 export function createReviewStore(root,{tickets,db=openDb(path.join(root,'hub.db')),maxBytes=Number(process.env.REVIEW_MAX_BYTES)||20*1024**3}={}){
  const blobs=path.join(root,'blobs'),uploads=path.join(root,'uploads');
- let queue=Promise.resolve(),used=null;const uploading=new Map();
+ let used=null;const uploading=new Map(),pinning=new Map();
  const empty=()=>({schema:1,next:1,updatedAt:null,sets:[],blobs:{}});
  const store=db.collection('review',{empty,legacy:path.join(root,'review.json'),searchKinds:['review'],search:reviewSearch,
   valid:d=>d?.schema===1&&Array.isArray(d.sets)&&plain(d.blobs),
   split:({sets,blobs,...meta})=>({meta,colls:{sets:sets.map(x=>[x.id,x]),blobs:Object.entries(blobs)}}),
   join:(meta,c)=>({...meta,sets:(c.sets||[]).map(([,x])=>x),blobs:Object.fromEntries(c.blobs||[])})});
- const read=()=>store.read();
- function write(fn){
-  const run=queue.then(async()=>{
-   const data=await read(),now=new Date().toISOString(),result=await fn(data,now);
-   data.updatedAt=now;await store.write(data);
-   return result;
-  });queue=run.catch(()=>{});return run;
- }
+ const unindexSet=db.db.prepare("DELETE FROM search WHERE kind='review' AND id=?");
+ const read=()=>store.read({forWrite:false});
  const setOf=(data,id)=>(typeof id==='string'&&REVIEW_ID.test(id)&&data.sets.find(s=>s.id===id))||fail('not-found');
  const blobFile=sha=>SHA.test(sha)?path.join(blobs,sha):fail('invalid');
  const exists=async p=>{try{return (await stat(p)).isFile();}catch(e){if(e.code==='ENOENT')return false;throw e;}};
+ const pin=sha=>pinning.set(sha,(pinning.get(sha)||0)+1);
+ const unpin=sha=>{const n=(pinning.get(sha)||0)-1;if(n<=0)pinning.delete(sha);else pinning.set(sha,n);};
 
  // Blobs ------------------------------------------------------------------------------------------
  async function usedBytes(){
@@ -150,10 +172,41 @@ export function createReviewStore(root,{tickets,db=openDb(path.join(root,'hub.db
  // A published blob: {file,type,size}. Unreferenced blobs are not served.
  async function media(sha){
   if(typeof sha!=='string'||!SHA.test(sha))fail('not-found');
-  const data=await read(),meta=Object.hasOwn(data.blobs,sha)?data.blobs[sha]:null;if(!meta)fail('not-found');
+  const meta=await store.get('blobs',sha);if(!meta)fail('not-found');
   const file=blobFile(sha);if(!await exists(file))fail('not-found');return {file,type:meta.type,size:(await stat(file)).size};
  }
  async function frame(sha){const m=await media(sha);if(m.type!=='text/html')fail('not-found');return injectHelper(await readFile(m.file,'utf8'));}
+
+ async function cleanupBlobs(shas){
+  const unique=[...new Set((shas||[]).filter(sha=>SHA.test(sha)))];
+  if(!unique.length)return;
+  db.flushWal();
+  let removedAny=false;
+  await store.change({blobs:unique},data=>{
+   for(const sha of unique){
+    if(Object.hasOwn(data.blobs,sha)||uploading.has(sha)||pinning.has(sha))continue;
+    try{unlinkSync(blobFile(sha));removedAny=true;}catch(e){if(e.code!=='ENOENT')throw e;}
+   }
+  });
+  if(removedAny)used=null;
+ }
+
+ function pruneSetsInData(data,removedSets,at){
+  const removedIds=new Set(removedSets.map(s=>s.id));
+  const candidateShas=new Set();
+  for(const s of removedSets)for(const sha of setBlobShas(s))candidateShas.add(sha);
+  data.sets=data.sets.filter(s=>!removedIds.has(s.id));
+  const stillReferenced=new Set();
+  for(const s of data.sets)for(const sha of setBlobShas(s))stillReferenced.add(sha);
+  const removedBlobs=[];
+  for(const sha of candidateShas){
+   if(stillReferenced.has(sha))continue;
+   if(Object.hasOwn(data.blobs,sha)){delete data.blobs[sha];removedBlobs.push(sha);}
+  }
+  for(const s of removedSets)unindexSet.run(s.id);
+  data.updatedAt=at;
+  return removedBlobs;
+ }
 
  // Validation ---------------------------------------------------------------------------------------
  function ticketLinks(ids){
@@ -161,9 +214,17 @@ export function createReviewStore(root,{tickets,db=openDb(path.join(root,'hub.db
   return [...new Set(ids)];
  }
  async function projectsAndTickets(project,ids){
-  const meta=await tickets.list({limit:1});if(!meta.projects.some(p=>p.id===project))fail('invalid');
+  const projects=typeof tickets?.projects==='function'?await tickets.projects():(await tickets.list({limit:1})).projects;
+  const found=projects.find(p=>p.id===project);
+  if(!found)fail('invalid');
   for(const id of ids){if(typeof id!=='string'||!TICKET_ID.test(id))fail('invalid');let t;try{t=await tickets.get(id);}catch{fail('invalid');}if(t.project!==project)fail('invalid');}
-  return meta.projects.find(p=>p.id===project);
+  return found;
+ }
+ function verifyProjectAndTicketsSync(project,ids){
+  if(typeof tickets?.hasProjectSync==='function'&&!tickets.hasProjectSync(project))fail('invalid');
+  if(typeof tickets?.ticketProjectSync==='function'){
+   for(const id of ids)if(tickets.ticketProjectSync(id)!==project)fail('invalid');
+  }
  }
  // Items of a round. Returns {items, inline:[{sha,buf}], checks:[{sha,type}]}.
  function itemsOf(input){
@@ -240,25 +301,34 @@ export function createReviewStore(root,{tickets,db=openDb(path.join(root,'hub.db
   const r=latest(s),decided=r.items.filter(i=>r.feedback[i.id]&&r.feedback[i.id].status!=='pending').length;
   // Card cover: the first image, else a 3D model's poster, else the first HTML mockup (a scaled, non-interactive frame).
   const media=r.items.flatMap(i=>i.variants.flatMap(v=>v.media)),cover=media.find(m=>m.type.startsWith('image/'))||media.find(m=>m.poster)?.poster||media.find(m=>m.type==='text/html')||null;
-  return {id:s.id,project:s.project,title:s.title,description:s.description,tickets:s.tickets,status:s.status,done:doneOf(s),rev:s.rev,createdAt:s.createdAt,createdBy:s.createdBy,updatedAt:s.updatedAt,
+  return {id:s.id,project:s.project,detached:s.project===null,...(s.project===null&&s.detachedProjectName?{detachedProjectName:s.detachedProjectName}:{}),
+   title:s.title,description:s.description,tickets:s.tickets,status:s.status,done:doneOf(s),rev:s.rev,createdAt:s.createdAt,createdBy:s.createdBy,updatedAt:s.updatedAt,
    rounds:s.rounds.length,round:{n:r.n,publishedAt:r.publishedAt,publishedBy:r.publishedBy,items:r.items.length,kinds:[...new Set(r.items.map(i=>i.kind))],decided,
     comments:Object.values(r.feedback).reduce((n,d)=>n+d.comments.length,0)},feedbackPending:pendingOf(s),cover:cover?{sha256:cover.sha256,type:cover.type,...(cover.viewport?{viewport:cover.viewport}:{})}:null};
  }
- const FILTERS=['project','ticket','status','feedback'];
+ const FILTERS=['project','ticket','status','feedback','detached'];
  // authors: true adds `authors` = {created, changes} over the listed sets (server/provenance.mjs).
  async function list(filter={},{authors=false}={}){
-  if(!onlyKeys(filter,FILTERS))fail('invalid');const f=Object.fromEntries(Object.entries(filter).filter(([,v])=>v!==undefined&&v!==''));
+  if(!onlyKeys(filter,FILTERS))fail('invalid');
+  const detached=parseDetachedFilter(filter.detached);
+  const f=Object.fromEntries(Object.entries(filter).filter(([k,v])=>k!=='detached'&&v!==undefined&&v!==''));
   if(Object.values(f).some(v=>typeof v!=='string'))fail('invalid');
   if(f.project&&!PROJECT.test(f.project)||f.ticket&&f.ticket!=='unlinked'&&!TICKET_ID.test(f.ticket)||f.status&&!['open','active','done','archived','all'].includes(f.status)||f.feedback&&f.feedback!=='pending')fail('invalid');
+  if(f.project&&detached===true)fail('invalid');
   const status=f.status||'open',data=await read();
-  const sets=data.sets.filter(s=>(!f.project||s.project===f.project)&&(!f.ticket||(f.ticket==='unlinked'?!s.tickets.length:s.tickets.includes(f.ticket)))&&(status==='all'||(status==='active'?s.status==='open'&&!doneOf(s):status==='done'?s.status==='open'&&doneOf(s):s.status===status))&&(!f.feedback||pendingOf(s)))
+  const detachedCount=data.sets.filter(s=>s.project===null).length;
+  const sets=data.sets.filter(s=>(!f.project||s.project===f.project)&&(detached===undefined||(detached?s.project===null:s.project!==null))&&(!f.ticket||(f.ticket==='unlinked'?!s.tickets.length:s.tickets.includes(f.ticket)))&&(status==='all'||(status==='active'?s.status==='open'&&!doneOf(s):status==='done'?s.status==='open'&&doneOf(s):s.status===status))&&(!f.feedback||pendingOf(s)))
    .sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
-  const out={updatedAt:data.updatedAt,sets:sets.map(summary)};
+  const out={updatedAt:data.updatedAt,detachedCount,sets:sets.map(summary)};
   if(!authors)return out;
   const facts={created:[],changes:[]};for(const s of sets){const a=setAuthors(s);facts.created.push(...a.created);facts.changes.push(...a.changes);}
   return {...out,authors:facts};
  }
- async function get(id){const data=await read(),s=setOf(data,id);return {...s,done:doneOf(s),feedbackPending:pendingOf(s)};}
+ async function get(id){
+  if(typeof id!=='string'||!REVIEW_ID.test(id))fail('not-found');
+  const s=await store.get('sets',id);if(!s)fail('not-found');
+  return {...s,detached:s.project===null,done:doneOf(s),feedbackPending:pendingOf(s)};
+ }
 
  // Write side ---------------------------------------------------------------------------------------
  async function publish(input,by){
@@ -272,32 +342,43 @@ export function createReviewStore(root,{tickets,db=openDb(path.join(root,'hub.db
   if(!('set'in input)){if(typeof project!=='string'||!PROJECT.test(project)||title===null)fail('invalid');}
   else if(project!==undefined&&(typeof project!=='string'||!PROJECT.test(project)))fail('invalid');
   if(!('set'in input)&&addresses.length)fail('invalid');
-  if(project===undefined){const s=setOf(await read(),input.set);project=s.project;}
+  if('set'in input){
+   const existing=await store.get('sets',input.set);
+   if(!existing)fail('not-found');
+   if(existing.project===null)fail('detached');
+   if(project===undefined)project=existing.project;
+  }
   await projectsAndTickets(project,ticketIds||[]);
-  // Inline HTML becomes a blob; every referenced blob must exist and look like its declared type.
-  for(const {sha,buf} of inline)if(!await hasBlob(sha)){await mkdir(blobs,{recursive:true,mode:0o700});const tmp=blobFile(sha)+'.'+randomUUID();
-   try{await writeFile(tmp,buf,{mode:0o600,flag:'wx'});await rename(tmp,blobFile(sha));if(used!==null)used+=buf.length;}finally{await rm(tmp,{force:true});}}
-  for(const {sha,type} of checks){if(!await hasBlob(sha))fail('missing-blob');if(!MAGIC[type](await head(sha,type==='text/html'?4096:16)))fail('invalid');}
-  const sizes=Object.fromEntries(await Promise.all([...new Set(checks.map(c=>c.sha))].map(async sha=>[sha,(await stat(blobFile(sha))).size])));
-  for(const {sha,type} of checks)if(type==='model/gltf-binary'){if(sizes[sha]>LIMITS.model)fail('too-large');if((await head(sha,12)).readUInt32LE(8)!==sizes[sha])fail('invalid');}
-  for(const i of items)for(const v of i.variants)for(const m of v.media){m.size=sizes[m.sha256];if(m.poster)m.poster.size=sizes[m.poster.sha256];}
-  return write(async(data,now)=>{
-   await projectsAndTickets(project,ticketIds||[]);
-   for(const {sha,type} of checks){const old=Object.hasOwn(data.blobs,sha)?data.blobs[sha]:null;if(old&&old.type!==type)fail('invalid');data.blobs[sha]={type,size:sizes[sha]};}
-   let s;
-   if('set'in input){
-    s=setOf(data,input.set);if(s.project!==project)fail('invalid');if(s.status!=='open')fail('conflict');if(s.rounds.length>=LIMITS.rounds)fail('limit');
-    const known=new Set(s.rounds.flatMap(r=>Object.values(r.feedback).flatMap(d=>d.comments.map(c=>c.id))));if(!addresses.every(a=>known.has(a)))fail('invalid');
-    if(title!==null)s.title=title;if(description!==null)s.description=description;if(ticketIds)s.tickets=ticketIds;
-    s.rounds.push({n:s.rounds.length+1,notes,addresses,publishedAt:now,publishedBy:by,items,feedback:{}});s.updatedAt=now;s.rev++;
-   }else{
-    if(data.sets.length>=LIMITS.sets)fail('limit');
-    s={id:`R-${data.next++}`,project,title,description:description??'',tickets:ticketIds||[],status:'open',createdAt:now,createdBy:by,updatedAt:now,rev:1,
-     rounds:[{n:1,notes,addresses:[],publishedAt:now,publishedBy:by,items,feedback:{}}]};
-    data.sets.push(s);
-   }
-   return {...summary(s),url:`#review/${s.id}`,warnings:s.tickets.length?[]:['Link this review to an existing ticket in its project. Unlinked creation is deprecated; it remains supported.']};
-  });
+  const pinned=[...new Set(checks.map(c=>c.sha))];
+  for(const sha of pinned)pin(sha);
+  try{
+   // Inline HTML becomes a blob; every referenced blob must exist and look like its declared type.
+   for(const {sha,buf} of inline)if(!await hasBlob(sha)){await mkdir(blobs,{recursive:true,mode:0o700});const tmp=blobFile(sha)+'.'+randomUUID();
+    try{await writeFile(tmp,buf,{mode:0o600,flag:'wx'});await rename(tmp,blobFile(sha));if(used!==null)used+=buf.length;}finally{await rm(tmp,{force:true});}}
+   for(const {sha,type} of checks){if(!await hasBlob(sha))fail('missing-blob');if(!MAGIC[type](await head(sha,type==='text/html'?4096:16)))fail('invalid');}
+   const sizes=Object.fromEntries(await Promise.all(pinned.map(async sha=>[sha,(await stat(blobFile(sha))).size])));
+   for(const {sha,type} of checks)if(type==='model/gltf-binary'){if(sizes[sha]>LIMITS.model)fail('too-large');if((await head(sha,12)).readUInt32LE(8)!==sizes[sha])fail('invalid');}
+   for(const i of items)for(const v of i.variants)for(const m of v.media){m.size=sizes[m.sha256];if(m.poster)m.poster.size=sizes[m.poster.sha256];}
+   return await store.change({sets:'set'in input?[input.set]:[],blobs:pinned},(data,count)=>{
+    verifyProjectAndTicketsSync(project,ticketIds||[]);
+    const now=new Date().toISOString();
+    for(const {sha,type} of checks){const old=Object.hasOwn(data.blobs,sha)?data.blobs[sha]:null;if(old&&old.type!==type)fail('invalid');data.blobs[sha]={type,size:sizes[sha]};}
+    let s;
+    if('set'in input){
+     s=setOf(data,input.set);if(s.project===null)fail('detached');if(s.project!==project)fail('invalid');if(s.status!=='open')fail('conflict');if(s.rounds.length>=LIMITS.rounds)fail('limit');
+     const known=new Set(s.rounds.flatMap(r=>Object.values(r.feedback).flatMap(d=>d.comments.map(c=>c.id))));if(!addresses.every(a=>known.has(a)))fail('invalid');
+     if(title!==null)s.title=title;if(description!==null)s.description=description;if(ticketIds)s.tickets=ticketIds;
+     s.rounds.push({n:s.rounds.length+1,notes,addresses,publishedAt:now,publishedBy:by,items,feedback:{}});s.updatedAt=now;s.rev++;
+    }else{
+     if(count('sets')>=LIMITS.sets)fail('limit');
+     s={id:`R-${data.next++}`,project,title,description:description??'',tickets:ticketIds||[],status:'open',createdAt:now,createdBy:by,updatedAt:now,rev:1,
+      rounds:[{n:1,notes,addresses:[],publishedAt:now,publishedBy:by,items,feedback:{}}]};
+     data.sets.push(s);
+    }
+    data.updatedAt=now;
+    return {...summary(s),url:`#review/${s.id}`,warnings:s.tickets.length?[]:['Link this review to an existing ticket in its project. Unlinked creation is deprecated; it remains supported.']};
+   });
+  }finally{for(const sha of pinned)unpin(sha);}
  }
  async function feedback(input,by){
   if(!onlyKeys(input,['set','round','item','rev','variant','status','note','comments','attachments','approvals','editComments','deleteComments'])||!Number.isSafeInteger(input.rev)||input.rev<0)fail('invalid');
@@ -321,51 +402,135 @@ export function createReviewStore(root,{tickets,db=openDb(path.join(root,'hub.db
   };
   const attachments='attachments'in input?await shots(input.attachments):undefined;
   const commentShots=[];for(const c of comments)commentShots.push(plain(c)&&'attachments'in c?await shots(c.attachments):[]);
-  return write((data,now)=>{
-   const s=setOf(data,input.set);if(s.status!=='open')fail('conflict');
-   const r=s.rounds.find(x=>x.n===input.round)||fail('not-found');if(r!==latest(s))fail('conflict');
-   const item=r.items.find(i=>i.id===input.item)||fail('not-found');
-   const mode=item.mode||'choose',decidable=item.variants.filter(v=>!v.reference);
-   const variant=input.variant===null||input.variant===undefined?null:decidable.find(v=>v.id===input.variant)?.id||fail('invalid');
-   // approve items: one verdict per (non-reference) variant; the item's status follows from them (reject stays explicit).
-   let approvals=null;
-   if(mode==='approve'){
-    if(variant)fail('invalid');const a=input.approvals??{};if(!plain(a))fail('invalid');
-    approvals={};for(const [k,v] of Object.entries(a)){if(!decidable.some(x=>x.id===k)||!APPROVALS.includes(v))fail('invalid');approvals[k]=v;}
-   }else if('approvals'in input)fail('invalid');
-   if(mode==='choose'&&['accept','revise'].includes(status)&&!variant)fail('invalid');
-   const old=Object.hasOwn(r.feedback,item.id)?r.feedback[item.id]:{rev:0,variant:null,status:'pending',note:'',comments:[],attachments:[]};
-   if(input.rev!==old.rev)fail('conflict');
-   const added=comments.map((c,i)=>{
-    if(!onlyKeys(c,['variant','anchor','text','attachments']))fail('invalid');const v=item.variants.find(x=>x.id===c.variant)||fail('invalid');
-    // A comment needs text or at least one screenshot.
-    const files=commentShots[i],body=files.length?text(c.text??'',2000,{empty:true}):text(c.text,2000);
-    return {id:randomUUID(),variant:v.id,anchor:anchorOf(c.anchor,item.kind,v),text:body,...(files.length?{attachments:files}:{}),by,at:now};
+  const shotShas=[...new Set([...(attachments||[]),...commentShots.flat()].map(a=>a.sha256))];
+  for(const sha of shotShas)pin(sha);
+  try{
+   return await store.change({sets:typeof input.set==='string'?[input.set]:[],blobs:shotShas},data=>{
+    const now=new Date().toISOString();
+    const s=setOf(data,input.set);if(s.project===null)fail('detached');if(s.status!=='open')fail('conflict');
+    const r=s.rounds.find(x=>x.n===input.round)||fail('not-found');if(r!==latest(s))fail('conflict');
+    const item=r.items.find(i=>i.id===input.item)||fail('not-found');
+    const mode=item.mode||'choose',decidable=item.variants.filter(v=>!v.reference);
+    const variant=input.variant===null||input.variant===undefined?null:decidable.find(v=>v.id===input.variant)?.id||fail('invalid');
+    // approve items: one verdict per (non-reference) variant; the item's status follows from them (reject stays explicit).
+    let approvals=null;
+    if(mode==='approve'){
+     if(variant)fail('invalid');const a=input.approvals??{};if(!plain(a))fail('invalid');
+     approvals={};for(const [k,v] of Object.entries(a)){if(!decidable.some(x=>x.id===k)||!APPROVALS.includes(v))fail('invalid');approvals[k]=v;}
+    }else if('approvals'in input)fail('invalid');
+    if(mode==='choose'&&['accept','revise'].includes(status)&&!variant)fail('invalid');
+    const old=Object.hasOwn(r.feedback,item.id)?r.feedback[item.id]:{rev:0,variant:null,status:'pending',note:'',comments:[],attachments:[]};
+    if(input.rev!==old.rev)fail('conflict');
+    const added=comments.map((c,i)=>{
+     if(!onlyKeys(c,['variant','anchor','text','attachments']))fail('invalid');const v=item.variants.find(x=>x.id===c.variant)||fail('invalid');
+     // A comment needs text or at least one screenshot.
+     const files=commentShots[i],body=files.length?text(c.text??'',2000,{empty:true}):text(c.text,2000);
+     return {id:randomUUID(),variant:v.id,anchor:anchorOf(c.anchor,item.kind,v),text:body,...(files.length?{attachments:files}:{}),by,at:now};
+    });
+    if(old.comments.length+added.length>LIMITS.comments)fail('limit');
+    const own=id=>{const c=old.comments.find(x=>x.id===id)||fail('invalid');return c.by===by?c:fail('forbidden');};
+    for(const id of removes)own(id);
+    const changedText=new Map(edits.map(e=>{const c=own(e.id);return [e.id,c.attachments?.length?text(e.text??'',2000,{empty:true}):text(e.text,2000)];}));
+    const kept=old.comments.filter(c=>!removes.includes(c.id)).map(c=>changedText.has(c.id)&&changedText.get(c.id)!==c.text?{...c,text:changedText.get(c.id),editedAt:now}:c);
+    const finalStatus=approvals&&status!=='reject'?(decidable.every(v=>approvals[v.id]==='approved')?'accept':Object.values(approvals).includes('changes')?'revise':'pending'):status;
+    const d={rev:old.rev+1,variant,status:finalStatus,...(approvals?{approvals}:{}),note:note??old.note,comments:[...kept,...added],attachments:attachments??old.attachments??[],updatedAt:now,updatedBy:by};
+    if(status==='reject'&&!d.note&&!d.comments.length&&!d.attachments.length)fail('invalid');
+    for(const a of [...(attachments||[]),...commentShots.flat()]){const known=Object.hasOwn(data.blobs,a.sha256)?data.blobs[a.sha256]:null;if(known&&known.type!==a.type)fail('invalid');data.blobs[a.sha256]={type:a.type,size:a.size};}
+    r.feedback[item.id]=d;s.updatedAt=now;data.updatedAt=now;return {set:s.id,round:r.n,item:item.id,...d};
    });
-   if(old.comments.length+added.length>LIMITS.comments)fail('limit');
-   const own=id=>{const c=old.comments.find(x=>x.id===id)||fail('invalid');return c.by===by?c:fail('forbidden');};
-   for(const id of removes)own(id);
-   const changedText=new Map(edits.map(e=>{const c=own(e.id);return [e.id,c.attachments?.length?text(e.text??'',2000,{empty:true}):text(e.text,2000)];}));
-   const kept=old.comments.filter(c=>!removes.includes(c.id)).map(c=>changedText.has(c.id)&&changedText.get(c.id)!==c.text?{...c,text:changedText.get(c.id),editedAt:now}:c);
-   const finalStatus=approvals&&status!=='reject'?(decidable.every(v=>approvals[v.id]==='approved')?'accept':Object.values(approvals).includes('changes')?'revise':'pending'):status;
-   const d={rev:old.rev+1,variant,status:finalStatus,...(approvals?{approvals}:{}),note:note??old.note,comments:[...kept,...added],attachments:attachments??old.attachments??[],updatedAt:now,updatedBy:by};
-   if(status==='reject'&&!d.note&&!d.comments.length&&!d.attachments.length)fail('invalid');
-   for(const a of [...(attachments||[]),...commentShots.flat()]){const known=Object.hasOwn(data.blobs,a.sha256)?data.blobs[a.sha256]:null;if(known&&known.type!==a.type)fail('invalid');data.blobs[a.sha256]={type:a.type,size:a.size};}
-   r.feedback[item.id]=d;s.updatedAt=now;return {set:s.id,round:r.n,item:item.id,...d};
-  });
+  }finally{for(const sha of shotShas)unpin(sha);}
  }
  async function saveSet(input){
-  if(!onlyKeys(input,['id','rev','status','title','tickets'])||!Number.isSafeInteger(input.rev)||!['status','title','tickets'].some(k=>k in input))fail('invalid');
+  if(!onlyKeys(input,['id','rev','status','title','tickets'])||!Number.isSafeInteger(input.rev)||input.rev<1||!['status','title','tickets'].some(k=>k in input))fail('invalid');
   if('status'in input&&!['open','archived'].includes(input.status))fail('invalid');const title='title'in input?text(input.title,160):null;
   const ids='tickets'in input?ticketLinks(input.tickets):null;
-  return write(async(data,now)=>{
-   const s=setOf(data,input.id);if(s.rev!==input.rev)fail('conflict');
-   // Validate authoritative tracker state inside the review write queue. This is not a cross-store transaction.
-   if(ids!==null)await projectsAndTickets(s.project,ids);
+  if(ids!==null){
+   const current=typeof input.id==='string'&&REVIEW_ID.test(input.id)?await store.get('sets',input.id):null;
+   if(current&&current.project!==null)await projectsAndTickets(current.project,ids);
+  }
+  return store.change({sets:typeof input.id==='string'?[input.id]:[]},data=>{
+   const now=new Date().toISOString();
+   const s=setOf(data,input.id);if(s.project===null)fail('detached');if(s.rev!==input.rev)fail('conflict');
+   if(ids!==null)verifyProjectAndTicketsSync(s.project,ids);
    if('status'in input)s.status=input.status;if(title!==null)s.title=title;if(ids!==null)s.tickets=ids;
-   s.updatedAt=now;s.rev++;return summary(s);
+   s.updatedAt=now;s.rev++;data.updatedAt=now;return summary(s);
+  });
+ }
+ async function deleteSet(input){
+  if(!onlyKeys(input,['id','rev'])||typeof input.id!=='string'||!REVIEW_ID.test(input.id)||!Number.isSafeInteger(input.rev)||input.rev<1)fail('invalid');
+  const result=await store.change({sets:null,blobs:null},data=>{
+   const now=new Date().toISOString();
+   const s=setOf(data,input.id);
+   if(s.project!==null)fail('conflict');
+   if(s.rev!==input.rev)fail('conflict');
+   const removedBlobs=pruneSetsInData(data,[s],now);
+   return {id:s.id,deleted:true,removedBlobs};
+  },{durable:true});
+  await cleanupBlobs(result.removedBlobs);
+  return {id:result.id,deleted:true};
+ }
+ async function reassignSet(input){
+  if(!onlyKeys(input,['id','rev','project'])||typeof input.id!=='string'||!REVIEW_ID.test(input.id)||!Number.isSafeInteger(input.rev)||input.rev<1||typeof input.project!=='string'||!PROJECT.test(input.project))fail('invalid');
+  await projectsAndTickets(input.project,[]);
+  const current=await store.get('sets',input.id);
+  const preCheckedTickets=new Set();
+  if(current&&typeof tickets?.ticketProjectSync!=='function'){
+   for(const tid of current.tickets||[]){
+    try{const t=await tickets.get(tid);if(t.project===input.project)preCheckedTickets.add(tid);}catch{}
+   }
+  }
+  return store.change({sets:[input.id]},data=>{
+   const now=new Date().toISOString();
+   const s=setOf(data,input.id);
+   if(s.project!==null)fail('conflict');
+   if(s.rev!==input.rev)fail('conflict');
+   verifyProjectAndTicketsSync(input.project,[]);
+   const kept=[],removedTickets=[];
+   for(const tid of s.tickets||[]){
+    const valid=typeof tickets?.ticketProjectSync==='function'?tickets.ticketProjectSync(tid)===input.project:preCheckedTickets.has(tid);
+    if(valid)kept.push(tid);else removedTickets.push(tid);
+   }
+   s.project=input.project;
+   delete s.detachedProjectName;
+   delete s.detachedAt;
+   s.tickets=kept;
+   s.updatedAt=now;
+   s.rev++;
+   data.updatedAt=now;
+   return {...summary(s),removedTickets};
   });
  }
 
- return {list,get,publish,feedback,saveSet,putChunk,hasBlob,media,frame};
+ const lifecycle={
+  store,
+  select(_projectId,action){
+   return action==='detach'?{sets:null}:{sets:null,blobs:null};
+  },
+  removeProject(data,project,deleteReviews,by,at=new Date().toISOString()){
+   const id=typeof project==='string'?project:project?.id;
+   const name=(typeof project==='object'&&project?.name)||id;
+   if(typeof id!=='string'||!PROJECT.test(id))fail('invalid');
+   const matching=data.sets.filter(s=>s.project===id);
+   if(!matching.length)return {deleted:false,detached:false,count:0,setIds:[],removedBlobs:[]};
+   const setIds=matching.map(s=>s.id);
+   if(deleteReviews){
+    const removedBlobs=pruneSetsInData(data,matching,at);
+    return {deleted:true,detached:false,count:matching.length,setIds,removedBlobs};
+   }
+   for(const s of matching){
+    s.project=null;
+    s.detachedProjectName=name;
+    s.detachedAt=at;
+    s.updatedAt=at;
+    s.rev++;
+   }
+   data.updatedAt=at;
+   return {deleted:false,detached:true,count:matching.length,setIds,removedBlobs:[]};
+  },
+  async notify(result){
+   if(result?.removedBlobs?.length)await cleanupBlobs(result.removedBlobs);
+  },
+ };
+
+ return {list,get,publish,feedback,saveSet,deleteSet,reassignSet,putChunk,hasBlob,media,frame,lifecycle};
 }

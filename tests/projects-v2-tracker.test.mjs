@@ -55,7 +55,9 @@ test('migration: a literal schema-6 hub.db with wiki schema 4 moves to schema 7 
   const row=(kind,coll,id)=>JSON.parse(db.db.prepare('SELECT doc FROM docs WHERE kind=? AND coll=? AND id=?').get(kind,coll,id).doc);
   assert.deepEqual(row('tickets','projects','example-app'),{...project,labels:[],nextEpic:1,projectVersion:1},'rev, next and settings stay; only the v2 fields are added');
   assert.deepEqual(row('tickets','tickets','APP-4'),ticket,'tickets are not rewritten');
-  assert.deepEqual(row('wiki','wikis','example-app'),{...wiki,id:'example-app',projectId:'example-app'});
+  const {project:legacyWikiProject,...wikiFields}=wiki;
+  assert.equal(legacyWikiProject,'example-app');
+  assert.deepEqual(row('wiki','wikis','example-app'),{...wikiFields,id:'example-app',projectId:'example-app',name:project.name});
   assert.deepEqual(row('wiki','pages','example-app/wtiplrec5uiw'),page,'page keys and rows stay');
   assert.equal(JSON.parse(db.db.prepare("SELECT doc FROM meta WHERE kind='wiki'").get().doc).schema,5);
   const tickets=createTicketStore(dir,{db,mentionGuard:async()=>()=>{}});

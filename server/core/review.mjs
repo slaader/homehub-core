@@ -17,13 +17,14 @@ const REVIEW_MESSAGES={
  'missing-blob':['Některý soubor ještě není nahraný (nahraj ho přes PUT /api/review/blobs/<sha256> nebo scripts/review-push.mjs).','A file is not uploaded yet (upload it with PUT /api/review/blobs/<sha256> or scripts/review-push.mjs).','A referenced file is not uploaded yet. Upload it with scripts/review-push.mjs (or PUT /api/review/blobs/<sha256>), or pass small HTML inline.'],
  'digest-mismatch':['Nahraný soubor nesouhlasí se svým sha256; nahraj ho znovu od začátku.','The uploaded file does not match its sha256; upload it again from the start.'],
  'not-found':['Review neexistuje.','The review does not exist.','No such review set or round. Use review_list to find it.'],
- conflict:['Záznam se mezitím změnil (nebo už existuje novější kolo). Načti ho znovu a změnu zopakuj.','The record changed in the meantime (or a newer round exists). Read it again and repeat the change.','The set is archived or changed; read it again with review_get.'],
+ conflict:['Záznam se mezitím změnil (nebo už existuje novější kolo). Načti ho znovu a změnu zopakuj.','The record changed in the meantime (or a newer round exists). Read it again and repeat the change.','The set is archived, attached or changed; read it again with review_get.'],
+ detached:['Sada je odpojená od smazaného projektu a je jen pro čtení. Přiřaď ji k projektu nebo ji smaž.','This review set is detached from a deleted project and is read-only. Reassign it to a project or delete it.','This review set is detached from a deleted project and is read-only. Use review_set_reassign or review_set_delete.'],
  limit:['Byl dosažen limit (počet záznamů nebo místo pro soubory).','A limit was reached (the number of records or the space for files).','A review limit was reached; nothing was changed.'],
  'too-large':['Soubor nebo jeho část je příliš velká.','The file or a part of it is too large.','An inline HTML mockup is too large (upload it as a file instead), or a .glb model is over 128 MiB.'],
  forbidden:['Upravit nebo smazat jde jen vlastní připomínku.','Only the author of a comment can edit or delete it.'],
  unavailable:['Review teď nejde načíst ani uložit.','Review cannot be loaded or saved right now.','Review is not available right now. Refetch before retrying a write; the previous attempt may have succeeded.'],
 };
-const REVIEW_MCP_CODES=new Set(['invalid','missing-blob','not-found','conflict','limit','too-large']);
+const REVIEW_MCP_CODES=new Set(['invalid','missing-blob','not-found','conflict','detached','limit','too-large']);
 async function runReview(state,fn){
  if(!state?.review)throw toolError('Review is not available on this Home Hub.');
  try{return await fn(state.review);}
@@ -33,7 +34,7 @@ async function runReview(state,fn){
   throw toolError(row[2]??row[1]);
  }
 }
-const reviewError=(e,c)=>[({invalid:400,'missing-blob':400,'digest-mismatch':400,'not-found':404,forbidden:403,conflict:409,limit:409,'too-large':413})[e.message]||503,'REVIEW_FAILED',
+const reviewError=(e,c)=>[({invalid:400,'missing-blob':400,'digest-mismatch':400,'not-found':404,forbidden:403,conflict:409,detached:409,limit:409,'too-large':413})[e.message]||503,'REVIEW_FAILED',
  (REVIEW_MESSAGES[e.message]||REVIEW_MESSAGES.unavailable)[c?.principal?.authKind==='api-key'?1:0]];
 const who=c=>c.principal.username;
 const write=(path,options,run)=>({method:'POST',path,scope:'review:write',error:reviewError,...options,async handler(c){c.subject=null;return run(c);}});
@@ -49,8 +50,8 @@ export default {
  setup:hub=>({review:createReviewStore(path.join(hub.stateDirectory,'review'),{tickets:hub.state('tracker').tickets,db:hub.db})}),
  mcpTools:[
   {name:'review_list',scope:'read',title:'Review: list sets',
-   description:'Review sets: variants (HTML mockups, images, 3D models, video and audio clips) published for a project so that a person can compare them and decide, with those decisions. Newest change first. Filter by project or ticket; feedbackPending:true returns only sets whose latest round has decisions or comments newer than that round, i.e. feedback waiting for the publisher. Use review_get for the content.',
-   inputSchema:{type:'object',properties:{project:{type:'string',maxLength:40,description:'Project id.'},ticket:{type:'string',description:'Ticket id, or unlinked for sets needing repair.'},status:{type:'string',enum:['open','active','done','archived','all'],description:'open (default) = not archived; active = open and not yet decided; done = open with a variant taken for every item.'},feedbackPending:{type:'boolean'}},additionalProperties:false},
+   description:'Review sets: variants (HTML mockups, images, 3D models, video and audio clips) published for a project so that a person can compare them and decide, with those decisions. Newest change first. Filter by project, detached, or ticket; feedbackPending:true returns only sets whose latest round has decisions or comments newer than that round, i.e. feedback waiting for the publisher. Use review_get for the content.',
+   inputSchema:{type:'object',properties:{project:{type:'string',maxLength:40,description:'Project id.'},detached:{type:'boolean',description:'When true, list only detached sets whose project was deleted; when false, exclude detached sets.'},ticket:{type:'string',description:'Ticket id, or unlinked for sets needing repair.'},status:{type:'string',enum:['open','active','done','archived','all'],description:'open (default) = not archived; active = open and not yet decided; done = open with a variant taken for every item.'},feedbackPending:{type:'boolean'}},additionalProperties:false},
    annotations:{readOnlyHint:true,openWorldHint:false},
    run:({feedbackPending,...args},{state})=>runReview(state,r=>r.list({...args,...(feedbackPending?{feedback:'pending'}:{})}))},
   {name:'review_get',scope:'read',title:'Review: read one set',
@@ -65,7 +66,8 @@ export default {
     const items=r.items.map(i=>({...i,variants:i.variants.map(v=>({...v,media:v.media.map(m=>({...m,url:'/api/review/blobs/'+m.sha256,...(m.poster?{poster:{...m.poster,url:'/api/review/blobs/'+m.poster.sha256}}:{})}))})),
      decision:Object.hasOwn(r.feedback,i.id)?{...r.feedback[i.id],attachments:(r.feedback[i.id].attachments||[]).map(a=>({...a,url:'/api/review/blobs/'+a.sha256})),comments:r.feedback[i.id].comments.map(c=>({...c,...(c.attachments?{attachments:c.attachments.map(x=>({...x,url:'/api/review/blobs/'+x.sha256}))}:{}),addressed:later.has(c.id)}))}:{rev:0,variant:null,status:'pending',note:'',comments:[],attachments:[]}}));
     const unaddressed=s.rounds.filter(x=>x.n<r.n).flatMap(x=>Object.entries(x.feedback).flatMap(([item,d])=>d.comments.filter(c=>!answered.has(c.id)).map(c=>({round:x.n,item,...c}))));
-    return {id:s.id,rev:s.rev,project:s.project,title:s.title,description:s.description,tickets:s.tickets,status:s.status,feedbackPending:s.feedbackPending,
+    return {id:s.id,rev:s.rev,project:s.project,detached:s.project===null,...(s.project===null&&s.detachedProjectName?{detachedProjectName:s.detachedProjectName}:{}),
+     title:s.title,description:s.description,tickets:s.tickets,status:s.status,feedbackPending:s.feedbackPending,
      rounds:s.rounds.map(x=>({n:x.n,publishedAt:x.publishedAt,publishedBy:x.publishedBy,notes:x.notes,addresses:x.addresses.length})),
      round:{n:r.n,notes:r.notes,publishedAt:r.publishedAt,items},unaddressed,url:'#review/'+s.id};
    }},
@@ -74,6 +76,16 @@ export default {
    inputSchema:{type:'object',properties:{id:{type:'string',pattern:'^R-[1-9][0-9]{0,5}$'},rev:{type:'integer',minimum:1},title:{type:'string',minLength:1,maxLength:160},status:{type:'string',enum:['open','archived']},tickets:{type:'array',maxItems:20,items:{type:'string',pattern:TICKET_ID.source}}},required:['id','rev'],additionalProperties:false},
    annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false},
    run:(args,{state})=>runReview(state,r=>r.saveSet(args))},
+  {name:'review_set_delete',scope:'review:write',title:'Review: delete detached set',
+   description:'Permanently delete a detached review set (whose project was deleted), unindex it from search, and remove unreferenced blobs. Requires current rev from review_get.',
+   inputSchema:{type:'object',properties:{id:{type:'string',pattern:REVIEW_ID.source},rev:{type:'integer',minimum:1}},required:['id','rev'],additionalProperties:false},
+   annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:false},
+   run:(args,{state})=>runReview(state,r=>r.deleteSet(args))},
+  {name:'review_set_reassign',scope:'review:write',title:'Review: reassign detached set',
+   description:'Reassign a detached review set to an existing project, clearing unavailable or cross-project ticket associations. Requires current rev from review_get.',
+   inputSchema:{type:'object',properties:{id:{type:'string',pattern:REVIEW_ID.source},rev:{type:'integer',minimum:1},project:{type:'string',pattern:'^[a-z][a-z0-9-]{1,39}$'}},required:['id','rev','project'],additionalProperties:false},
+   annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false},
+   run:(args,{state})=>runReview(state,r=>r.reassignSet(args))},
   {name:'review_publish',scope:'review:write',title:'Review: publish a set or a new round',
    description:'Publish review artifacts for an existing project, preferably linked to existing same-project tickets. Omit set to create (project and title required); pass set for the next round. Unlinked creation remains compatible but is deprecated; the result includes linkage warnings. First determine whether genuine alternatives are needed (mode choose) or independent deliverables need approval (mode approve); never manufacture 2-3 choices. Publish every separately reviewed asset/shot as individually inspectable media with meaningful names/captions. A contact sheet is supplemental only. Use separate items for separate decisions, or media[] within one deliverable sharing one decision. Supported kinds: html, image, model, video, audio. Motion needs a playable clip, not only still frames. Revisions start from the selected work and requested changes, keep stable item ids and the same set, and list only comment ids actually addressed in addresses. Earlier rejected/superseded work included as context must be clearly labeled reference:true; references are commentable but excluded from choices and approvals. Do not carry approvals to new media. Set aligned:true only on image/video comparisons of the same shot, camera, framing, pixel dimensions and timing, never sheets or unrelated deliverables. Approve permits explicit aligned before/after against a reference; independent deliverables are not synchronized. Upload images/models/clips first with scripts/review-push.mjs or PUT /api/review/blobs/<sha256>; media references sha256 and type. Small self-contained HTML may use {type:"text/html",html}, inline CSS/JS/data assets, no network, data-mock-id on meaningful elements. GLB (model/gltf-binary) is binary glTF without Draco/meshopt/KTX2, up to 128 MiB. Models/videos may carry poster {sha256,type}. Use captions/round notes to explain intended sound or intentional silence, representative review intervals, captions/transcripts and workstation QA evidence tied to the blob hash. Check decode, motion/timing and listen to the actual uploaded artifact before publishing. Signatures and muted playback do not prove audio presence or quality; browser video stream presence is unknown. Quiet/silent media is advisory, never automatically rejected. If ticket creation succeeds but publication fails, retain the ticket id and retry publication without creating another ticket. Returns the set summary, id and warnings.',
    inputSchema:{type:'object',properties:{
@@ -103,6 +115,8 @@ export default {
   write('/api/review/publish',{bodyLimit:65536},async c=>{const saved=await c.state.review.publish(c.input,who(c));c.subject=saved.id;return c.json(c.input?.set===undefined?201:200,saved);}),
   write('/api/review/feedback',{bodyLimit:65536},async c=>{const saved=await c.state.review.feedback(c.input,who(c));c.subject=saved.set;return c.json(200,saved);}),
   write('/api/review/sets',{},async c=>{const saved=await c.state.review.saveSet(c.input);c.subject=saved.id;return c.json(200,saved);}),
+  write('/api/review/sets/delete',{},async c=>{const deleted=await c.state.review.deleteSet(c.input);c.subject=deleted.id;return c.json(200,deleted);}),
+  write('/api/review/sets/reassign',{},async c=>{const saved=await c.state.review.reassignSet(c.input);c.subject=saved.id;return c.json(200,saved);}),
   // provenance (server/provenance.mjs): who published the rounds (agents, as a rule) and who decided on them (people).
   {method:'GET',path:'/api/review',error:reviewError,async handler(c){const {authors,...data}=await c.state.review.list(c.query,{authors:true});
     return c.json(200,{...data,provenance:authoredProvenance(c.hub.accessStore,authors,{unit:'rounds'})});}},
@@ -125,10 +139,12 @@ export default {
  ],
  // Rows for the API reference (Users and API). The MCP tools review_list, review_get and review_publish do the same for agents.
  apiDocs:[{title:'Review',routes:[
-  ['GET','/api/review?project=&ticket=&status=active|done|archived|all&feedback=pending','read','Sady variant k posouzení se stavem posledního kola.'],
+  ['GET','/api/review?project=&detached=true|false&ticket=&status=active|done|archived|all&feedback=pending','read','Sady variant k posouzení se stavem posledního kola.'],
   ['GET','/api/review/sets/<R-n>','read','Celá sada: kola, položky, varianty, rozhodnutí a připomínky.'],
   ['PUT','/api/review/blobs/<sha256>?offset=&size=','review:write','Nahrání souboru po částech (nejvýš 8 MiB na požadavek).'],
   ['POST','/api/review/publish','review:write','Nová sada {project, title, items} nebo další kolo {set, items, addresses?}.'],
   ['POST','/api/review/feedback','review:write','Rozhodnutí k položce {set, round, item, rev, variant, status, note?, comments?, editComments?, deleteComments?}.'],
-  ['POST','/api/review/sets','review:write','Archivace, přejmenování nebo propojení tiketů {id, rev, status?, title?, tickets?}.']]}],
+  ['POST','/api/review/sets','review:write','Archivace, přejmenování nebo propojení tiketů {id, rev, status?, title?, tickets?}.'],
+  ['POST','/api/review/sets/delete','review:write','Smazání odpojené sady {id, rev}.'],
+  ['POST','/api/review/sets/reassign','review:write','Přiřazení odpojené sady k projektu {id, rev, project}.']]}],
 };

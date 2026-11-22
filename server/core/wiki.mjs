@@ -141,13 +141,14 @@ export default {
   const wiki=createWikiStore(hub.db,hub.state('tracker').tickets,{
    mentionGuard:refs=>hub.state('references').prepareMentionGuard(refs),
    readDocument:(id,project,actor)=>assets.document(id,project,actor),
+   cleanupFiles:info=>assets.cleanupOrphans(info),
   });
   assets=createWikiAssets(hub.db,path.join(hub.stateDirectory,'wiki'),wiki,hub.options.wikiAssets);
   const sources=createWikiSources(hub.db,wiki,assets,{lfs:()=>hub.state('git-lfs')?.store,review:()=>hub.state('review')?.review});
   return {wiki,assets,sources,thumbnails:createWikiThumbnails(hub.options.wikiThumbnails),videos:createWikiVideos(hub.options.wikiVideos),previews:createWikiPreviews()};
  },
  mcpTools:wikiTools,
- mcpInstructions:'wiki_list, wiki_get.',
+ mcpInstructions:'wiki_spaces_list, wiki_list, wiki_get.',
  pollers:[{id:'wiki-media-cleanup',start(state){
   const sweep=()=>Promise.all([state.assets.sweep(),state.wiki.pruneReceipts()]).catch(()=>console.error('Wiki media cleanup could not finish.'));
   state.timer=setInterval(sweep,3600000);
@@ -155,7 +156,12 @@ export default {
   return sweep();
  },stop(state){clearInterval(state.timer);}}],
  routes:[
-  route('GET','/api/wiki',async c=>c.json(200,{projects:await c.state.wiki.index()})),
+  route('GET','/api/wiki',async c=>{
+   if(!exactKeys(c.query,['includeHidden']))throw new Error('invalid');
+   const raw=c.query.includeHidden;
+   if(raw!==undefined&&!['0','1','true','false'].includes(raw))throw new Error('invalid');
+   return c.json(200,await c.state.wiki.index({includeHidden:raw==='1'||raw==='true'}));
+  }),
   route('GET',new RegExp(`^/api/wiki/tickets/(${ticket})/backlinks$`),async c=>
    c.json(200,{pages:await c.state.wiki.backlinks(c.params[1])})),
   route('GET',new RegExp(`^/api/wiki/(${project})$`),async c=>c.json(200,await c.state.wiki.list(c.params[1]))),
@@ -165,6 +171,16 @@ export default {
    const result=await c.state.wiki.setup(c.input,who(c));
    c.subject=result.home;
    return c.json(result.created?201:200,result);
+  }),
+  write('/api/wiki/spaces',async c=>{
+   const saved=await c.state.wiki.saveSpace(c.input,who(c));
+   c.subject=saved.id;
+   return c.json(saved.created?201:200,saved);
+  }),
+  write('/api/wiki/spaces/delete',async c=>{
+   const deleted=await c.state.wiki.deleteSpace(c.input);
+   c.subject=deleted.id;
+   return c.json(200,deleted);
   }),
   write('/api/wiki/pages',savePage(201,c=>c.state.wiki.create(c.input,who(c),wikiActor(c)))),
   write('/api/wiki/pages/update',savePage(200,c=>c.state.wiki.save(c.input,who(c),wikiActor(c)))),
@@ -209,11 +225,13 @@ export default {
   route('GET',/^\/api\/wiki\/frame\/preview\/([A-Za-z0-9_-]{32})$/,c=>frame(c,c.state.previews.get(wikiActor(c),c.params[1]))),
  ],
  apiDocs:[{title:'Wiki',routes:[
-  ['GET','/api/wiki','read','Projekty se založenou wiki a ID jejich domovské stránky.'],
-  ['GET','/api/wiki/<project>','read','Seznam stránek projektové wiki a jejich rodiče.'],
-  ['GET','/api/wiki/<project>/pages/<id>','read','Obsah, revize a přílohy stránky wiki.'],
+  ['GET','/api/wiki','read','Projekty a samostatné prostory wiki viditelné v postranním panelu (?includeHidden=1 pro všechny).'],
+  ['GET','/api/wiki/<space>','read','Seznam stránek prostoru wiki a jejich rodiče.'],
+  ['GET','/api/wiki/<space>/pages/<id>','read','Obsah, revize a přílohy stránky wiki.'],
   ['GET','/api/wiki/tickets/<ID>/backlinks','read','Stránky wiki odkazující na ticket.'],
-  ['POST','/api/wiki/setup','tickets:write','Založení wiki s domovskou stránkou {project}.'],
+  ['POST','/api/wiki/setup','tickets:write','Založení projektové wiki s domovskou stránkou {project}.'],
+  ['POST','/api/wiki/spaces','tickets:write','Založení, přejmenování nebo připojení prostoru wiki {id, name?, projectId?, create?}.'],
+  ['POST','/api/wiki/spaces/delete','tickets:write','Smazání samostatného prostoru wiki {id}.'],
   ['POST','/api/wiki/pages','tickets:write','Nová stránka wiki {project, parentId?, title, doc?, requestId?}.'],
   ['POST','/api/wiki/pages/update','tickets:write','Uložení stránky wiki {project, id, rev, title?, doc?}.'],
   ['POST','/api/wiki/pages/move','tickets:write','Přesunutí stránky {project, id, rev, parentId}.'],

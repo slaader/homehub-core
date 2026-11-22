@@ -80,9 +80,15 @@ export function createWikiSources(db,wiki,assets,{lfs,review}){
   finally{activeLfsOperations--;}
  }
 
+ async function destinationOf(id){
+  if(wiki.spaceOrProjectOf)return wiki.spaceOrProjectOf(id);
+  const p=await wiki.projectOf(id);
+  return {id:p.id,projectId:p.id};
+ }
+
  async function setGrant(input){
   if(!exactKeys(input,['project','kind','connection','repo','set','downloadOrigin','enabled'])||typeof input.enabled!=='boolean')fail('invalid');
-  const {id:project}=await wiki.projectOf(input.project);
+  const {id:project}=await destinationOf(input.project);
   const {kind,connection,repo,set}=input;
   let grant;
   if(kind==='lfs'){
@@ -103,9 +109,9 @@ export function createWikiSources(db,wiki,assets,{lfs,review}){
  }
 
  async function list(project,principal,{admin=false}={}){
-  await wiki.projectOf(project);
+  const dest=await destinationOf(project);
   if(!canRead(principal))fail('denied');
-  const grants=await store.list('grants',project+'/');
+  const grants=await store.list('grants',dest.id+'/');
   const repositories=grants.filter(grant=>grant.kind==='lfs').flatMap(grant=>{
    const current=lfs()?.importIdentity(grant.connection)===grant.identity;
    if(!admin&&!current)return [];
@@ -113,19 +119,20 @@ export function createWikiSources(db,wiki,assets,{lfs,review}){
    return [{connection,repo,...(admin?{current,downloadOrigin}:{} )}];
   });
   const otherSets=grants.filter(grant=>grant.kind==='review').map(grant=>grant.set);
-  const same=await review()?.list({project,status:'all'});
+  const same=dest.projectId?await review()?.list({project:dest.projectId,status:'all'}):null;
   const others=await Promise.all(otherSets.map(set=>review()?.get(set).catch(error=>{if(error.message!=='not-found')throw error;})));
   const sets=new Map([...(same?.sets??[]),...others.filter(Boolean)].map(({id,project,title})=>[id,{id,project,title}]));
   return {audience,repositories,reviewSets:[...sets.values()],...(admin?{reviewGrants:otherSets}:{})};
  }
 
- async function reviewTarget(project,setId){
+ async function reviewTarget(dest,setId){
   const reviews=review();
   if(!reviews)fail('source-unavailable');
   const set=await reviews.get(setId).catch(error=>{if(error.message!=='not-found')throw error;return null;});
-  const grant=await store.get('grants',reviewKey(project,setId));
+  const grant=await store.get('grants',reviewKey(dest.id,setId));
   if(!set)fail(grant?'source-unavailable':'source-not-granted');
-  if(set.project!==project&&!grant)fail('source-not-granted');
+  const sameProject=Boolean(dest.projectId&&set.project===dest.projectId);
+  if(!sameProject&&!grant)fail('source-not-granted');
   return set;
  }
 
@@ -134,7 +141,7 @@ export function createWikiSources(db,wiki,assets,{lfs,review}){
   const {kind,connection,repo,set:setId,round:roundNumber,item:itemId,variant:variantId,query}=input;
   if(kind!==undefined&&!['lfs','review'].includes(kind)||query!==undefined&&(typeof query!=='string'||query.length>200))fail('invalid');
   if(!canRead(principal))fail('denied');
-  const {id:project}=await wiki.projectOf(input.project);
+  const dest=await destinationOf(input.project),project=dest.id;
   const window=pagination(input,{max:20,defaultLimit:10});
   const base={project,audience};
   if(connection!==undefined||repo!==undefined){
@@ -153,7 +160,7 @@ export function createWikiSources(db,wiki,assets,{lfs,review}){
   if(setId!==undefined){
    if(kind==='lfs'||!isReview(setId)||itemId!==undefined&&(typeof itemId!=='string'||!/^[a-z0-9][a-z0-9-]{0,39}$/.test(itemId))||
     variantId!==undefined&&(typeof variantId!=='string'||!/^[a-f]$/.test(variantId)||!itemId))fail('invalid-target');
-   const set=await reviewTarget(project,setId),context={...base,kind:'review',set:{id:set.id,project:set.project,title:set.title}};
+   const set=await reviewTarget(dest,setId),context={...base,kind:'review',set:{id:set.id,project:set.project,title:set.title}};
    if(roundNumber===undefined){
     if(itemId!==undefined)fail('invalid-target');
     return {...context,...queried(set.rounds.map(roundInfo),round=>[round.title,round.notes],query,window)};
@@ -181,7 +188,7 @@ export function createWikiSources(db,wiki,assets,{lfs,review}){
  async function importAsset(input,actor,principal){
   if(!exactKeys(input,['project','source']))fail('invalid');
   if(!canRead(principal))fail('denied');
-  const {id:project}=await wiki.projectOf(input.project);
+  const dest=await destinationOf(input.project),project=dest.id;
   const source=input.source;
   if(source?.kind==='lfs'){
    if(!exactKeys(source,['kind','connection','repo','ref','path'])||!isConnectionId(source.connection)||!validFullName(source.repo)||
@@ -205,8 +212,9 @@ export function createWikiSources(db,wiki,assets,{lfs,review}){
   const reviews=review();
   if(!reviews)fail('source-unavailable');
   const set=await reviews.get(source.set);
-  const grant=set.project===project?null:await store.get('grants',reviewKey(project,set.id));
-  if(set.project!==project&&!grant)fail('denied');
+  const sameProject=Boolean(dest.projectId&&set.project===dest.projectId);
+  const grant=sameProject?null:await store.get('grants',reviewKey(project,set.id));
+  if(!sameProject&&!grant)fail('denied');
   const round=set.rounds.find(round=>round.n===source.round);
   const item=round?.items.find(item=>item.id===source.item);
   const variant=item?.variants.find(variant=>variant.id===source.variant);

@@ -88,7 +88,13 @@ function migrate(db){
    const wiki=db.prepare("SELECT doc FROM meta WHERE kind='wiki'").get();
    if(wiki){
     if(JSON.parse(wiki.doc).schema!==4)throw new Error('Unsupported wiki schema');
-    db.exec(`UPDATE docs SET doc=json_insert(doc,'$.id',id,'$.projectId',id) WHERE kind='wiki' AND coll='wikis';
+    db.exec(`UPDATE docs AS space SET doc=json_remove(json_insert(space.doc,
+      '$.id',space.id,
+      '$.projectId',coalesce(json_extract(space.doc,'$.project'),space.id),
+      '$.name',coalesce((SELECT json_extract(project.doc,'$.name') FROM docs AS project
+       WHERE project.kind='tickets' AND project.coll='projects'
+        AND project.id=coalesce(json_extract(space.doc,'$.project'),space.id)),space.id)),'$.project')
+     WHERE space.kind='wiki' AND space.coll='wikis';
      UPDATE meta SET doc=json_set(doc,'$.schema',5) WHERE kind='wiki';`);
    }
    db.exec('PRAGMA user_version=7');

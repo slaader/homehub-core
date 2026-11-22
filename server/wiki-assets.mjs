@@ -246,10 +246,10 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
  }
 
  async function beginUpload(input,actor,{importing=false}={}){
-  const info=uploadInfo(input),{id:project}=await wiki.projectOf(input.project);
-  if(!(await store.get('wikis',project)))fail('not-found');
+  const info=uploadInfo(input),{id:project}=await wiki.spaceOf(input.project);
   const upload={...info,id:id('u'),project,owner:actor,expiresAt:now()+UPLOAD_TTL,...(importing?{importing}:{})};
-  const accept=()=>store.change({uploads:null,blobs:null},data=>{
+  const accept=()=>store.change({wikis:[project],uploads:null,blobs:null},data=>{
+   if(!data.wikis.length)fail('not-found');
    const reserved=data.uploads.filter(session=>!session.assetId);
    const bytes=data.blobs.reduce((total,blob)=>total+blob.size,0)+reserved.reduce((total,session)=>total+session.size,0);
    const problem=reservationError(bytes,reserved.length,reserved.filter(session=>session.owner===actor).length,upload.size,maxBytes);
@@ -274,7 +274,7 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
    const {archiveMember,...fields}=file;
    return {...uploadInfo(fields),...(archiveMember===undefined?{}:{source:wikiArchiveMember(archiveMember)})};
   });
-  const {id:project}=await wiki.projectOf(input.project);
+  const {id:project}=await wiki.spaceOf(input.project);
   const time=now();
   if((await store.list('uploads')).some(session=>!session.assetId&&session.expiresAt<=time))await sweep();
   return store.change({wikis:[project],assets:project+'/',uploads:null,blobs:null},data=>{
@@ -379,8 +379,9 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
    if(['digest-mismatch','invalid-media','invalid','limit'].includes(error.message))await abandon(id,actor);
    throw error;
   }
-  const result=await store.change({uploads:[id],assets:upload.project+'/',blobs:[upload.digest],grants:grant?[grant.key]:[]},data=>{
+  const result=await store.change({wikis:[upload.project],uploads:[id],assets:upload.project+'/',blobs:[upload.digest],grants:grant?[grant.key]:[]},data=>{
    const current=checkUpload(data.uploads[0],actor,now());
+   if(!data.wikis.length)fail('not-found');
    if(current.assetId){
     const asset=data.assets.find(asset=>asset.id===current.assetId);
     if(!asset)fail('upload-expired');
@@ -472,11 +473,11 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
  }
 
  async function list(project,actor){
-  await wiki.projectOf(project);
-  return (await store.list('assets',project+'/')).filter(asset=>canUseAsset(asset,actor)).map(wikiAssetView);
+  const {id:space}=await (wiki.spaceOrProjectOf?wiki.spaceOrProjectOf(project):wiki.projectOf(project));
+  return (await store.list('assets',space+'/')).filter(asset=>canUseAsset(asset,actor)).map(wikiAssetView);
  }
  async function find(input,actor){
-  const {id:project}=await wiki.projectOf(input.project);
+  const {id:project}=await (wiki.spaceOrProjectOf?wiki.spaceOrProjectOf(input.project):wiki.projectOf(input.project));
   const items=(await store.list('assets',project+'/')).filter(asset=>canUseAsset(asset,actor));
   return {project,...assetPage(items,input,wikiAssetView)};
  }
@@ -487,6 +488,19 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
   const file=payload(asset.digest);
   if(!existsSync(file)||statSync(file).size!==asset.size)fail('not-found');
   return {file,...wikiAssetView(asset),draft:asset.references===0};
+ }
+
+ async function cleanupOrphans({orphanedDigests=[],removedUploads=[]}={}){
+  const obsolete=[...new Set(orphanedDigests.filter(digest=>SHA.test(digest)))];
+  const unused=[...new Set(removedUploads.filter(uploadId=>UPLOAD_ID.test(uploadId)))];
+  if(!obsolete.length&&!unused.length)return;
+  db.flushWal();
+  await store.change({blobs:obsolete,uploads:unused},data=>{
+   const pinned=new Set(data.blobs.map(blob=>blob.digest));
+   for(const digest of obsolete)if(!pinned.has(digest))remove(payload(digest));
+   const active=new Set(data.uploads.filter(upload=>!upload.assetId).map(upload=>upload.id));
+   for(const name of unused)if(!active.has(name))remove(part(name));
+  });
  }
 
  async function sweep(){
@@ -520,5 +534,5 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
   });
  }
 
- return {begin,manifest,status,chunk,finish,document,ingest,list,find,media,sweep};
+ return {begin,manifest,status,chunk,finish,document,ingest,list,find,media,cleanupOrphans,sweep};
 }

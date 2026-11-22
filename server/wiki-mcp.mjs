@@ -6,7 +6,10 @@ import {decodeWikiChunk,MANIFEST_FILES,MCP_CHUNK} from './wiki-assets.mjs';
 
 const str=(description,extra={})=>({type:'string',description,...extra});
 const id=str('Stable ID');
-const project=str('Project ID from projects_list');
+const project=str('Wiki space ID or project ID from wiki_spaces_list / projects_list');
+const spaceId=str('Immutable wiki space slug (lowercase letters, digits, hyphens)',{pattern:'^[a-z][a-z0-9-]{1,39}$'});
+const spaceName=str('Wiki space display name',{minLength:1,maxLength:80});
+const optionalProjectId={type:['string','null'],pattern:'^[a-z][a-z0-9-]{1,39}$',description:'Linked tracker project ID, or null for a standalone wiki space.'};
 const pageId=str('Stable wiki page ID');
 const tableId=str('Stable inventory table ID');
 const rowId=str('Stable inventory row ID');
@@ -56,10 +59,15 @@ function compact(meta){
  return {id:meta.id,project:meta.project,meta,mcpContent:[{type:'text',text:JSON.stringify(meta)}]};
 }
 
-function tool(name,description,properties,required,run,{read=false,retry=false,scope=read?'read':'tickets:write',constraints}={}){
+function spaceView(space){
+ return {id:space.id,name:space.name,projectId:space.projectId,home:space.home,count:space.count,
+  ...(space.visible!==undefined?{visible:space.visible}:{}),url:withUrl(space.id),homeUrl:withUrl(space.id,space.home)};
+}
+
+function tool(name,description,properties,required,run,{read=false,retry=false,destructive=false,scope=read?'read':'tickets:write',constraints}={}){
  const inputSchema={...object(properties,required),...constraints};
  return {name:'wiki_'+name,description,scope,inputSchema,
-  annotations:{readOnlyHint:read,destructiveHint:!read&&name==='page_save',idempotentHint:read||retry,openWorldHint:['asset_import','sources_list'].includes(name)},
+  annotations:{readOnlyHint:read,destructiveHint:destructive||(!read&&name==='page_save'),idempotentHint:read||retry,openWorldHint:['asset_import','sources_list'].includes(name)},
   async run(input,c){
    try{
     if(scope!=='read'&&c.principal.permission!=='write')throw new Error('denied');
@@ -72,25 +80,49 @@ function tool(name,description,properties,required,run,{read=false,retry=false,s
 }
 
 export const wikiTools=[
- tool('list','List the project wiki in tree order. Each entry has a stable ID, parent ID, revision and page URL.',
+ tool('spaces_list','List wiki spaces (both project-linked and standalone). Each entry has its immutable space id, display name, optional projectId, home page id, page count and visibility.',
+  {includeHidden:{type:'boolean',description:'Include project wikis hidden from the sidebar by project settings (default true).'}},[],async ({includeHidden=true},{state})=>{
+   const spaces=await state.wiki.spaces({includeHidden});
+   return {spaces:spaces.map(spaceView)};
+  },{read:true}),
+ tool('space_create','Create a standalone wiki space (id and name) or a project-linked wiki space (id and projectId). Initializes its Home page.',
+  {id:spaceId,name:spaceName,projectId:optionalProjectId},['id'],async (input,{state},by)=>{
+   const space=await state.wiki.createSpace(input,by);
+   return spaceView(space);
+  }),
+ tool('space_update','Rename a standalone wiki space or attach a standalone space to an existing project without a wiki. Space id stays immutable.',
+  {id:spaceId,name:spaceName,projectId:optionalProjectId},['id'],async (input,{state},by)=>{
+   const space=await state.wiki.updateSpace(input,by);
+   return spaceView(space);
+  }),
+ tool('space_delete','Delete a standalone wiki space, removing its pages, summaries, grants and orphaning its assets for cleanup. Refuses project-linked spaces.',
+  {id:spaceId},['id'],async (input,{state})=>state.wiki.deleteSpace(input),{destructive:true}),
+ tool('list','List a wiki space in tree order by space id or linked project id. Each entry has a stable ID, parent ID, revision and page URL.',
   {project},['project'],async ({project},{state})=>{
    const result=await state.wiki.list(project);
-   return {...result,project,url:withUrl(project),...(result.pages?{pages:result.pages.map(mutation)}:{})};
+   const target=result.id??project;
+   return {...result,project,url:withUrl(target),...(result.pages?{pages:result.pages.map(mutation)}:{})};
   },{read:true}),
  tool('get','Read a wiki page. Omit pageId for Home. Use mode=summary for counts, mode=inventory for up to 20 selected rows and columns, or mode=assets for up to 100 referenced asset records.',
   {project,pageId,mode:{enum:['full','summary','inventory','assets']},tableId,rowIds:stringList('Filter by row IDs',WIKI_LIMITS.rows),
    columnIds:stringList('Filter by column IDs',WIKI_LIMITS.columns),...window()},['project'],async ({project,pageId,...input},{state})=>{
-   if(pageId===undefined)pageId=(await state.wiki.list(project)).home;
+   let target=project;
+   if(pageId===undefined){
+    const listed=await state.wiki.list(project);
+    pageId=listed.home;
+    target=listed.id??project;
+   }
    if(!pageId)throw new Error('not-found');
-   const page=await state.wiki.get(project,pageId),data=await state.wiki.read(page,input);
+   const page=await state.wiki.get(target,pageId),data=await state.wiki.read(page,input);
    const result={...data,...mutation(page)};
    if(input.mode===undefined||input.mode==='full')return result;
    return compact({...result,mode:input.mode});
   },{read:true,constraints:inventoryLimit}),
  tool('setup','Enable a project wiki if needed and return its Home page.',
   {project},['project'],async (input,{state},by)=>{
-   const {home,created}=await state.wiki.setup(input,by);
-   return {...mutation(await state.wiki.get(input.project,home)),home,created};
+   const {id:space,home,created}=await state.wiki.setup(input,by);
+   const target=space??input.project;
+   return {...mutation(await state.wiki.get(target,home)),home,created,...(space&&space!==input.project?{id:space}:{})};
   },{retry:true}),
  tool('page_create','Create a page under the selected parent, or Home when parentId is omitted. Retry with the same request ID.',
   {project,parentId:pageId,title,doc,requestId},['project','title','requestId'],async (input,{state},by,actor)=>

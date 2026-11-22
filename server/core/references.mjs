@@ -26,7 +26,7 @@ const writes=[
  ['local/delete','project_reference_delete',local,{...identity,project:str,rev},['kind','id','project','rev'],'Delete a project-owned Custom record.',(s,i)=>s.remove(i,true)],
  ['global/delete','reference_delete',global,{...identity,rev},['kind','id','rev'],'Delete a global Custom or model record.',(s,i)=>s.remove(i,false)],
  ['promote','reference_promote',global,{...identity,project:str,rev},['kind','id','project','rev'],'Move a local Custom record to Settings. Also requires tickets:write.',(s,i,c)=>{sharing(c);return s.promote(i,c.principal.username);}],
- ['share','reference_share',global,{...identity,rev},['kind','id','rev'],'Share a native wiki or tracker ticket across projects. Also requires tickets:write. Use note.rev or zero.',(s,i,c)=>{sharing(c);return s.annotate(i,c.principal.username,true);}],
+ ['share','reference_share',global,{...identity,rev},['kind','id','rev'],'Share a native wiki, tracker ticket or epic across projects. Also requires tickets:write. Use note.rev or zero.',(s,i,c)=>{sharing(c);return s.annotate(i,c.principal.username,true);}],
  ['note','reference_note_save',global,{...identity,description:str,rev},['kind','id','description','rev'],'Annotate a native source. Use note.rev or zero.',(s,i,c)=>s.annotate(i,c.principal.username,false)],
 ];
 const writeDocs={

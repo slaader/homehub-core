@@ -17,6 +17,13 @@ const description=value=>{
  return value.trim();
 };
 
+function truncateCodePoints(str,maxLen){
+ if(str.length<=maxLen)return str;
+ let end=maxLen;
+ if(end>0&&str.charCodeAt(end-1)>=0xd800&&str.charCodeAt(end-1)<=0xdbff)end--;
+ return str.slice(0,end).trimEnd();
+}
+
 // Shared visibility policy for both discovery (references_suggest) and write-time Mention validation.
 function referenceVisible(item,project,{isolated=false}={}){
  if(!item)return false;
@@ -60,10 +67,63 @@ function createReferenceLookup(db){
  };
 }
 
+function createDbWikiTargetLookup(db){
+ const query=db.db.prepare(`SELECT json_extract(p.doc,'$.project') AS spaceId,
+  COALESCE(json_extract(w.doc,'$.projectId'),CASE WHEN json_type(w.doc,'$.projectId')='null' THEN NULL ELSE json_extract(w.doc,'$.project') END) AS projectId
+  FROM docs p
+  JOIN docs w ON w.kind='wiki' AND w.coll='wikis' AND w.id=json_extract(p.doc,'$.project')
+  WHERE p.kind='wiki' AND p.coll='summaries' AND p.id=?`);
+ return id=>{
+  const row=query.get(id);
+  return row?{spaceId:row.spaceId,projectId:row.projectId??null}:null;
+ };
+}
+
+function createDbEpicProjectLookup(db){
+ const query=db.db.prepare("SELECT json_extract(doc,'$.project') AS project FROM docs WHERE kind='tickets' AND coll='epics' AND id=?");
+ return id=>query.get(id)?.project??null;
+}
+
+export function planReferencePromotion(data,project){
+ const projectId=typeof project==='string'?project:project?.id;
+ if(!validReference('project',projectId))fail('invalid');
+ const key=(typeof project==='object'&&typeof project?.key==='string'&&project.key.trim())?project.key.trim():projectId.toUpperCase();
+ const globalCustom=(data.global??[]).filter(r=>r.kind==='custom');
+ const byFold=new Map(globalCustom.map(r=>[fold(r.label),r]));
+ const used=new Set(byFold.keys());
+ const locals=(data.local??[]).filter(r=>r.project===projectId&&r.kind==='custom').sort((a,b)=>a.id.localeCompare(b.id));
+ const collisions=[],plan=[];
+ for(const r of locals){
+  const base=r.label.trim(),baseFold=fold(base);
+  if(!used.has(baseFold)){
+   used.add(baseFold);
+   plan.push({id:r.id,kind:r.kind,from:r.label,label:base,renamed:false});
+   continue;
+  }
+  const existing=byFold.get(baseFold)??null;
+  for(let n=1;;n++){
+   const suffix=n===1?` (${key})`:` (${key} ${n})`;
+   const maxHead=200-suffix.length;
+   const head=truncateCodePoints(base,maxHead);
+   const candidate=(head||truncateCodePoints(key,maxHead))+suffix;
+   const cf=fold(candidate);
+   if(validLabel(candidate)&&!used.has(cf)){
+    used.add(cf);
+    collisions.push({id:r.id,kind:r.kind,from:r.label,to:candidate,existingId:existing?.id??null,existingLabel:existing?.label??null});
+    plan.push({id:r.id,kind:r.kind,from:r.label,label:candidate,renamed:true});
+    break;
+   }
+  }
+ }
+ return {localCount:locals.length,locals:locals.map(r=>({id:r.id,kind:r.kind,label:r.label,rev:r.rev})),collisions,plan};
+}
+
 // Two-phase Mention guard: phase 1 (async) snapshots device IDs before a write transaction; phase 2 (sync) runs
 // inside SQLite BEGIN IMMEDIATE so concurrent promotions, deletions and shares observe one atomic snapshot.
 export function createMentionGuard({db,tickets=null,wiki=null,machines=async()=>[],lookup=null}={}){
  const refsLookup=lookup??createReferenceLookup(db);
+ const wikiTargetSync=wiki?.wikiTargetSync??(db?createDbWikiTargetLookup(db):null);
+ const epicProjectFallback=db?createDbEpicProjectLookup(db):null;
  function describeSync(ref,project,devices){
   const {kind,id}=ref;
   if(owned(kind))return refsLookup.owned(kind,id,project);
@@ -73,7 +133,15 @@ export function createMentionGuard({db,tickets=null,wiki=null,machines=async()=>
    const owner=tickets?.ticketProjectSync?.(id);
    return owner?{kind,scope:referenceScope(owner,refsLookup.isShared(ref)),project:owner}:null;
   }
+  if(kind==='epic'){
+   const owner=typeof tickets?.epicProjectSync==='function'?tickets.epicProjectSync(id):epicProjectFallback?.(id);
+   return owner?{kind,scope:referenceScope(owner,refsLookup.isShared(ref)),project:owner}:null;
+  }
   if(kind==='wiki'){
+   if(wikiTargetSync){
+    const target=wikiTargetSync(id);
+    return target?{kind,scope:referenceScope(target.projectId,refsLookup.isShared(ref)),project:target.projectId}:null;
+   }
    const owner=wiki?.wikiProjectSync?.(id);
    return owner?{kind,scope:referenceScope(owner,refsLookup.isShared(ref)),project:owner}:null;
   }
@@ -129,10 +197,29 @@ export function createReferences(hub){
  async function catalog(){
   const stamp=JSON.stringify(await Promise.all([store.version(),tickets.version(),wiki.version()]));
   if(cached?.stamp!==stamp){
-   const [projects,ticketRows,pages]=await Promise.all([tickets.projects(),tickets.referenceSummaries(),wiki.summaries()]);
+   const [projects,refRows,epicRows,pages,spaceRows]=await Promise.all([
+    tickets.projects(),
+    tickets.referenceSummaries(),
+    typeof tickets.epicSummaries==='function'?tickets.epicSummaries():[],
+    wiki.summaries(),
+    typeof wiki.spaces==='function'?wiki.spaces({includeHidden:true}):null,
+   ]);
    const shared=new Set(sharedQuery.all().map(r=>r.id));
-   const entries=[...projects.map(p=>entry('project',p.id,p.name)),...ticketRows.map(r=>entry('ticket',r.id,r.title,r.project)),
-    ...pages.map(p=>entry('wiki',p.project+'/'+p.id,p.title,p.project)),...briefQuery.all()];
+   const spaceMap=spaceRows?new Map(spaceRows.map(s=>[s.id,s.projectId??null])):null;
+   const trackerEntries=[],seenEpics=new Set();
+   for(const r of refRows){
+    const kind=r.kind==='epic'?'epic':'ticket';
+    if(kind==='epic')seenEpics.add(r.id);
+    trackerEntries.push(entry(kind,r.id,r.title,r.project));
+   }
+   for(const e of epicRows){
+    if(seenEpics.has(e.id))continue;
+    seenEpics.add(e.id);
+    trackerEntries.push(entry('epic',e.id,e.title,e.project));
+   }
+   const wikiEntries=pages.filter(p=>!spaceMap||spaceMap.has(p.project))
+    .map(p=>entry('wiki',p.project+'/'+p.id,p.title,spaceMap?spaceMap.get(p.project):p.project));
+   const entries=[...projects.map(p=>entry('project',p.id,p.name)),...trackerEntries,...wikiEntries,...briefQuery.all()];
    cached={stamp,entries:entries.map(r=>({...r,href:referenceHref(r.kind,r.id),scope:referenceScope(r.project,shared.has(referenceKey(r)))})),
     isolated:new Set(projects.filter(p=>!p.settings.globalReferences).map(p=>p.id))};
   }
@@ -165,11 +252,18 @@ export function createReferences(hub){
   return {items:(await catalog()).entries.filter(r=>wanted.has(referenceKey(r))).map(projection)};
  }
  async function usages(kind,id,offset,limit){
-  const [pages,ticketHits]=await Promise.all([wiki.summaries(),tickets.findMentionUsages(kind,id)]);
-  const hits=[...ticketHits];
+  const [pages,spaceRows,ticketHits,epicHits]=await Promise.all([
+   wiki.summaries(),
+   typeof wiki.spaces==='function'?wiki.spaces({includeHidden:true}):null,
+   tickets.findMentionUsages(kind,id),
+   typeof tickets.findEpicMentionUsages==='function'?tickets.findEpicMentionUsages(kind,id):[],
+  ]);
+  const spaceMap=spaceRows?new Map(spaceRows.map(s=>[s.id,s.projectId??null])):null;
+  const hits=[...ticketHits,...epicHits];
   for(const page of pages){
+   if(spaceMap&&!spaceMap.has(page.project))continue;
    const found=kind==='ticket'?page.links.tickets.includes(id):page.links.refs?.some(r=>r.id===id&&r.kind===kind);
-   if(found)hits.push({source:{kind:'wiki',id:page.project+'/'+page.id,label:page.title,project:page.project,href:referenceHref('wiki',page.project+'/'+page.id)},updatedAt:page.updatedAt});
+   if(found)hits.push({source:{kind:'wiki',id:page.project+'/'+page.id,label:page.title,project:spaceMap?spaceMap.get(page.project):page.project,href:referenceHref('wiki',page.project+'/'+page.id)},updatedAt:page.updatedAt});
   }
   hits.sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)||a.source.id.localeCompare(b.source.id));
   const window=hits.slice(offset,offset+limit);
@@ -234,7 +328,7 @@ export function createReferences(hub){
  async function annotate(input,by,share=false){
   await target(input?.kind,input?.id);
   if(!exactKeys(input,['kind','id','rev',...(share?[]:['description'])])||owned(input.kind)||
-    share&&!['ticket','wiki'].includes(input.kind))fail('invalid');
+    share&&!['ticket','epic','wiki'].includes(input.kind))fail('invalid');
   const note=share?undefined:description(input.description);
   return store.change({notes:[referenceKey(input)]},(data,count)=>{
    const record=data.notes[0]??{kind:input.kind,id:input.id,description:'',rev:0};
@@ -245,5 +339,63 @@ export function createReferences(hub){
    data.notes=[record];return record;
   });
  }
- return {machines,search,resolve,get,save,remove,promote,annotate,prepareMentionGuard};
+
+ async function previewPromotion(project){
+  const projectId=typeof project==='string'?project:project?.id;
+  if(!validReference('project',projectId))fail('invalid');
+  const [local,global]=await Promise.all([store.list('local',projectId+'/'),store.list('global')]);
+  return planReferencePromotion({local,global},project);
+ }
+
+ const lifecycle={
+  store,
+  select(projectId){
+   if(!validReference('project',projectId))fail('invalid');
+   return {local:projectId+'/',global:null,notes:null};
+  },
+  planPromotion(data,project){
+   return planReferencePromotion(data,project);
+  },
+  removeProject(data,project,{promote:shouldPromote=false,collisions: _collisions=null,ticketIds=[],epicIds=[],wikiPageKeys=[],wikiSpaceId=null,by='system',at=new Date().toISOString()}={}){
+   const projectId=typeof project==='string'?project:project?.id;
+   if(!validReference('project',projectId))fail('invalid');
+   const locals=(data.local??[]).filter(r=>r.project===projectId);
+   const promoted=[],renamed=[],deletedLocal=[];
+   if(shouldPromote){
+    const planned=planReferencePromotion(data,project);
+    if((data.global?.length??0)+locals.length>2000)fail('limit');
+    if(locals.some(r=>data.global.some(g=>g.id===r.id)))fail('conflict');
+    const byId=new Map(planned.plan.map(item=>[item.id,item]));
+    data.local=data.local.filter(r=>r.project!==projectId);
+    for(const r of locals){
+     const plan=byId.get(r.id);
+     const from=r.label,label=plan?plan.label:r.label,wasRenamed=Boolean(plan?.renamed);
+     Object.assign(r,{project:null,scope:'global',label,rev:r.rev+1,updatedAt:at,updatedBy:by});
+     data.global.push(r);
+     promoted.push({id:r.id,kind:r.kind,from,label,renamed:wasRenamed});
+     if(wasRenamed)renamed.push({id:r.id,from,to:label});
+    }
+   }else{
+    data.local=data.local.filter(r=>r.project!==projectId);
+    for(const r of locals)deletedLocal.push(r.id);
+   }
+   const dropKeys=new Set([
+    referenceKey({kind:'project',id:projectId}),
+    ...(ticketIds??[]).map(id=>referenceKey({kind:'ticket',id})),
+    ...(epicIds??[]).map(id=>referenceKey({kind:'epic',id})),
+    ...(wikiPageKeys??[]).map(id=>referenceKey({kind:'wiki',id})),
+   ]);
+   const removedNotes=[];
+   data.notes=(data.notes??[]).filter(n=>{
+    const key=referenceKey(n);
+    const drop=dropKeys.has(key)||(Boolean(wikiSpaceId)&&n.kind==='wiki'&&n.id.startsWith(wikiSpaceId+'/'));
+    if(drop)removedNotes.push(key);
+    return !drop;
+   });
+   return {promoted,renamed,deletedLocal,removedNotes};
+  },
+  notify(){cached=null;},
+ };
+
+ return {machines,search,resolve,get,save,remove,promote,annotate,previewPromotion,prepareMentionGuard,lifecycle};
 }
