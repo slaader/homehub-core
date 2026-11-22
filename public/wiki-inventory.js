@@ -20,17 +20,24 @@ function wikiStats(stats=[],compact){
 // The first TEASER_LENGTH characters of a long cell, which CSS folds to two lines. A chip is never cut, and an
 // ellipsis says that more of the cell is in the body of the disclosure.
 function cellTeaser(runs,text){
- const preview=el('span',{class:'wiki-cell-teaser','aria-hidden':'true'});
+ const items=[];
  let shown=0;
  for(const [i,run] of runs.entries()){
   if(shown>=TEASER_LENGTH)break;
   const part=text.childNodes[i]?.textContent??'',chip=inlineTeaserChip(run,part);
   const kept=chip?part:part.slice(0,TEASER_LENGTH-shown);
-  preview.append(chip??(kept.length<part.length?kept.trimEnd():kept).replace(/\s+/g,' '));
+  items.push(chip??kept.replace(/\s+/g,' '));
   shown+=kept.length;
  }
- if(shown<text.textContent.length)preview.append('…');
- return preview;
+ if(shown<text.textContent.length){
+  while(typeof items.at(-1)==='string'){
+   const trimmed=items.at(-1).trimEnd();
+   if(trimmed){items[items.length-1]=trimmed;break;}
+   items.pop();
+  }
+  items.push('…');
+ }
+ return el('span',{class:'wiki-cell-teaser','aria-hidden':'true'},items);
 }
 
 function cellText(runs,inline,compact){

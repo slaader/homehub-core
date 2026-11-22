@@ -175,6 +175,13 @@ test('the teaser stops at 160 characters with an ellipsis, collapses whitespace 
  // Exactly at the limit with more to come, and exactly at the end with nothing more.
  const boundary=foldedCell([text('y'.repeat(160)),ticket('APP-1')]).teaser;
  assert.equal(boundary.querySelectorAll('.ref-chip').length,0);assert.equal(boundary.textContent,'y'.repeat(160)+'…');
+ // Trailing whitespace right at the 160-char cutoff between formatted runs trims identically to one plain run.
+ const plainCut=foldedCell([text('x'.repeat(159)+' more')]).teaser;
+ const styledCut=foldedCell([text('x'.repeat(159)+' '),text('more',['b'])]).teaser;
+ const splitSpaceCut=foldedCell([text('x'.repeat(159)),text(' ',['b']),text('more',['b'])]).teaser;
+ assert.equal(plainCut.textContent,'x'.repeat(159)+'…');
+ assert.equal(styledCut.textContent,'x'.repeat(159)+'…');
+ assert.equal(splitSpaceCut.textContent,'x'.repeat(159)+'…');
  const lines=foldedCell([text('one\ntwo\nthree\nfour\nfive')]).teaser;
  assert.equal(lines.textContent,'one two three four five','short but on many lines: folded, nothing cut');
  await settle();
