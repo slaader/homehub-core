@@ -294,11 +294,12 @@ test('review detached sets: explicit detached=true filter preserves project=none
  ]},writer.headers),201);
  const setDetached2=await json(h.post('/api/review/publish',{project:'home-hub',title:'Will detach 2',tickets:[tkOld.id],items:[htmlItem('login','B')]},writer.headers),201);
 
- // Detach 'home-hub' sets via review.lifecycle.removeProject inside a transaction.
- const review=h.handler.hub.state('review').review;
- const detachRes=await review.lifecycle.store.change(review.lifecycle.select('home-hub','detach'),data=>
-  review.lifecycle.removeProject(data,{id:'home-hub',name:'Home Hub'},false,'admin','2026-11-22T12:00:00.000Z'));
- assert.deepEqual({deleted:detachRes.deleted,detached:detachRes.detached,count:detachRes.count},{deleted:false,detached:true,count:2});
+ // Project deletion detaches the Review sets and keeps their historical ticket IDs.
+ const preview=await json(fetch(h.origin+'/api/tickets/projects/home-hub/delete-preview',{headers:tkWriter.headers}),200);
+ assert.equal(preview.counts.reviewSets,2);
+ await json(h.post('/api/tickets/projects/delete',{
+  id:'home-hub',rev:preview.rev,confirmation:'HH',snapshot:preview.snapshot,
+ },tkWriter.headers),200);
 
  // Filter checks: project=none returns ONLY project 'none'; detached=true returns ONLY detached sets; both together -> 400.
  const onlyNone=await json(fetch(h.origin+'/api/review?project=none',{headers:reader.headers}),200);

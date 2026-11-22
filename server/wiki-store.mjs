@@ -797,6 +797,7 @@ export function createWikiStore(db,tickets,{mentionGuard=null,readDocument=null,
     return {wikis:null,pages:prefix,summaries:prefix};
    }
    if(action==='rename'||action==='renameHome'||action==='upgrade')return {wikis:null,pages:null,summaries:null};
+   if(action==='preview')return {wikis:null,summaries:null};
    if(action==='detach')return {wikis:null};
    return {wikis:null,pages:null,summaries:null,assets:null,uploads:null,blobs:null,receipts:null,grants:null};
   },

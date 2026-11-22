@@ -79,12 +79,12 @@ export function createProjectLifecycle(hub,tickets){
   },{durable:true});
  }
 
- async function deletion(id,run,readOnly=false){
+ async function deletion(id,run,{readOnly=false,deleteWiki=false,deleteReviews=false}={}){
   const a=tracker(),selected=await selectedProject(a,id),w=wiki(),r=review(),f=refs();
   return hub.db.changeCollections([
    {store:a.store,selection:a.selection(selected)},
-   {store:w.store,selection:w.select(id,'delete')},
-   {store:r.store,selection:r.select(id)},
+   {store:w.store,selection:w.select(id,deleteWiki?'delete':'preview')},
+   {store:r.store,selection:r.select(id,deleteReviews?'delete':'detach')},
    {store:f.store,selection:f.select(id)},
   ],([trackerData,wikiData,reviewData,refsData])=>{
    const record=checkSelection(trackerData,selected);
@@ -96,7 +96,7 @@ export function createProjectLifecycle(hub,tickets){
  function preview(id,principal){
   requireScope(principal,'tickets:write');
   if(!validId(id))fail('invalid');
-  return deletion(id,(_project,details)=>details.preview,true);
+  return deletion(id,(_project,details)=>details.preview,{readOnly:true});
  }
 
  async function remove(input,by,principal){
@@ -123,7 +123,7 @@ export function createProjectLifecycle(hub,tickets){
     wikiPageKeys:wikiCleanup?.pageKeys,wikiSpaceId:wikiCleanup?.spaceId,by,at});
    const result={id:project.id,deleted:trackerCleanup.counts,counts:preview.counts,renamedReferences:input.promoteReferences?preview.collisions:[]};
    return {result,trackerCleanup,wikiCleanup,reviewCleanup};
-  });
+  },input);
   tracker().notify();
   refs().notify();
   await Promise.allSettled([trackerCleanup.cleanup(),wiki().notify(wikiCleanup),review().notify(reviewCleanup)]);
