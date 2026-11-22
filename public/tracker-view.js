@@ -34,7 +34,7 @@ const PROJECT_TYPES=()=>[['web','Web'],['app',t('Aplikace')],['game',t('Hra')],[
 const PRIORITIES=()=>[['urgent',t('Urgentní'),'crit'],['high',t('Vysoká'),'warn'],['normal',t('Normální'),''],['low',t('Nízká'),'dim']];
 const EPIC_ID=/^[A-Z][A-Z0-9]{1,9}-E[1-9][0-9]{0,5}$/;
 const LABEL_RE=/^[a-z0-9][a-z0-9-]{0,29}$/;
-const SPEC_MAX_BYTES=65536;
+const SPEC_MAX_BYTES=65536,EPIC_REQUEST_BYTES=512*1024,UPGRADE_REQUEST_BYTES=1024*1024;
 const utf8Bytes=s=>new TextEncoder().encode(String(s??'')).length;
 const makeReferenceToken=record=>record.kind==='epic'&&!validReference('epic',record.id)
  ?'@['+record.label.replace(/[\\\[\]]/g,'\\$&')+'](ref:epic/'+record.id+')':referenceToken(record);
@@ -927,7 +927,7 @@ async function newEpic(project,meta,ctx,onCreated){
   try{
    const body={project:project.id,title,description:f.description.value,spec,status:f.status.value,priority:f.priority.value,
     ...(showRelease?{release:f.release.value||null}:{}),assignee:f.assignee.value.trim()||null,labels};
-   const made=await api('/api/tickets/epics/create',body,{maxBytes:131072});
+   const made=await api('/api/tickets/epics/create',body,{maxBytes:EPIC_REQUEST_BYTES});
    dialog.close();if(onCreated)await onCreated(made);else location.hash='#epics/'+made.id;
   }catch(err){fail(msg,err);b.disabled=false;}
  }},
@@ -1070,7 +1070,7 @@ function renderEpic(wrap,ctx,epic,state={}){
  };
  const save=(change,button,fromEdit=false)=>{
   const warnDone=change.status==='done'&&openCount>0;
-  return write(button,()=>api('/api/tickets/epics/update',{id:epic.id,rev:epic.rev,...change},{maxBytes:131072}),{editing:fromEdit?false:state.editing,doneWarning:warnDone||(state.doneWarning&&change.status!=='open'&&change.status!=='in-progress')});
+  return write(button,()=>api('/api/tickets/epics/update',{id:epic.id,rev:epic.rev,...change},{maxBytes:EPIC_REQUEST_BYTES}),{editing:fromEdit?false:state.editing,doneWarning:warnDone||(state.doneWarning&&change.status!=='open'&&change.status!=='in-progress')});
  };
  const editing=canWrite&&state.editing===true;
  const files=(epic.attachments||[]).map(a=>({...savedEpicFile(epic.id,a),note:`${a.by} · ${ago(a.at)}`}));
@@ -1509,7 +1509,7 @@ function openUpgradeWizard(p,ctx,onDone){
       settings:{...freshProject.settings,wiki:state.wiki,reviews:state.reviews},
       ...(offerRenameHome?{renameWikiHome:state.renameWikiHome}:{}),
       epics:epicsPayload,
-     },{maxBytes:131072});
+     },{maxBytes:UPGRADE_REQUEST_BYTES});
      notifyWikiNavigation(freshProject.id,true);
      dialog.close();
      toast.good(t('Projekt „{name}“ byl úspěšně převeden na v2.',{name:freshProject.name}));

@@ -108,6 +108,7 @@ test('epics: CRUD with rev, history without bodies, a 64 KiB UTF-8 spec, ticket 
  const big=await s.updateEpic({id:'HH-E1',rev:1,spec:'é'.repeat(EPIC_SPEC_LIMIT/2)},'a');
  assert.equal(Buffer.byteLength(big.spec),EPIC_SPEC_LIMIT);
  await assert.rejects(s.updateEpic({id:'HH-E1',rev:2,spec:'é'.repeat(EPIC_SPEC_LIMIT/2+1)},'a'),/invalid/);
+ await assert.rejects(s.updateEpic({id:'HH-E1',rev:2,spec:' '.repeat(EPIC_SPEC_LIMIT+1)},'a'),/invalid/);
  await assert.rejects(s.updateEpic({id:'HH-E1',rev:1,title:'Stale'},'a'),/conflict/);
  const done=await s.updateEpic({id:'HH-E1',rev:2,status:'done',title:'Login v2'},'a');
  assert.ok(done.closedAt);assert.equal(done.rev,3);

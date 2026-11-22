@@ -63,7 +63,10 @@ export const TICKET_BODY_LIMIT=16384;
 const writeInput=(input,keys)=>onlyKeys(input,keys)&&Buffer.byteLength(JSON.stringify(input))<=TICKET_BODY_LIMIT;
 // The same, with any spec counted on its own against EPIC_SPEC_LIMIT (spec text is checked again by specText).
 const epicInput=(input,keys)=>{if(!onlyKeys(input,keys))return false;const {spec,...rest}=input;return Buffer.byteLength(JSON.stringify(rest))<=TICKET_BODY_LIMIT&&(spec===undefined||typeof spec==='string'&&Buffer.byteLength(spec)<=EPIC_SPEC_LIMIT);};
-function specText(v){if(typeof v!=='string')fail('invalid');const t=v.replace(/\s+$/,'');if(Buffer.byteLength(t)>EPIC_SPEC_LIMIT)fail('invalid');return t;}
+function specText(value){
+ if(typeof value!=='string'||!value.isWellFormed()||value.includes('\0')||Buffer.byteLength(value)>EPIC_SPEC_LIMIT)fail('invalid');
+ return value;
+}
 function labels(v){if(!Array.isArray(v)||v.length>LIMITS.labels)fail('invalid');const out=[...new Set(v.map(l=>typeof l==='string'?l.trim().toLowerCase():''))];if(!out.every(l=>LABEL.test(l)))fail('invalid');return out;}
 function refs(v){if(!Array.isArray(v)||v.length>LIMITS.refs)fail('invalid');return [...new Set(v.map(r=>text(r,300)))];}
 export const compareVersions=(a,b)=>a.localeCompare(b,'en',{numeric:true,sensitivity:'base'});
