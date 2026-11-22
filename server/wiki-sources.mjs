@@ -3,13 +3,24 @@ import {exactKeys,WIKI_LIMITS} from '../public/wiki-doc.js';
 import {validFullName} from './git-lfs-providers.mjs';
 import {validImportPath,validImportRef} from './git-lfs-git.mjs';
 import {REVIEW_ID} from './review-store.mjs';
-import {wikiCollection,wikiKey} from './wiki-store.mjs';
-import {collectionPage,pagination} from './wiki-authoring.mjs';
+import {collectionPage,pagination,wikiCollection,wikiKey} from './wiki-store.mjs';
+import {sanitizeWikiFilename} from './wiki-assets.mjs';
+
+export const CONNECTION_ID=/^c[a-f0-9]{10}$/;
+export function isConnectionId(id){return typeof id==='string'&&CONNECTION_ID.test(id);}
+export function grantMatches(stored,expected){
+ if(!stored||!expected||stored.key!==expected.key||stored.project!==expected.project||stored.kind!==expected.kind)return false;
+ if(expected.kind==='lfs'){
+  return stored.connection===expected.connection&&stored.repo===expected.repo&&
+   stored.identity===expected.identity&&(stored.downloadOrigin??undefined)===(expected.downloadOrigin??undefined);
+ }
+ if(expected.kind==='review')return stored.set===expected.set;
+ return false;
+}
 
 const fail=code=>{throw new Error(code);};
 const lfsKey=(project,connection,repo)=>wikiKey(project,'lfs/'+connection+'/'+repo);
 const reviewKey=(project,set)=>wikiKey(project,'review/'+set);
-const isConnection=id=>typeof id==='string'&&/^c[a-f0-9]{10}$/.test(id);
 const isReview=set=>typeof set==='string'&&REVIEW_ID.test(set);
 const canRead=principal=>principal?.scopes?.includes('read')===true;
 const audience='project-readers';
@@ -78,7 +89,7 @@ export function createWikiSources(db,wiki,assets,{lfs,review}){
   const {kind,connection,repo,set}=input;
   let grant;
   if(kind==='lfs'){
-   if(set!==undefined||!isConnection(connection)||!validFullName(repo))fail('invalid');
+   if(set!==undefined||!isConnectionId(connection)||!validFullName(repo))fail('invalid');
    const key=lfsKey(project,connection,repo),identity=lfs()?.importIdentity(connection);
    if(input.enabled&&!identity)fail('not-found');
    const downloadOrigin=externalOrigin(input.downloadOrigin);
@@ -131,7 +142,7 @@ export function createWikiSources(db,wiki,assets,{lfs,review}){
   const base={project,audience};
   if(connection!==undefined||repo!==undefined){
    if(kind==='review'||[setId,roundNumber,itemId,variantId].some(value=>value!==undefined)||
-    !isConnection(connection)||!validFullName(repo))fail('invalid-target');
+    !isConnectionId(connection)||!validFullName(repo))fail('invalid-target');
    const key=lfsKey(project,connection,repo),grant=await store.get('grants',key);
    if(!grant)fail('source-not-granted');
    const git=lfs();
@@ -176,7 +187,7 @@ export function createWikiSources(db,wiki,assets,{lfs,review}){
   const {id:project}=await wiki.projectOf(input.project);
   const source=input.source;
   if(source?.kind==='lfs'){
-   if(!exactKeys(source,['kind','connection','repo','ref','path'])||!isConnection(source.connection)||!validFullName(source.repo)||
+   if(!exactKeys(source,['kind','connection','repo','ref','path'])||!isConnectionId(source.connection)||!validFullName(source.repo)||
     !validImportRef(source.ref)||!validImportPath(source.path))fail('invalid-target');
    const grant=await store.get('grants',lfsKey(project,source.connection,source.repo));
    const git=lfs();
@@ -208,9 +219,8 @@ export function createWikiSources(db,wiki,assets,{lfs,review}){
   const match=await reviews.media(digest);
   const fallback={'text/html':'html','model/gltf-binary':'glb','image/jpeg':'jpg','audio/mp4':'m4a','audio/mpeg':'mp3'};
   const suffix=fallback[type]??type.split('/')[1];
-  const fileName=name?.toWellFormed().replace(/[\x00-\x1f\x7f/\\]/g,'_').trim();
   const choice=reviewChoice(set,round,item,variant,index);
-  const result=await assets.ingest(project,{name:fileName&&fileName!=='.'&&fileName!=='..'?fileName:`${item.id}-${variant.id}-${index+1}.${suffix}`,
+  const result=await assets.ingest(project,{name:sanitizeWikiFilename(name,`${item.id}-${variant.id}-${index+1}.${suffix}`),
    size:match.size,digest,type,body:()=>createReadStream(match.file),
    source:{...choice.source,project:set.project,digest}},actor,grant);
   return {...result,review:choice.review,captionSuggestion:choice.captionSuggestion};

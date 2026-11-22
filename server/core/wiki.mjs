@@ -1,14 +1,14 @@
 import {createReadStream} from 'node:fs';
 import path from 'node:path';
 import {pipeline} from 'node:stream/promises';
-import {createWikiStore} from '../wiki-store.mjs';
+import {createWikiStore,wikiActor} from '../wiki-store.mjs';
 import {createWikiAssets,RAW_CHUNK,UPLOAD_ID,readWikiChunk} from '../wiki-assets.mjs';
 import {createWikiThumbnails} from '../wiki-thumbnails.mjs';
 import {createWikiVideos,WIKI_VIDEO_BUSY} from '../wiki-video.mjs';
 import {createWikiSources} from '../wiki-sources.mjs';
 import {createWikiPreviews,staticWikiHtml,WIKI_FRAME_CSP} from '../wiki-frame.mjs';
 import {wikiProblem} from '../wiki-errors.mjs';
-import {wikiActor,wikiSave,wikiTools} from '../wiki-mcp.mjs';
+import {wikiTools} from '../wiki-mcp.mjs';
 import {authoredProvenance} from '../provenance.mjs';
 import {byteRange} from '../http-range.mjs';
 import {ASSET_ID,exactKeys,HTML_ID,PAGE_ID,WIKI_LIMITS} from '../../public/wiki-doc.js';
@@ -137,8 +137,12 @@ export default {
   'wiki-media.js','wiki-navigation.js','wiki.css','i18n-en-wiki.js'],
  nav:[{group:'Project Tracker',hash:'wiki',label:'Wiki',view:'wiki-view.js#wikiPage',order:43}],
  setup:hub=>{
-  const wiki=createWikiStore(hub.db,hub.state('tracker').tickets,{mentionGuard:refs=>hub.state('references').prepareMentionGuard(refs)});
-  const assets=createWikiAssets(hub.db,path.join(hub.stateDirectory,'wiki'),wiki,hub.options.wikiAssets);
+  let assets;
+  const wiki=createWikiStore(hub.db,hub.state('tracker').tickets,{
+   mentionGuard:refs=>hub.state('references').prepareMentionGuard(refs),
+   readDocument:(id,project,actor)=>assets.document(id,project,actor),
+  });
+  assets=createWikiAssets(hub.db,path.join(hub.stateDirectory,'wiki'),wiki,hub.options.wikiAssets);
   const sources=createWikiSources(hub.db,wiki,assets,{lfs:()=>hub.state('git-lfs')?.store,review:()=>hub.state('review')?.review});
   return {wiki,assets,sources,thumbnails:createWikiThumbnails(hub.options.wikiThumbnails),videos:createWikiVideos(hub.options.wikiVideos),previews:createWikiPreviews()};
  },
@@ -163,7 +167,7 @@ export default {
    return c.json(result.created?201:200,result);
   }),
   write('/api/wiki/pages',savePage(201,c=>c.state.wiki.create(c.input,who(c),wikiActor(c)))),
-  write('/api/wiki/pages/update',savePage(200,c=>wikiSave(c.state,c.input,who(c),wikiActor(c)))),
+  write('/api/wiki/pages/update',savePage(200,c=>c.state.wiki.save(c.input,who(c),wikiActor(c)))),
   write('/api/wiki/pages/move',savePage(200,c=>c.state.wiki.move(c.input,who(c)))),
   write('/api/wiki/attachments/add',savePage(200,c=>c.state.wiki.attach(c.input,who(c),wikiActor(c)))),
   write('/api/wiki/uploads',uploadResult(201,(c,actor)=>c.state.assets.begin(c.input,actor))),

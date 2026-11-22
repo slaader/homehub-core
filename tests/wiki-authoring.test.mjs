@@ -1,8 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
+import {existsSync,readFileSync} from 'node:fs';
 import {hub} from './hub-helper.mjs';
 import {wikiCollection,wikiKey} from '../server/wiki-store.mjs';
+import {sanitizeWikiFilename} from '../server/wiki-assets.mjs';
+import {grantMatches,isConnectionId} from '../server/wiki-sources.mjs';
 
 const project='sample-game',otherProject='home-hub';
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -245,4 +248,166 @@ test('wiki Review discovery and receipts preserve candidate decisions without pr
   assert.match(receipt.captionSuggestion,/Redesign requested/);
   assert.equal(receipt.asset.review,undefined);
  }
+});
+
+test('atomic wiki_page_save patch enforces mentions, asset ref-counts and conflict inside one transaction',async t=>{
+ const h=await hub(t),writer=await h.account('patch-author',['tickets:write']);
+ const other=await h.account('patch-rival',['tickets:write']),reader=await h.account('patch-reader',[]);
+ const localTicket=await (await h.post('/api/tickets',{project,title:'Local ticket'},h.admin)).json();
+ const foreignTicket=await (await h.post('/api/tickets',{project:otherProject,title:'Foreign ticket'},h.admin)).json();
+ const {pageId,rev:homeRev}=await data(h,writer,'setup',{project});
+ async function stageAsset(actor,name,bytes){
+  const {uploadId}=await data(h,actor,'upload_begin',{project,...file(name,bytes)});
+  await raw(h,actor,uploadId,0,bytes);
+  return (await data(h,actor,'upload_finish',{uploadId})).asset;
+ }
+ const assetA=await stageAsset(writer,'a.png',png);
+ const assetB=await stageAsset(writer,'b.png',Buffer.concat([png,Buffer.from('b')]));
+ const assetC=await stageAsset(writer,'c.png',Buffer.concat([png,Buffer.from('c')]));
+ const assetD=await stageAsset(other,'d.png',Buffer.concat([png,Buffer.from('d')]));
+ const foreignDraft=await stageAsset(other,'private.png',Buffer.concat([png,Buffer.from('p')]));
+ const table={t:'inventory',id:'items',columns:[{id:'notes',label:'Notes'},{id:'gallery',label:'Gallery'}],
+  rows:[{id:'row-1',cells:{gallery:{attachments:[{assetId:assetA.id}]}}}]};
+ const init=await data(h,writer,'page_save',{project,pageId,rev:homeRev,doc:docs(table)});
+ const store=wikiCollection(h.handler.hub.db);
+ assert.equal((await store.get('assets',wikiKey(project,assetA.id))).references,1);
+
+ // Mention guard rejects unshared foreign ticket in cell patch and leaves page unchanged.
+ await data(h,writer,'page_save',{project,pageId,rev:init.rev,
+  patch:{tableId:'items',rowId:'row-1',cells:{notes:{c:[{t:'ticket',id:foreignTicket.id}]}}}},'unavailable-reference');
+ assert.equal((await h.handler.hub.state('wiki').wiki.get(project,pageId)).rev,init.rev);
+
+ // Mention guard allows local ticket and updates backlinks atomically in one store.change without pre-reading pages.
+ const origGet=store.get,origChange=store.change;
+ let pageGets=0,changes=0;
+ store.get=(coll,id)=>{if(coll==='pages')pageGets++;return origGet(coll,id);};
+ store.change=(selection,fn,opts)=>{changes++;return origChange(selection,fn,opts);};
+ let patched;
+ try{
+  patched=await h.handler.hub.state('wiki').wiki.patch({project,id:pageId,rev:init.rev,
+   patch:{tableId:'items',rowId:'row-1',cells:{notes:{c:[{t:'ticket',id:localTicket.id}]}}}},
+   writer.account.username,'api-key:'+writer.account.id);
+ }finally{store.get=origGet;store.change=origChange;}
+ assert.equal(pageGets,0);
+ assert.equal(changes,1);
+ assert.deepEqual(patched.page.links,{tickets:[localTicket.id]});
+ assert.equal((await (await fetch(h.origin+`/api/wiki/tickets/${localTicket.id}/backlinks`,{headers:reader.headers})).json()).pages[0].id,pageId);
+
+ // Asset visibility rejects another writer's private draft without mutating existing ref-counts.
+ await data(h,writer,'page_save',{project,pageId,rev:patched.page.rev,
+  patch:{tableId:'items',rowId:'row-1',cells:{gallery:{attachments:[{assetId:foreignDraft.id}]}}}},'invalid-asset');
+ assert.equal((await store.get('assets',wikiKey(project,assetA.id))).references,1);
+ assert.equal((await store.get('assets',wikiKey(project,foreignDraft.id))).references,0);
+
+ // Swapping attachment in a patch publishes the new asset and orphans the removed one.
+ const swapped=await data(h,writer,'page_save',{project,pageId,rev:patched.page.rev,
+  patch:{tableId:'items',rowId:'row-1',cells:{gallery:{attachments:[{assetId:assetB.id}]}}}});
+ assert.equal((await store.get('assets',wikiKey(project,assetB.id))).references,1);
+ assert.equal((await store.get('assets',wikiKey(project,assetA.id))).references,0);
+ assert.ok((await store.get('assets',wikiKey(project,assetA.id))).orphanedAt);
+ assert.equal((await fetch(h.origin+assetB.url,{headers:reader.headers})).status,200);
+ assert.equal((await fetch(h.origin+assetA.url,{headers:reader.headers})).status,404);
+
+ // Concurrent cell patch vs HTTP page update: one succeeds, one fails with conflict (409 / WIKI_CONFLICT), zero dropped ref-counts.
+ const rivalDoc=docs({t:'inventory',id:'items',columns:table.columns,
+  rows:[{id:'row-1',cells:{gallery:{attachments:[{assetId:assetD.id}]}}}]});
+ const [mcpRes,httpRes]=await Promise.all([
+  h.post('/mcp',{jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'wiki_page_save',arguments:{
+   project,pageId,rev:swapped.rev,patch:{tableId:'items',rowId:'row-1',cells:{gallery:{attachments:[{assetId:assetC.id}]}}},
+  }}},writer.headers).then(r=>r.json()).then(body=>body.result),
+  h.post('/api/wiki/pages/update',{project,id:pageId,rev:swapped.rev,doc:rivalDoc},other.headers)
+   .then(async r=>({status:r.status,body:await r.json()})),
+ ]);
+ const mcpWon=!mcpRes.isError,httpWon=httpRes.status===200;
+ assert.notEqual(mcpWon,httpWon);
+ if(mcpWon){
+  assert.equal(httpRes.status,409);
+  assert.equal(httpRes.body.error.reason,'conflict');
+  assert.equal(httpRes.body.current.rev,mcpRes.structuredContent.rev);
+ }else{
+  assert.equal(mcpRes.structuredContent.error.code,'WIKI_CONFLICT');
+  assert.equal(mcpRes.structuredContent.error.reason,'conflict');
+  assert.equal(mcpRes.structuredContent.current.rev,httpRes.body.rev);
+ }
+ const winnerAsset=mcpWon?assetC:assetD,loserAsset=mcpWon?assetD:assetC;
+ assert.equal((await store.get('assets',wikiKey(project,winnerAsset.id))).references,1);
+ assert.equal((await store.get('assets',wikiKey(project,loserAsset.id))).references,0);
+ assert.equal((await store.get('assets',wikiKey(project,assetB.id))).references,0);
+ assert.equal((await fetch(h.origin+winnerAsset.url,{headers:reader.headers})).status,200);
+ assert.equal((await fetch(h.origin+loserAsset.url,{headers:reader.headers})).status,404);
+});
+
+test('wiki_get mode=assets returns paged metadata without mutating or fabricating docs and respects asset visibility',async t=>{
+ const h=await hub(t),writer=await h.account('assets-author',['tickets:write']),reader=await h.account('assets-reader',[]);
+ const {pageId,rev}=await data(h,writer,'setup',{project});
+ async function stageAsset(name,bytes){
+  const {uploadId}=await data(h,writer,'upload_begin',{project,...file(name,bytes)});
+  await raw(h,writer,uploadId,0,bytes);
+  return (await data(h,writer,'upload_finish',{uploadId})).asset;
+ }
+ const attached=[];
+ for(let i=0;i<5;i++)attached.push(await stageAsset(`frame-${i}.png`,Buffer.concat([png,Buffer.from([i])])));
+ const privateDraft=await stageAsset('unattached-draft.png',Buffer.concat([png,Buffer.from('draft')]));
+ const pageDoc=docs(
+  {t:'attachments',id:'lead',attachments:attached.slice(0,2).map(a=>({assetId:a.id}))},
+  {t:'inventory',id:'units',columns:[{id:'art',label:'Art'}],
+   rows:[{id:'r1',cells:{art:{attachments:attached.slice(2).map(a=>({assetId:a.id}))}}}]},
+ );
+ await data(h,writer,'page_save',{project,pageId,rev,doc:pageDoc});
+
+ // Pagination cursor/offset walk and visibility rules.
+ const seen=[];
+ for(let offset=0;offset!==null;){
+  const slice=await data(h,reader,'get',{project,pageId,mode:'assets',offset,limit:2});
+  assert.equal(slice.mode,'assets');
+  assert.equal(slice.doc,undefined);
+  assert.equal(slice.total,5);
+  assert.equal(slice.offset,offset);
+  assert.equal(slice.limit,2);
+  seen.push(...slice.assets);
+  offset=slice.nextOffset;
+ }
+ assert.deepEqual(seen,attached);
+ assert.ok(!seen.some(asset=>asset.id===privateDraft.id));
+ assert.equal((await fetch(h.origin+privateDraft.url,{headers:reader.headers})).status,404);
+ assert.equal((await fetch(h.origin+attached[0].url,{headers:reader.headers})).status,200);
+ const pastEnd=await data(h,reader,'get',{project,pageId,mode:'assets',offset:10,limit:2});
+ assert.deepEqual(pastEnd.assets,[]);
+ assert.equal(pastEnd.nextOffset,null);
+ await data(h,reader,'get',{project,pageId,mode:'assets',tableId:'units'},'invalid');
+
+ // Direct store.read(page, {mode:'assets'}) never mutates page or fabricates a fake doc.
+ const wiki=h.handler.hub.state('wiki').wiki;
+ const stored=await wiki.get(project,pageId);
+ const beforeJson=JSON.stringify(stored);
+ Object.freeze(stored);
+ Object.freeze(stored.doc);
+ Object.freeze(stored.doc.blocks);
+ const direct=await wiki.read(stored,{mode:'assets',offset:1,limit:2});
+ assert.equal(JSON.stringify(stored),beforeJson);
+ assert.deepEqual(direct,{total:5,offset:1,limit:2,nextOffset:3,assets:attached.slice(1,3)});
+});
+
+test('wiki authoring module is folded, HTTP-to-MCP inversion is removed, and shared seams validate cleanly',()=>{
+ assert.equal(existsSync(new URL('../server/wiki-authoring.mjs',import.meta.url)),false);
+ const coreWiki=readFileSync(new URL('../server/core/wiki.mjs',import.meta.url),'utf8');
+ const mcpImports=[...coreWiki.matchAll(/import\s+([^;]+?)\s+from\s+['"]\.\.\/wiki-mcp\.mjs['"]/g)];
+ assert.equal(mcpImports.length,1);
+ assert.equal(mcpImports[0][1].replace(/\s+/g,''),'{wikiTools}');
+
+ assert.equal(isConnectionId('c0123456789'),true);
+ assert.equal(isConnectionId('c012345678'),false);
+ assert.equal(sanitizeWikiFilename('dir/bad\x00name.png','fallback.png'),'dir_bad_name.png');
+ assert.equal(sanitizeWikiFilename('..','fallback.png'),'fallback.png');
+ const lfsGrant={key:'sample-game/lfs/c0123456789/alice/media',project:'sample-game',kind:'lfs',
+  connection:'c0123456789',repo:'alice/media',identity:'id-1',downloadOrigin:'https://cdn.example.com'};
+ const reordered={downloadOrigin:'https://cdn.example.com',identity:'id-1',repo:'alice/media',
+  connection:'c0123456789',kind:'lfs',project:'sample-game',key:lfsGrant.key};
+ assert.equal(grantMatches(reordered,lfsGrant),true);
+ assert.equal(grantMatches({...lfsGrant,identity:'id-2'},lfsGrant),false);
+ assert.equal(grantMatches({...lfsGrant,downloadOrigin:undefined},lfsGrant),false);
+ assert.equal(grantMatches(undefined,lfsGrant),false);
+ const reviewGrant={key:'sample-game/review/R-1',project:'sample-game',kind:'review',set:'R-1'};
+ assert.equal(grantMatches({...reviewGrant},reviewGrant),true);
+ assert.equal(grantMatches({...reviewGrant,set:'R-2'},reviewGrant),false);
 });

@@ -2,14 +2,16 @@ import {createHash,randomBytes} from 'node:crypto';
 import {closeSync,createReadStream,existsSync,fsyncSync,linkSync,mkdirSync,openSync,readSync,statSync,unlinkSync,writeSync,ftruncateSync} from 'node:fs';
 import {open,readdir} from 'node:fs/promises';
 import path from 'node:path';
-import {ASSET_ID,exactKeys,normalizeDoc,WIKI_LIMITS} from '../public/wiki-doc.js';
+import {ASSET_ID,exactKeys,normalizeDoc,WIKI_LIMITS,wikiAssetIds,wikiAttachmentRefs,wikiDisplayType} from '../public/wiki-doc.js';
+import {validImportPath} from './git-lfs-git.mjs';
+import {validFullName} from './git-lfs-providers.mjs';
 import {LIMITS,matchesReviewMedia,SHA} from './review-store.mjs';
-import {wikiAssetView,wikiCollection,wikiKey} from './wiki-store.mjs';
-import {assetPage,wikiArchiveMember} from './wiki-authoring.mjs';
+import {collectionPage,wikiAssetView,wikiCollection,wikiKey} from './wiki-store.mjs';
+import {grantMatches,isConnectionId} from './wiki-sources.mjs';
 
 export const UPLOAD_ID=/^u[a-f0-9]{32}$/;
 export const MCP_CHUNK=32*1024;
-export const RAW_CHUNK=LIMITS.chunk;
+export const RAW_CHUNK=8*1024*1024;
 export const MANIFEST_FILES=50;
 export const UPLOAD_TTL=24*60*60*1000;
 export const ASSET_GRACE=7*UPLOAD_TTL;
@@ -39,17 +41,91 @@ function syncFile(file){
  try{fsyncSync(fd);}finally{closeSync(fd);}
 }
 
-function filename(value){
+const UNSAFE_FILENAME=/[\x00-\x1f\x7f/\\]/;
+const UNSAFE_FILENAME_GLOBAL=/[\x00-\x1f\x7f/\\]/g;
+const matches=(value,pattern)=>typeof value==='string'&&pattern.test(value);
+const size=value=>Number.isSafeInteger(value)&&value>=0;
+const sourceKinds=['lfs','review','lfs-member'];
+const assetKeys=['project','query','type','digest','sourceKind','minSize','maxSize','offset','limit'];
+
+export function wikiFilename(value){
  if(typeof value!=='string'||!value.isWellFormed())fail('invalid');
  const name=value.trim();
- if(!name||name.length>200||/[\x00-\x1f\x7f/\\]/.test(name)||name==='.'||name==='..')fail('invalid');
+ if(!name||name.length>200||UNSAFE_FILENAME.test(name)||name==='.'||name==='..')fail('invalid');
  return name;
+}
+
+export function sanitizeWikiFilename(value,fallback){
+ if(typeof value==='string'){
+  const name=value.toWellFormed().replace(UNSAFE_FILENAME_GLOBAL,'_').trim();
+  if(name&&name.length<=200&&name!=='.'&&name!=='..')return name;
+ }
+ return wikiFilename(fallback);
+}
+
+export function canUseAsset(asset,actor){
+ return Boolean(asset)&&(asset.references>0||Boolean(actor)&&asset.owner===actor);
+}
+
+export function usableAsset(assets,id,actor){
+ const asset=assets instanceof Map?assets.get(id):assets;
+ if(!canUseAsset(asset,actor))fail('invalid-asset');
+ return asset;
+}
+
+export function checkWikiAttachment(ref,assets,actor){
+ const asset=usableAsset(assets,ref.assetId,actor);
+ if(ref.initialClip&&asset.type!=='model/gltf-binary')fail('invalid-asset');
+ if(ref.displayAssetId&&!wikiDisplayType(asset.type,usableAsset(assets,ref.displayAssetId,actor).type))fail('invalid-asset');
+}
+
+export function publishWikiAsset(asset){
+ asset.references++;
+ asset.published=true;
+ asset.orphanedAt=null;
+}
+
+export function updateAssetReferences(assetList,doc,previous,actor,at=Date.now()){
+ const before=new Set(previous?wikiAssetIds(previous):[]),after=new Set(wikiAssetIds(doc));
+ const assets=new Map(assetList.map(asset=>[asset.id,asset]));
+ for(const ref of wikiAttachmentRefs(doc))checkWikiAttachment(ref,assets,actor);
+ for(const id of after){
+  if(!before.has(id))publishWikiAsset(assets.get(id));
+ }
+ for(const id of before){
+  if(after.has(id))continue;
+  const asset=assets.get(id);
+  if(asset&&--asset.references===0)asset.orphanedAt=at;
+ }
+}
+
+export function wikiArchiveMember(input){
+ const keys=['connection','repo','commit','archivePath','archiveOid','memberPath','originalDigest'];
+ if(!exactKeys(input,keys)||!isConnectionId(input.connection)||!validFullName(input.repo)||
+  !matches(input.commit,/^[a-f0-9]{40}([a-f0-9]{24})?$/)||!validImportPath(input.archivePath)||
+  !matches(input.archiveOid,SHA)||!validImportPath(input.memberPath)||!matches(input.originalDigest,SHA))fail('invalid-target');
+ return {kind:'lfs-member',verification:'author-reported',...Object.fromEntries(keys.map(key=>[key,input[key]]))};
+}
+
+export function assetPage(items,input,view){
+ if(!exactKeys(input,assetKeys))fail('invalid');
+ const {query,type,digest,sourceKind,minSize,maxSize}=input;
+ if(query!==undefined&&(typeof query!=='string'||query.length>200)||
+  type!==undefined&&!matches(type,/^[a-z0-9][a-z0-9.+-]*\/[a-z0-9][a-z0-9.+-]*$/i)||
+  digest!==undefined&&!matches(digest,SHA)||sourceKind!==undefined&&!sourceKinds.includes(sourceKind)||
+  minSize!==undefined&&!size(minSize)||maxSize!==undefined&&!size(maxSize)||minSize>maxSize)fail('invalid');
+ const needle=query?.trim().toLowerCase();
+ const matchesFilter=asset=>(!type||asset.type===type.toLowerCase())&&(!digest||asset.digest===digest)&&
+  (!sourceKind||asset.source?.kind===sourceKind)&&(minSize===undefined||asset.size>=minSize)&&(maxSize===undefined||asset.size<=maxSize)&&
+  (!needle||[asset.name,asset.id,asset.digest,asset.source?.path,asset.source?.memberPath].some(value=>value?.toLowerCase().includes(needle)));
+ const {items:page,...window}=collectionPage(items.filter(matchesFilter),input);
+ return {...window,assets:page.map(view)};
 }
 
 function uploadInfo(input){
  if(!exactKeys(input,['project','name','size','digest','type','purpose'])||typeof input.digest!=='string'||!SHA.test(input.digest)||
   !Number.isSafeInteger(input.size)||input.size<0)fail('invalid');
- const name=filename(input.name),suffix=name.split('.').at(-1).toLowerCase();
+ const name=wikiFilename(input.name),suffix=name.split('.').at(-1).toLowerCase();
  if(input.type!==undefined&&(typeof input.type!=='string'||input.type.length>80))fail('invalid');
  const purpose=input.purpose??'asset';
  if(!['asset','document'].includes(purpose))fail('invalid');
@@ -243,7 +319,7 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
    const projectSessions=reserved.filter(session=>session.project===project&&session.purpose==='asset'&&session.expiresAt>time);
    let projectSlots=data.assets.length+projectSessions.length;
    const sessions=projectSessions.filter(session=>session.owner===actor&&!session.importing);
-   const reusable=data.assets.filter(asset=>canUse(asset,actor))
+   const reusable=data.assets.filter(asset=>canUseAsset(asset,actor))
     .sort((a,b)=>Number(b.owner===actor)-Number(a.owner===actor));
    const results=files.map(info=>{
     const result={name:info.name,digest:info.digest};
@@ -345,7 +421,7 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
     return {...uploadView(current,current.size),asset:wikiAssetView(asset)};
    }
    if(current.finished)return uploadView(current,current.size);
-   if(grant&&JSON.stringify(data.grants[0])!==JSON.stringify(grant))fail('denied');
+   if(grant&&!grantMatches(data.grants[0],grant))fail('denied');
    current.finished=true;
    if(current.purpose==='document'){
     syncFile(file);
@@ -429,20 +505,19 @@ export function createWikiAssets(db,root,wiki,{now=Date.now,maxBytes=Number(proc
   }catch(error){await abandon(uploadId,actor);throw error;}
  }
 
- function canUse(asset,actor){return asset.references>0||asset.owner===actor;}
  async function list(project,actor){
   await wiki.projectOf(project);
-  return (await store.list('assets',project+'/')).filter(asset=>canUse(asset,actor)).map(wikiAssetView);
+  return (await store.list('assets',project+'/')).filter(asset=>canUseAsset(asset,actor)).map(wikiAssetView);
  }
  async function find(input,actor){
   const {id:project}=await wiki.projectOf(input.project);
-  const items=(await store.list('assets',project+'/')).filter(asset=>canUse(asset,actor));
+  const items=(await store.list('assets',project+'/')).filter(asset=>canUseAsset(asset,actor));
   return {project,...assetPage(items,input,wikiAssetView)};
  }
  async function media(project,id,actor){
   if(typeof id!=='string'||!ASSET_ID.test(id))fail('not-found');
   const asset=await store.get('assets',wikiKey(project,id));
-  if(!asset||!canUse(asset,actor))fail('not-found');
+  if(!canUseAsset(asset,actor))fail('not-found');
   const file=payload(asset.digest);
   if(!existsSync(file)||statSync(file).size!==asset.size)fail('not-found');
   return {file,...wikiAssetView(asset),draft:asset.references===0};

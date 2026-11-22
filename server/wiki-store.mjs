@@ -1,13 +1,20 @@
 import {createHash,randomBytes} from 'node:crypto';
-import {exactKeys,extractLinks,normalizeDoc,PAGE_ID,WIKI_LIMITS,wikiTitle,wikiAssetIds,wikiAttachment,wikiAttachmentRefs,wikiDisplayType} from '../public/wiki-doc.js';
+import {exactKeys,extractLinks,normalizeDoc,PAGE_ID,WIKI_ITEM_ID,WIKI_LIMITS,wikiTitle,wikiAssetIds,wikiAttachment} from '../public/wiki-doc.js';
 import {PROJECT_ID,TICKET_ID} from './tickets-store.mjs';
-
 import {createMentionGuard} from './references.mjs';
+import {checkWikiAttachment,publishWikiAsset,updateAssetReferences} from './wiki-assets.mjs';
+
 export const WIKI_SCHEMA=4;
+export const MAX_LIST=100,MAX_ROWS=20;
+const ROW_BYTES=48*1024;
+const MODES=['full','summary','inventory','assets'];
 const ALPHABET='abcdefghijklmnopqrstuvwxyz234567';
 const fail=code=>{throw new Error(code);};
+const matches=(value,pattern)=>typeof value==='string'&&pattern.test(value);
+const itemId=value=>matches(value,WIKI_ITEM_ID);
+const size=value=>Number.isSafeInteger(value)&&value>=0;
 const pageId=()=> 'w'+Array.from(randomBytes(11),byte=>ALPHABET[byte&31]).join('');
-export const wikiKey=(project,id)=>project+'/'+id;
+export function wikiKey(project,id){return project+'/'+id;}
 const pageRow=page=>wikiKey(page.project,page.id);
 const rows=(items,key)=>items.map(item=>[key(item),item]);
 const docs=items=>(items??[]).map(([,value])=>value);
@@ -16,9 +23,25 @@ const plainText=text=>[{t:'text',text:text.toWellFormed().replaceAll('\0','�')
 const emptyDoc=()=>({v:1,blocks:[]});
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const now=()=>new Date().toISOString();
-export const wikiPageUrl=(project,id)=>`#wiki/${project}${id?'/'+id:''}`;
-export const wikiAssetView=({id,project,name,type,size,digest,source})=>({id,project,name,type,size,digest,
- ...(source?{source}:{}),url:`/api/wiki/${project}/assets/${id}`});
+export function wikiPageUrl(project,id){return `#wiki/${project}${id?'/'+id:''}`;}
+export function wikiAssetView({id,project,name,type,size,digest,source}){
+ return {id,project,name,type,size,digest,...(source?{source}:{}),url:`/api/wiki/${project}/assets/${id}`};
+}
+export function wikiActor(input){
+ const p=input?.principal??input;
+ return p.authKind+':'+(p.accountId??p.id??p.username);
+}
+
+export function pagination({offset=0,limit},{max=MAX_LIST,defaultLimit=20}={}){
+ if(limit===undefined)limit=defaultLimit;
+ if(!size(offset)||!Number.isSafeInteger(limit)||limit<1||limit>max)fail('invalid');
+ return {offset,limit};
+}
+
+export function collectionPage(items,window){
+ const {offset,limit}=pagination(window),page=items.slice(offset,offset+limit);
+ return {items:page,total:items.length,offset,limit,nextOffset:offset+page.length<items.length?offset+page.length:null};
+}
 
 export function wikiCollection(db){
  const keys={wikis:w=>w.project,pages:pageRow,summaries:pageRow,assets:pageRow,uploads:u=>u.id,blobs:b=>b.digest,receipts:r=>r.key,grants:g=>g.key};
@@ -93,37 +116,59 @@ function makePage(project,id,parentId,title,doc,by,at){
   history:[{at,by,rev:1,field:'created'}]};
 }
 
-function usableAsset(assets,id,actor){
- const asset=assets.get(id);
- if(!asset||asset.references===0&&asset.owner!==actor)fail('invalid-asset');
- return asset;
+function inventory(page,tableId){
+ if(!itemId(tableId))fail('invalid-target');
+ return page.doc.blocks.find(block=>block.t==='inventory'&&block.id===tableId)??fail('invalid-target');
 }
 
-function checkAttachment(ref,assets,actor){
- const asset=usableAsset(assets,ref.assetId,actor);
- if(ref.initialClip&&asset.type!=='model/gltf-binary')fail('invalid-asset');
- if(ref.displayAssetId&&!wikiDisplayType(asset.type,usableAsset(assets,ref.displayAssetId,actor).type))fail('invalid-asset');
+function expectIds(ids,max){
+ if(ids!==undefined&&(!Array.isArray(ids)||!ids.length||ids.length>max||
+  !ids.every(itemId)||new Set(ids).size!==ids.length))fail('invalid-target');
 }
 
-function publishAsset(asset){
- asset.references++;
- asset.published=true;
- asset.orphanedAt=null;
-}
-
-function updateAssets(data,doc,previous,actor){
- const before=new Set(previous?wikiAssetIds(previous):[]),after=new Set(wikiAssetIds(doc));
- const assets=new Map(data.assets.map(asset=>[asset.id,asset]));
- for(const ref of wikiAttachmentRefs(doc))checkAttachment(ref,assets,actor);
- for(const id of after){
-  if(!before.has(id))publishAsset(assets.get(id));
+function summary(page){
+ const inventories=[],attachmentGroups=[];
+ for(const block of page.doc.blocks){
+  if(block.t==='inventory')inventories.push({id:block.id,rows:block.rows.length,columns:block.columns.length});
+  if(block.t==='attachments')attachmentGroups.push({id:block.id,attachments:block.attachments.length});
  }
- const at=Date.now();
- for(const id of before){
-  if(after.has(id))continue;
-  const asset=assets.get(id);
-  if(asset&&--asset.references===0)asset.orphanedAt=at;
+ return {blocks:page.doc.blocks.length,assetCount:wikiAssetIds(page.doc).length,ticketCount:page.links.tickets.length,
+  inventories,attachmentGroups};
+}
+
+function inventoryPage(table,input){
+ const {rowIds,columnIds}=input;
+ expectIds(rowIds,WIKI_LIMITS.rows);
+ expectIds(columnIds,WIKI_LIMITS.columns);
+ const {offset,limit}=pagination(input,{max:MAX_ROWS,defaultLimit:10});
+ const columns=columnIds?table.columns.filter(column=>columnIds.includes(column.id)):table.columns;
+ const matchingRows=rowIds?table.rows.filter(row=>rowIds.includes(row.id)):table.rows;
+ if(columnIds&&columns.length!==columnIds.length||rowIds&&matchingRows.length!==rowIds.length)fail('invalid-target');
+ const rows=[];
+ let remaining=ROW_BYTES;
+ for(const {id,cells} of matchingRows.slice(offset,offset+limit)){
+  const row={id,cells:Object.fromEntries(columns.filter(column=>Object.hasOwn(cells,column.id)).map(column=>[column.id,cells[column.id]]))};
+  remaining-=Buffer.byteLength(JSON.stringify(row));
+  if(remaining<0){
+   if(!rows.length)fail('selection-too-large');
+   break;
+  }
+  rows.push(row);
  }
+ return {tableId:table.id,columns,rows,total:matchingRows.length,offset,limit,nextOffset:offset+rows.length<matchingRows.length?offset+rows.length:null};
+}
+
+function patchCandidateRefs(cells){
+ if(!cells||typeof cells!=='object')return [];
+ const refs=[];
+ for(const cell of Object.values(cells)){
+  if(!Array.isArray(cell?.c))continue;
+  for(const run of cell.c){
+   if(run?.t==='ticket'&&typeof run.id==='string')refs.push({kind:'ticket',id:run.id});
+   else if(run?.t==='ref'&&typeof run.kind==='string'&&typeof run.id==='string')refs.push({kind:run.kind,id:run.id});
+  }
+ }
+ return refs;
 }
 
 function parentOf(input){
@@ -152,7 +197,7 @@ export function createWikiProjectLookup(db){
  return id=>query.get(id)?.project??null;
 }
 
-export function createWikiStore(db,tickets,{mentionGuard=null}={}){
+export function createWikiStore(db,tickets,{mentionGuard=null,readDocument=null}={}){
  const store=wikiCollection(db);
  const wikiProjectSync=createWikiProjectLookup(db);
  const guardMentions=mentionGuard??createMentionGuard({db,tickets,wiki:{wikiProjectSync}});
@@ -189,10 +234,28 @@ export function createWikiStore(db,tickets,{mentionGuard=null}={}){
   return await store.get('pages',wikiKey(project,id))??fail('not-found');
  }
 
+ async function assetsByIds(project,ids){
+  const assets=await Promise.all(ids.map(id=>store.get('assets',wikiKey(project,id))));
+  return assets.filter(Boolean).map(wikiAssetView);
+ }
+
  async function withAssets(page){
   if(!page.doc)return page;
-  const assets=await Promise.all(wikiAssetIds(page.doc).map(id=>store.get('assets',wikiKey(page.project,id))));
-  return {...page,assets:assets.filter(Boolean).map(wikiAssetView)};
+  return {...page,assets:await assetsByIds(page.project,wikiAssetIds(page.doc))};
+ }
+
+ async function read(page,input={}){
+  if(!exactKeys(input,['mode','tableId','rowIds','columnIds','offset','limit']))fail('invalid');
+  const {mode='full'}=input;
+  if(!MODES.includes(mode))fail('invalid');
+  const filters=['tableId','rowIds','columnIds'],window=['offset','limit'];
+  if(mode!=='inventory'&&filters.some(key=>input[key]!==undefined)||
+   !['inventory','assets'].includes(mode)&&window.some(key=>input[key]!==undefined))fail('invalid');
+  if(mode==='full')return withAssets(page);
+  if(mode==='summary')return summary(page);
+  if(mode==='inventory')return inventoryPage(inventory(page,input.tableId),input);
+  const {items,...meta}=collectionPage(wikiAssetIds(page.doc),input);
+  return {...meta,assets:await assetsByIds(page.project,items)};
  }
 
  async function setup(input,by){
@@ -236,7 +299,7 @@ export function createWikiStore(db,tickets,{mentionGuard=null}={}){
    if(!data.summaries.some(page=>page.id===parentId))fail('invalid-parent');
    if(data.pages.length)fail('conflict');
    validate(project.id);
-   updateAssets(data,doc,null,actor);
+   updateAssetReferences(data.assets,doc,null,actor);
    const page=makePage(project.id,id,parentId,title,doc,by,now());
    wiki.count++;
    data.pages.push(page);
@@ -264,12 +327,58 @@ export function createWikiStore(db,tickets,{mentionGuard=null}={}){
    if(title!==undefined&&title!==page.title){page.title=title;fields.push('title');}
    if(doc!==undefined&&JSON.stringify(doc)!==JSON.stringify(page.doc)){
     validate(project.id,docRefs(page.doc));
-    updateAssets(data,doc,page.doc,actor);
+    updateAssetReferences(data.assets,doc,page.doc,actor);
     page.doc=doc;
     page.links=extractLinks(doc);
     fields.push('content');
    }
    return changePage(data,page,by,fields);
+  });
+ }
+
+ async function save(input,by,actor=by){
+  if(input?.documentUploadId===undefined)return update(input,by,actor);
+  if(!exactKeys(input,['project','id','rev','title','doc','documentUploadId']))fail('invalid');
+  const {documentUploadId,...rest}=input;
+  if(rest.doc!==undefined||!readDocument)fail('invalid');
+  return update({...rest,doc:await readDocument(documentUploadId,rest.project,actor)},by,actor);
+ }
+
+ async function patch(input,by,actor=by){
+  if(!exactKeys(input,['id','project','rev','patch','title']))fail('invalid');
+  checkedIdentity(input);
+  const {id,rev,patch:edit}=input;
+  if(!exactKeys(edit,['tableId','rowId','cells'])||!itemId(edit.rowId))fail('invalid');
+  const title=input.title===undefined?undefined:wikiTitle(input.title);
+  const project=await projectOf(input.project),key=wikiKey(project.id,id);
+  const validate=await guardMentions(patchCandidateRefs(edit.cells));
+  return store.change({pages:[key],summaries:[key],assets:project.id+'/'},data=>{
+   const page=data.pages[0];
+   checkRevision(page,rev);
+   const table=inventory(page,edit.tableId),row=table.rows.find(row=>row.id===edit.rowId);
+   if(!row||!exactKeys(edit.cells,table.columns.map(column=>column.id)))fail('invalid-target');
+   const edits=Object.entries(edit.cells);
+   if(!edits.length)fail('invalid-target');
+   const nextCells={...row.cells};
+   for(const [column,cell] of edits){
+    if(cell===null)delete nextCells[column];
+    else nextCells[column]=cell;
+   }
+   const nextTable={...table,rows:table.rows.map(entry=>entry===row?{...row,cells:nextCells}:entry)};
+   const nextDoc=normalizeDoc({...page.doc,blocks:page.doc.blocks.map(block=>block===table?nextTable:block)});
+   const fields=[];
+   if(title!==undefined&&title!==page.title){page.title=title;fields.push('title');}
+   if(JSON.stringify(nextDoc)!==JSON.stringify(page.doc)){
+    validate(project.id,docRefs(page.doc));
+    updateAssetReferences(data.assets,nextDoc,page.doc,actor);
+    page.doc=nextDoc;
+    page.links=extractLinks(nextDoc);
+    fields.push('content');
+   }
+   const saved=changePage(data,page,by,fields);
+   const savedRow=inventory(saved,edit.tableId).rows.find(entry=>entry.id===edit.rowId);
+   return {page:saved,patch:{tableId:edit.tableId,rowId:edit.rowId,
+    cells:Object.fromEntries(edits.map(([column])=>[column,Object.hasOwn(savedRow.cells,column)?savedRow.cells[column]:null]))}};
   });
  }
 
@@ -308,7 +417,7 @@ export function createWikiStore(db,tickets,{mentionGuard=null}={}){
    const page=data.pages[0];
    checkRevision(page,input.rev);
    const assets=new Map(data.assets.map(asset=>[asset.id,asset]));
-   checkAttachment(ref,assets,actor);
+   checkWikiAttachment(ref,assets,actor);
    const previous=new Set(wikiAssetIds(page.doc));
    let target;
    if(groupId!==undefined)target=page.doc.blocks.find(block=>block.t==='attachments'&&block.id===groupId);
@@ -325,7 +434,7 @@ export function createWikiStore(db,tickets,{mentionGuard=null}={}){
    if(!Number.isSafeInteger(index)||index<0||index>group.length)fail('invalid-target');
    group.splice(index,0,ref);
    page.doc=normalizeDoc(page.doc);
-   for(const id of ids)if(!previous.has(id))publishAsset(assets.get(id));
+   for(const id of ids)if(!previous.has(id))publishWikiAsset(assets.get(id));
    changePage(data,page,by,['content']);
    remember(data,receipt,fingerprint,page);
    return page;
@@ -350,5 +459,5 @@ export function createWikiStore(db,tickets,{mentionGuard=null}={}){
   });
  }
 
- return {summaries,version:store.version,projectOf,index,list,get,withAssets,setup,create,update,move,attach,backlinks,pruneReceipts,wikiProjectSync};
+ return {summaries,version:store.version,projectOf,index,list,get,withAssets,read,setup,create,update,save,patch,move,attach,backlinks,pruneReceipts,wikiProjectSync};
 }
