@@ -17,6 +17,10 @@ until the release gives it its number: a change to the public surface adds its l
 
 - `GET /api/ui/manifest` now reports `home_status` with `module: "home"` (owned by the `home` core module alongside `device_*`), and similarly reports the inventory, tracker/search, and review MCP tools under their owning core modules (`inventory`, `tracker`, `review`) instead of `core`.
 
+### Plugin contract
+
+- `mcpTools` definitions may provide an optional `subject(args, data)` hook returning a string (or `null`/`undefined`) for the write-audit log; it runs on write success and error after the scope check and is omitted on scope denial.
+
 ## 1.6.0
 
 ### Added

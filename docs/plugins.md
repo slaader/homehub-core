@@ -241,6 +241,8 @@ export default {
 
   // MCP tools, listed for keys that hold the scope. Throw toolError('…') (from 'home-hub/plugin-api') for a refusal.
   // With additionalProperties: false in inputSchema, a call with an argument not in properties is refused before run.
+  // Optional subject(args, data) => string | null | undefined sets the write-audit log subject for non-"read" tools:
+  // it runs on success (with data) and on error (without data), never on scope denial; non-string results are ignored.
   mcpTools: [{name: 'notes_list', scope: 'read', title: 'Notes', description: 'All notes.',
               inputSchema: {type: 'object', properties: {}, additionalProperties: false},
               run: (args, {state, principal, hub}) => ({notes: state.notes})}],

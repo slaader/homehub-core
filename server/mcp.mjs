@@ -34,7 +34,11 @@ function unknownArguments(tool,args){
 }
 // Write-audit subject: a tool may supply subject(args, data) when a validated identifier should be logged
 // on error too; otherwise subjects come only from successful store results, never rejected argument text.
-const subjectOf=(entry,args,data)=>{if(!entry.subject)return data?.id||data?.project;try{return entry.subject(args,data);}catch{return undefined;}};
+const subjectString=v=>typeof v==='string'&&v?v:undefined;
+const subjectOf=(entry,args,data)=>{
+ if(!entry.raw.subject)return subjectString(data?.id)||subjectString(data?.project);
+ try{return subjectString(entry.raw.subject(args,data));}catch{return undefined;}
+};
 
 /**
  * ctx.log(entry): Promise; ctx.moduleContext(moduleId): {state, hub}
@@ -53,7 +57,7 @@ export function createMcpBusiness({version='2',ctx,tools=[],instructions=[]}){
  // Tools registered by modules, in registration order; a name can only be claimed once (checked by the registry).
  const TOOLS=tools.map(({run,module,subject,...tool})=>tool);
  if(new Set(TOOLS.map(t=>t.name)).size!==TOOLS.length)throw new Error('MCP tool names must be unique');
- const entries=new Map(tools.map((t,i)=>[t.name,{tool:TOOLS[i],module:t.module,run:t.run,subject:t.subject||null}]));
+ const entries=new Map(tools.map((t,i)=>[t.name,{tool:TOOLS[i],raw:t}]));
 
  async function dispatch(msg,principal){
   const {method,params}=msg;
@@ -80,7 +84,7 @@ export function createMcpBusiness({version='2',ctx,tools=[],instructions=[]}){
    }
    try{
     const unknown=unknownArguments(tool,args);if(unknown)throw toolError(unknown);
-    const data=await entry.run(args,{principal,...ctx.moduleContext?.(entry.module)});
+    const data=await entry.raw.run(args,{principal,...ctx.moduleContext?.(entry.raw.module)});
     if(write)await ctx.log({key:principal.id,account:principal.accountId,name:principal.username,tool:tool.name,status:'ok',subject:subjectOf(entry,args,data)}).catch(()=>{});
     if(data?.mcpContent)return {content:data.mcpContent,structuredContent:data.meta,isError:false};
     return {content:[{type:'text',text:JSON.stringify(data,null,1)}],structuredContent:data,isError:false};

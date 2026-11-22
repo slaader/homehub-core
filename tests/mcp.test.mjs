@@ -151,3 +151,56 @@ test('initialize instructions: an orientation assembled from the modules, cut to
  for(const m of SITE.devices)assert.ok(!all.includes(m.name)&&!all.includes(m.hostname||'\u0000'),m.id);
  assert.ok(!all.includes(SITE.siteName));
 });
+
+test('registered MCP tools preserve method this-binding and ignore non-string or throwing subject hooks',async()=>{
+ const {createMcp,toolError}=await import('../server/mcp.mjs');
+ const {defineModule,createRegistry}=await import('../server/plugins.mjs');
+ const logged=[];
+ const strictLog=async entry=>{
+  // Mimic access-store logApi stringifying subject if defined (null-prototype objects throw on String(x)).
+  if(entry.subject!==undefined)String(entry.subject);
+  logged.push(entry);
+ };
+ const schema={type:'object',properties:{fail:{type:'boolean'}},additionalProperties:false};
+ const mod=defineModule({
+  id:'demo',
+  scopes:{'demo:write':{label:'Demo',desc:'Demo',write:true}},
+  mcpTools:[
+   {name:'demo_write',scope:'demo:write',title:'Demo write',description:'Writes demo.',inputSchema:schema,
+    subject:()=>Object.create(null),
+    run(args){if(args.fail)throw toolError('refused');return {name:this.name};}},
+   {name:'demo_throw_subject',scope:'demo:write',title:'Demo throw',description:'Throws subject.',inputSchema:schema,
+    subject:()=>{throw new Error('boom');},
+    run(args){if(args.fail)throw toolError('refused');return {ok:true};}},
+  ],
+ });
+ const reg=createRegistry([mod]);
+ const mcp=createMcp({tools:reg.tools,instructions:reg.instructions,ctx:{log:strictLog,moduleContext:()=>({state:{},hub:{}})}});
+ const principal={id:'k1',accountId:'a1',username:'bot',permission:'write',scopes:['demo:write']};
+ const call=async(name,args)=>JSON.parse((await mcp(JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}}),principal)).body);
+
+ const okNullProto=await call('demo_write',{});
+ assert.equal(okNullProto.error,undefined);
+ assert.equal(okNullProto.result.isError,false);
+ assert.deepEqual(okNullProto.result.structuredContent,{name:'demo_write'},'preserves registered tool this-binding');
+
+ const errNullProto=await call('demo_write',{fail:true});
+ assert.equal(errNullProto.error,undefined);
+ assert.equal(errNullProto.result.isError,true);
+ assert.equal(errNullProto.result.content[0].text,'refused');
+
+ const okThrow=await call('demo_throw_subject',{});
+ assert.equal(okThrow.error,undefined);
+ assert.equal(okThrow.result.isError,false);
+
+ const errThrow=await call('demo_throw_subject',{fail:true});
+ assert.equal(errThrow.error,undefined);
+ assert.equal(errThrow.result.isError,true);
+
+ assert.deepEqual(logged.map(e=>[e.tool,e.status,e.subject]),[
+  ['demo_write','ok',undefined],
+  ['demo_write','error',undefined],
+  ['demo_throw_subject','ok',undefined],
+  ['demo_throw_subject','error',undefined],
+ ]);
+});
