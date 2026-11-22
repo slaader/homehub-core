@@ -1092,7 +1092,7 @@ function renderEpic(wrap,ctx,epic,state={}){
  const filePicker=canWrite?el('input',{type:'file',multiple:'',hidden:'','aria-label':t('+ Přidat soubor'),onchange:e=>{const list=[...e.target.files];e.target.value='';uploadEpicFiles(list);}}):null;
  const removeFile=(item,button)=>{
   if(!confirm(t('Odebrat přílohu {name}?',{name:item.name})))return;
-  write(button,()=>api(`/api/tickets/epics/${encodeURIComponent(epic.id)}/attachments/delete`,{id:epic.id,attachment:item.id}));
+  write(button,()=>api('/api/tickets/epics/attachments/delete',{id:epic.id,attachment:item.id}));
  };
  const attachBlock=files.length||canWrite?[el('hr',{class:'tk-divider'}),el('div',{class:'tk-attach'},
   el('div',{class:'tk-attach-head'},el('h4',{},t('Přílohy ({n})',{n:files.length})),canWrite?el('button',{type:'button',class:'acc-btn small',onclick:()=>filePicker.click()},t('+ Přidat soubor')):null,filePicker),

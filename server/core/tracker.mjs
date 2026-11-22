@@ -139,6 +139,7 @@ export default {
  assets:['tracker-view.js','tracker-md.js','tracker-attach.js','search-view.js','platform-settings-view.js','tickets.css','i18n-en-tracker.js'],
  nav:[
   {group:'Project Tracker',hash:'projects',labelKey:'Projekty',view:'tracker-view.js#trackerPage',order:40},
+  {hash:'epics',label:'Epics',view:'tracker-view.js#trackerPage',hidden:true},
   {group:'Project Tracker',hash:'items',labelKey:'Otevřené položky',view:'tracker-view.js#trackerPage',order:41},
   {group:'Project Tracker',hash:'releases',labelKey:'Releasy',view:'tracker-view.js#trackerPage',order:42},
   {groupKey:'Správa',hash:'platform-settings',labelKey:'Nastavení platformy',view:'platform-settings-view.js#platformSettingsPage',admin:true,order:49},
