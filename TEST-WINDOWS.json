@@ -11,9 +11,9 @@
       "budget_seconds": 600,
       "budget_approval": "Owner approved up to ten minutes per full-suite run for the wiki inventory release.",
       "last_run": {
-        "duration_seconds": 131.66,
-        "finished_at": "2026-11-21T19:30:49Z",
-        "result": "passed"
+        "duration_seconds": 150.82,
+        "finished_at": "2026-11-22T17:13:08.390Z",
+        "result": "failed"
       }
     },
     "router-python": {
