@@ -29,29 +29,80 @@ export class Reader{
  constructor(iter){this.iter=iter[Symbol.asyncIterator]();this.buffer=Buffer.alloc(0);this.offset=0;this.total=0;}
  async take(n,{eof=false}={}){const out=[];let length=0;while(length<n){if(this.offset===this.buffer.length){const next=await this.iter.next();if(next.done){if(eof&&length===0)return null;throw new Error('truncated archive');}this.buffer=next.value;this.offset=0;}const size=Math.min(n-length,this.buffer.length-this.offset);out.push(this.buffer.subarray(this.offset,this.offset+size));this.offset+=size;length+=size;this.total+=size;}return out.length===1?out[0]:Buffer.concat(out,length);}
 }
+const APPLEDOUBLE_MAGIC=Buffer.from([0x00,0x05,0x16,0x07]);
+function parsePax(buf){
+ const attrs={};
+ let i=0;
+ while(i<buf.length){
+  const sp=buf.indexOf(0x20,i);if(sp<0)throw new Error('invalid PAX record');
+  const lenText=buf.subarray(i,sp).toString('ascii');
+  const len=Number(lenText);if(!/^\d+$/.test(lenText)||!Number.isInteger(len)||len<=0||i+len>buf.length)throw new Error('invalid PAX record length');
+  const end=i+len;
+  if(buf[end-1]!==0x0a)throw new Error('unterminated PAX record');
+  const eq=buf.indexOf(0x3d,sp+1);
+  if(eq>sp+1&&eq<end-1){
+   const key=buf.subarray(sp+1,eq).toString('utf8');
+   // Only decode standard UTF-8 PAX attributes; vendor xattr payloads (e.g. LIBARCHIVE.xattr.*) may hold raw binary bytes.
+   if(key==='path'||key==='linkpath'||key==='size')attrs[key]=utf8.decode(buf.subarray(eq+1,end-1));
+  }
+  i=end;
+ }
+ return attrs;
+}
 function safeParents(root,name){const parts=name.split('/');parts.pop();let dir=root;for(const part of parts){dir=path.join(dir,part);try{mkdirSync(dir,{mode:0o700});}catch(e){if(e.code!=='EEXIST')throw e;const st=lstatSync(dir);if(!st.isDirectory()||st.isSymbolicLink())throw new Error('archive parent is not a directory');}}}
-export async function extractArchive(file,root,{release=true,limits=ARCHIVE_LIMITS,expected=null,legacy=false,expectedExpanded=null}={}){
- if(lstatSync(file).size>limits.compressed)throw new Error('compressed archive exceeds local limit');if(!lstatSync(root).isDirectory()||lstatSync(root).isSymbolicLink())throw new Error('archive root must be a regular private staging directory');if(readdirSync(root).length)throw new Error('archive extraction requires an empty directory');
- const input=createReadStream(file),unzip=createGunzip();input.on('error',e=>unzip.destroy(e));input.pipe(unzip);const reader=new Reader(unzip),seen=new Map(),folded=new Map(),entries=[],links=[],directoryModes=[],directories=new Set();let ended=false;
+async function walkArchive(file,root,{release=true,limits=ARCHIVE_LIMITS,expected=null,legacy=false,expectedExpanded=null,allowedRoots=null}={}){
+ if(lstatSync(file).size>limits.compressed)throw new Error('compressed archive exceeds local limit');
+ if(root!==null){if(!lstatSync(root).isDirectory()||lstatSync(root).isSymbolicLink())throw new Error('archive root must be a regular private staging directory');if(readdirSync(root).length)throw new Error('archive extraction requires an empty directory');}
+ const input=createReadStream(file),unzip=createGunzip();input.on('error',e=>unzip.destroy(e));input.pipe(unzip);const reader=new Reader(unzip),seen=new Map(),folded=new Map(),entries=[],links=[],directoryModes=[],directories=new Set();let ended=false,pax=null;
  try{for(;;){const b=await reader.take(512);if(reader.total>limits.expanded)throw new Error('expanded archive exceeds local limit');if(b.every(v=>v===0)){const next=await reader.take(512);if(next.some(v=>v!==0))throw new Error('invalid archive end marker');ended=true;break;}
   if(entries.length>=limits.entries)throw new Error('too many archive entries');const declared=octal(b,148,8),sum=b.reduce((a,v,i)=>a+(i>=148&&i<156?32:v),0);if(sum!==declared)throw new Error('invalid archive header checksum');
   if(field(b,257,6)!=='ustar'||!['00','  ',''].includes(field(b,263,2)))throw new Error('unsupported archive format');
-  const type=String.fromCharCode(b[156]||48),prefix=field(b,345,155);let name=(prefix?prefix+'/':'')+field(b,0,100);if(type==='5'&&name.endsWith('/'))name=name.slice(0,-1);if(legacy&&name.startsWith('./'))name=name.slice(2);
-  archivePath(name,{release});if(seen.has(name))throw new Error('duplicate archive path');const components=name.split('/');for(let i=1;i<=components.length;i++){const prefix=components.slice(0,i).join('/'),fold=prefix.normalize('NFC').toLowerCase();if(folded.has(fold)&&folded.get(fold)!==prefix)throw new Error('case-fold archive path collision');folded.set(fold,prefix);}
+  const type=String.fromCharCode(b[156]||48),bytes=octal(b,124,12),mode=octal(b,100,8);
+  // Historical BSD/macOS tar emits PAX extended headers ('x'/'g') and AppleDouble '._*' metadata sidecars.
+  if(legacy&&(type==='x'||type==='g')){
+   if(bytes>65536)throw new Error('PAX header exceeds local limit');
+   const payload=bytes?await reader.take(bytes):Buffer.alloc(0);
+   if(reader.total>limits.expanded)throw new Error('expanded archive exceeds local limit');
+   const padding=(512-bytes%512)%512;if(padding&&(await reader.take(padding)).some(v=>v!==0))throw new Error('nonzero archive padding');
+   if(type==='x')pax=parsePax(payload);
+   continue;
+  }
+  const entryPax=pax;pax=null;
+  const prefix=field(b,345,155);let name=entryPax?.path??((prefix?prefix+'/':'')+field(b,0,100));
+  if(type==='5'&&name.endsWith('/'))name=name.slice(0,-1);if(legacy&&name.startsWith('./'))name=name.slice(2);
+  const actualBytes=entryPax?.size!==undefined?Number(entryPax.size):bytes;
+  if(!Number.isSafeInteger(actualBytes)||actualBytes<0||actualBytes>limits.file||mode&0o7000)throw new Error('unsafe archive size or mode');
+  if(legacy&&type==='0'&&path.posix.basename(name).startsWith('._')){
+   const payload=actualBytes?await reader.take(actualBytes):Buffer.alloc(0);
+   if(reader.total>limits.expanded)throw new Error('expanded archive exceeds local limit');
+   const padding=(512-actualBytes%512)%512;if(padding&&(await reader.take(padding)).some(v=>v!==0))throw new Error('nonzero archive padding');
+   if(payload.length>=4&&payload.subarray(0,4).equals(APPLEDOUBLE_MAGIC))continue;
+   throw new Error('legacy archive has unplanned roots');
+  }
+  archivePath(name,{release});
+  if(allowedRoots&&!allowedRoots.has(name.split('/')[0]))throw new Error('legacy archive has unplanned roots');
+  if(seen.has(name))throw new Error('duplicate archive path');const components=name.split('/');for(let i=1;i<=components.length;i++){const pfx=components.slice(0,i).join('/'),fold=pfx.normalize('NFC').toLowerCase();if(folded.has(fold)&&folded.get(fold)!==pfx)throw new Error('case-fold archive path collision');folded.set(fold,pfx);}
   const parentParts=name.split('/');parentParts.pop();for(let i=1;i<=parentParts.length;i++){const p=parentParts.slice(0,i).join('/');if(seen.has(p)&&seen.get(p)!=='directory')throw new Error('file/directory prefix collision');}if(type!=='5'&&directories.has(name))throw new Error('file/directory prefix collision');for(let i=1;i<=parentParts.length;i++)directories.add(parentParts.slice(0,i).join('/'));
-  const bytes=octal(b,124,12),mode=octal(b,100,8);if(bytes>limits.file||mode&0o7000)throw new Error('unsafe archive size or mode');if(!['0','5',...(!release?['2']:[])].includes(type))throw new Error('unsupported archive entry type');if(type!=='0'&&bytes!==0)throw new Error('non-file archive entry has data');
-  const kind=type==='0'?'file':type==='5'?'directory':'symlink';const spec=expected?.get(name);if(expected&&(!spec||spec.type!==kind||spec.bytes!==bytes||(kind==='file'&&spec.mode!==mode)))throw new Error(`unlisted or mismatched archive entry: ${name}`);
+  if(!['0','5',...(!release?['2']:[])].includes(type))throw new Error('unsupported archive entry type');if(type!=='0'&&actualBytes!==0)throw new Error('non-file archive entry has data');
+  const kind=type==='0'?'file':type==='5'?'directory':'symlink';const spec=expected?.get(name);if(expected&&(!spec||spec.type!==kind||spec.bytes!==actualBytes||(kind==='file'&&spec.mode!==mode)))throw new Error(`unlisted or mismatched archive entry: ${name}`);
   if(release&&![0o644,0o755].includes(mode))throw new Error('unsupported release file mode');
-  safeParents(root,name);const dest=path.join(root,name);let hash=null;
-  if(kind==='directory'){try{mkdirSync(dest,{mode:0o700});}catch(e){if(e.code!=='EEXIST'||!lstatSync(dest).isDirectory())throw e;}directoryModes.push([dest,mode]);}
-  else if(kind==='symlink'){const link=field(b,157,100);if(!link||/[\x00-\x1f]/.test(link))throw new Error('invalid archive link');if(expected&&spec.link!==link)throw new Error('archive link mismatch');links.push([dest,link]);}
-  else {const fd=openSync(dest,'wx',0o600),h=createHash('sha256');try{let left=bytes;while(left){const chunk=await reader.take(Math.min(left,65536));if(reader.total>limits.expanded)throw new Error('expanded archive exceeds local limit');let offset=0;while(offset<chunk.length){const written=writeSync(fd,chunk,offset,chunk.length-offset);if(!written)throw new Error('short archive write');offset+=written;}h.update(chunk);left-=chunk.length;}hash=h.digest('hex');}finally{closeSync(fd);}if(spec&&hash!==spec.sha256)throw new Error(`archive content hash mismatch: ${name}`);chmodSync(dest,spec?.mode??(mode&0o777));const padding=(512-bytes%512)%512;if(padding&&(await reader.take(padding)).some(v=>v!==0))throw new Error('nonzero archive padding');}
-  seen.set(name,kind);entries.push({path:name,type:kind,bytes,mode,sha256:hash,...(kind==='symlink'?{link:links.at(-1)[1]}:{})});
+  const dest=root!==null?(safeParents(root,name),path.join(root,name)):null;let hash=null,linkTarget=null;
+  if(kind==='directory'){if(dest){try{mkdirSync(dest,{mode:0o700});}catch(e){if(e.code!=='EEXIST'||!lstatSync(dest).isDirectory())throw e;}directoryModes.push([dest,mode]);}}
+  else if(kind==='symlink'){linkTarget=entryPax?.linkpath??field(b,157,100);if(!linkTarget||/[\x00-\x1f]/.test(linkTarget))throw new Error('invalid archive link');if(expected&&spec.link!==linkTarget)throw new Error('archive link mismatch');if(dest)links.push([dest,linkTarget]);}
+  else {
+   const fd=dest?openSync(dest,'wx',0o600):null,h=createHash('sha256');
+   try{let left=actualBytes;while(left){const chunk=await reader.take(Math.min(left,65536));if(reader.total>limits.expanded)throw new Error('expanded archive exceeds local limit');if(fd!==null){let offset=0;while(offset<chunk.length){const written=writeSync(fd,chunk,offset,chunk.length-offset);if(!written)throw new Error('short archive write');offset+=written;}}h.update(chunk);left-=chunk.length;}hash=h.digest('hex');}finally{if(fd!==null)closeSync(fd);}
+   if(spec&&hash!==spec.sha256)throw new Error(`archive content hash mismatch: ${name}`);if(dest)chmodSync(dest,spec?.mode??(mode&0o777));const padding=(512-actualBytes%512)%512;if(padding&&(await reader.take(padding)).some(v=>v!==0))throw new Error('nonzero archive padding');
+  }
+  seen.set(name,kind);entries.push({path:name,type:kind,bytes:actualBytes,mode:mode&0o777,sha256:hash,...(kind==='symlink'?{link:linkTarget}:{})});
  }
  // Read through the gzip trailer and every trailing byte (tar blocking zeros allowed).
  if(reader.buffer.subarray(reader.offset).some(v=>v!==0))throw new Error('unexpected trailing archive content');let tail=reader.buffer.length-reader.offset;for(;;){const next=await reader.iter.next();if(next.done)break;tail+=next.value.length;if(next.value.some(v=>v!==0))throw new Error('unexpected trailing archive content');if(reader.total+tail>limits.expanded)throw new Error('expanded archive exceeds local limit');}
  if(expectedExpanded!==null&&reader.total+tail!==expectedExpanded)throw new Error('signed expanded payload length mismatch');if(!ended)throw new Error('missing archive terminator');if(expected&&(entries.length!==expected.size||[...expected.keys()].some(p=>!seen.has(p))))throw new Error('archive incomplete');
  // Links are created last: no extraction write can follow one. Restore validates graph separately.
- for(const [dest,link] of links)symlinkSync(link,dest);for(const [dir,mode] of directoryModes.reverse())chmodSync(dir,mode&0o777);return entries;
+ if(root!==null){for(const [dest,link] of links)symlinkSync(link,dest);for(const [dir,mode] of directoryModes.reverse())chmodSync(dir,mode&0o777);}
+ return entries;
  }finally{input.destroy();unzip.destroy();}
 }
+export function extractArchive(file,root,options={}){return walkArchive(file,root,options);}
+export function inspectArchive(file,options={}){return walkArchive(file,null,options);}

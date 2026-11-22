@@ -350,19 +350,28 @@ test('assessRestore().coversFile works identically across v2 (including exact-fi
  assert.equal(assessed.coversFile(outside),false,'uncovered paths return false');
  assert.equal(assessed.coversFile(path.join(inst.paths.data,'nonexistent')),false);
 
- // Moving an archived directory (or subdirectory) and leaving a symlink at its old path must NOT break coversFile.
+ // Moving an archived directory (or subdirectory) and leaving a symlink at its old path — EVEN when combined with
+ // an outer path alias (symlinked parent) and pointing the inner symlink into ANOTHER archived root — must match
+ // the original archived root's entry, never the target root's file.
  const movedConfig=path.join(dir,'config-moved');
- const subDir=path.join(inst.paths.config,'sub'),movedSub=path.join(dir,'sub-moved');
- mkdirSync(subDir);
- const subFile=path.join(subDir,'nested.json');
- writeFileSync(subFile,'{"ok":true}\n',{mode:0o640});
+ const subDir=path.join(inst.paths.config,'sub'),otherSub=path.join(inst.paths.data,'sub');
+ mkdirSync(subDir);mkdirSync(otherSub);
+ const subFile=path.join(subDir,'nested.json'),otherFile=path.join(otherSub,'nested.json');
+ writeFileSync(subFile,'{"from":"config"}\n',{mode:0o640});
+ writeFileSync(otherFile,'{"from":"data"}\n',{mode:0o640});
  const movedBackup=await createBackup(inst,ctx,'covers-moved');
  const movedAssessed=await assessRestore(inst,movedBackup);
- const subHash=digest('{"ok":true}\n');
- renameSync(subDir,movedSub);
- symlinkSync(movedSub,subDir);
- assert.equal(movedAssessed.coversFile(subFile,{sha256:subHash,mode:0o640}),true,'coversFile matches archived subdir even when replaced by a live symlink');
- rmSync(subDir);renameSync(movedSub,subDir);
+ const subHash=digest('{"from":"config"}\n'),otherHash=digest('{"from":"data"}\n');
+ const outerAlias=path.join(os.tmpdir(),'hub-outer-alias-'+process.pid+'-'+Date.now());
+ symlinkSync(dir,outerAlias);
+ t.after(()=>rmSync(outerAlias,{force:true}));
+ const aliasedSubFile=path.join(outerAlias,'config','sub','nested.json');
+ rmSync(subDir,{recursive:true});
+ symlinkSync(otherSub,subDir);
+ assert.equal(movedAssessed.coversFile(subFile,{sha256:subHash,mode:0o640}),true,'canonical path matches archived config root');
+ assert.equal(movedAssessed.coversFile(aliasedSubFile,{sha256:subHash,mode:0o640}),true,'outer alias + inner symlink into another archived root still matches config root');
+ assert.equal(movedAssessed.coversFile(aliasedSubFile,{sha256:otherHash,mode:0o640}),false,'must not match the other archived root file via inner symlink');
+ rmSync(subDir);mkdirSync(subDir);writeFileSync(subFile,'{"from":"config"}\n',{mode:0o640});
  renameSync(inst.paths.config,movedConfig);
  symlinkSync(movedConfig,inst.paths.config);
  assert.equal(movedAssessed.coversFile(subFile,{sha256:subHash,mode:0o640}),true,'coversFile matches archived root even when live root dir was replaced by a symlink');
@@ -386,16 +395,14 @@ test('assessRestore().coversFile works identically across v2 (including exact-fi
  assert.equal(v1Assessed.coversFile(v1.inst.paths.data),false);
  assert.equal(v1Assessed.coversFile(path.join(v1.dir,'outside.txt')),false);
 
- // Genuine sidecar-less legacy archive inspects archive contents for coversFile and preserves unexpected stageDir files on resume.
- const {writeArchive}=await import('../server/release-archive.mjs');
+ // Genuine sidecar-less legacy archive created with the historical `tar -czf` writer (including macOS PAX/AppleDouble headers)
+ // assesses and restores cleanly, and read-only assessment rejects case-fold collisions before service stop.
  const legacyRoot=path.join(v1.dir,'legacy-root');mkdirSync(legacyRoot);
  const legacySrc=path.join(legacyRoot,'site.json');
  writeFileSync(legacySrc,'{"legacy":1}\n',{mode:0o640});
  const legacyArchive=path.join(v1.inst.backups,'legacy-only.tgz');
- await writeArchive(legacyArchive,[
-  {path:'legacy-root',type:'directory',mode:0o700,bytes:0},
-  {path:'legacy-root/site.json',type:'file',mode:0o640,bytes:Buffer.byteLength('{"legacy":1}\n'),source:legacySrc},
- ],{release:false});
+ const tarRes=spawnSync('tar',['-czf',legacyArchive,'-C',v1.dir,'legacy-root'],{encoding:'utf8'});
+ assert.equal(tarRes.status,0,tarRes.stderr);
  const legacyBackup={file:legacyArchive,entries:[{parent:v1.dir,name:'legacy-root'}]};
  const legacyAssessed=await assessRestore(v1.inst,legacyBackup);
  const legacyHash=digest('{"legacy":1}\n');
@@ -405,6 +412,16 @@ test('assessRestore().coversFile works identically across v2 (including exact-fi
  assert.equal(legacyAssessed.coversFile(legacySrc,{sha256:digest('wrong'),mode:0o640}),false);
  assert.equal(legacyAssessed.coversFile(legacyRoot),false);
  assert.equal(legacyAssessed.coversFile(path.join(v1.dir,'outside.txt')),false);
+
+ // Case-fold collision inside a legacy archive is rejected during read-only assessRestore() before restore/stop.
+ const {writeArchive}=await import('../server/release-archive.mjs');
+ const collidingArchive=path.join(v1.inst.backups,'legacy-collide.tgz');
+ await writeArchive(collidingArchive,[
+  {path:'legacy-root',type:'directory',mode:0o700,bytes:0},
+  {path:'legacy-root/File.txt',type:'file',mode:0o640,bytes:Buffer.byteLength('{"legacy":1}\n'),source:legacySrc},
+  {path:'legacy-root/file.txt',type:'file',mode:0o640,bytes:Buffer.byteLength('{"legacy":1}\n'),source:legacySrc},
+ ],{release:false});
+ await assert.rejects(assessRestore(v1.inst,{file:collidingArchive,entries:[{parent:v1.dir,name:'legacy-root'}]}),/case-fold archive path collision/);
 
  // Resumed legacy restore uses empty-directory removal on stageDir and preserves unexpected files inside it.
  const stageDir=path.join(v1.dir,'.hub-restore-legacy-extra');

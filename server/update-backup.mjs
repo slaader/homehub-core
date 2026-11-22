@@ -6,7 +6,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {Readable,Transform} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
 import {createGzip,createGunzip} from 'node:zlib';
-import {extractArchive,archivePath,header,Reader,ARCHIVE_LIMITS} from './release-archive.mjs';
+import {extractArchive,inspectArchive,archivePath,header,Reader,ARCHIVE_LIMITS} from './release-archive.mjs';
 import {trustDestination} from './release-trust.mjs';
 import {sha256,fileHash,canonicalPath,cleanAbsolute,withinPath,boundedRegularFile,strictJson,fields,durableWrite,syncDirectory} from './safe-fs.mjs';
 import {JOURNAL_SCHEMA,RESTORE_STATUSES,validateRestoreRoots,validateSocketRestoreLayout,writeUpdateJournal} from './update-journal.mjs';
@@ -985,8 +985,8 @@ async function restoreLegacy(inst,ctx,backup,journal,{manifest,legacy}){
  const aside=failedStateDir(inst,ctx,journal);
  const save=()=>{if(journal){journal.failedState=aside;journal.restoreRoots??=[];writeUpdateJournal(inst.files.journal,journal);}};
  try{
-  const entries=await extractArchive(backup.file,scratch,{release:false,legacy,expected:manifest.files?new Map(manifest.files.map(f=>[f.path,f])):null});
-  if(legacy){const names=new Set(manifest.roots.map(r=>r.legacyName));if(entries.some(e=>!names.has(e.path.split('/')[0])))throw new Error('legacy archive has unplanned roots');}
+  const allowedRoots=legacy?new Set(manifest.roots.map(r=>r.legacyName)):null;
+  const entries=await extractArchive(backup.file,scratch,{release:false,legacy,allowedRoots,expected:manifest.files?new Map(manifest.files.map(f=>[f.path,f])):null});
   // Inspect link destinations as archive data, never by traversing a staged link into the live filesystem.
   for(const e of entries.filter(e=>e.type==='symlink')){
    const r=manifest.roots.find(r=>e.path===rootPrefix(r)||e.path.startsWith(rootPrefix(r)+'/'));
@@ -1119,102 +1119,24 @@ function archiveEntryPathFor(roots,file){
   }
   return null;
  };
- // Match the journal/canonical path directly against archived roots first, without traversing live symlinks
- // that an update may have placed at an archived root's old location. Only if unnormalized ancestor prefixes
- // (e.g. /tmp -> /private/tmp) differ, canonicalize progressively higher ancestors outside the target leaf.
+ // Match the normalized path directly first, then canonicalize outer prefixes TOP-DOWN (shallowest first,
+ // e.g. /tmp -> /private/tmp) so paths beneath an archived root stay strictly lexical and never follow a
+ // nested live symlink into a different archived root.
  const resolved=path.resolve(file);
  const direct=matchTarget(resolved);
  if(direct)return direct;
- const suffix=[];
- for(let cur=resolved;;){
-  const parent=path.dirname(cur);
-  suffix.unshift(path.basename(cur));
-  if(parent===cur)break;
-  cur=parent;
+ const fsRoot=path.parse(resolved).root;
+ const parts=resolved.slice(fsRoot.length).split(path.sep).filter(Boolean);
+ for(let i=1;i<parts.length;i++){
+  const outer=path.join(fsRoot,...parts.slice(0,i));
+  const tail=parts.slice(i);
   try{
-   const candidate=path.join(canonicalPath(cur),...suffix);
+   const candidate=path.join(canonicalPath(outer),...tail);
    const hit=matchTarget(candidate);
    if(hit)return hit;
   }catch{}
  }
  return null;
-}
-
-function tarField(b,start,size){
- const part=b.subarray(start,start+size),end=part.indexOf(0);
- if(end>=0&&part.subarray(end).some(v=>v!==0))throw new Error('nonzero archive field after NUL');
- return new TextDecoder('utf-8',{fatal:true}).decode(end<0?part:part.subarray(0,end));
-}
-
-function tarOctal(b,start,size){
- const raw=b.subarray(start,start+size);
- if(raw[0]&128)throw new Error('unsupported archive numeric encoding');
- const text=raw.toString('ascii').replace(/[\0 ]+$/,'').replace(/^ +/,'');
- if(!/^[0-7]*$/.test(text))throw new Error('invalid archive octal');
- const v=parseInt(text||'0',8);
- if(!Number.isSafeInteger(v))throw new Error('unsafe archive integer');
- return v;
-}
-
-async function scanLegacyArchive(file,roots){
- const st=lstatSync(file);
- if(!st.isFile()||st.size>ARCHIVE_LIMITS.compressed)throw new Error('compressed archive exceeds local limit');
- const input=createReadStream(file),unzip=createGunzip();
- input.on('error',e=>unzip.destroy(e));
- input.pipe(unzip);
- const reader=new Reader(unzip),entries=new Map(),names=new Set(roots.map(r=>r.legacyName));
- let count=0,ended=false;
- try{
-  for(;;){
-   const b=await reader.take(512);
-   if(reader.total>ARCHIVE_LIMITS.expanded)throw new Error('expanded archive exceeds local limit');
-   if(b.every(v=>v===0)){
-    const next=await reader.take(512);
-    if(next.some(v=>v!==0))throw new Error('invalid archive end marker');
-    ended=true;break;
-   }
-   if(++count>ARCHIVE_LIMITS.entries)throw new Error('too many archive entries');
-   const declared=tarOctal(b,148,8),sum=b.reduce((a,v,i)=>a+(i>=148&&i<156?32:v),0);
-   if(sum!==declared)throw new Error('invalid archive header checksum');
-   if(tarField(b,257,6)!=='ustar'||!['00','  ',''].includes(tarField(b,263,2)))throw new Error('unsupported archive format');
-   const type=String.fromCharCode(b[156]||48),prefix=tarField(b,345,155);
-   let name=(prefix?prefix+'/':'')+tarField(b,0,100);
-   if(type==='5'&&name.endsWith('/'))name=name.slice(0,-1);
-   if(name.startsWith('./'))name=name.slice(2);
-   archivePath(name,{release:false});
-   if(!names.has(name.split('/')[0]))throw new Error('legacy archive has unplanned roots');
-   if(entries.has(name))throw new Error('duplicate archive path');
-   const bytes=tarOctal(b,124,12),mode=tarOctal(b,100,8);
-   if(bytes>ARCHIVE_LIMITS.file||mode&0o7000)throw new Error('unsafe archive size or mode');
-   if(!['0','5','2'].includes(type))throw new Error('unsupported archive entry type');
-   if(type!=='0'&&bytes!==0)throw new Error('non-file archive entry has data');
-   let hash=null;
-   if(type==='0'){
-    const h=createHash('sha256');
-    let left=bytes;
-    while(left){
-     const chunk=await reader.take(Math.min(left,65536));
-     if(reader.total>ARCHIVE_LIMITS.expanded)throw new Error('expanded archive exceeds local limit');
-     h.update(chunk);left-=chunk.length;
-    }
-    hash=h.digest('hex');
-    const padding=(512-bytes%512)%512;
-    if(padding&&(await reader.take(padding)).some(v=>v!==0))throw new Error('nonzero archive padding');
-   }
-   entries.set(name,{path:name,type:type==='0'?'file':type==='5'?'directory':'symlink',mode:mode&0o777,bytes,sha256:hash});
-  }
-  if(reader.buffer.subarray(reader.offset).some(v=>v!==0))throw new Error('unexpected trailing archive content');
-  let tail=reader.buffer.length-reader.offset;
-  for(;;){
-   const next=await reader.iter.next();
-   if(next.done)break;
-   tail+=next.value.length;
-   if(next.value.some(v=>v!==0))throw new Error('unexpected trailing archive content');
-   if(reader.total+tail>ARCHIVE_LIMITS.expanded)throw new Error('expanded archive exceeds local limit');
-  }
-  if(!ended)throw new Error('missing archive terminator');
-  return entries;
- }finally{input.destroy();unzip.destroy();}
 }
 
 function matchExpect(entry,expect){
@@ -1238,7 +1160,17 @@ export async function assessRestore(inst,backup,journal=null){
   for(const r of description.manifest.roots)refuseSocketReplacement(r.canonical);
   verifyOldGraph(description.manifest.roots,progress);
   const {manifest,legacy}=description;
-  const legacyFiles=legacy?await scanLegacyArchive(backup.file,manifest.roots):null;
+  let legacyFiles=null;
+  if(legacy){
+   const allowedRoots=new Set(manifest.roots.map(r=>r.legacyName));
+   const entries=await inspectArchive(backup.file,{release:false,legacy:true,allowedRoots});
+   for(const e of entries.filter(e=>e.type==='symlink')){
+    const r=manifest.roots.find(r=>e.path===rootPrefix(r)||e.path.startsWith(rootPrefix(r)+'/'));
+    if(!r)throw new Error('unmapped backup symlink');
+    validateLink(e,r,manifest.roots,{includeAliases:false});
+   }
+   legacyFiles=new Map(entries.map(e=>[e.path,e]));
+  }
   const coversFile=(file,expect)=>{
    const wanted=archiveEntryPathFor(manifest.roots,file);
    if(!wanted)return false;
