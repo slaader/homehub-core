@@ -97,7 +97,7 @@ export function serializeWiki(root,islands){
 const newBlockId=()=> 'h'+Array.from(crypto.getRandomValues(new Uint8Array(8)),byte=>'abcdefghijklmnopqrstuvwxyz234567'[byte&31]).join('');
 const paragraph=()=>el('p',{},el('br'));
 
-export function wikiEditor({page,doc,tickets,api,dialog,changed,canGlobal=false,inlineOnly=false}){
+export function wikiEditor({page,doc,tickets,api,dialog,changed,canGlobal=false,inlineOnly=false,projectId,standalone=false}){
  const root=el('div',{class:'wiki-article wiki-editor',contenteditable:'true',role:'textbox',
   'aria-multiline':'true','aria-label':t(inlineOnly?'Text buňky':'Obsah stránky'),tabindex:'0'});
  if(inlineOnly)root.classList.add('wiki-inline-editor');
@@ -387,7 +387,7 @@ export function wikiEditor({page,doc,tickets,api,dialog,changed,canGlobal=false,
  const editButton=(label,action)=>button(label,action,{onmousedown:event=>event.preventDefault()});
  const ticketButton=editButton(t('Ticket'),pickTicket);
  const toolbar=el('div',{class:'wiki-toolbar',role:'group','aria-label':t('Formátování')},
-  inlineOnly?null:type,...formatting.map(({control})=>control),editButton(t('Odkaz'),link),ticketButton,
+  inlineOnly?null:type,...formatting.map(({control})=>control),editButton(t('Odkaz'),link),standalone?null:ticketButton,
   ...(inlineOnly?[]:[
    editButton(t('Tabulka'),newTable),
    editButton(t('Tabulka inventáře'),()=>openIsland({t:'inventory',id:newWikiItemId('inventory'),
@@ -432,7 +432,7 @@ export function wikiEditor({page,doc,tickets,api,dialog,changed,canGlobal=false,
   }
  }
 
- const picker=referencePicker(root,{project:()=>page.project,canGlobal,context:()=>richSelection(root,(range,record)=>{
+ const picker=referencePicker(root,{project:()=>standalone?null:(projectId??page.project),canGlobal,standalone,context:()=>richSelection(root,(range,record)=>{
   const chip=record.kind==='ticket'?ticketChip(record.id,tickets.get(record.id),true):referenceChip(record,true);
   const space=document.createTextNode(' ');
   range.deleteContents();range.insertNode(space);range.insertNode(chip);

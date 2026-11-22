@@ -95,7 +95,7 @@ export function projectReferences(me,project){return catalog(me,project);}
 
 function catalog(me,fixedProject){
  const root=el('section',{class:fixedProject?'tk-project-refs':'sec tk'});
- const kinds=fixedProject?['custom','wiki','ticket']:referenceKinds;
+ const kinds=fixedProject?['custom','wiki','ticket','epic']:(referenceKinds.includes('epic')?referenceKinds:[...referenceKinds,'epic']);
  const filter=el('select',{'aria-label':t('Druh reference')},el('option',{value:''},t('Všechny druhy')),kinds.map(k=>el('option',{value:k},kindName(k))));
  const q=el('input',{type:'search','aria-label':t('Hledat'),placeholder:t('Hledat')});
  const scope=fixedProject?null:el('select',{'aria-label':t('Rozsah')},[['','Vše'],['global','Globální reference'],['local','Projektové reference']].map(([v,k])=>el('option',{value:v},t(k))));

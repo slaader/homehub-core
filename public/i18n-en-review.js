@@ -159,4 +159,18 @@ export default {
  'Nová sada {project, title, items} nebo další kolo {set, items, addresses?}.':'A new set {project, title, items} or the next round {set, items, addresses?}.',
  'Rozhodnutí k položce {set, round, item, rev, variant, status, note?, comments?, editComments?, deleteComments?}.':'The decision on an item {set, round, item, rev, variant, status, note?, comments?, editComments?, deleteComments?}.',
  'Archivace nebo přejmenování sady {id, rev, status?, title?}.':'Archive or rename a set {id, rev, status?, title?}.',
+ // detached sets & project filters (Projects v2)
+ 'Smazaný projekt':'Deleted project',
+ 'bez projektu':'no project',
+ 'Filtr podle projektu':'Filter by project',
+ 'Bez projektu':'No project',
+ 'Přesunout do projektu':'Reassign to project',
+ 'Sada bude přiřazena k vybranému projektu. Nedostupné odkazy na tickety ze smazaného projektu se upraví nebo vyčistí.':'The set will be reassigned to the selected project. Unavailable ticket links from the deleted project will be updated or cleared.',
+ 'Cílový projekt':'Target project',
+ 'Neexistuje žádný cílový projekt. Nejdřív založ projekt na stránce Projekty.':'No target project exists yet. Create a project on the Projects page first.',
+ 'Přesunout sadu review do projektu':'Reassign review set to a project',
+ 'Smazat sadu review':'Delete review set',
+ 'Opravdu chceš trvale smazat sadu {id} ({title})? Odstraní se všechna kola, rozhodnutí i nepoužívané soubory.':'Permanently delete set {id} ({title})? All rounds, decisions and unreferenced files will be removed.',
+ 'Tato sada review je odpojená (jen pro čtení).':'This review set is detached (read-only).',
+ 'Původní projekt „{name}“ byl smazán. Všechna kola, varianty, rozhodnutí a připomínky zůstávají ke čtení; publikování dalších kol a ukládání zpětné vazby je zakázáno.':'The original project “{name}” was deleted. All rounds, variants, decisions and comments remain readable; publishing new rounds and saving feedback are disabled.',
 };

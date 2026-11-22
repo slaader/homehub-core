@@ -2,6 +2,8 @@ import {validReference,validLabel} from './reference-format.js';
 // A file of the ticket, by name. Not a Markdown image: "![alt](url)" is left alone.
 export const FILE_TOKEN=/!\[([^\[\]\n]{1,120})\](?!\()/;
 
+const EPIC_REF=/^[A-Z][A-Z0-9]{1,9}-E[1-9][0-9]{0,5}$/;
+const isValidRef=(kind,id)=>validReference(kind,id)||(kind==='epic'&&EPIC_REF.test(id));
 const BULLET=/^\s*[-*•]\s+(.*)$/,NUMBER=/^\s*(\d{1,3})[.)]\s+(.*)$/,HEADING=/^(#{1,4})\s+(.*)$/,FENCE=/^\s*```/,QUOTE=/^\s*>\s?(.*)$/;
 const isList=line=>BULLET.test(line)||NUMBER.test(line);
 
@@ -11,8 +13,10 @@ export function parseMarkdown(text,{keys=[],cls='tk-md',files=null,mention=null,
  const lines=String(text??'').replace(/\r\n?/g,'\n').split('\n'),offsets=[],out=[];
  let position=0;
  for(const line of lines){offsets.push(position);position+=line.length+1;}
- const ids=keys.length?new RegExp(`\\b(?:${keys.map(k=>k.replace(/[^A-Z0-9]/g,'')).filter(Boolean).join('|')})-[1-9][0-9]{0,5}\\b`):null;
- const span=(i,part=lines[i],column=0)=>inline(part,{ids,files,mention,plain,el,source:lines[i],column,offset:offsets[i]+column});
+ const keyPattern=keys.map(k=>k.replace(/[^A-Z0-9]/g,'')).filter(Boolean).join('|');
+ const ids=keyPattern?new RegExp(`\\b(?:${keyPattern})-[1-9][0-9]{0,5}\\b`):null;
+ const epicIds=keyPattern?new RegExp(`\\b(?:${keyPattern})-E[1-9][0-9]{0,5}\\b`):null;
+ const span=(i,part=lines[i],column=0)=>inline(part,{ids,epicIds,files,mention,plain,el,source:lines[i],column,offset:offsets[i]+column});
  const lineBreaks=parts=>parts.flatMap((nodes,i)=>i?[el('br',{}),...nodes]:nodes);
  const suffix=(i,text)=>span(i,text,lines[i].length-text.length);
  for(let i=0;i<lines.length;){
@@ -66,9 +70,9 @@ const TOKEN=/(@\[((?:\\[\\\[\]]|[^\[\]\\\n]){1,400})\]\(ref:([a-z]+)\/([a-zA-Z0-
 const ALL_TOKENS=new RegExp(TOKEN.source,'g');
 const ESCAPE=new RegExp('\\\\'+TOKEN.source);
 function inline(text,context){
- const {ids,files,mention,el,source}=context;
+ const {ids,epicIds,files,mention,el,source}=context;
  const literal=(from,size)=>context.plain?.(context.offset+from,context.offset+from+size);
- const out=[],rules=[['slashes',/\\\\/],['escape',ESCAPE],['reference',TOKEN],...RULES,['file',FILE_TOKEN],...(ids?[['ticket',ids]]:[])];let rest=String(text);
+ const out=[],rules=[['slashes',/\\\\/],['escape',ESCAPE],['reference',TOKEN],...RULES,['file',FILE_TOKEN],...(epicIds?[['epic',epicIds]]:[]),...(ids?[['ticket',ids]]:[])];let rest=String(text);
  // Keep token labels opaque to surrounding emphasis while preserving source offsets.
  const emphasis=String(text).includes('@[')?String(text).replace(ALL_TOKENS,token=>'x'.repeat(token.length)):String(text);
  while(rest){
@@ -85,7 +89,7 @@ function inline(text,context){
   else if(kind==='slashes')out.push(m[0]);
   else if(kind==='reference'){
    const label=m[2].replace(/\\([\\\[\]])/g,'$1'),ref={kind:m[3],id:m[4],label};
-   out.push(mention&&validReference(ref.kind,ref.id)&&validLabel(label)?mention(ref,source,m[0],false,column):m[0]);
+   out.push(mention&&isValidRef(ref.kind,ref.id)&&validLabel(label)?mention(ref,source,m[0],false,column):m[0]);
   }
   else if(kind==='code'||kind==='path'||kind==='const')out.push(el('code',{class:'tk-md-code'},kind==='code'?m[1]:m[0]));
   else if(kind==='bold'||kind==='italic'){
@@ -102,6 +106,11 @@ function inline(text,context){
    }
   }
   else if(kind==='link')out.push(el('a',{href:m[0],target:'_blank',rel:'noopener noreferrer',class:'sys-link'},m[0]));
+  else if(kind==='epic'){
+   if(source[column-1]==='@')literal(from+m.index-1,m[0].length+1);
+   mention?.({kind:'epic',id:m[0],label:m[0]},source,m[0],true,column);
+   out.push(el('a',{href:'#epics/'+m[0],class:'tk-md-ticket'},m[0]));
+  }
   else {
    if(source[column-1]==='@')literal(from+m.index-1,m[0].length+1);
    mention?.({kind:'ticket',id:m[0],label:m[0]},source,m[0],true,column);

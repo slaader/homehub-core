@@ -19,13 +19,15 @@ function observeSelection(node,update){
 }
 const trigger=/(?:^|[\s(])@([\p{L}\p{N}_.\/-]{0,120})$/u;
 const button=(label,action)=>el('button',{type:'button',class:'acc-btn small',onmousedown:e=>e.preventDefault(),onclick:action},label);
-export const kindName=kind=>t(({custom:'Vlastní',model:'Model',project:'Projekt',machine:'Zařízení',wiki:'Wiki',ticket:'Ticket'})[kind]);
+export const kindName=kind=>t(({custom:'Vlastní',model:'Model',project:'Projekt',machine:'Zařízení',wiki:'Wiki',ticket:'Ticket',epic:'Epic'})[kind]||kind);
 
 // Each editor supplies a snapshot of its actual selection and a replacement operation against that snapshot.
-export function referencePicker(node,{context,project,canGlobal=false}){
+export function referencePicker(node,{context,project,canGlobal=false,standalone=false}){
  const id='reference-picker-'+(++serial),panel=el('div',{class:'ref-picker',hidden:''}),list=el('div',{id,role:'listbox'});
  let sequence=0,current=null,items=[],active=-1,formOpen=false,last=null,createButton=null;
  const originalShortcuts=node.getAttribute('aria-keyshortcuts');
+ const allowGlobal=()=>Boolean(typeof canGlobal==='function'?canGlobal():canGlobal);
+ const isStandalone=()=>Boolean(typeof standalone==='function'?standalone():standalone);
  const hide=()=>{
   sequence++;current=null;last=null;items=[];formOpen=false;panel.hidden=true;panel.replaceChildren();
   if(createButton){
@@ -54,13 +56,13 @@ export function referencePicker(node,{context,project,canGlobal=false}){
  function create(selection){
   formOpen=true;const owner=project(),label=el('input',{maxlength:200,value:selection.trim(),'aria-label':t('Název')});
   const note=el('textarea',{rows:2,maxlength:8000,'aria-label':t('Popis'),placeholder:t('Popis')});
-  const offerGlobal=owner&&(typeof canGlobal==='function'?canGlobal():canGlobal);
+  const offerGlobal=Boolean(owner)&&allowGlobal();
   const hintId=id+'-scope-hint';
   const global=el('input',{type:'checkbox',id:id+'-global','aria-describedby':hintId}),error=el('span',{class:'acc-status error',role:'alert'});
   const save=button(t('Uložit'),async()=>{
    if(save.disabled||!validLabel(label.value))return;
    if(owner!==project()||!current)return hide();
-   const local=owner&&!(offerGlobal&&global.checked),selection=current;
+   const local=Boolean(owner)&&!(offerGlobal&&global.checked),selection=current;
    if(selection.fits&&!selection.fits({kind:'custom',id:'r'+'0'.repeat(32),label:label.value})){
     error.textContent=t('Reference překračuje limit textu.');return;
    }
@@ -86,10 +88,11 @@ export function referencePicker(node,{context,project,canGlobal=false}){
  async function update(){
   if(formOpen)return;
   const selection=context(),owner=project();
-  if(!selection||!owner)return hide();
+  if(!selection||(!owner&&!isStandalone()))return hide();
   const selected=selection.selected;
   const query=selected?'':selection.before.match(trigger)?.[1];
   if((selected&&!validLabel(selected))||(!selected&&query===undefined))return hide();
+  if(selected&&!owner&&!allowGlobal())return hide();
   const identity=JSON.stringify([selected||query,selection.position,owner]);
   if(!selected)selection.trim=query.length+1;
   if(selection.accepts&&!selection.accepts(selection.trim))return hide();
@@ -103,7 +106,8 @@ export function referencePicker(node,{context,project,canGlobal=false}){
 
   const turn=sequence;
   try{
-   const {items:matches}=await referenceApi('/suggest?'+new URLSearchParams({project:owner,q:query}));
+   const params=new URLSearchParams(owner?{project:owner,q:query}:{q:query});
+   const {items:matches}=await referenceApi('/suggest?'+params);
    if(sequence!==turn||!node.isConnected||owner!==project())return;
    items=matches;active=query?0:-1;
    if(!items.length)return hide();

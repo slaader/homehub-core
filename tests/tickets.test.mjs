@@ -320,7 +320,7 @@ test('tickets UI: late filter replies cannot replace newer results or steal focu
 
 test('tickets UI: session reset closes dialogs and discards a pending dialog load',async t=>{
  dom(t);const {s}=await store(t);const data=await s.list();globalThis.fetch=async()=>Response.json(data);
- const root=trackerView({canWrite:true},'projects');document.body.append(root);await flush();
+ const root=trackerView({canWrite:true},'items');document.body.append(root);await flush();
  const add=()=>nodes(root,n=>n.tag==='button'&&n.textContent==='+ New item')[0].listeners.click();
  await add();assert.equal(nodes(document.body,n=>n.tag==='dialog').length,1);
  setPrincipal(null);assert.equal(nodes(document.body,n=>n.tag==='dialog').length,0);
@@ -613,8 +613,8 @@ test('tickets UI: the new-project dialog proposes an id and a key from the name'
  name.value='Tracker';name.listeners.input();assert.equal(id.value,'tracker');assert.equal(key.value,'TRAC');
  key.value='TRK';key.listeners.input();name.value='Tracker Two';name.listeners.input();assert.equal(key.value,'TRK','a key typed by hand is kept');assert.equal(id.value,'tracker-two');
  const form=nodes(dialog,n=>n.tag==='form')[0];
- await form.listeners.submit({preventDefault(){},currentTarget:{id,key,name,description:{value:'Sample'},type:{value:'app'},querySelector:()=>({disabled:false})}});
- assert.deepEqual(posts,[{id:'tracker-two',key:'TRK',name:'Tracker Two',description:'Sample',type:'app'}]);assert.equal(dialog.open,false);
+ await form.listeners.submit({preventDefault(){},currentTarget:{id,key,name,description:{value:'Sample'},type:{value:'app'},labels:{value:''},wiki:{checked:false},reviews:{checked:false},querySelector:()=>({disabled:false})}});
+ assert.deepEqual(posts,[{id:'tracker-two',key:'TRK',name:'Tracker Two',description:'Sample',type:'app',settings:{wiki:false,reviews:false}}]);assert.equal(dialog.open,false);
 });
 test('tickets UI: status changes inline, a filter can be cleared, the stat tiles narrow the list',async t=>{
  dom(t);const {s}=await store(t);const a=await s.create({project:'home-hub',title:'Inline',assignee:'robin',labels:['ui']},'alex');await s.create({project:'home-hub',title:'Other'},'alex');

@@ -23,4 +23,5 @@ export default {
  'Měnit globální reference, dokumentaci modelů a poznámky ke zdrojům.':'Manage global references, model documentation and source notes.',
  'Reference podle druhu a projektu.':'List references by type and project.','Doplnění reference v projektu.':'Suggest references for this project.',
  'Zdroj reference a místa použití.':'Read a source and its incoming references.','Názvy odkazovaných záznamů.':'Resolve referenced record titles.',
+ 'Epic':'Epic',
 };

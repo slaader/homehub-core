@@ -24,7 +24,7 @@ export function matchItems(items,query){
   .sort((a,b)=>Number(fold(b.item.label).startsWith(first))-Number(fold(a.item.label).startsWith(first)))
   .map(x=>x.item);
 }
-const KIND={ticket:'Ticket',review:'Review'};
+const KIND={ticket:'Ticket',epic:'Epic',review:'Review'};
 
 export function createPalette({pages=()=>[],actions=()=>[],devices=()=>[],canSearch=()=>false}={}){
  let dialog=null,input=null,list=null,options=[],active=0,timer=null,turn=0,results=[],resultsFor='';
@@ -43,7 +43,7 @@ export function createPalette({pages=()=>[],actions=()=>[],devices=()=>[],canSea
   if(q&&deviceItems.length)out.push({title:t('Seznam zařízení'),items:deviceItems.slice(0,8)});
   if(actionItems.length)out.push({title:t('Akce'),items:actionItems});
   if(q&&canSearch()){
-   const hits=resultsFor===q?results.map(r=>({label:r.title,title:marked(r.title),sub:[KIND[r.kind]||r.kind,r.project].filter(Boolean).join(' · '),icon:r.kind==='review'?'eye':'list',run:()=>go(resultHref(r))})):[];
+   const hits=resultsFor===q?results.map(r=>({label:r.title,title:marked(r.title),sub:[KIND[r.kind]||r.kind,r.project].filter(Boolean).join(' · '),icon:r.kind==='review'?'eye':r.kind==='epic'?'flag':'list',run:()=>go(resultHref(r))})):[];
    out.push({title:t('Tickety a review'),items:[...hits,{label:t('Hledat „{q}“ v ticketech a review',{q}),icon:'search',hint:'↵',run:()=>go(searchHash(q))}]});
   }
   return out;

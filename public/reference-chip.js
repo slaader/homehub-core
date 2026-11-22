@@ -26,8 +26,11 @@ async function flush(){
   }catch{/* Keep the saved text and source link if the lookup could not complete. */}
  }
 }
+const EPIC_ID=/^[A-Z][A-Z0-9]{1,9}-E[1-9][0-9]{0,5}$/;
+const chipHref=({kind,id})=>referenceHref(kind,id)??(kind==='epic'&&EPIC_ID.test(id)?'#epics/'+id:null);
+
 export function referenceChip(ref,editing=false){
- const href=referenceHref(ref.kind,ref.id);
+ const href=chipHref(ref);
  const chip=el(editing?'span':'a',{class:'wiki-ticket ref-chip',href:editing?null:href,contenteditable:editing?'false':null,
   'data-ref-kind':ref.kind,'data-ref-id':ref.id,'data-ref-label':ref.label},ref.label);
  if(!waiting.size)queueMicrotask(flush);

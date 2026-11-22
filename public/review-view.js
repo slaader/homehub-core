@@ -22,7 +22,7 @@ import {el,onLeave} from './views.js';
 import {onSessionReset,authGuard} from './session-cache.js';
 import {timeZone} from './site.js';
 import {t,tp,locale} from './i18n.js';
-import {pageHeader,emptyState,provenanceBadge} from './ui.js';
+import {pageHeader,emptyState,provenanceBadge,banner} from './ui.js';
 
 // Label lists are functions: t() has to run when the page is drawn, in the language active then.
 const KINDS=()=>({html:t('Mockupy'),image:t('Obrázky a rendery'),video:t('Videa'),audio:t('Audio'),model:t('3D modely')});
@@ -30,7 +30,8 @@ const DECISIONS=()=>({accept:t('Beru'),revise:t('Beru s úpravami'),reject:t('P�
 const DECISION_TONE={accept:'ok',revise:'info',reject:'crit',pending:'dim'};
 // Items in "approve" mode: every variant is its own deliverable, approved or sent back with comments.
 const APPROVE_TEXT=()=>({accept:t('Schváleno'),reject:t('Celé předělat'),pending:t('Čeká na schválení')});
-const PROJECT_TYPES=()=>({app:t('Aplikace'),game:t('Hra'),other:t('Jiné')});
+const PROJECT_TYPES=()=>({web:'Web',app:t('Aplikace'),game:t('Hra'),other:t('Jiné')});
+const DETACHED_FILTER='__detached__';
 const MOCK_ID=/^[A-Za-z0-9_.:-]{1,80}$/,SET_ID=/^R-[1-9][0-9]{0,5}$/,PROJECT_ID=/^[a-z][a-z0-9-]{1,39}$/;
 const when=iso=>iso&&Number.isFinite(Date.parse(iso))?new Intl.DateTimeFormat(locale(),{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:timeZone()}).format(new Date(iso)):'—';
 const fin=v=>typeof v==='number'&&Number.isFinite(v);
@@ -100,24 +101,30 @@ async function api(url,body){
  return data;
 }
 // Drafts and view choices survive re-renders within one page load and one sign-in.
-const drafts=new Map(),views=new Map(),filters={status:'active',ticket:''};
+const drafts=new Map(),views=new Map(),filters={status:'active',ticket:'',project:''},dialogs=new Set();
 const pageClocks=new Set(),pageViewers=new Set(),renderCleanups=new Set();
 function onRenderLeave(fn){let done=false;const clean=()=>{if(done)return;done=true;unhook();renderCleanups.delete(clean);fn();};const unhook=onLeave(clean);renderCleanups.add(clean);return clean;}
-const stopClocks=()=>{for(const c of pageClocks)c.stop();pageClocks.clear();for(const v of pageViewers)v.dispose?.();pageViewers.clear();for(const clean of [...renderCleanups])clean();};
+const stopClocks=()=>{for(const c of pageClocks)c.stop();pageClocks.clear();for(const v of pageViewers)v.dispose?.();pageViewers.clear();for(const clean of [...renderCleanups])clean();for(const d of [...dialogs])d.close();};
 // Where the user came from, read from the previous hash: '' = the all-projects list (sidebar), otherwise null.
 let previousHash='';
 if(typeof addEventListener==='function')addEventListener('hashchange',e=>{try{previousHash=new URL(e.oldURL).hash;}catch{previousHash='';}});
 const fromAllList=()=>previousHash==='#review';let sessionEpoch=0,draftSeq=0;
-onSessionReset(()=>{sessionEpoch++;drafts.clear();views.clear();filters.status='active';filters.ticket='';stopClocks();});
+onSessionReset(()=>{sessionEpoch++;drafts.clear();views.clear();filters.status='active';filters.ticket='';filters.project='';stopClocks();});
 const status=()=>el('p',{class:'acc-status',role:'status'});
 const fail=(node,e)=>{node.textContent=e.message;node.classList.add('error');};
+function showDialog(dialog){
+ dialogs.add(dialog);
+ dialog.addEventListener('close',()=>{dialogs.delete(dialog);dialog.remove();});
+ document.body.append(dialog);
+ dialog.showModal();
+}
 // Unsaved work: a comment with text that has not been sent yet (saving happens when its box loses focus).
 const dirty=()=>[...drafts.values()].some(d=>d.drafts.some(x=>x.text.trim()));
 
 export function reviewView(me,sub){
  stopClocks();onLeave(stopClocks);
  const wrap=el('section',{class:'sec tk rv'},el('p',{class:'sec-dim',role:'status'},t('Načítám…')));
- const canWrite=me?.canWrite===true,epoch=sessionEpoch;
+ const canWrite=me?.canWrite===true&&(!me.scopes||me.scopes.includes('review:write')),epoch=sessionEpoch;
  const run=()=>(sub&&SET_ID.test(sub)?setPage(wrap,{canWrite,id:sub,epoch,me:me?.username||null}):listPage(wrap,{canWrite,project:sub&&PROJECT_ID.test(sub)?sub:'',epoch,me}))
   .catch(e=>{if(epoch===sessionEpoch)wrap.replaceChildren(emptyState({icon:'⚠',title:e.status===404?t('Review neexistuje'):t('Review nejde načíst'),body:e.message,
    actions:[e.status===404?null:{label:t('Zkusit znovu'),primary:true,onclick:()=>{wrap.replaceChildren(el('p',{class:'sec-dim',role:'status'},t('Načítám…')));run();}},{label:`← ${t('Všechna review')}`,href:'#review'}]}));});
@@ -147,30 +154,51 @@ function noSets(project,hasProjects){
   mcpSnippet:true,
   actions:hasProjects?[]:[{label:`${t('Projekty')} →`,href:'#projects',primary:true}]});
 }
+const detachedLabel=set=>`${set.detachedProjectName||t('Smazaný projekt')} · ${t('bez projektu')}`;
 // List ------------------------------------------------------------------------------------------
 async function listPage(wrap,{canWrite,project,epoch,me}){
- const query=state=>new URLSearchParams({status:state,...(project?{project}:{}),...(filters.ticket?{ticket:filters.ticket}:{})});
- const [data,meta]=await Promise.all([api('/api/review?'+query(filters.status)),api('/api/tickets?limit=1')]);if(epoch!==sessionEpoch||!wrap.isConnected)return;
+ const selectedProject=project||filters.project;
+ const query=state=>new URLSearchParams({status:state,...(selectedProject===DETACHED_FILTER?{detached:'true'}:selectedProject?{project:selectedProject}:{}),...(filters.ticket?{ticket:filters.ticket}:{})});
+ const [data,meta,detachedProbe]=await Promise.all([
+  api('/api/review?'+query(filters.status)),
+  api('/api/tickets?limit=1'),
+  project?null:api('/api/review?detached=true&status=all').catch(()=>({sets:[]})),
+ ]);
+ if(epoch!==sessionEpoch||!wrap.isConnected)return;
+ const hasDetached=Boolean(detachedProbe?.sets?.length)||data.sets.some(s=>s.project===null);
+ if(!project&&filters.project===DETACHED_FILTER&&!hasDetached)filters.project='';
  // An empty tab is not an empty hub: only when no set exists at all does the page explain how to publish one.
- let any=data.sets.length>0||filters.status==='all';
- if(!data.sets.length&&filters.status!=='all'){try{any=(await api('/api/review?'+query('all'))).sets.length>0;}catch{any=true;}if(epoch!==sessionEpoch||!wrap.isConnected)return;}
+ let any=data.sets.length>0||filters.status==='all'||hasDetached;
+ if(!data.sets.length&&filters.status!=='all'&&!any){try{any=(await api('/api/review?'+query('all'))).sets.length>0;}catch{any=true;}if(epoch!==sessionEpoch||!wrap.isConnected)return;}
  const projects=new Map(meta.projects.map(p=>[p.id,p])),redraw=()=>listPage(wrap,{canWrite,project,epoch,me}).catch(e=>fail(msg,e)),msg=status(),kinds=KINDS();
- const offerReview=project?projects.get(project)?.settings?.reviews!==false:!meta.projects.length||meta.projects.some(p=>p.settings?.reviews!==false);
- const request=!offerReview?null:canWrite?el('button',{type:'button',class:'acc-btn primary',onclick:()=>reviewDialog({project,createTicket:me?.scopes?.includes('tickets:write')?selected=>import('./tracker-view.js').then(m=>m.createReviewTicket(selected,me)):null})},'Create review · agent instructions'):el('span',{class:'sec-dim'},'Publishing and ticket linking require review write access.');
+ const activeProject=selectedProject&&selectedProject!==DETACHED_FILTER?selectedProject:'';
+ const offerReview=selectedProject===DETACHED_FILTER?false:activeProject?projects.get(activeProject)?.settings?.reviews!==false:!meta.projects.length||meta.projects.some(p=>p.settings?.reviews!==false);
+ const request=!offerReview?null:canWrite?el('button',{type:'button',class:'acc-btn primary',onclick:()=>reviewDialog({project:activeProject,createTicket:me?.scopes?.includes('tickets:write')?selected=>import('./tracker-view.js').then(m=>m.createReviewTicket(selected,me)):null})},'Create review · agent instructions'):el('span',{class:'sec-dim'},'Publishing and ticket linking require review write access.');
  const ticketFilter=el('input',{value:filters.ticket,placeholder:'Ticket ID or unlinked','aria-label':'Filter reviews by ticket ID or unlinked',onchange:e=>{filters.ticket=e.target.value.trim();redraw();}});
- const reset=el('button',{type:'button',class:'acc-btn small',onclick:()=>{filters.ticket='';filters.status='all';redraw();}},'Reset filters');
+ const reset=el('button',{type:'button',class:'acc-btn small',onclick:()=>{filters.ticket='';filters.project='';filters.status='all';redraw();}},'Reset filters');
  const title=pageHeader({eyebrow:'Project Tracker',title:'Review',lead:t('Varianty, které agenti navrhli: porovnej je, vyber a okomentuj. Rozhodnutí si agent přečte přes MCP.'),provenance:data.provenance});
- if(!any&&!data.sets.length)return wrap.replaceChildren(title,...(project?[el('div',{class:'tk-toolbar'},el('div',{class:'tk-toolbar-left'},crumbs(projects.get(project),project)))]:[]),...[request].filter(Boolean),ticketFilter,reset,offerReview?noSets(project,meta.projects.length>0):emptyState({compact:true,title:t('Zatím žádné review')}));
+ const chipList=!project&&(meta.projects.length||hasDetached)?el('div',{class:'sys-chips tk-chips',role:'group','aria-label':t('Filtr podle projektu')},
+  el('button',{type:'button',class:`sys-chip${filters.project===''?' on':''}`,'aria-pressed':String(filters.project===''),onclick:()=>{filters.project='';redraw();}},t('Všechny projekty')),
+  ...meta.projects.map(p=>el('button',{type:'button',class:`sys-chip${filters.project===p.id?' on':''}`,'aria-pressed':String(filters.project===p.id),'data-project-color':p.settings?.color,onclick:()=>{filters.project=p.id;redraw();}},
+   p.settings?.color?el('span',{class:'dot','aria-hidden':'true'}):null,p.name)),
+  hasDetached?el('button',{type:'button',class:`sys-chip${filters.project===DETACHED_FILTER?' on':''}`,'aria-pressed':String(filters.project===DETACHED_FILTER),'data-detached':'true',onclick:()=>{filters.project=DETACHED_FILTER;redraw();}},t('Bez projektu')):null):null;
+ if(!any&&!data.sets.length)return wrap.replaceChildren(title,...(project?[el('div',{class:'tk-toolbar'},el('div',{class:'tk-toolbar-left'},crumbs(projects.get(project),project)))]:chipList?[el('div',{class:'tk-toolbar'},el('div',{class:'tk-toolbar-left'},chipList))]:[]),...[request].filter(Boolean),ticketFilter,reset,offerReview?noSets(activeProject,meta.projects.length>0):emptyState({compact:true,title:t('Zatím žádné review')}));
  const statusSwitch=segmented(t('Stav review'),[['active',t('Otevřená')],['done',t('Hotová')],['archived',t('Archiv')],['all',t('Vše')]],filters.status,v=>{filters.status=v;redraw();});
- // On hover a card shows a bin (archive) or, in the archive, a way back.
- const move=s=>canWrite?el('button',{type:'button',class:'rv-card-bin',title:s.status==='open'?t('Přesunout do archivu'):t('Vrátit z archivu'),'aria-label':s.status==='open'?t('Archivovat {id}',{id:s.id}):t('Vrátit {id} z archivu',{id:s.id}),
+ // On hover a card shows a bin (archive) or, in the archive, a way back. Detached sets are read-only here.
+ const move=s=>canWrite&&s.project!==null?el('button',{type:'button',class:'rv-card-bin',title:s.status==='open'?t('Přesunout do archivu'):t('Vrátit z archivu'),'aria-label':s.status==='open'?t('Archivovat {id}',{id:s.id}):t('Vrátit {id} z archivu',{id:s.id}),
   onclick:async e=>{e.preventDefault();e.stopPropagation();const b=e.currentTarget;b.disabled=true;
    try{await api('/api/review/sets',{id:s.id,rev:s.rev,status:s.status==='open'?'archived':'open'});const c=b.closest('.rv-card-wrap');if(filters.status==='all')redraw();else{c?.remove();if(!wrap.querySelector('.rv-card-wrap'))redraw();}}
    catch(err){fail(msg,err.status===409?new Error(t('Review se mezitím změnilo. Seznam se načetl znovu.')):err);b.disabled=false;if(err.status===409)redraw();}}},s.status==='open'?'🗑':'↩'):null;
+ const cardBadge=s=>{
+  if(s.project===null)return el('span',{class:'rv-card-project detached'},detachedLabel(s));
+  const p=projects.get(s.project),color=p?.settings?.color;
+  return el('span',{class:'rv-card-project','data-project-color':color},color?el('span',{class:'dot','aria-hidden':'true'}):null,p?.name||s.project);
+ };
  const card=s=>el('div',{class:'rv-card-wrap'},move(s),el('a',{class:'acc-card rv-card',href:'#review/'+s.id},
+  cardBadge(s),
   s.cover?.type==='text/html'?frameCover(s.cover):s.cover?el('img',{class:'rv-cover',src:blob(s.cover.sha256),alt:'',loading:'lazy'}):el('div',{class:'rv-cover rv-cover-none','aria-hidden':'true'},'◇'),
   el('div',{class:'rv-card-body'},
-   el('div',{class:'rv-card-top'},el('b',{class:'tk-mono'},s.id),project?null:el('span',{class:'sec-dim'},projects.get(s.project)?.name||s.project),s.status==='open'&&s.done?el('span',{class:'sec-pill ok',title:t('Ke každé položce je vybraná varianta.')},t('hotovo')):null,
+   el('div',{class:'rv-card-top'},el('b',{class:'tk-mono'},s.id),s.status==='open'&&s.done?el('span',{class:'sec-pill ok',title:t('Ke každé položce je vybraná varianta.')},t('hotovo')):null,
     s.feedbackPending?el('span',{class:'sec-pill warn',title:t('Rozhodnutí nebo připomínky čekají, až je agent zapracuje.')},t('čeká na agenta')):s.status==='open'&&s.round.decided<s.round.items?el('span',{class:'sec-pill info',title:t('Nové kolo čeká na tvoje rozhodnutí.')},t('k rozhodnutí')):null,
     s.status==='archived'?el('span',{class:'sec-pill dim'},t('archiv')):null),
    el('h3',{class:'rv-card-title'},s.title),
@@ -180,8 +208,52 @@ async function listPage(wrap,{canWrite,project,epoch,me}){
  const emptyTab={active:[t('Nic nečeká na rozhodnutí'),t('Všechny otevřené sady mají ke každé položce vybranou variantu. Hotové najdeš na kartě Hotová.')],done:[t('Zatím nic hotového'),t('Sada je hotová, když má každá její položka vybranou variantu.')],
   archived:[t('Archiv je prázdný'),t('Sem se přesouvají sady, které už nechceš mít mezi otevřenými.')]}[filters.status]||[t('Zatím žádné review'),''];
  wrap.replaceChildren(title,
+  chipList?el('div',{class:'tk-toolbar'},el('div',{class:'tk-toolbar-left'},chipList)):null,
   el('div',{class:'tk-toolbar'},el('div',{class:'tk-toolbar-left'},project?crumbs(projects.get(project),project):null,statusSwitch,ticketFilter,reset,request)),msg,
-  data.sets.length?el('div',{class:'rv-cards'},data.sets.map(card)):el('div',{class:'tk-none'},el('h2',{},filters.ticket?'No reviews match these filters':emptyTab[0]),emptyTab[1]?el('p',{class:'sec-dim'},emptyTab[1]):null));
+  data.sets.length?el('div',{class:'rv-cards'},data.sets.map(card)):el('div',{class:'tk-none'},el('h2',{},filters.ticket||filters.project?'No reviews match these filters':emptyTab[0]),emptyTab[1]?el('p',{class:'sec-dim'},emptyTab[1]):null));
+}
+
+function reassignSetDialog(set,projects,onDone){
+ const msg=status();
+ const select=el('select',{name:'project'},projects.map(p=>el('option',{value:p.id},`${p.name} (${p.key})`)));
+ const submit=el('button',{type:'submit',class:'acc-btn primary'},t('Přesunout do projektu'));
+ const cancel=el('button',{type:'button',class:'acc-btn',onclick:()=>dialog.close()},t('Zrušit'));
+ const body=projects.length?el('form',{class:'tk-form',onsubmit:async e=>{
+  e.preventDefault();submit.disabled=true;msg.textContent='';msg.classList.remove('error');
+  try{
+   await api('/api/review/sets/reassign',{id:set.id,rev:set.rev,project:select.value});
+   dialog.close();onDone?.();
+  }catch(err){
+   fail(msg,err);submit.disabled=false;
+   if(err.status===409)msg.append(' ',el('button',{type:'button',class:'acc-btn small',onclick:()=>{dialog.close();onDone?.();}},t('Načíst znovu')));
+  }
+ }},el('p',{class:'sec-dim'},t('Sada bude přiřazena k vybranému projektu. Nedostupné odkazy na tickety ze smazaného projektu se upraví nebo vyčistí.')),
+  el('label',{},t('Cílový projekt'),select),msg,el('div',{class:'acc-actions'},cancel,submit))
+ :el('div',{class:'tk-form'},el('p',{class:'sec-dim'},t('Neexistuje žádný cílový projekt. Nejdřív založ projekt na stránce Projekty.')),
+  el('div',{class:'acc-actions'},el('button',{type:'button',class:'acc-btn',onclick:()=>dialog.close()},t('Zavřít'))));
+ const dialog=el('dialog',{class:'acc-dialog tk-dialog','aria-label':t('Přesunout sadu review do projektu')},
+  el('h3',{},t('Přesunout sadu review do projektu')),body);
+ showDialog(dialog);
+}
+
+function deleteSetDialog(set,onDeleted,onReload){
+ const msg=status();
+ const submit=el('button',{type:'submit',class:'acc-btn danger'},t('Smazat sadu review'));
+ const cancel=el('button',{type:'button',class:'acc-btn',onclick:()=>dialog.close()},t('Zrušit'));
+ const form=el('form',{class:'tk-form',onsubmit:async e=>{
+  e.preventDefault();submit.disabled=true;msg.textContent='';msg.classList.remove('error');
+  try{
+   await api('/api/review/sets/delete',{id:set.id,rev:set.rev});
+   dialog.close();onDeleted?.();
+  }catch(err){
+   fail(msg,err);submit.disabled=false;
+   if(err.status===409)msg.append(' ',el('button',{type:'button',class:'acc-btn small',onclick:()=>{dialog.close();onReload?.();}},t('Načíst znovu')));
+  }
+ }},el('p',{},t('Opravdu chceš trvale smazat sadu {id} ({title})? Odstraní se všechna kola, rozhodnutí i nepoužívané soubory.',{id:set.id,title:set.title})),
+  msg,el('div',{class:'acc-actions'},cancel,submit));
+ const dialog=el('dialog',{class:'acc-dialog tk-dialog','aria-label':t('Smazat sadu review')},
+  el('h3',{},t('Smazat sadu review')),form);
+ showDialog(dialog);
 }
 
 // One set ---------------------------------------------------------------------------------------
@@ -190,31 +262,42 @@ async function setPage(wrap,{canWrite,id,epoch,me}){
  const guard=e=>{if(dirty()){e.preventDefault();e.returnValue='';}};
  addEventListener('beforeunload',guard);onLeave(()=>removeEventListener('beforeunload',guard));
  views.set(set.id,{...(views.get(set.id)||{}),fromAll});
-const linked=await Promise.all(set.tickets.map(id=>api('/api/tickets/'+encodeURIComponent(id)).catch(()=>({id,unavailable:true}))));if(epoch!==sessionEpoch||!wrap.isConnected)return;
+ const linked=await Promise.all(set.tickets.map(id=>api('/api/tickets/'+encodeURIComponent(id)).catch(()=>({id,unavailable:true}))));if(epoch!==sessionEpoch||!wrap.isConnected)return;
  renderSet(wrap,{canWrite,epoch,meta,me,linked},set);
 }
 function renderSet(wrap,ctx,set){
  stopClocks();
- const {canWrite,meta}=ctx,project=meta.projects.find(p=>p.id===set.project),view=views.get(set.id)||{};views.set(set.id,view);
- const latest=set.rounds[set.rounds.length-1],round=set.rounds.find(r=>r.n===view.round)||latest,readOnly=!canWrite||round!==latest||set.status!=='open';
- // Default tab: a game opens on its 3D models and renders, anything else on its mockups.
+ const {canWrite,meta}=ctx,detached=set.project===null,project=detached?null:meta.projects.find(p=>p.id===set.project),view=views.get(set.id)||{};views.set(set.id,view);
+ const latest=set.rounds[set.rounds.length-1],round=set.rounds.find(r=>r.n===view.round)||latest,readOnly=detached||!canWrite||round!==latest||set.status!=='open';
+ // Default tab: a game opens on its 3D models and renders, anything else (including web) on its mockups.
  const order=project?.type==='game'?['model','video','audio','image','html']:['html','image','video','audio','model'];
  const kinds=[...new Set(round.items.map(i=>i.kind))].sort((a,b)=>order.indexOf(a)-order.indexOf(b));
  const kind=kinds.includes(view.kind)?view.kind:kinds[0],kindNames=KINDS();
  const msg=status(),redraw=()=>renderSet(wrap,ctx,set);
+ const reloadSet=()=>setPage(wrap,{canWrite,id:set.id,epoch:ctx.epoch,me:ctx.me}).catch(e=>fail(msg,e));
  // A later round's addresses mark which comments of this round were answered, and by which round.
  const answeredIn=answeredBy(set.rounds.filter(r=>r.n>round.n)),answeredAny=answeredBy(set.rounds);
- const archive=canWrite?el('button',{type:'button',class:'acc-btn small',onclick:async e=>{const b=e.currentTarget;b.disabled=true;
+ const archive=canWrite&&!detached?el('button',{type:'button',class:'acc-btn small',onclick:async e=>{const b=e.currentTarget;b.disabled=true;
    try{const saved=await api('/api/review/sets',{id:set.id,rev:set.rev,status:set.status==='open'?'archived':'open'});Object.assign(set,{status:saved.status,rev:saved.rev});redraw();}catch(err){fail(msg,err);b.disabled=false;}}},set.status==='open'?t('Archivovat'):t('Vrátit z archivu')):null;
  const head=el('div',{class:'tk-head'},
-  // Path back the way the user came: from the sidebar list → Review / R-n, otherwise through the project.
-  el('div',{},view.fromAll?crumbs(null,null,set.id):crumbs(project,set.project,set.id),
+  // Path back the way the user came: from the sidebar list (or detached) → Review / R-n, otherwise through the project.
+  el('div',{},detached||view.fromAll?crumbs(null,null,set.id):crumbs(project,set.project,set.id),
    // Who published the rounds and who decided on them (the set's provenance).
    el('div',{class:'ui-title'},el('h1',{class:'tk-title'},set.title),provenanceBadge(set.provenance)),
    set.description?el('p',{class:'tk-text acc-dim'},set.description):null,
-   el('div',{class:'tk-pills'},view.fromAll?el('a',{class:'sec-pill tk-pill info',href:'#projects/'+set.project,title:t('Otevřít projekt')},project?.name||set.project):null,project?.type?el('span',{class:'sec-pill'},PROJECT_TYPES()[project.type]||project.type):null,
+   el('div',{class:'tk-pills'},
+    detached?el('span',{class:'sec-pill warn'},detachedLabel(set)):view.fromAll?el('a',{class:'sec-pill tk-pill info',href:'#projects/'+set.project,title:t('Otevřít projekt')},project?.name||set.project):null,
+    project?.type?el('span',{class:'sec-pill'},PROJECT_TYPES()[project.type]||project.type):null,
     set.status==='archived'?el('span',{class:'sec-pill dim'},t('archiv')):null,set.feedbackPending?el('span',{class:'sec-pill warn'},t('čeká na agenta')):null,
-    set.tickets.map(id=>el('a',{class:'sec-pill tk-pill info',href:'#items/'+id},(()=>{const tk=ctx.linked?.find(t=>t.id===id);return tk?.unavailable?id+' · unavailable':tk?id+' · '+tk.title+' · '+tk.status:id;})())))),archive);
+    set.tickets.map(id=>{const tk=ctx.linked?.find(t=>t.id===id);const text=tk?.unavailable?id+' · unavailable':tk?id+' · '+tk.title+' · '+tk.status:id;
+     return tk?.unavailable?el('span',{class:'sec-pill tk-pill dim'},text):el('a',{class:'sec-pill tk-pill info',href:'#items/'+id},text);}))),archive);
+ const detachedBanner=detached?banner({tone:'warn',
+  title:t('Tato sada review je odpojená (jen pro čtení).'),
+  body:t('Původní projekt „{name}“ byl smazán. Všechna kola, varianty, rozhodnutí a připomínky zůstávají ke čtení; publikování dalších kol a ukládání zpětné vazby je zakázáno.',{name:set.detachedProjectName||t('Smazaný projekt')}),
+  actions:canWrite?[
+   {label:t('Přesunout do projektu'),primary:true,onclick:()=>reassignSetDialog(set,meta.projects,reloadSet)},
+   {label:t('Smazat sadu review'),danger:true,onclick:()=>deleteSetDialog(set,()=>{location.hash='#review';},reloadSet)},
+  ]:[]}):null;
  const rounds=set.rounds.length>1?segmented(t('Kolo'),set.rounds.map(r=>[r.n,`${t('Kolo {n}',{n:r.n})} · ${when(r.publishedAt)}`]),round.n,n=>{
   if(round===latest&&dirty()&&!confirm(t('Rozepsané připomínky k tomuto kolu zůstanou, dokud stránku neopustíš. Přepnout?')))return;view.round=n;redraw();}):null;
  const kindTabs=kinds.length>1?segmented(t('Typ variant'),kinds.map(k=>[k,`${kindNames[k]||k} (${round.items.filter(i=>i.kind===k).length})`]),kind,k=>{view.kind=k;redraw();}):null;
@@ -227,9 +310,9 @@ function renderSet(wrap,ctx,set){
  const goTo=item=>{if(item.kind!==kind){view.kind=item.kind;redraw();}requestAnimationFrame(()=>wrap.querySelector('#rv-item-'+item.id)?.scrollIntoView({behavior:'smooth',block:'start'}));};
  const summary=summaryBar(round,{actionable:!readOnly,goTo});
  const shown=round.items.filter(i=>i.kind===kind);
- const linkage=project?.settings?.reviews===false?null:el('aside',{class:'rv-banner'},set.tickets.length?'Linked tickets: '+set.tickets.join(', '):'Link a ticket: this legacy review remains fully usable.',canWrite?el('button',{type:'button',class:'acc-btn small',onclick:()=>reviewDialog({project:set.project,set,onSaved:async saved=>{Object.assign(set,{tickets:saved.tickets,rev:saved.rev});try{const fresh=await api('/api/review/sets/'+set.id);if(ctx.epoch!==sessionEpoch||!wrap.isConnected)return;Object.assign(set,fresh);ctx.linked=await Promise.all(set.tickets.map(id=>api('/api/tickets/'+encodeURIComponent(id)).catch(()=>({id,unavailable:true}))));redraw();}catch(e){fail(msg,e);}}})},'Change ticket links'):el('span',{},' Ticket linking requires review write access.'),el('button',{type:'button',class:'acc-btn small',onclick:()=>reviewDialog({project:set.project,set,canLink:false})},'Publisher instructions'));
- wrap.replaceChildren(...[head,linkage,switches,old,notes,summary.node,msg].filter(Boolean),
-  ...shown.map((item,index)=>itemSection({set,round,item,readOnly,me:ctx.me,latest:round===latest&&set.status==='open',answeredIn,epoch:ctx.epoch,index,count:shown.length,onSaved:summary.draw,
+ const linkage=detached||project?.settings?.reviews===false?null:el('aside',{class:'rv-banner'},set.tickets.length?'Linked tickets: '+set.tickets.join(', '):'Link a ticket: this legacy review remains fully usable.',canWrite?el('button',{type:'button',class:'acc-btn small',onclick:()=>reviewDialog({project:set.project,set,onSaved:async saved=>{Object.assign(set,{tickets:saved.tickets,rev:saved.rev});try{const fresh=await api('/api/review/sets/'+set.id);if(ctx.epoch!==sessionEpoch||!wrap.isConnected)return;Object.assign(set,fresh);ctx.linked=await Promise.all(set.tickets.map(id=>api('/api/tickets/'+encodeURIComponent(id)).catch(()=>({id,unavailable:true}))));redraw();}catch(e){fail(msg,e);}}})},'Change ticket links'):el('span',{},' Ticket linking requires review write access.'),el('button',{type:'button',class:'acc-btn small',onclick:()=>reviewDialog({project:set.project,set,canLink:false})},'Publisher instructions'));
+ wrap.replaceChildren(...[head,detachedBanner,linkage,switches,old,notes,summary.node,msg].filter(Boolean),
+  ...shown.map((item,index)=>itemSection({set,round,item,readOnly,me:ctx.me,latest:!detached&&round===latest&&set.status==='open',answeredIn,epoch:ctx.epoch,index,count:shown.length,onSaved:summary.draw,
    // Comments of earlier rounds on this item that no round has answered yet.
    carried:set.rounds.filter(r=>r.n<round.n).flatMap(r=>(r.feedback[item.id]?.comments||[]).filter(c=>!answeredAny.has(c.id)).map(c=>({...c,round:r.n})))})));
 }

@@ -9,20 +9,20 @@ import {timeZone} from './site.js';
 import {authGuard,sessionTicket} from './session-cache.js';
 import {pageHeader,emptyState,banner} from './ui.js';
 
-const KINDS=()=>[['ticket',t('Položky')],['review','Review']];
+const KINDS=()=>[['ticket',t('Položky')],['epic',t('Epicy')],['review','Review']];
 const TICKET_STATUS=()=>({open:[t('Otevřený'),'warn'],'in-progress':[t('Rozpracovaný'),'info'],done:[t('Hotovo'),'ok'],cancelled:[t('Zrušený'),'dim']});
 export const searchHash=q=>'#search/'+encodeURIComponent(q.trim());
 export const queryOf=sub=>{try{return decodeURIComponent(sub||'');}catch{return '';}};
-export const resultHref=r=>r.kind==='review'?`#review/${r.id}`:`#items/${r.id}`;
+export const resultHref=r=>r.kind==='review'?`#review/${r.id}`:r.kind==='epic'?`#epics/${r.id}`:`#items/${r.id}`;
 // "a\u0001b\u0002c" → ['a', <mark>b</mark>, 'c'] (text only).
 export function marked(s){
  const out=[];let rest=String(s||'');
  for(let m;(m=/\u0001([^\u0002]*)\u0002/.exec(rest));){if(m.index)out.push(rest.slice(0,m.index));out.push(el('mark',{},m[1]));rest=rest.slice(m.index+m[0].length);}
  if(rest)out.push(rest.replace(/[\u0001\u0002]/g,''));return out;
 }
-// Results by kind, in a fixed order (tickets, then review sets), each group keeping the server's ranking.
+// Results by kind, in a fixed order (tickets, epics, then review sets), each group keeping the server's ranking.
 export function groupResults(results){
- const known=['ticket','review'],kinds=[...known,...new Set((results||[]).map(r=>r.kind).filter(k=>!known.includes(k)))];
+ const known=['ticket','epic','review'],kinds=[...known,...new Set((results||[]).map(r=>r.kind).filter(k=>!known.includes(k)))];
  return kinds.map(kind=>({kind,results:(results||[]).filter(r=>r.kind===kind)})).filter(g=>g.results.length);
 }
 const typing=node=>Boolean(node)&&(['INPUT','TEXTAREA','SELECT'].includes(node.tagName)||node.isContentEditable===true);
@@ -51,7 +51,7 @@ const tips=()=>el('ul',{class:'sr-tips'},
 // What a hit is right now: a ticket's status, a review set's state.
 function stateOf(r){
  const m=r.meta;if(!m)return null;
- if(r.kind==='ticket'){const s=TICKET_STATUS()[m.status];return s?el('span',{class:`sec-pill ${s[1]}`},s[0]):null;}
+ if(r.kind==='ticket'||r.kind==='epic'){const s=TICKET_STATUS()[m.status];return s?el('span',{class:`sec-pill ${s[1]}`},s[0]):null;}
  if(m.status==='archived')return el('span',{class:'sec-pill dim'},t('archiv'));
  if(m.feedbackPending)return el('span',{class:'sec-pill warn'},t('čeká na agenta'));
  return m.done?el('span',{class:'sec-pill ok'},t('hotovo')):el('span',{class:'sec-pill info'},t('rozhodnuto {done}/{total}',{done:m.decided,total:m.items}));
@@ -125,10 +125,12 @@ export function searchView(me,sub){
   actions:[{label:`${t('Projekty')} →`,href:'#projects',primary:true},{label:'Review →',href:'#review'}]});
  function draw(data){
   chooseMode(data);showNotice(data);
-  const indexed=data.indexed||{},total=(indexed.ticket||0)+(indexed.review||0),groups=groupResults(data.results),names=Object.fromEntries(KINDS());
+  const indexed=data.indexed||{},total=(indexed.ticket||0)+(indexed.epic||0)+(indexed.review||0),groups=groupResults(data.results),names=Object.fromEntries(KINDS());
   // Even with nothing to find yet, the page says how search will read a query.
   if(data.indexed&&!total)return body.replaceChildren(nothingIndexed(),el('div',{class:'acc-card sr-help'},el('h3',{},t('Jak hledat')),tips()));
-  const scope=data.indexed?el('p',{class:'sec-dim sr-scope'},t('V indexu: {tickets} a {reviews}.',{tickets:tp(indexed.ticket||0,'{n} položka|{n} položky|{n} položek'),reviews:tp(indexed.review||0,'{n} sada review|{n} sady review|{n} sad review')})):null;
+  const scope=data.indexed?el('p',{class:'sec-dim sr-scope'},indexed.epic
+   ?t('V indexu: {tickets}, {epics} a {reviews}.',{tickets:tp(indexed.ticket||0,'{n} položka|{n} položky|{n} položek'),epics:tp(indexed.epic||0,'{n} epic|{n} epicy|{n} epiců'),reviews:tp(indexed.review||0,'{n} sada review|{n} sady review|{n} sad review')})
+   :t('V indexu: {tickets} a {reviews}.',{tickets:tp(indexed.ticket||0,'{n} položka|{n} položky|{n} položek'),reviews:tp(indexed.review||0,'{n} sada review|{n} sady review|{n} sad review')})):null;
   if(!q)return body.replaceChildren(el('div',{class:'acc-card sr-help'},el('h3',{},t('Jak hledat')),tips()),...[scope].filter(Boolean));
   if(!data.results.length)return body.replaceChildren(el('div',{class:'acc-card sr-help'},el('h2',{class:'sr-none'},t('Nic nenalezeno')),el('p',{class:'sec-dim'},t('Na „{q}“ nic neodpovídá. Zkus to takhle:',{q})),tips()),...[scope].filter(Boolean));
   const shown=groups.filter(g=>!only||g.kind===only);

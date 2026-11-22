@@ -25,10 +25,14 @@ function routePath(tree,selected,entries=new Map(tree?.pages.map(entry=>[entry.i
  return path;
 }
 
-export function createWikiNavigation({readIndex=()=>wikiApi('/api/wiki'),readTree=readWikiTree,isRail=()=>false,expandSidebar=()=>{},now=Date.now}={}){
+const visibleSpace=item=>Boolean(item)&&item.enabled!==false&&item.hidden!==true&&item.sidebarHidden!==true&&item.wikiEnabled!==false&&item.settings?.wiki!==false;
+const indexSpaces=data=>(Array.isArray(data?.spaces)?data.spaces:Array.isArray(data?.projects)?data.projects:[]).filter(visibleSpace);
+
+export function createWikiNavigation({readIndex=()=>wikiApi('/api/wiki'),readTree=readWikiTree,isRail=()=>false,expandSidebar=()=>{},canWrite=()=>false,now=Date.now}={}){
  let slot,route='',project=null,page=null,globalOpen=false,projects=null,indexRequest=null,reveal=false,scrollTop=0;
  let indexCheckedAt=-Infinity;
  const trees=new Map(),projectsOpen=new Set(),pagesOpen=new Map();
+ const writable=()=>Boolean(typeof canWrite==='function'?canWrite():canWrite);
  const caret=()=>el('span',{class:'hh-wiki-caret','aria-hidden':'true'},'›');
  function reset(){
   slot=null;
@@ -48,8 +52,9 @@ export function createWikiNavigation({readIndex=()=>wikiApi('/api/wiki'),readTre
   indexRequest=request;
   readIndex().then(data=>{
    if(indexRequest!==request)return;
-   for(const {id} of data.projects)request.discovered.delete(id);
-   projects=[...data.projects,...request.discovered.values()];
+   const listed=indexSpaces(data);
+   for(const {id} of listed)request.discovered.delete(id);
+   projects=[...listed,...request.discovered.values()];
    paint();
   },()=>{}).finally(()=>{if(indexRequest===request)indexRequest=null;});
  }
@@ -69,20 +74,30 @@ export function createWikiNavigation({readIndex=()=>wikiApi('/api/wiki'),readTre
   return entry;
  }
  function invalidate({project:id,index=false}){
-  trees.delete(id);
-  if(id===project&&globalOpen&&projectsOpen.has(id))reveal=true;
+  if(id)trees.delete(id);
+  if(id&&id===project&&globalOpen&&projectsOpen.has(id))reveal=true;
   if(index){
    indexRequest=null;
    loadIndex(true);
   }
   paint();
  }
- function observe(id,tree,name){
+ function observe(id,tree,name,options={}){
   if(!tree.enabled)return;
   const previous=trees.get(id)?.tree;
   trees.set(id,{tree});
-  if(!projects?.some(item=>item.id===id)){
-   const item={id,name,home:tree.home};
+  const hidden=Boolean(options?.sidebarHidden||tree.sidebarHidden||tree.wikiEnabled===false||tree.projectSettings?.wiki===false);
+  if(hidden){
+   if(projects?.some(item=>item.id===id))projects=projects.filter(item=>item.id!==id);
+   indexRequest?.discovered.delete(id);
+   paint();
+   return;
+  }
+  const existing=projects?.find(item=>item.id===id);
+  if(existing){
+   if(name)existing.name=name;
+  }else{
+   const item={id,name:name??tree.name??id,home:tree.home,projectId:tree.projectId??null};
    projects=[...(projects??[]),item];
    indexRequest?.discovered.set(id,item);
   }
@@ -97,7 +112,7 @@ export function createWikiNavigation({readIndex=()=>wikiApi('/api/wiki'),readTre
   if(route!==path){
    route=path;
    const [prefix,id,selected]=path.split('/');
-   project=prefix==='#wiki'?id:null;
+   project=prefix==='#wiki'&&id?id:null;
    page=project?selected:null;
    reveal=Boolean(project);
    if(reveal){
@@ -112,7 +127,8 @@ export function createWikiNavigation({readIndex=()=>wikiApi('/api/wiki'),readTre
  }
  function paint(focused=document.activeElement?.getAttribute?.('data-wiki-focus')){
   if(!slot)return;
-  slot.hidden=!projects?.length;
+  const canCreate=writable();
+  slot.hidden=!projects?.length&&!canCreate;
   if(slot.hidden){slot.replaceChildren();return;}
   const focusable=new Map();
   const mark=(key,node)=>{
@@ -124,7 +140,8 @@ export function createWikiNavigation({readIndex=()=>wikiApi('/api/wiki'),readTre
   const visible=globalOpen&&!isRail();
   const panel=el('div',{class:'hh-wiki-projects',id:'hh-wiki-projects',hidden:visible?null:''});
   panel.addEventListener('scroll',()=>{if(panel.isConnected&&!panel.hidden)scrollTop=panel.scrollTop;},{passive:true});
-  const opener=button('wiki',{class:'hh-wiki-trigger'+(project?' on':''),'aria-label':'Wiki',
+  const activeRoute=Boolean(project)||route==='#wiki';
+  const opener=button('wiki',{class:'hh-wiki-trigger'+(activeRoute?' on':''),'aria-label':'Wiki',
    'aria-expanded':String(visible),'aria-controls':'hh-wiki-projects',title:'Wiki',onclick:()=>{
     const fromRail=isRail();
     globalOpen=fromRail||!globalOpen;
@@ -181,7 +198,10 @@ export function createWikiNavigation({readIndex=()=>wikiApi('/api/wiki'),readTre
    const homeEntry=entries.get(home);
    return homeEntry?el('ul',{},pageItem(homeEntry,0)):null;
   }
-  if(visible)panel.append(el('ul',{},[...projects].sort((a,b)=>a.name.localeCompare(b.name,locale())||a.id.localeCompare(b.id)).map(projectItem)));
+  if(visible){
+   if(projects?.length)panel.append(el('ul',{},[...projects].sort((a,b)=>(a.name||a.id).localeCompare(b.name||b.id,locale())||a.id.localeCompare(b.id)).map(projectItem)));
+   if(canCreate)panel.append(el('div',{class:'hh-wiki-foot'},mark('new',el('a',{class:'hh-wiki-new',href:'#wiki?new'},t('+ Nová wiki')))));
+  }
   slot.replaceChildren(opener,panel);
   if(slot.isConnected)panel.scrollTop=scrollTop;
   else queueMicrotask(()=>{if(panel.isConnected)panel.scrollTop=scrollTop;});

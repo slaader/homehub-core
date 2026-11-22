@@ -25,6 +25,7 @@ import {watchNetwork,pingHub,hubState} from './net.js';
 import {loadOnboarding,offersOnboarding,isDismissed} from './onboarding.js';
 import {loadUpdates,footerHint} from './updates-view.js';
 import {createWikiNavigation} from './wiki-navigation.js';
+import {canWriteWiki} from './wiki-content.js';
 const root=document.querySelector('#root');
 let me=null,loginMessage='',manifest={pages:[],nav:[]},knownDevices=[];
 const WELCOME='welcome';
@@ -101,7 +102,7 @@ function profileMenu(page){
 const labelOf=x=>x.labelKey?t(x.labelKey):x.label||'';
 let railed=pref.get('hh-sidebar')==='rail',drawer=false,navScroll=0;
 const desktop=matchMedia('(min-width:901px)');
-const wikiNav=createWikiNavigation({isRail:()=>railed&&desktop.matches,expandSidebar:()=>setRail(false)});
+const wikiNav=createWikiNavigation({isRail:()=>railed&&desktop.matches,expandSidebar:()=>setRail(false),canWrite:()=>canWriteWiki(me)});
 onSessionReset(wikiNav.reset);
 desktop.addEventListener('change',wikiNav.layout);
 addEventListener('focus',wikiNav.revalidate);
@@ -171,7 +172,7 @@ const shell=(device,page,main,withSearch=true)=>el('div',{class:`hh-shell${raile
 function pageTitle(device,page){
  const base=site().name?`Home Hub · ${site().name}`:'Home Hub';
  const item=manifest.nav.flatMap(g=>g.items).find(i=>i.hash===(page||HOME_PAGE));
- const label=device?knownDevices.find(m=>m.id===device)?.name||device:item?labelOf(item):page===WELCOME?t('První kroky'):page==='settings'?t('Nastavení'):page==='search'?t('Hledání'):'';
+ const label=device?knownDevices.find(m=>m.id===device)?.name||device:item?labelOf(item):page===WELCOME?t('První kroky'):page==='settings'?t('Nastavení'):page==='search'?t('Hledání'):page==='epics'?'Epic':'';
  return label?`${label} · ${base}`:base;
 }
 // Each call takes a number; a page whose module arrives after a newer call (or a sign-out) is dropped.
@@ -291,7 +292,7 @@ watchNetwork();
 // and full-text search when the hub has it.
 const palette=createPalette({
  pages:()=>{
-  const listed=manifest.nav.flatMap(g=>g.items.filter(i=>i.hash&&i.hash!=='wiki').map(i=>({hash:i.hash,label:labelOf(i),group:labelOf(g),icon:i.icon})));
+  const listed=manifest.nav.flatMap(g=>g.items.filter(i=>i.hash).map(i=>({hash:i.hash,label:labelOf(i),group:labelOf(g),icon:i.icon})));
   const extra=[['settings',t('Nastavení')],[WELCOME,t('První kroky')]].filter(([hash])=>manifest.pages.some(p=>p.hash===hash)&&!listed.some(i=>i.hash===hash)).map(([hash,label])=>({hash,label,group:'Home Hub'}));
   return [...listed,...extra];
  },

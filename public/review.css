@@ -93,10 +93,16 @@
 .rv-sync[aria-pressed=true]{border-color:var(--accent);color:var(--accent)}
 .rv-item-head .rv-sync{margin-left:auto}
 .rv-item-head .rv-sync+.rv-item-state{margin-left:0}
-/* List: a bin (or ↩ in the archive) appears over a card on hover. */
+/* List: prominent top-right project badge on each card; archive bin sits top-left on hover so they never overlap. */
 .rv-card-wrap{position:relative;display:flex}
-.rv-card-wrap>.rv-card{flex:1}
-.rv-card-bin{position:absolute;top:8px;right:8px;z-index:2;width:32px;height:32px;border-radius:8px;border:1px solid var(--line-hi);background:color-mix(in srgb,var(--panel) 88%,transparent);
+.rv-card-wrap>.rv-card{flex:1;position:relative}
+.rv-card-project{position:absolute;top:var(--space-2);right:var(--space-2);z-index:2;max-width:calc(100% - 48px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+ padding:2px var(--space-2);border-radius:var(--radius-pill);font:var(--weight-medium) var(--text-xs) var(--font-mono);
+ background:color-mix(in srgb,var(--color-surface) 90%,transparent);border:1px solid var(--project-color,var(--color-border-strong));color:var(--color-text);
+ display:inline-flex;align-items:center;gap:6px;pointer-events:none}
+.rv-card-project .dot{width:7px;height:7px;border-radius:50%;background:var(--project-color,var(--color-text-dim));flex:none}
+.rv-card-project.detached{border-color:color-mix(in srgb,var(--color-warn) 55%,var(--color-border));color:var(--color-warn)}
+.rv-card-bin{position:absolute;top:8px;left:8px;z-index:2;width:32px;height:32px;border-radius:8px;border:1px solid var(--line-hi);background:color-mix(in srgb,var(--panel) 88%,transparent);
  color:var(--txt);font-size:15px;cursor:pointer;opacity:0;transition:opacity .12s}
 .rv-card-wrap:hover .rv-card-bin,.rv-card-bin:focus-visible{opacity:1}
 .rv-card-bin:hover{border-color:var(--crit);color:var(--crit)}

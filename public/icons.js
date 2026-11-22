@@ -48,7 +48,7 @@ const PATHS={
 export const ICONS=Object.freeze(Object.keys(PATHS));
 // The core pages' icons, by page hash. A plugin page names its own in its nav entry (icon: one of ICONS,
 // or a short glyph); anything else gets the first letter of its label.
-const PAGE_ICONS={overview:'grid','inventory-map':'map',services:'box',versions:'versions',security:'key',hardening:'shield',projects:'folder',wiki:'list',references:'tag',items:'list',releases:'tag',review:'eye',access:'users',integrations:'plug',settings:'settings',search:'search',welcome:'flag',models:'flow','backup-jobs':'archive','git-lfs':'archive','device-catalog':'flow','platform-settings':'settings'};
+const PAGE_ICONS={overview:'grid','inventory-map':'map',services:'box',versions:'versions',security:'key',hardening:'shield',projects:'folder',epics:'flag',wiki:'list',references:'tag',items:'list',releases:'tag',review:'eye',access:'users',integrations:'plug',settings:'settings',search:'search',welcome:'flag',models:'flow','backup-jobs':'archive','git-lfs':'archive','device-catalog':'flow','platform-settings':'settings'};
 
 export function icon(name,{title}={}){
  const d=PATHS[name];if(!d)return null;

@@ -23,6 +23,17 @@
 .hh-wiki-row a{display:block;flex:1;min-height:26px;padding:var(--space-1) var(--space-2);line-height:var(--leading-snug)}
 .hh-wiki-row a:only-child{margin-inline-start:var(--space-5)}
 .hh-wiki-state{padding:var(--space-1) var(--space-2) var(--space-1) var(--space-5);font-size:var(--text-xs);color:var(--color-text-dim)}
+.hh-wiki-foot{padding:var(--space-1) var(--space-2) 0;border-top:1px solid var(--color-border);margin-top:var(--space-1)}
+.hh-wiki-new{display:block;padding:var(--space-1) var(--space-2);border-radius:var(--radius-s);font-size:var(--text-xs);font-weight:var(--weight-medium);color:var(--color-accent);text-decoration:none}
+.hh-wiki-new:hover{background:var(--color-hover)}
+.wiki-spaces{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr));gap:var(--space-3)}
+.wiki-space-card{display:flex;flex-direction:column;gap:var(--space-2);min-width:0}
+.wiki-space-head{display:flex;justify-content:space-between;align-items:flex-start;gap:var(--space-2);flex-wrap:wrap}
+.wiki-space-title{margin:0;font-size:var(--text-l)}
+.wiki-space-title a{color:inherit;text-decoration:none}
+.wiki-space-title a:hover{color:var(--color-accent)}
+.wiki-space-meta{display:flex;flex-wrap:wrap;gap:var(--space-2);align-items:center;font-size:var(--text-xs);color:var(--color-text-dim)}
+.wiki-space-actions{display:flex;flex-wrap:wrap;gap:var(--space-2);margin-top:auto}
 @media(min-width:901px){
  .hh-shell.rail .hh-wiki-trigger{justify-content:center;padding-inline:0}
  .hh-shell.rail .hh-wiki-trigger>.hh-wiki-caret{display:none}
