@@ -5,6 +5,7 @@
 import {mkdirSync,chmodSync} from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
+import {performance} from 'node:perf_hooks';
 import {setImmediate as yieldTurn} from 'node:timers/promises';
 import {createTicketEmbedder,normalizeTicketVector} from './ticket-embeddings.mjs';
 import {ticketFilter} from './tickets-store.mjs';
@@ -311,19 +312,19 @@ export function createTicketSearch(directory,{db,tickets,ticketFiles,env=process
   if(!Number.isFinite(next))return;
   recoveryTimer=setTimeout(()=>{
    recoveryTimer=null;
-   const now=Date.now();
+   const now=performance.now();
    if(extractDirty&&extractAttempts>maxBuildRetries&&extractRecoverAt&&extractRecoverAt<=now){
     extractAttempts=0;extractRecoverAt=0;extractNextAt=0;
    }
    for(const [h,f] of embedFailures)if(f.attempts>maxRetries&&f.recoverAt<=now)embedFailures.delete(h);
    scheduleNext(0);
-  },Math.max(0,next-Date.now()));
+  },Math.max(0,next-performance.now()));
   recoveryTimer.unref?.();
  }
 
  function scheduleExtract(minDelay=0){
   if(closed||!started||extractRunning||!needsExtractWork())return;
-  const now=Date.now(),delay=Math.max(minDelay,extractNextAt-now);
+  const now=performance.now(),delay=Math.max(minDelay,extractNextAt-now);
   if(!Number.isFinite(delay))return;
   if(extractTimer){
    if(now+delay>=extractTimerAt)return;
@@ -341,7 +342,7 @@ export function createTicketSearch(directory,{db,tickets,ticketFiles,env=process
 
  function scheduleEmbed(minDelay=0){
   if(closed||!started||embedRunning||!needsEmbedWork())return;
-  const now=Date.now(),delay=Math.max(minDelay,nextEmbedDelay(now));
+  const now=performance.now(),delay=Math.max(minDelay,nextEmbedDelay(now));
   if(!Number.isFinite(delay))return;
   if(embedTimer){
    if(now+delay>=embedTimerAt)return;
@@ -538,7 +539,7 @@ export function createTicketSearch(directory,{db,tickets,ticketFiles,env=process
 
  async function embedBatch(){
   if(!enabled||!provider)return;
-  const now=Date.now(),seen=new Set(),batch=[];
+  const now=performance.now(),seen=new Set(),batch=[];
   for(const d of docs.values()){
    if(allowed.has(d.hash)&&!cachedVector(d.hash)&&!seen.has(d.hash)){
     const f=embedFailures.get(d.hash);
@@ -570,7 +571,7 @@ export function createTicketSearch(directory,{db,tickets,ticketFiles,env=process
   }catch{
    if(!closed&&enabled&&toggleGen===semanticGeneration){
     embedError='Embedding batch failed';
-    const failedAt=Date.now();
+    const failedAt=performance.now();
     for(const d of batch){
      if(!allowed.has(d.hash))continue;
      const attempts=(embedFailures.get(d.hash)?.attempts??0)+1;
@@ -583,7 +584,8 @@ export function createTicketSearch(directory,{db,tickets,ticketFiles,env=process
  }
 
  function kickExtract(){
-  if(closed||extractRunning||!needsExtractWork()||Date.now()<extractNextAt)return extractRunning;
+  if(closed||extractRunning||!needsExtractWork())return extractRunning;
+  if(performance.now()<extractNextAt){scheduleExtract(0);return null;}
   extractDirty=false;
   extracting=true;
   extractRunning=(async()=>{
@@ -594,8 +596,8 @@ export function createTicketSearch(directory,{db,tickets,ticketFiles,env=process
      extractError='Ticket search extraction unavailable';
      extractAttempts++;
      extractDirty=true;
-     if(extractAttempts<=maxBuildRetries)extractNextAt=Date.now()+buildRetryMs*2**(extractAttempts-1);
-     else extractRecoverAt=Date.now()+buildRecoveryMs;
+     if(extractAttempts<=maxBuildRetries)extractNextAt=performance.now()+buildRetryMs*2**(extractAttempts-1);
+     else extractRecoverAt=performance.now()+buildRecoveryMs;
     }
    }finally{
     extracting=false;
@@ -608,7 +610,8 @@ export function createTicketSearch(directory,{db,tickets,ticketFiles,env=process
  }
 
  function kickEmbed(){
-  if(closed||embedRunning||!needsEmbedWork()||nextEmbedDelay(Date.now())>0)return embedRunning;
+  if(closed||embedRunning||!needsEmbedWork())return embedRunning;
+  if(nextEmbedDelay(performance.now())>0){scheduleEmbed(0);return null;}
   embedRunning=embedBatch().finally(()=>{
    embedRunning=null;
    if(!closed)scheduleNext(0);
@@ -781,33 +784,44 @@ export function createTicketSearch(directory,{db,tickets,ticketFiles,env=process
   if(closed)throw new Error('Search is closed');
   let available=enabled===true;
   if(input.kind==='review'||!QUERY_WORD.test(input.q))return {...base,mode,semanticAvailable:available};
+  async function hydrateTicketHits(sources,initial){
+   const results=[...initial],seen=new Set(results.filter(r=>r.kind==='ticket').map(r=>r.id));
+   for(const source of sources){
+    if(seen.has(source.ticket))continue;
+    seen.add(source.ticket);
+    const ticket=await tickets.get(source.ticket).catch(()=>null);
+    if(!ticket||(source.attachment&&!ticket.attachments.some(a=>a.id===source.attachment)))continue;
+    results.push({
+     kind:'ticket',
+     id:ticket.id,
+     project:ticket.project,
+     updatedAt:ticket.updatedAt,
+     title:ticket.id+' '+ticket.title,
+     snippet:source.snippet,
+     score:source.score,
+     source:source.source,
+     ...(source.attachment?{attachment:source.attachment,name:source.name}:{}),
+     meta:{status:ticket.status,type:ticket.type,priority:ticket.priority,assignee:ticket.assignee,release:ticket.release},
+    });
+   }
+   return results;
+  }
   const toggleGen=semanticGeneration;
   const found=await search({query:input.q,...(input.project?{project:input.project}:{}),mode,limit:100});
-  available=enabled===true;
   if(mode!=='text')base.results=[];
-  const results=[...base.results],seen=new Set(results.filter(r=>r.kind==='ticket').map(r=>r.id));
-  for(const source of found.results){
-   if(seen.has(source.ticket))continue;
-   seen.add(source.ticket);
-   const ticket=await tickets.get(source.ticket).catch(()=>null);
-   if(!ticket||(source.attachment&&!ticket.attachments.some(a=>a.id===source.attachment)))continue;
-   results.push({
-    kind:'ticket',
-    id:ticket.id,
-    project:ticket.project,
-    updatedAt:ticket.updatedAt,
-    title:ticket.id+' '+ticket.title,
-    snippet:source.snippet,
-    score:source.score,
-    source:source.source,
-    ...(source.attachment?{attachment:source.attachment,name:source.name}:{}),
-    meta:{status:ticket.status,type:ticket.type,priority:ticket.priority,assignee:ticket.assignee,release:ticket.release},
-   });
-  }
+  const results=await hydrateTicketHits(found.results,base.results);
   available=enabled===true;
-  if(mode!=='text'&&(!available||toggleGen!==semanticGeneration)){
-   const fallback=mode==='hybrid'?db.search(query):{q:query.q,total:0,results:[]};
-   return {...fallback,mode:mode==='hybrid'?'text':mode,semanticAvailable:available,attachmentSearch:{state:available?'indexing':'disabled',extraction:status().extraction}};
+  if(mode!=='text'&&(toggleGen!==semanticGeneration||(found.mode!=='text'&&!available))){
+   if(mode==='hybrid'){
+    // Opt-out or semantic change during hydration: discard stale semantic hits and return ticket-only lexical hits.
+    const lex=await search({query:input.q,...(input.project?{project:input.project}:{}),mode:'text',limit:100});
+    const lexResults=await hydrateTicketHits(lex.results,[]);
+    if(revision!==tickets.searchRevision()){
+     return {q:query.q,total:0,results:[],mode:'text',semanticAvailable:enabled===true,attachmentSearch:{state:'indexing',extraction:status().extraction}};
+    }
+    return {...base,total:lexResults.length,results:lexResults.slice(0,limit),mode:'text',semanticAvailable:enabled===true,attachmentSearch:{state:lex.state,extraction:lex.extraction}};
+   }
+   return {q:query.q,total:0,results:[],mode,semanticAvailable:available,attachmentSearch:{state:available?'indexing':'disabled',extraction:status().extraction}};
   }
   if(revision!==tickets.searchRevision()){
    return {...(mode==='text'?db.search(query):{q:query.q,total:0,results:[]}),mode,semanticAvailable:available,attachmentSearch:{state:'indexing',extraction:status().extraction}};
@@ -838,25 +852,25 @@ export function createTicketSearch(directory,{db,tickets,ticketFiles,env=process
   if(closed)throw new Error('Ticket search is closed');
   await Promise.race([settingsQueue,closedSignal]);
   if(closed)throw new Error('Ticket search is closed');
-  if(extractTimer&&extractAttempts===0&&needsExtractWork()&&Date.now()>=extractNextAt){
+  if(extractTimer&&extractAttempts===0&&needsExtractWork()&&performance.now()>=extractNextAt){
    clearTimeout(extractTimer);extractTimer=null;extractTimerAt=Infinity;
    kickExtract();
   }
   while(extractRunning||embedRunning||extractTimer||embedTimer||needsExtractWork()||needsEmbedWork()){
    if(extractRunning){
     await Promise.race([extractRunning,closedSignal]);
-   }else if(needsExtractWork()&&Date.now()>=extractNextAt){
+   }else if(needsExtractWork()&&performance.now()>=extractNextAt){
     clearTimeout(extractTimer);extractTimer=null;extractTimerAt=Infinity;
     kickExtract();
    }else if(embedRunning){
     await Promise.race([embedRunning,closedSignal]);
-   }else if(needsEmbedWork()&&nextEmbedDelay(Date.now())===0){
+   }else if(needsEmbedWork()&&nextEmbedDelay(performance.now())===0){
     clearTimeout(embedTimer);embedTimer=null;embedTimerAt=Infinity;
     kickEmbed();
    }else{
     scheduleNext(0);
     const nextAt=Math.min(extractTimerAt,embedTimerAt);
-    const waitMs=Number.isFinite(nextAt)?Math.min(25,Math.max(1,nextAt-Date.now())):5;
+    const waitMs=Number.isFinite(nextAt)?Math.min(25,Math.max(1,nextAt-performance.now())):5;
     await sleepRef(waitMs);
    }
    if(closed)throw new Error('Ticket search is closed');

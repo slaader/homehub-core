@@ -605,13 +605,40 @@ test('HTTP routes and MCP tools enforce read auth, strict input, and avoid doubl
  assert.equal(getCounts.get(titleOnly.id),1,'title hit hydrated once');
  assert.equal(getCounts.get(attachOnly.id),1,'attachment-only hit hydrated once');
 
- // HTTP filter parity: ticket endpoints share canonical filters; cross-kind /api/search honors project and rejects ticket-only keys.
- const activeHttp=await (await fetch(h.origin+'/api/tickets/search?q=sharedneedle&status=active&release=none&assignee=none',{headers:reader.headers})).json();
- const activeHybrid=await (await fetch(h.origin+'/api/tickets/search/hybrid?query=sharedneedle&mode=text&status=active&release=none&assignee=none',{headers:reader.headers})).json();
- assert.equal(activeHttp.tickets.length,1);
- assert.equal(activeHybrid.results.length,2);
- assert.equal((await fetch(h.origin+'/api/search?q=sharedneedle&project=smoke',{headers:reader.headers})).status,200);
- assert.equal((await fetch(h.origin+'/api/search?q=sharedneedle&status=active',{headers:reader.headers})).status,400);
+ // HTTP filter parity: include tickets that violate each individual filter so ignored filters fail the test.
+ await state.tickets.saveProject({id:'other',key:'OT',name:'Other',type:'app'},'alice');
+ await state.tickets.saveRelease({project:'smoke',version:'1.0.0',status:'planned'},'alice');
+ const parityMatch=await state.tickets.create({project:'smoke',title:'parityneedle match',status:'open'},'alice');
+ const parityClosed=await state.tickets.create({project:'smoke',title:'parityneedle closed',status:'done'},'alice');
+ const parityReleased=await state.tickets.create({project:'smoke',title:'parityneedle released',status:'open',release:'1.0.0'},'alice');
+ const parityAssigned=await state.tickets.create({project:'smoke',title:'parityneedle assigned',status:'open',assignee:'bob'},'alice');
+ const parityOther=await state.tickets.create({project:'other',title:'parityneedle other',status:'open'},'alice');
+ assert.ok(parityClosed.id&&parityReleased.id&&parityAssigned.id);
+ await state.ticketSearch.whenIdle();
+
+ const activeHttp=await (await fetch(h.origin+'/api/tickets/search?q=parityneedle&project=smoke&status=active&release=none&assignee=none',{headers:reader.headers})).json();
+ const activeHybrid=await (await fetch(h.origin+'/api/tickets/search/hybrid?query=parityneedle&mode=text&project=smoke&status=active&release=none&assignee=none',{headers:reader.headers})).json();
+ assert.deepEqual(activeHttp.tickets.map(t=>t.id),[parityMatch.id]);
+ assert.deepEqual(activeHybrid.results.map(r=>r.ticket),[parityMatch.id]);
+ const globalOther=await (await fetch(h.origin+'/api/search?q=parityneedle&project=other',{headers:reader.headers})).json();
+ assert.deepEqual(globalOther.results.map(r=>r.id),[parityOther.id]);
+ const globalSmoke=await (await fetch(h.origin+'/api/search?q=parityneedle&project=smoke',{headers:reader.headers})).json();
+ assert.deepEqual(new Set(globalSmoke.results.map(r=>r.id)),new Set([parityMatch.id,parityClosed.id,parityReleased.id,parityAssigned.id]));
+ assert.equal((await fetch(h.origin+'/api/search?q=parityneedle&status=active',{headers:reader.headers})).status,400);
+
+ // Global hybrid search while semantic is disabled preserves ticket+attachment hits and excludes reviews.
+ const reviewHtml='<p>hybriddisabledneedle</p>';
+ const revRes=await h.post('/api/review/publish',{project:'smoke',title:'hybriddisabledneedle review',items:[{id:'hyb',title:'hybriddisabledneedle',kind:'html',variants:[{id:'a',media:[{type:'text/html',html:reviewHtml}]},{id:'b',media:[{type:'text/html',html:reviewHtml+' '}]}]}]},h.admin);
+ assert.equal(revRes.status,201);
+ const hybridAttachTicket=await state.tickets.create({project:'smoke',title:'Hybrid plain'},'alice');
+ const hybridAtt=await state.ticketFiles.put([Buffer.from('hybriddisabledneedle attachment content')],{name:'hyb.txt'});
+ await state.tickets.attach(hybridAttachTicket.id,hybridAtt,'alice');
+ await state.ticketSearch.whenIdle();
+ const hybridDisabled=await (await fetch(h.origin+'/api/search?q=hybriddisabledneedle&mode=hybrid',{headers:reader.headers})).json();
+ assert.equal(hybridDisabled.mode,'text');
+ assert.equal(hybridDisabled.semanticAvailable,false);
+ assert.equal(hybridDisabled.attachmentSearch.state,'ready');
+ assert.deepEqual(hybridDisabled.results.map(r=>[r.kind,r.id]),[['ticket',hybridAttachTicket.id]]);
 
  const rpc=async(name,args)=>(await (await fetch(h.origin+'/mcp',{method:'POST',headers:{...reader.headers,'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}})})).json()).result;
  assert.equal((await rpc('ticket_search_status',{})).isError,false);
@@ -724,4 +751,47 @@ test('constructor-option provider keeps base cache fingerprint, opt-out during s
  `;
  const child=spawnSync(process.execPath,['--input-type=module','-e',script],{encoding:'utf8',timeout:15000});
  assert.equal(child.status,0,`standalone whenIdle exited with ${child.status}: ${child.stderr}`);
+
+ // 4. Hybrid opt-out during searchAll hydration returns ticket-only lexical results with zero semantic hits and zero reviews.
+ const fHyb=await fixture(t,{embed,semanticEnabled:true});
+ const lexTk=await fHyb.tickets.create({project:'sample',title:'hyboptoutword ticket'},'alice');
+ const semOnlyTk=await fHyb.tickets.create({project:'sample',title:'completely unrelated'},'alice');
+ assert.ok(semOnlyTk.id);
+ await fHyb.search.start();await fHyb.search.whenIdle();
+ let relHyb,entHyb;
+ const hybEntered=new Promise(r=>{entHyb=r;}),hybBlocked=new Promise(r=>{relHyb=r;});
+ const origHybGet=fHyb.tickets.get;
+ let pausedOnce=false;
+ fHyb.tickets.get=async(...args)=>{
+  if(!pausedOnce){pausedOnce=true;entHyb();await hybBlocked;}
+  return origHybGet(...args);
+ };
+ const hybPending=fHyb.search.searchAll({q:'hyboptoutword',mode:'hybrid'});
+ await hybEntered;
+ await fHyb.search.setEnabled({enabled:false});
+ relHyb();
+ fHyb.tickets.get=origHybGet;
+ const hybAfter=await hybPending;
+ assert.equal(hybAfter.mode,'text');
+ assert.equal(hybAfter.semanticAvailable,false);
+ assert.deepEqual(hybAfter.results.map(r=>r.id),[lexTk.id]);
+
+ // 5. Backward wall-clock adjustment during retry delay never strands embedding or extraction retries.
+ const origDateNow=Date.now;
+ let offsetMs=0;
+ Date.now=()=>origDateNow()+offsetMs;
+ t.after(()=>{Date.now=origDateNow;});
+ let embedAttempts=0;
+ const flakyEmbed=async texts=>{
+  embedAttempts++;
+  if(embedAttempts===1){offsetMs=-250;throw new Error('transient');}
+  return texts.map(()=>[1,0]);
+ };
+ const fClock=await fixture(t,{embed:flakyEmbed,semanticEnabled:true,retryMs:40,maxRetries:2});
+ await fClock.tickets.create({project:'sample',title:'clock jump test'},'alice');
+ await fClock.search.start();
+ const deadline=origDateNow()+2000;
+ while(fClock.search.status().state!=='ready'&&origDateNow()<deadline)await new Promise(r=>setTimeout(r,20));
+ assert.equal(fClock.search.status().state,'ready','embedding retry completes even when wall clock moves backwards');
+ assert.ok(embedAttempts>=2);
 });
