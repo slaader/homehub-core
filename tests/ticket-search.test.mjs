@@ -781,12 +781,14 @@ test('constructor-option provider keeps base cache fingerprint, opt-out during s
   if(!pausedOnce){pausedOnce=true;entHyb();await hybBlocked;}
   return origHybGet(id,...args);
  };
- const hybPending=fHyb.search.searchAll({q:'hyboptoutattachneedle',mode:'hybrid'});
- await hybEntered;
- await fHyb.search.setEnabled({enabled:false});
- relHyb();
- fHyb.tickets.get=origHybGet;
- const hybAfter=await hybPending;
+ let hybAfter;
+ try{
+  const hybPending=fHyb.search.searchAll({q:'hyboptoutattachneedle',mode:'hybrid'});
+  await hybEntered;
+  await fHyb.search.setEnabled({enabled:false});
+  relHyb();
+  hybAfter=await hybPending;
+ }finally{fHyb.tickets.get=origHybGet;}
  assert.equal(hybAfter.mode,'text');
  assert.equal(hybAfter.semanticAvailable,false);
  assert.deepEqual(hybAfter.results.map(r=>r.id),[lexTk.id]);
