@@ -190,15 +190,15 @@ function inventoryPage(table,input){
 
 function patchCandidateRefs(cells){
  if(!cells||typeof cells!=='object')return [];
- const refs=[];
+ const seen=new Map();
  for(const cell of Object.values(cells)){
   if(!Array.isArray(cell?.c))continue;
   for(const run of cell.c){
-   if(run?.t==='ticket'&&typeof run.id==='string')refs.push({kind:'ticket',id:run.id});
-   else if(run?.t==='ref'&&typeof run.kind==='string'&&typeof run.id==='string')refs.push({kind:run.kind,id:run.id});
+   if(run?.t==='ticket'&&typeof run.id==='string')seen.set('ticket\0'+run.id,{kind:'ticket',id:run.id});
+   else if(run?.t==='ref'&&typeof run.kind==='string'&&typeof run.id==='string')seen.set(run.kind+'\0'+run.id,{kind:run.kind,id:run.id});
   }
  }
- return refs;
+ return [...seen.values()];
 }
 
 function parentOf(input){
@@ -390,10 +390,10 @@ export function createWikiStore(db,tickets,{mentionGuard=null,readDocument=null}
    const edits=Object.entries(edit.cells);
    if(!edits.length)fail('invalid-target');
    const title=input.title===undefined?undefined:wikiTitle(input.title);
-   const nonNull=edits.filter(([,cell])=>cell!==null);
-   const normalized=nonNull.length
-    ?normalizeDoc({v:1,blocks:[{t:'inventory',id:table.id,columns:nonNull.map(([column])=>({id:column,label:'c'})),
-     rows:[{id:row.id,cells:Object.fromEntries(nonNull)}]}]}).blocks[0].rows[0].cells
+   const nonNullCols=table.columns.filter(column=>Object.hasOwn(edit.cells,column.id)&&edit.cells[column.id]!==null);
+   const normalized=nonNullCols.length
+    ?normalizeDoc({v:1,blocks:[{t:'inventory',id:table.id,columns:nonNullCols.map(column=>({id:column.id,label:'c'})),
+     rows:[{id:row.id,cells:Object.fromEntries(nonNullCols.map(column=>[column.id,edit.cells[column.id]]))}]}]}).blocks[0].rows[0].cells
     :{};
    const merged={...row.cells};
    for(const [column,cell] of edits){

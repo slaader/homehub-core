@@ -308,6 +308,24 @@ test('atomic wiki_page_save patch enforces mentions, asset ref-counts and confli
    documentUploadId:'u'+'0'.repeat(32),extraField:true},writer.account.username,'api-key:'+writer.account.id),
   {message:'upload-expired'},
  );
+ // Column validation follows table column order (notes before gallery) regardless of request key order.
+ await data(h,writer,'page_save',{project,pageId,rev:patched.page.rev,
+  patch:{tableId:'items',rowId:'row-1',cells:{
+   gallery:{c:[{t:'text',text:'x'.repeat(2001)}]},
+   notes:{c:[{t:'bogus'}]},
+  }}},'invalid');
+ // Repeated mentions of a new ticket are deduplicated before reaching the mention guard.
+ const localTicket2=await h.handler.hub.state('tracker').tickets.create({project,title:'Second local ticket',type:'task'},'alice');
+ const repeated=Array.from({length:20},()=>({t:'ticket',id:localTicket2.id}));
+ const refsState=h.handler.hub.state('references'),origGuard=refsState.prepareMentionGuard;
+ let passedRefs=null;
+ refsState.prepareMentionGuard=refs=>{passedRefs=refs;return origGuard(refs);};
+ try{
+  patched=await h.handler.hub.state('wiki').wiki.patch({project,id:pageId,rev:patched.page.rev,
+   patch:{tableId:'items',rowId:'row-1',cells:{notes:{c:repeated}}}},
+   writer.account.username,'api-key:'+writer.account.id);
+ }finally{refsState.prepareMentionGuard=origGuard;}
+ assert.deepEqual(passedRefs,[{kind:'ticket',id:localTicket2.id}],'repeated ticket mentions deduplicate before mentionGuard');
 
  // Asset visibility rejects another writer's private draft without mutating existing ref-counts.
  await data(h,writer,'page_save',{project,pageId,rev:patched.page.rev,
