@@ -481,21 +481,40 @@ export function toolLead(text){
  const all=String(text||'').trim(),m=/^(.*?[.!?])\s+(?=[A-Z("])/s.exec(all);
  return m?[m[1],all.slice(m[0].length)]:[all,''];
 }
-// [{name, title, scope, write, description, plugin}]: plugin is the title of the plugin that added the tool, else null.
+// [{name, title, scope, write, lead, rest, module, area, plugin}]. area names the module that registered the tool
+// (its title, else its id); plugin is that name only when the module is a plugin, else null. A core module's tool
+// (home, inventory, tracker, review, wiki, … or the older catch-all module "core") is never shown as a plugin's.
 export function toolRows(tools=site().tools||[],modules=site().modules||[]){
- return tools.map(tool=>{const [lead,rest]=toolLead(tool.description),owner=modules.find(m=>m.id===tool.module);
-  return {name:tool.name,title:tool.title||tool.name,scope:tool.scope,write:tool.write!==false&&tool.scope!=='read',lead,rest,plugin:owner&&!owner.core?owner.title||owner.id:null};});
+ return tools.map(tool=>{const [lead,rest]=toolLead(tool.description),owner=modules.find(m=>m.id===tool.module),area=owner?.title||owner?.id||tool.module||null;
+  return {name:tool.name,title:tool.title||tool.name,scope:tool.scope,write:tool.write!==false&&tool.scope!=='read',lead,rest,module:tool.module??null,area,areaTitled:Boolean(owner?.title&&owner.title!==owner.id),plugin:owner&&!owner.core?area:null};});
 }
-function toolsCard(){
- const rows=toolRows();
+// Consecutive rows of one module under one heading, in the order they came: nothing is sorted, so the table
+// reads exactly as tools/list does. [{module, area, plugin, rows}].
+export function toolGroups(rows){
+ const out=[];
+ for(const r of rows){const last=out.at(-1);if(last&&last.module===r.module)last.rows.push(r);else out.push({module:r.module,area:r.area,areaTitled:r.areaTitled,plugin:r.plugin,rows:[r]});}
+ return out;
+}
+const scopeSays=r=>r.write?/^write$|:write$/.test(r.scope):/^read$|:read$/.test(r.scope);
+export function toolsCard(rows=toolRows()){
  return el('section',{class:'ax-card'},el('h3',{},t('Nástroje MCP'),' ',el('span',{class:'ax-count'},String(rows.length))),
   el('p',{class:'ax-note'},t('Co tenhle server právě nabízí: nástroje jádra i pluginů. Agent vidí jen ty, na které má jeho klíč oprávnění. Popisy jsou psané pro agenty, proto anglicky.')),
   rows.length?el('div',{class:'ax-table-wrap flat'},el('table',{class:'ax-table ax-tools'},
    el('thead',{},el('tr',{},[t('Nástroj'),t('Oprávnění'),t('Co dělá')].map(h=>el('th',{scope:'col'},h)))),
-   el('tbody',{},rows.map(r=>el('tr',{},
-    el('td',{},el('code',{class:'ax-route'},r.name),r.plugin?[' ',pill(r.plugin,'info',t('Nástroj z pluginu {name}',{name:r.plugin}))]:null),
-    el('td',{},pill(r.scope,r.write?'warn':'good')),
-    el('td',{class:'ax-dim'},el('b',{class:'ax-tool-title'},r.title),el('span',{},r.lead),r.rest?el('details',{class:'ax-more'},el('summary',{},t('Celý popis')),el('p',{},r.rest)):null))))))
+   // One body per module, headed by its name; a plugin's heading says it is one. Read or write is never colour alone:
+   // the scope's name says it (read, write, …:read, …:write), else a word beside the pill does.
+   toolGroups(rows).map(g=>{
+    const areaLabel=g.area?(g.areaTitled===false?g.area:t(g.area)):t('Ostatní');
+    const pluginLabel=g.plugin?(g.areaTitled===false?g.plugin:t(g.plugin)):null;
+    return el('tbody',{},
+     el('tr',{class:'ax-tools-area'},el('th',{scope:'rowgroup',colspan:'3'},areaLabel,' ',el('span',{class:'ax-count'},String(g.rows.length)),
+      pluginLabel?[' ',pill(t('plugin'),'info',t('Nástroje z pluginu {name}',{name:pluginLabel}))]:null)),
+     g.rows.map(r=>el('tr',{},
+      el('td',{},el('code',{class:'ax-route'},r.name)),
+      el('td',{},pill(r.scope,r.write?'warn':'good'),scopeSays(r)?null:[' ',el('span',{class:'ax-rw'},r.write?t('zápis'):t('čtení'))]),
+      el('td',{class:'ax-dim'},el('b',{class:'ax-tool-title'},r.title),el('span',{},r.lead),
+       r.rest?el('details',{class:'ax-more'},el('summary',{'aria-label':t('Celý popis: {name}',{name:r.name})},t('Celý popis')),el('p',{},r.rest)):null))));
+   })))
   :el('p',{class:'ax-note'},t('Tenhle server neposlal seznam nástrojů. Agent ho dostane přes tools/list.')));
 }
 function connectTab(admin){
