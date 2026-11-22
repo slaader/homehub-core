@@ -172,6 +172,9 @@ test('registered MCP tools preserve method this-binding and ignore non-string or
    {name:'demo_throw_subject',scope:'demo:write',title:'Demo throw',description:'Throws subject.',inputSchema:schema,
     subject:()=>{throw new Error('boom');},
     run(args){if(args.fail)throw toolError('refused');return {ok:true};}},
+   {name:'demo_reject_subject',scope:'demo:write',title:'Demo reject',description:'Rejects subject.',inputSchema:schema,
+    subject:async()=>{throw new Error('async boom');},
+    run(args){if(args.fail)throw toolError('refused');return {ok:true};}},
   ],
  });
  const reg=createRegistry([mod]);
@@ -179,28 +182,48 @@ test('registered MCP tools preserve method this-binding and ignore non-string or
  const principal={id:'k1',accountId:'a1',username:'bot',permission:'write',scopes:['demo:write']};
  const call=async(name,args)=>JSON.parse((await mcp(JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}}),principal)).body);
 
- const okNullProto=await call('demo_write',{});
- assert.equal(okNullProto.error,undefined);
- assert.equal(okNullProto.result.isError,false);
- assert.deepEqual(okNullProto.result.structuredContent,{name:'demo_write'},'preserves registered tool this-binding');
+ const unhandled=[];
+ const onUnhandled=reason=>unhandled.push(reason);
+ process.on('unhandledRejection',onUnhandled);
+ try{
+  const okNullProto=await call('demo_write',{});
+  assert.equal(okNullProto.error,undefined);
+  assert.equal(okNullProto.result.isError,false);
+  assert.deepEqual(okNullProto.result.structuredContent,{name:'demo_write'},'preserves registered tool this-binding');
 
- const errNullProto=await call('demo_write',{fail:true});
- assert.equal(errNullProto.error,undefined);
- assert.equal(errNullProto.result.isError,true);
- assert.equal(errNullProto.result.content[0].text,'refused');
+  const errNullProto=await call('demo_write',{fail:true});
+  assert.equal(errNullProto.error,undefined);
+  assert.equal(errNullProto.result.isError,true);
+  assert.equal(errNullProto.result.content[0].text,'refused');
 
- const okThrow=await call('demo_throw_subject',{});
- assert.equal(okThrow.error,undefined);
- assert.equal(okThrow.result.isError,false);
+  const okThrow=await call('demo_throw_subject',{});
+  assert.equal(okThrow.error,undefined);
+  assert.equal(okThrow.result.isError,false);
 
- const errThrow=await call('demo_throw_subject',{fail:true});
- assert.equal(errThrow.error,undefined);
- assert.equal(errThrow.result.isError,true);
+  const errThrow=await call('demo_throw_subject',{fail:true});
+  assert.equal(errThrow.error,undefined);
+  assert.equal(errThrow.result.isError,true);
+
+  const okReject=await call('demo_reject_subject',{});
+  assert.equal(okReject.error,undefined);
+  assert.equal(okReject.result.isError,false);
+  assert.deepEqual(okReject.result.structuredContent,{ok:true});
+
+  const errReject=await call('demo_reject_subject',{fail:true});
+  assert.equal(errReject.error,undefined);
+  assert.equal(errReject.result.isError,true);
+  assert.equal(errReject.result.content[0].text,'refused');
+
+  await new Promise(resolve=>setImmediate(resolve));
+ }finally{process.off('unhandledRejection',onUnhandled);}
+ assert.deepEqual(unhandled,[],'rejected subject hook never triggers unhandledRejection');
 
  assert.deepEqual(logged.map(e=>[e.tool,e.status,e.subject]),[
   ['demo_write','ok',undefined],
   ['demo_write','error',undefined],
   ['demo_throw_subject','ok',undefined],
   ['demo_throw_subject','error',undefined],
+  ['demo_reject_subject','ok',undefined],
+  ['demo_reject_subject','error',undefined],
  ]);
 });

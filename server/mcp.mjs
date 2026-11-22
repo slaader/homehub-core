@@ -35,9 +35,9 @@ function unknownArguments(tool,args){
 // Write-audit subject: a tool may supply subject(args, data) when a validated identifier should be logged
 // on error too; otherwise subjects come only from successful store results, never rejected argument text.
 const subjectString=v=>typeof v==='string'&&v?v:undefined;
-const subjectOf=(entry,args,data)=>{
+const subjectOf=async(entry,args,data)=>{
  if(!entry.raw.subject)return subjectString(data?.id)||subjectString(data?.project);
- try{return subjectString(entry.raw.subject(args,data));}catch{return undefined;}
+ try{return subjectString(await entry.raw.subject(args,data));}catch{return undefined;}
 };
 
 /**
@@ -85,11 +85,11 @@ export function createMcpBusiness({version='2',ctx,tools=[],instructions=[]}){
    try{
     const unknown=unknownArguments(tool,args);if(unknown)throw toolError(unknown);
     const data=await entry.raw.run(args,{principal,...ctx.moduleContext?.(entry.raw.module)});
-    if(write)await ctx.log({key:principal.id,account:principal.accountId,name:principal.username,tool:tool.name,status:'ok',subject:subjectOf(entry,args,data)}).catch(()=>{});
+    if(write)await ctx.log({key:principal.id,account:principal.accountId,name:principal.username,tool:tool.name,status:'ok',subject:await subjectOf(entry,args,data)}).catch(()=>{});
     if(data?.mcpContent)return {content:data.mcpContent,structuredContent:data.meta,isError:false};
     return {content:[{type:'text',text:JSON.stringify(data,null,1)}],structuredContent:data,isError:false};
    }catch(e){
-    if(write)await ctx.log({key:principal.id,account:principal.accountId,name:principal.username,tool:tool.name,status:'error',subject:subjectOf(entry,args)}).catch(()=>{});
+    if(write)await ctx.log({key:principal.id,account:principal.accountId,name:principal.username,tool:tool.name,status:'error',subject:await subjectOf(entry,args)}).catch(()=>{});
     if(e?.toolError===true)return {content:[{type:'text',text:e.message}],
      ...(e.details?{structuredContent:e.details}:{}),isError:true};
     throw e;
