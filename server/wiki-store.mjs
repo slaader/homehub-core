@@ -3,7 +3,7 @@ import {exactKeys,extractLinks,normalizeDoc,PAGE_ID,WIKI_ITEM_ID,WIKI_LIMITS,wik
 import {PROJECT_ID,TICKET_ID} from './tickets-store.mjs';
 import {createMentionGuard} from './references.mjs';
 
-export const WIKI_SCHEMA=4;
+export const WIKI_SCHEMA=5;
 export const MAX_LIST=100,MAX_ROWS=20;
 const ROW_BYTES=48*1024;
 const MODES=['full','summary','inventory','assets'];

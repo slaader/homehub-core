@@ -61,7 +61,7 @@ test('HTTP: people, ticket search, and what /api/search tells about its hits and
  const h=await hub(t),get=(url,headers=h.admin)=>fetch(h.origin+url,{headers});
  assert.equal((await fetch(h.origin+'/api/tickets/people')).status,401);assert.equal((await fetch(h.origin+'/api/tickets/search?q=x')).status,401);
  const empty=await (await get('/api/search?q=')).json();
- assert.deepEqual(empty.indexed,{ticket:0,review:0},'an empty hub says there is nothing to search yet');assert.deepEqual(empty.results,[]);
+ assert.deepEqual(empty.indexed,{ticket:0,epic:0,review:0},'an empty hub says there is nothing to search yet');assert.deepEqual(empty.results,[]);
  const agent=await h.account('dev-agent',['tickets:write']),reader=await h.account('reader',[]);
  const one=await (await h.post('/api/tickets',{project:'home-hub',title:'Export fails on large files',type:'bug',assignee:'dev-agent',priority:'high'},h.admin)).json();
  const two=await (await h.post('/api/tickets',{project:'home-hub',title:'Second ticket',description:'Mentions HH-1 and the export.'},h.admin)).json();
@@ -85,7 +85,7 @@ test('HTTP: people, ticket search, and what /api/search tells about its hits and
  assert.match((await (await get('/api/review/sets/R-999')).json()).error.message,/^Review neexistuje/);
 
  const hits=await (await get('/api/search?q=export')).json();
- assert.deepEqual(hits.indexed,{ticket:2,review:0});
+ assert.deepEqual(hits.indexed,{ticket:2,epic:0,review:0});
  assert.deepEqual(hits.results[0].meta,{status:'open',type:'bug',priority:'high',assignee:'dev-agent',release:null});
  assert.deepEqual((await (await get('/api/search?q=HH-1')).json()).results.map(x=>x.id),['HH-1','HH-2'],'a query that is an id puts that record first');
  assert.equal((await (await get('/api/search?q=hh-2')).json()).results[0].id,two.id);
@@ -158,7 +158,7 @@ test('compatibility: a hub.db written before attachments, search stats and this 
  assert.deepEqual((await review.list({status:'all'})).sets.map(x=>x.id),['R-1']);assert.equal((await review.get('R-1')).rounds[0].notes,'first round');
  // The index of an older version is rebuilt on first use, and every new read works on the old rows.
  assert.deepEqual(db.search({q:'relevant'}).results.map(x=>x.id),['LEG-1']);assert.deepEqual(db.search({q:'old review'}).results.map(x=>x.id),['R-1']);
- assert.deepEqual(db.searchStats(),{ticket:2,review:1});
+ assert.deepEqual(db.searchStats(),{ticket:2,epic:0,review:1});
  assert.deepEqual((await s.search({q:'attachments',assignee:'robin'})).tickets.map(x=>x.id).sort(),['LEG-1','LEG-2']);
  assert.deepEqual((await s.people()).map(p=>p.name),['robin','alex','sam']);
  // New work continues the numbering, and rows nobody changed keep their exact bytes.

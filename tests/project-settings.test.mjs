@@ -17,7 +17,7 @@ async function scratch(t,prefix){const dir=await mkdtemp(path.join(os.tmpdir(),p
 test('project settings: the agreed defaults, the same in the store and the schema-6 migration',()=>{
  assert.deepEqual(PROJECT_SETTINGS,DEFAULTS);
  assert.deepEqual(JSON.parse(PROJECT_SETTINGS_V6),DEFAULTS);
- assert.equal(DB_SCHEMA,6);
+ assert.equal(DB_SCHEMA,7);
 });
 
 test('project settings: seeded, created and legacy projects read the defaults; partial changes merge under rev',async t=>{
@@ -55,7 +55,7 @@ test('project settings: seeded, created and legacy projects read the defaults; p
  assert.equal(after.next,undefined,'the ticket counter stays internal');
 });
 
-test('project settings: a literal v1.5.0 hub.db (schema 5) moves to schema 6 with defaults and keeps rev and numbering',async t=>{
+test('project settings: a literal v1.5.0 hub.db (schema 5) moves to the current schema with defaults and keeps rev and numbering',async t=>{
  const dir=await scratch(t,'project-migrate-'),file=path.join(dir,'hub.db'),{DatabaseSync}=process.getBuiltinModule('node:sqlite');
  const {ddl}=JSON.parse(await readFile(new URL('./fixtures/wiki-flat-1.2.0.json',import.meta.url),'utf8'));
  const old=new DatabaseSync(file);
@@ -68,9 +68,9 @@ test('project settings: a literal v1.5.0 hub.db (schema 5) moves to schema 6 wit
  old.close();
  const db=openDb(file);
  try{
-  assert.equal(db.db.prepare('PRAGMA user_version').get().user_version,6);
+  assert.equal(db.db.prepare('PRAGMA user_version').get().user_version,DB_SCHEMA);
   const row=JSON.parse(db.db.prepare("SELECT doc FROM docs WHERE kind='tickets' AND coll='projects' AND id='example-app'").get().doc);
-  assert.deepEqual(row,{...JSON.parse(project),settings:DEFAULTS},'only settings is added; rev, next and every other field stay');
+  assert.deepEqual(row,{...JSON.parse(project),settings:DEFAULTS,labels:[],nextEpic:1,projectVersion:1},'only settings and the Projects v2 fields are added; rev, next and every other field stay');
   const s=createTicketStore(dir,{db});
   assert.deepEqual((await s.projects()).map(p=>[p.id,p.rev,p.settings]),[['example-app',3,DEFAULTS],['seeded-game',1,DEFAULTS]]);
   assert.equal((await s.saveProject({id:'example-app',rev:3,settings:{view:'table'}},'a')).rev,4,'a rev read before the upgrade still saves');
@@ -82,7 +82,7 @@ test('project settings: a hub.db newer than this code is refused, never opened',
  const dir=await scratch(t,'project-newer-'),file=path.join(dir,'hub.db'),{DatabaseSync}=process.getBuiltinModule('node:sqlite');
  const newer=new DatabaseSync(file);newer.exec(`CREATE TABLE meta(kind TEXT PRIMARY KEY, doc TEXT NOT NULL); PRAGMA user_version=${DB_SCHEMA+1}`);newer.close();
  assert.throws(()=>openDb(file),new RegExp(`schema ${DB_SCHEMA+1} is newer than this code \\(${DB_SCHEMA}\\)`));
- // v1.5.0 runs this same check with schema 5, so it refuses a database this release has moved to 6.
+ // v1.5.0 runs this same check with schema 5, so it refuses a database a later release has moved on.
  const check=new DatabaseSync(file);try{assert.equal(check.prepare('PRAGMA user_version').get().user_version,DB_SCHEMA+1);}finally{check.close();}
 });
 

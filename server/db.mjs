@@ -9,7 +9,8 @@ import {mkdirSync,chmodSync,existsSync} from 'node:fs';
 import {readFile,rename} from 'node:fs/promises';
 import path from 'node:path';
 
-const SCHEMA=6,SEARCH_VERSION=1;
+// SEARCH_VERSION 2 indexes epics (kind 'epic'); a bump rebuilds every kind on first use.
+const SCHEMA=7,SEARCH_VERSION=2;
 // Schema 6 gives every tracker project its settings (server/tickets-store.mjs → PROJECT_SETTINGS, the same values).
 export const PROJECT_SETTINGS_V6='{"color":null,"view":"board","releases":true,"reviews":true,"wiki":true,"globalReferences":true}';
 // The schema version of hub.db, for the data-epoch table (tests/data-epoch.test.mjs).
@@ -77,6 +78,20 @@ function migrate(db){
    // Only rows without settings change; a project's rev stays, so a client holding it can still save.
    db.prepare("UPDATE docs SET doc=json_set(doc,'$.settings',json(?)) WHERE kind='tickets' AND coll='projects' AND json_type(doc,'$.settings') IS NULL").run(PROJECT_SETTINGS_V6);
    db.exec('PRAGMA user_version=6');
+  }
+  if(from<7){
+   // Projects v2 (docs/projects-v2.md): every existing project gains labels, its epic counter and projectVersion 1
+   // (it has not been through the upgrade wizard). json_insert only adds what a row lacks: rev, next and settings
+   // stay, so a client holding a rev can still save. Wiki schema 5: each space names its own id and the project it
+   // belongs to; pages, assets and receipts keep their <space>/<id> keys.
+   db.exec(`UPDATE docs SET doc=json_insert(doc,'$.labels',json('[]'),'$.nextEpic',1,'$.projectVersion',1) WHERE kind='tickets' AND coll='projects';`);
+   const wiki=db.prepare("SELECT doc FROM meta WHERE kind='wiki'").get();
+   if(wiki){
+    if(JSON.parse(wiki.doc).schema!==4)throw new Error('Unsupported wiki schema');
+    db.exec(`UPDATE docs SET doc=json_insert(doc,'$.id',id,'$.projectId',id) WHERE kind='wiki' AND coll='wikis';
+     UPDATE meta SET doc=json_set(doc,'$.schema',5) WHERE kind='wiki';`);
+   }
+   db.exec('PRAGMA user_version=7');
   }
   db.exec('COMMIT');
  }catch(error){db.exec('ROLLBACK');throw error;}
@@ -243,7 +258,7 @@ function wrap(db,file){
  };
 
  // Full-text search. Input is plain words, never FTS syntax: each word is quoted and prefix-matched (AND).
- const KINDS=['ticket','review'];
+ const KINDS=['ticket','epic','review'];
  // max: the largest limit a caller may ask for. HTTP and MCP callers get 100; a store that filters the hits
  // further (tickets-store search) passes its own ceiling.
  function search({q,kind,project,limit=20}={},{max=100,snippets=true,ids=null,countAll=false}={}){

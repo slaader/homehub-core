@@ -193,12 +193,13 @@ test('review HTTP: scopes, sandbox headers, unpublished blobs, CSRF and the push
  const served=await fetch(`${h.origin}/api/review/blobs/${sha(big)}`,{headers:h.admin});assert.equal(Buffer.from(await served.arrayBuffer()).equals(big),true);
 });
 
-test('projects carry a type: app, game or other',async t=>{
+test('projects carry a type: web, app, game or other',async t=>{
  const {tickets}=await stores(t);
  const all=await tickets.list();assert.deepEqual(all.projects.map(p=>[p.id,p.type]),[['home-hub','app'],['sample-game','game']]);
  const p=await tickets.saveProject({id:'ob1',key:'OB',name:'OB1',type:'other'},'a');assert.equal(p.type,'other');
  assert.equal((await tickets.saveProject({id:'ob1',rev:1,type:null},'a')).type,null);
- await assert.rejects(tickets.saveProject({id:'ob1',rev:2,type:'web'},'a'),/invalid/);
+ assert.equal((await tickets.saveProject({id:'ob1',rev:2,type:'web'},'a')).type,'web');
+ await assert.rejects(tickets.saveProject({id:'ob1',rev:3,type:'site'},'a'),/invalid/);
  assert.equal((await tickets.saveProject({id:'x2',key:'XX',name:'No type'},'a')).type,null);
 });
 

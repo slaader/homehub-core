@@ -6,7 +6,8 @@ import {createReadStream} from 'node:fs';
 import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {pipeline} from 'node:stream/promises';
-import {createTicketStore,ticketAuthors,TICKET_ID,TICKET_TYPES,TICKET_STATUSES,TICKET_PRIORITIES,RELEASE_STATUSES,PROJECT_TYPES,PROJECT_COLORS,PROJECT_VIEWS,TICKET_ATTACHMENTS} from '../tickets-store.mjs';
+import {createTicketStore,ticketAuthors,TICKET_ID,EPIC_ID,TICKET_TYPES,TICKET_STATUSES,TICKET_PRIORITIES,RELEASE_STATUSES,PROJECT_TYPES,PROJECT_COLORS,PROJECT_VIEWS,TICKET_ATTACHMENTS,EPIC_SPEC_LIMIT,EPIC_BODY_LIMIT} from '../tickets-store.mjs';
+import {createProjectLifecycle} from '../project-lifecycle.mjs';
 import {authoredProvenance} from '../provenance.mjs';
 import {createTicketFiles,cleanName,inline as inlineFile,FILE_LIMITS} from '../ticket-files.mjs';
 import {byteRange} from '../http-range.mjs';
@@ -22,24 +23,36 @@ const TICKET_MESSAGES={
  'not-found':['Ticket neexistuje.','The ticket does not exist.','No such ticket or release. Use tickets_list to find the right id.'],
  conflict:['Záznam se mezitím změnil nebo už existuje. Načti ho znovu a změnu zopakuj.','The record changed in the meantime or already exists. Read it again and repeat the change.','It changed since you read it (or already exists). Read it again (ticket_get / tickets_list), then reapply your change with the new rev.'],
  limit:['Byl dosažen limit počtu záznamů.','The record limit has been reached.','A ticket limit was reached; nothing was changed.'],
+ forbidden:['Na tuto volbu nemáš oprávnění; nic se nezměnilo.','This option needs a scope you lack; nothing was changed.','This option needs a scope this key lacks (deleteReviews: review:write, promoteReferences: references:write); nothing was changed.'],
  unavailable:['Tickety teď nejdou načíst ani uložit.','Tickets cannot be loaded or saved right now.','Tickets are not available right now. Read the target before retrying a write; a previous attempt may have succeeded.'],
 };
-const TICKET_MCP_CODES=new Set(['unavailable-reference','invalid','not-found','conflict','limit']);
-async function runTickets(state,fn){
+// Epics and project deletion share the codes; only what "not found" and "conflict" point at differs.
+const EPIC_MESSAGES={...TICKET_MESSAGES,
+ invalid:['Neplatný požadavek na epic (zkontroluj pole, projekt, release a tickety).','Invalid epic request (check the fields, the project, the release and the tickets).','Invalid epic request: check the field values (spec at most 64 KiB of UTF-8), that the project and release exist, and that every ticket belongs to the epic\'s project.'],
+ 'not-found':['Epic nebo ticket neexistuje.','The epic or ticket does not exist.','No such epic or ticket. Use epics_list and tickets_list to find the right id.'],
+ conflict:['Epic nebo ticket se mezitím změnil. Načti ho znovu a změnu zopakuj.','The epic or a ticket changed in the meantime. Read it again and repeat the change.','It changed since you read it. Read it again (epic_get / ticket_get), then reapply your change with the new rev.']};
+const PROJECT_MESSAGES={...TICKET_MESSAGES,
+ invalid:['Neplatný požadavek na projekt (zkontroluj pole a potvrzení klíčem nebo názvem).','Invalid project request (check the fields and the confirmation by key or name).','Invalid project request: check the fields; a deletion needs confirmation equal to the project key or name.'],
+ 'not-found':['Projekt neexistuje.','The project does not exist.','No such project. Use projects_list to find the right id.'],
+ conflict:['Projekt nebo jeho obsah se od náhledu změnil. Načti náhled znovu.','The project or what it holds changed since the preview. Load the preview again.','The project changed since you read it (or since project_delete_preview). Read it again and repeat with the new rev and snapshot.']};
+const TICKET_MCP_CODES=new Set(['unavailable-reference','invalid','not-found','conflict','limit','forbidden']);
+async function runTickets(state,fn,messages=TICKET_MESSAGES){
  if(!state?.tickets)throw toolError('Tickets are not available on this Home Hub.');
  try{return await fn(state.tickets);}
  catch(e){
   if(e?.toolError===true)throw e;
-  const row=TICKET_MCP_CODES.has(e.message)?TICKET_MESSAGES[e.message]:TICKET_MESSAGES.unavailable;
+  const row=TICKET_MCP_CODES.has(e.message)?messages[e.message]:messages.unavailable;
   throw toolError(row[2]??row[1]);
  }
 }
 const SEARCH_MESSAGES={
- invalid:['Neplatné hledání (nejvýš 200 znaků, kind ticket|review, limit 1–100).','Invalid search (200 characters at most, kind ticket|review, limit 1-100).'],
+ invalid:['Neplatné hledání (nejvýš 200 znaků, kind ticket|epic|review, limit 1–100).','Invalid search (200 characters at most, kind ticket|epic|review, limit 1-100).'],
  unavailable:['Hledání teď nejde.','Search is unavailable right now.'],
 };
 const say=(pair,c)=>pair[c?.principal?.authKind==='api-key'?1:0];
-const ticketsError=(e,c)=>[({'too-large':413,'unavailable-reference':400,invalid:400,'not-found':404,conflict:409,limit:409})[e.message]||503,'TICKETS_FAILED',say(TICKET_MESSAGES[e.message]||TICKET_MESSAGES.unavailable,c)];
+const STATUS={'too-large':413,'unavailable-reference':400,invalid:400,forbidden:403,'not-found':404,conflict:409,limit:409};
+const errorWith=(messages,code)=>(e,c)=>[STATUS[e.message]||503,e.message==='forbidden'?'SCOPE_REQUIRED':code,say(messages[e.message]||messages.unavailable,c)];
+const ticketsError=errorWith(TICKET_MESSAGES,'TICKETS_FAILED'),epicsError=errorWith(EPIC_MESSAGES,'TICKETS_FAILED'),projectsError=errorWith(PROJECT_MESSAGES,'TICKETS_FAILED');
 const searchError=(e,c)=>[e.message==='invalid'?400:503,'SEARCH_FAILED',say(SEARCH_MESSAGES[e.message]||SEARCH_MESSAGES.unavailable,c)];
 // Provenance (server/provenance.mjs): who made and changed the records, people or service accounts, read from
 // the records themselves. The list counts projects, releases and items together (unit records); projects the
@@ -51,8 +64,21 @@ async function listed(c){
 }
 // A full ticket (it has its history) gets the same for itself; a release or a project passes through.
 const withProvenance=(c,ticket)=>ticket&&Array.isArray(ticket.history)?{...ticket,provenance:authoredProvenance(c.hub.accessStore,ticketAuthors(ticket))}:ticket;
+// An attachment of a ticket or an epic: images, plain text, audio and video inline, everything else as a download;
+// always sandboxed and nosniff. One byte range per request (a player seeks with them); anything else in Range is a 416.
+async function serveAttachment({url,req,res,state,error},found){
+ const a=await found,f=await state.ticketFiles.read(a.sha256),show=inlineFile(a.type)&&url.searchParams.get('download')!=='1';let range;
+ try{range=byteRange(req.headers.range,f.size);}catch{res.setHeader('Content-Range',`bytes */${f.size}`);return error(416,'INVALID_RANGE','Invalid attachment range.');}
+ res.setHeader('Content-Security-Policy',"sandbox; default-src 'none'; style-src 'unsafe-inline'");res.setHeader('Cache-Control','private, max-age=31536000, immutable');
+ res.writeHead(range.status,{'Content-Type':a.type==='text/plain'?'text/plain; charset=utf-8':show?a.type:'application/octet-stream','Accept-Ranges':'bytes','Content-Length':range.end-range.start+1,
+  ...(range.status===206?{'Content-Range':`bytes ${range.start}-${range.end}/${f.size}`}:{}),
+  'Content-Disposition':`${show?'inline':'attachment'}; filename="${a.name.replace(/[^\x20-\x7e]/g,'_')}"; filename*=UTF-8''${encodeURIComponent(a.name)}`});
+ try{await pipeline(createReadStream(f.path,{start:range.start,end:range.end}),res);}catch{res.destroy();}
+}
+// Files a committed deletion left without any ticket or epic naming them. A failure leaves an orphan, never a loss.
+async function removeFiles(state,shas){for(const sha of shas||[])try{if(!(await state.tickets.fileInUse(sha)))await state.ticketFiles.remove(sha);}catch{}}
 // The write log names what a write touched; a failed write names nothing (never rejected argument text).
-const write=(path,status,run)=>({method:'POST',path,scope:'tickets:write',error:ticketsError,async handler(c){c.subject=null;const saved=await run(c);c.subject=saved.subject;return c.json(typeof status==='function'?status(c):status,withProvenance(c,saved.body));}});
+const write=(path,status,run,{error=ticketsError,...extra}={})=>({method:'POST',...(path instanceof RegExp?{match:path}:{path}),scope:'tickets:write',error,...extra,async handler(c){c.subject=null;const saved=await run(c);c.subject=saved.subject;return c.json(typeof status==='function'?status(c):status,withProvenance(c,saved.body));}});
 const who=c=>c.principal.username;
 // Names the assignee field offers: sign-in accounts and service accounts that are not disabled, then every
 // name the tickets already carry. Only names and counts leave the server, never ids, roles or scopes.
@@ -73,29 +99,42 @@ async function describeHits(results,{state,hub}){
   const loaded=await Promise.all(missingTicketIds.map(id=>state.tickets.get(id).catch(()=>null)));
   for(const t of loaded)if(t)tickets.set(t.id,t);
  }
+ const epics=new Map(),missingEpicIds=[...new Set(results.filter(r=>r.kind==='epic'&&!r.meta).map(r=>r.id))];
+ for(const e of await Promise.all(missingEpicIds.map(id=>state.tickets.getEpic(id).catch(()=>null))))if(e)epics.set(e.id,e);
  let sets=new Map();
  if(results.some(r=>r.kind==='review'&&!r.meta))try{sets=new Map((await hub.state('review').review.list({status:'all'})).sets.map(s=>[s.id,s]));}catch{}
  return results.map(r=>{
   if(r.meta)return r;
-  const t=r.kind==='ticket'?tickets.get(r.id):null,s=r.kind==='review'?sets.get(r.id):null;
+  const t=r.kind==='ticket'?tickets.get(r.id):null,s=r.kind==='review'?sets.get(r.id):null,e=r.kind==='epic'?epics.get(r.id):null;
   return {...r,...(t?{meta:{status:t.status,type:t.type,priority:t.priority,assignee:t.assignee,release:t.release}}:{}),
+   ...(e?{meta:{status:e.status,priority:e.priority,assignee:e.assignee,release:e.release,counts:e.counts,total:e.total}}:{}),
    ...(s?{meta:{status:s.status,done:s.done,feedbackPending:s.feedbackPending,round:s.round.n,items:s.round.items,decided:s.round.decided}}:{})};
  });
 }
-const SEARCH_ARGS=['query','project','status','type','priority','release','assignee','label','limit'];
+const SEARCH_ARGS=['query','project','status','type','priority','release','assignee','label','epic','limit'];
 const TICKET_PROPS={
  title:{type:'string',minLength:1,maxLength:200},description:{type:'string',maxLength:12000,description:'What and why: steps to reproduce, acceptance criteria, notes. Shown as light Markdown (lists, **bold**, `code`, ``` fences, links); ticket ids such as APP-12 become links.'},
  type:{type:'string',enum:[...TICKET_TYPES]},status:{type:'string',enum:[...TICKET_STATUSES]},priority:{type:'string',enum:[...TICKET_PRIORITIES]},
  release:{type:['string','null'],maxLength:40,description:'Version of an existing release in the project, or null for unplanned.'},
  assignee:{type:['string','null'],maxLength:60,description:'Who works on it: the name of a user or service account of this hub (free text is accepted); null for nobody. The word none is reserved for filtering.'},
  labels:{type:'array',maxItems:10,items:{type:'string',pattern:'^[a-z0-9][a-z0-9-]{0,29}$'},description:'Lowercase tags (a-z, 0-9, hyphen), e.g. ui, api, docs.'},
- refs:{type:'array',maxItems:20,items:{type:'string',minLength:1,maxLength:300},description:'Commits, pull-request links, related ticket ids.'}};
+ refs:{type:'array',maxItems:20,items:{type:'string',minLength:1,maxLength:300},description:'Commits, pull-request links, related ticket ids.'},
+ epic:{type:['string','null'],pattern:EPIC_ID.source,description:'Epic of the same project the ticket belongs to (e.g. APP-E1), or null for none.'}};
+const EPIC_PROPS={
+ title:{type:'string',minLength:1,maxLength:200},description:{type:'string',maxLength:2000,description:'Short summary shown on cards and lists.'},
+ spec:{type:'string',maxLength:EPIC_SPEC_LIMIT,description:'The plan or specification as Markdown: goal, scope, approach. At most 64 KiB of UTF-8; @ mentions and ![name] attachments as in tickets.'},
+ status:{type:'string',enum:[...TICKET_STATUSES],description:'Changing it never changes the status of the epic\'s tickets.'},priority:{type:'string',enum:[...TICKET_PRIORITIES]},
+ release:TICKET_PROPS.release,assignee:TICKET_PROPS.assignee,labels:TICKET_PROPS.labels,refs:{...TICKET_PROPS.refs,description:'Commits, pull-request links, related ticket or epic ids.'}};
+const EPIC_FILTER_PROPS={project:{type:'string',maxLength:40},status:{type:'string',maxLength:60,description:'open, in-progress, done, cancelled, or "active"; comma-separated for several.'},
+ priority:{type:'string',enum:[...TICKET_PRIORITIES]},release:{type:'string',maxLength:40,description:'Release version, or "none".'},assignee:{type:'string',maxLength:60,description:'Assignee name, or "none".'},
+ label:{type:'string',maxLength:30},limit:{type:'integer',minimum:1,maximum:1000}};
+const EPIC_ROUTE=/^\/api\/tickets\/epics\/([A-Z][A-Z0-9]{1,9}-E[1-9][0-9]{0,5})$/;
 
 export default {
  id:'tracker',title:'Project Tracker',
  mcpInstructions:[
-  'Tracker: projects_list, tickets_list, ticket_get. ticket_search finds words; ticket_hybrid_search includes attachments (ticket_search_status: coverage). search includes reviews. ticket_attachment_get reads files.',
-  {scope:'tickets:write',text:'With tickets:write: project_save then ticket_create. ticket_update uses the returned rev; ticket_comment appends. release_save/project_save: omit rev to create. ticket_attachment_put: up to 32 KiB; larger files use HTTP.'},
+  'Tracker: projects_list, tickets_list, ticket_get, epic_get. ticket_search finds words; ticket_hybrid_search includes attachments (ticket_search_status: coverage). search includes epics, reviews. ticket_attachment_get reads files.',
+  {scope:'tickets:write',text:'With tickets:write: project_save then ticket_create. ticket_update uses the returned rev; ticket_comment appends. release_save/project_save: omit rev to create. epic_* edit epics; project_delete takes project_delete_preview\'s snapshot. ticket_attachment_put: up to 32 KiB; larger files use HTTP.'},
  ],
  assets:['tracker-view.js','tracker-md.js','tracker-attach.js','search-view.js','platform-settings-view.js','tickets.css','i18n-en-tracker.js'],
  nav:[
@@ -107,9 +146,12 @@ export default {
  ],
  setup(hub){
   const dir=path.join(hub.stateDirectory,'tickets');
-  const tickets=createTicketStore(dir,{db:hub.db,seedProjects:hub.site.tracker.projects,mentionGuard:refs=>hub.state('references').prepareMentionGuard(refs)}),ticketFiles=createTicketFiles(dir);
+  const ticketFiles=createTicketFiles(dir);
+  const tickets=createTicketStore(dir,{db:hub.db,seedProjects:hub.site.tracker.projects,files:ticketFiles,mentionGuard:refs=>hub.state('references').prepareMentionGuard(refs)});
   const ticketSearch=createTicketSearch(dir,{db:hub.db,tickets,ticketFiles,...hub.options.ticketSearch});
-  return {tickets,ticketFiles,ticketSearch};
+  // Creating with a wiki, renaming, deleting and upgrading a project change other stores too (server/project-lifecycle.mjs).
+  const projectLifecycle=createProjectLifecycle(hub,tickets);
+  return {tickets,ticketFiles,ticketSearch,projectLifecycle};
  },
  pollers:[{id:'ticket-search',start:state=>state.ticketSearch.start(),stop:state=>state.ticketSearch.close()}],
  routes:[
@@ -130,23 +172,34 @@ export default {
   write('/api/tickets/comment',200,async c=>{const saved=await c.state.tickets.comment(c.input,who(c));return {subject:saved.id||saved.project,body:saved};}),
   write('/api/tickets/releases',200,async c=>{const saved=await c.state.tickets.saveRelease(c.input,who(c));return {subject:saved.id||saved.project,body:saved};}),
   write('/api/tickets/attachments/delete',200,async c=>{const out=await c.state.tickets.detach(c.input,who(c));if(!out.used)await c.state.ticketFiles.remove(out.removed.sha256);return {subject:out.ticket.id,body:out.ticket};}),
-  write('/api/tickets/projects',c=>c.input?.rev===undefined?201:200,async c=>{const saved=await c.state.tickets.saveProject(c.input,who(c));return {subject:saved.id||saved.project,body:saved};}),
+  write('/api/tickets/projects',c=>c.input?.rev===undefined?201:200,async c=>{const saved=await c.state.projectLifecycle.save(c.input,who(c));return {subject:saved.id,body:saved};},{error:projectsError}),
+  // Project deletion and the v1 → v2 upgrade (docs/projects-v2.md §5, §6). The preview's snapshot goes back with the deletion.
+  {method:'GET',match:/^\/api\/tickets\/projects\/([a-z][a-z0-9-]{1,39})\/delete-preview$/,scope:'tickets:write',error:projectsError,handler:async c=>c.json(200,await c.state.projectLifecycle.preview(c.params[1],c.principal))},
+  write('/api/tickets/projects/delete',200,async c=>{const out=await c.state.projectLifecycle.remove(c.input,who(c),c.principal);return {subject:out.id,body:out};},{error:projectsError}),
+  write('/api/tickets/projects/upgrade',200,async c=>{const out=await c.state.projectLifecycle.upgrade(c.input,who(c));return {subject:out.project.id,body:out};},{error:projectsError,bodyLimit:1048576}),
+  // Epics. The GET patterns come before the ticket catch-all below.
+  {method:'GET',path:'/api/tickets/epics',error:epicsError,handler:async c=>c.json(200,await c.state.tickets.listEpics(c.query))},
+  {method:'GET',match:EPIC_ROUTE,error:epicsError,handler:async c=>c.json(200,withProvenance(c,await c.state.tickets.getEpic(c.params[1])))},
+  write('/api/tickets/epics/create',201,async c=>{const epic=await c.state.tickets.createEpic(c.input,who(c));return {subject:epic.id,body:epic};},{error:epicsError,bodyLimit:EPIC_BODY_LIMIT}),
+  write('/api/tickets/epics/update',200,async c=>{const epic=await c.state.tickets.updateEpic(c.input,who(c));return {subject:epic.id,body:epic};},{error:epicsError,bodyLimit:EPIC_BODY_LIMIT}),
+  write('/api/tickets/epics/comment',200,async c=>{const epic=await c.state.tickets.commentEpic(c.input,who(c));return {subject:epic.id,body:epic};},{error:epicsError}),
+  write('/api/tickets/epics/delete',200,async c=>{const out=await c.state.tickets.deleteEpic(c.input,who(c));await removeFiles(c.state,out.unused);return {subject:out.id,body:{id:out.id,project:out.project,detached:out.detached}};},{error:epicsError}),
+  write(/^\/api\/tickets\/epics\/([A-Z][A-Z0-9]{1,9}-E[1-9][0-9]{0,5})\/assign$/,200,async c=>{const out=await c.state.tickets.assignEpic(c.params[1],c.input,who(c));return {subject:out.epic.id,body:out};},{error:epicsError}),
+  write('/api/tickets/epics/attachments/delete',200,async c=>{const out=await c.state.tickets.detachEpic(c.input,who(c));if(!out.used)await c.state.ticketFiles.remove(out.removed.sha256);return {subject:out.epic.id,body:out.epic};},{error:epicsError}),
+  {method:'PUT',match:/^\/api\/tickets\/epics\/([A-Z][A-Z0-9]{1,9}-E[1-9][0-9]{0,5})\/attachments$/,scope:'tickets:write',raw:true,contentType:'application/octet-stream',error:epicsError,
+   async handler(c){const {tickets,ticketFiles}=c.state,id=c.params[1];
+    try{if((await tickets.getEpic(id)).attachments.length>=TICKET_ATTACHMENTS)throw new Error('limit');}
+    catch(e){let read=0;try{for await(const chunk of c.req){read+=chunk.length;if(read>FILE_LIMITS.file)break;}}catch{}throw e;}
+    const file=await ticketFiles.put(c.req,{name:c.url.searchParams.get('name'),declaredLength:Number(c.req.headers['content-length'])});
+    c.subject=id;return c.json(201,withProvenance(c,await tickets.attachEpic(id,file,who(c))));}},
+  {method:'GET',match:/^\/api\/tickets\/epics\/([A-Z][A-Z0-9]{1,9}-E[1-9][0-9]{0,5})\/attachments\/([0-9a-f-]{36})$/,error:epicsError,handler:c=>serveAttachment(c,c.state.tickets.epicAttachment(c.params[1],c.params[2]))},
   {method:'GET',path:'/api/tickets',error:ticketsError,handler:async c=>c.json(200,await listed(c))},
   // Full-text search inside tickets with the list's field filters (status, assignee, label, release, …).
   {method:'GET',path:'/api/tickets/search',error:ticketsError,handler:async c=>c.json(200,await c.state.tickets.search(c.query))},
   {method:'GET',path:'/api/tickets/people',error:ticketsError,handler:async c=>c.json(200,{people:await people(c)})},
   {method:'GET',path:'/api/tickets/search/hybrid',error:ticketsError,handler:async c=>c.json(200,await c.state.ticketSearch.search({...c.query,...(c.query.minScore===undefined?{}:{minScore:c.query.minScore.trim()===''?NaN:Number(c.query.minScore)})}))},
   {method:'GET',path:'/api/tickets/search/status',error:ticketsError,handler:c=>{if(Object.keys(c.query).length)throw new Error('invalid');return c.json(200,c.state.ticketSearch.status());}},
-  // An attachment: images, plain text, audio and video inline, everything else as a download; always sandboxed and
-  // nosniff. One byte range per request (a player seeks with them); anything else in Range is a 416.
-  {method:'GET',match:/^\/api\/tickets\/([A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,5})\/attachments\/([0-9a-f-]{36})$/,error:ticketsError,async handler({params,url,req,res,state,error}){
-    const a=await state.tickets.attachment(params[1],params[2]),f=await state.ticketFiles.read(a.sha256),show=inlineFile(a.type)&&url.searchParams.get('download')!=='1';let range;
-    try{range=byteRange(req.headers.range,f.size);}catch{res.setHeader('Content-Range',`bytes */${f.size}`);return error(416,'INVALID_RANGE','Invalid attachment range.');}
-    res.setHeader('Content-Security-Policy',"sandbox; default-src 'none'; style-src 'unsafe-inline'");res.setHeader('Cache-Control','private, max-age=31536000, immutable');
-    res.writeHead(range.status,{'Content-Type':a.type==='text/plain'?'text/plain; charset=utf-8':show?a.type:'application/octet-stream','Accept-Ranges':'bytes','Content-Length':range.end-range.start+1,
-     ...(range.status===206?{'Content-Range':`bytes ${range.start}-${range.end}/${f.size}`}:{}),
-     'Content-Disposition':`${show?'inline':'attachment'}; filename="${a.name.replace(/[^\x20-\x7e]/g,'_')}"; filename*=UTF-8''${encodeURIComponent(a.name)}`});
-    try{await pipeline(createReadStream(f.path,{start:range.start,end:range.end}),res);}catch{res.destroy();}}},
+  {method:'GET',match:/^\/api\/tickets\/([A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,5})\/attachments\/([0-9a-f-]{36})$/,error:ticketsError,handler:c=>serveAttachment(c,c.state.tickets.attachment(c.params[1],c.params[2]))},
   {method:'GET',match:/^\/api\/tickets\/(.*)$/,error:ticketsError,async handler(c){const {params,json,state}=c;if(!TICKET_ID.test(params[1]))throw new Error('not-found');return json(200,withProvenance(c,await state.tickets.get(params[1])));}},
   // Full-text search over tickets and review sets (title, description, comments, notes); plain words, diacritics ignored.
   // `indexed` counts what the index holds per kind (0 everywhere = nothing to search yet); each hit carries `meta`.
@@ -167,6 +220,7 @@ export default {
     type:{type:'string',enum:[...TICKET_TYPES]},priority:{type:'string',enum:[...TICKET_PRIORITIES]},
     release:{type:'string',maxLength:40,description:'Release version, or "none" for unplanned tickets.'},
     assignee:{type:'string',maxLength:60,description:'Assignee name, or "none".'},label:{type:'string',maxLength:30},
+    epic:{type:'string',maxLength:20,description:'Epic id (e.g. APP-E1), or "none" for tickets in no epic.'},
     query:{type:'string',maxLength:100,description:'Text contained in the id, title, description or a label (case-insensitive substring).'},
     limit:{type:'integer',minimum:1,maximum:200,description:'Maximum tickets (default 50).'}},additionalProperties:false},
    annotations:{readOnlyHint:true,openWorldHint:false},
@@ -202,15 +256,58 @@ export default {
    annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false},
    run:(args,{state,principal})=>runTickets(state,t=>t.saveRelease(args,principal.username))},
   {name:'project_save',scope:'tickets:write',title:'Tickets: create or change a project',
-   description:'Create a project (id, key, name, type) or change the name, description, type or settings of an existing one. The key is the ticket prefix (key APP → tickets APP-1, APP-2, …); id and key can never change, and both must be unused. Omit rev to create; to change a project pass the rev shown in projects_list. settings is partial: pass only the fields to change, the others keep their values. releases, reviews and wiki only show or hide those parts of the project pages; globalReferences:false limits reference suggestions in the project to its own sources, machines and projects.',
+   description:'Create a project (id, key, name, type, labels) or change the name, description, type, labels or settings of an existing one. The key is the ticket prefix (key APP → tickets APP-1, APP-2, …); id and key can never change, and both must be unused. Omit rev to create; to change a project pass the rev shown in projects_list. settings is partial: pass only the fields to change, the others keep their values. releases, reviews and wiki only show or hide those parts of the project pages; globalReferences:false limits reference suggestions in the project to its own sources, machines and projects. createWiki:true (when creating) also creates the linked wiki with its "<Name> Home" page. projectVersion is read-only (projects_list shows it); a version-1 project moves to 2 through the upgrade wizard.',
    inputSchema:{type:'object',properties:{id:{type:'string',pattern:'^[a-z][a-z0-9-]{1,39}$',description:'Lowercase id used in URLs and filters, e.g. my-app.'},key:{type:'string',pattern:'^[A-Z][A-Z0-9]{1,9}$',description:'Ticket prefix: 2-10 capital letters or digits, e.g. APP. Required when creating.'},
-    name:{type:'string',minLength:1,maxLength:80},description:{type:'string',maxLength:500},type:{type:['string','null'],enum:[...PROJECT_TYPES,null],description:'app, game or other; decides which kind of review variants a set opens on.'},
+    name:{type:'string',minLength:1,maxLength:80},description:{type:'string',maxLength:500},type:{type:['string','null'],enum:[...PROJECT_TYPES,null],description:'web, app, game or other; decides which kind of review variants a set opens on.'},
+    labels:{type:'array',maxItems:10,items:{type:'string',pattern:'^[a-z0-9][a-z0-9-]{0,29}$'},description:'Lowercase tags for the project, as for tickets.'},
+    createWiki:{type:'boolean',description:'Only when creating: also create the project wiki.'},
     settings:{type:'object',description:'Fields to change; omitted fields keep their values. Defaults: color null, view board, the rest true.',properties:{
      color:{type:['string','null'],enum:[...PROJECT_COLORS,null],description:'Named project color, or null for none.'},view:{type:'string',enum:[...PROJECT_VIEWS],description:'How the project page lists its tickets.'},
      releases:{type:'boolean'},reviews:{type:'boolean'},wiki:{type:'boolean'},globalReferences:{type:'boolean',description:'Offer global references and other projects\' shared sources in suggestions.'}},additionalProperties:false},
     rev:{type:'integer',minimum:1}},required:['id'],additionalProperties:false},
    annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false},
-   run:(args,{state,principal})=>runTickets(state,t=>t.saveProject(args,principal.username))},
+   run:(args,{state,principal})=>runTickets(state,()=>state.projectLifecycle.save(args,principal.username),PROJECT_MESSAGES)},
+  {name:'project_delete_preview',scope:'tickets:write',title:'Tickets: preview a project deletion',
+   description:'What deleting a project would remove: counts of epics, tickets, releases, wiki pages, review sets and local references, local reference labels that collide with global ones (and the label each would get), the project rev and a snapshot. project_delete needs that rev and snapshot; if anything changes in between, it is refused and you preview again.',
+   inputSchema:{type:'object',properties:{id:{type:'string',pattern:'^[a-z][a-z0-9-]{1,39}$'}},required:['id'],additionalProperties:false},
+   annotations:{readOnlyHint:true,openWorldHint:false},
+   run:(args,{state,principal})=>{if(Object.keys(args).some(k=>k!=='id'))throw toolError('Invalid project request.');return runTickets(state,()=>state.projectLifecycle.preview(args.id,principal),PROJECT_MESSAGES);}},
+  {name:'project_delete',scope:'tickets:write',title:'Tickets: delete a project',
+   description:'Delete a project for good with all its epics, tickets and releases. Call project_delete_preview first and pass its rev and snapshot, and confirmation equal to the project key or name. deleteWiki (default false: the wiki is kept as a standalone wiki), deleteReviews (default false: review sets are kept read-only with no project; true needs review:write), promoteReferences (true: local references become global, colliding labels get " (<KEY>)"; false deletes them; true needs references:write). Cannot be undone.',
+   inputSchema:{type:'object',properties:{id:{type:'string',pattern:'^[a-z][a-z0-9-]{1,39}$'},rev:{type:'integer',minimum:1},confirmation:{type:'string',minLength:1,maxLength:80,description:'The project key or name, typed out.'},
+    snapshot:{type:'string',minLength:1,maxLength:128,description:'snapshot from project_delete_preview.'},deleteWiki:{type:'boolean'},deleteReviews:{type:'boolean'},promoteReferences:{type:'boolean'}},
+    required:['id','rev','confirmation','snapshot'],additionalProperties:false},
+   annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:false},
+   run:(args,{state,principal})=>runTickets(state,()=>state.projectLifecycle.remove(args,principal.username,principal),PROJECT_MESSAGES)},
+  {name:'epics_list',scope:'read',title:'Epics: list',
+   description:'List epics with field filters, each with counts of its tickets per status and total (cancelled included; progress is usually done over the rest). Without spec, comment text, history or attachments; use epic_get for the full epic and its rev, and tickets_list with epic to list its tickets.',
+   inputSchema:{type:'object',properties:EPIC_FILTER_PROPS,additionalProperties:false},annotations:{readOnlyHint:true,openWorldHint:false},
+   run:(args,{state})=>runTickets(state,t=>t.listEpics(args),EPIC_MESSAGES)},
+  {name:'epic_get',scope:'read',title:'Epics: read one',
+   description:'Read one epic in full: description, spec, comments, attachments (metadata), history, ticket counts and rev (needed for epic_update and epic_delete).',
+   inputSchema:{type:'object',properties:{id:{type:'string',pattern:EPIC_ID.source,description:'Epic id: the project key, -E and a number, e.g. APP-E1.'}},required:['id'],additionalProperties:false},
+   annotations:{readOnlyHint:true,openWorldHint:false},
+   run:(args,{state})=>{if(Object.keys(args).some(k=>k!=='id'))throw toolError('Invalid epic request.');return runTickets(state,t=>t.getEpic(args.id),EPIC_MESSAGES);}},
+  {name:'epic_create',scope:'tickets:write',title:'Epics: create',
+   description:'Create an epic in an existing project: a goal with its plan (spec, Markdown up to 64 KiB) that tickets of the same project can belong to. Defaults: status open, priority normal. Link tickets with ticket_update epic. Returns the epic with its id and rev.',
+   inputSchema:{type:'object',properties:{project:{type:'string',maxLength:40},...EPIC_PROPS},required:['project','title'],additionalProperties:false},
+   annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false},
+   run:(args,{state,principal})=>runTickets(state,t=>t.createEpic(args,principal.username),EPIC_MESSAGES)},
+  {name:'epic_update',scope:'tickets:write',title:'Epics: change fields',
+   description:'Change fields of an epic. Pass only the fields to change and the rev from epic_get; a stale rev is refused. Changing status never changes its tickets. Every change is recorded in the history (title, description and spec only as changed).',
+   inputSchema:{type:'object',properties:{id:{type:'string',pattern:EPIC_ID.source},rev:{type:'integer',minimum:1},...EPIC_PROPS},required:['id','rev'],additionalProperties:false},
+   annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false},
+   run:(args,{state,principal})=>runTickets(state,t=>t.updateEpic(args,principal.username),EPIC_MESSAGES)},
+  {name:'epic_comment',scope:'tickets:write',title:'Epics: add comment',
+   description:'Add a comment to an epic (light Markdown). Comments need no rev and cannot be edited or removed.',
+   inputSchema:{type:'object',properties:{id:{type:'string',pattern:EPIC_ID.source},text:{type:'string',minLength:1,maxLength:8000}},required:['id','text'],additionalProperties:false},
+   annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false},
+   run:(args,{state,principal})=>runTickets(state,t=>t.commentEpic(args,principal.username),EPIC_MESSAGES)},
+  {name:'epic_delete',scope:'tickets:write',title:'Epics: delete',
+   description:'Delete an epic (pass its rev from epic_get). Its tickets are kept and lose the link (epic null); its comments, history and attachments go.',
+   inputSchema:{type:'object',properties:{id:{type:'string',pattern:EPIC_ID.source},rev:{type:'integer',minimum:1}},required:['id','rev'],additionalProperties:false},
+   annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:false},
+   run:(args,{state,principal})=>runTickets(state,async t=>{const out=await t.deleteEpic(args,principal.username);await removeFiles(state,out.unused);return {id:out.id,project:out.project,detached:out.detached};},EPIC_MESSAGES)},
   {name:'ticket_attachment_get',scope:'read',title:'Tickets: read an attachment',
    description:'Read a file attached to a ticket (ids come from ticket_get → attachments). Images up to 5 MB come back as an image, plain-text files up to 256 kB as text; anything else returns only its metadata and download path. In a ticket description or comment, ![name] points at the attachment with that name.',
    inputSchema:{type:'object',properties:{id:{type:'string',pattern:TICKET_ID.source,description:'Ticket id, e.g. APP-12.'},attachment:{type:'string',pattern:'^[0-9a-f-]{36}$'}},required:['id','attachment'],additionalProperties:false},
@@ -244,13 +341,13 @@ export default {
     });
    }},
   {name:'search',scope:'read',title:'Home Hub: full-text search',
-   description:'Full-text search across tickets (id, title, description, comments, attachment metadata and supported UTF-8 contents, labels, refs, people) and review sets (title, description, round notes, item and variant texts, decisions and comments). Plain words, never query syntax: every word must match as a prefix; case and diacritics are ignored (resume finds Résumé). Best match first, a title hit above a body hit; matched words are wrapped in \\u0001…\\u0002 in title and snippet. Use ticket_get or review_get for the full record, and ticket_search to narrow tickets by status, assignee, label or release.',
-   inputSchema:{type:'object',properties:{query:{type:'string',minLength:1,maxLength:200,description:'Up to 12 words.'},kind:{type:'string',enum:['ticket','review'],description:'Only tickets or only review sets.'},project:{type:'string',maxLength:40,description:'Project id.'},limit:{type:'integer',minimum:1,maximum:100,description:'Maximum results (default 20).'}},required:['query'],additionalProperties:false},
+   description:'Full-text search across tickets (id, title, description, comments, attachment metadata and supported UTF-8 contents, labels, refs, people), epics (id, title, description, spec, comments, attachment names, labels, refs, people) and review sets (title, description, round notes, item and variant texts, decisions and comments). Plain words, never query syntax: every word must match as a prefix; case and diacritics are ignored (resume finds Résumé). Best match first, a title hit above a body hit; matched words are wrapped in \\u0001…\\u0002 in title and snippet. Use ticket_get, epic_get or review_get for the full record, and ticket_search to narrow tickets by status, assignee, label or release.',
+   inputSchema:{type:'object',properties:{query:{type:'string',minLength:1,maxLength:200,description:'Up to 12 words.'},kind:{type:'string',enum:['ticket','epic','review'],description:'Only tickets, only epics or only review sets.'},project:{type:'string',maxLength:40,description:'Project id.'},limit:{type:'integer',minimum:1,maximum:100,description:'Maximum results (default 20).'}},required:['query'],additionalProperties:false},
    annotations:{readOnlyHint:true,openWorldHint:false},
    async run({query,kind,project,limit=20,...rest},{state}){
     if(!state?.ticketSearch)throw toolError('Search is not available on this Home Hub.');
     if(Object.keys(rest).length)throw toolError('Invalid search: use query, kind, project, limit.');
-    try{return await state.ticketSearch.searchAll({q:query,kind,project,limit});}catch{throw toolError('Invalid search: query is 1-200 characters, kind ticket|review, limit 1-100.');}
+    try{return await state.ticketSearch.searchAll({q:query,kind,project,limit});}catch{throw toolError('Invalid search: query is 1-200 characters, kind ticket|epic|review, limit 1-100.');}
    }},
   {name:'ticket_search_status',scope:'read',description:'Ticket search readiness, semantic availability and attachment content coverage.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,openWorldHint:false},run(args,{state}){if(Object.keys(args).length)throw toolError('Invalid ticket search status request.');return state.ticketSearch.status();}},
   {name:'ticket_hybrid_search',scope:'read',description:'Search ticket text and attachment metadata and complete bounded UTF-8 text. Full-text mode is the default; optional hybrid/semantic modes require administrator opt-in and a configured provider. Returns source citations and explicit readiness/coverage.',
@@ -266,10 +363,11 @@ export default {
     release:{type:'string',maxLength:40,description:'Release version, or "none" for tickets without a release.'},
     assignee:{type:'string',maxLength:60,description:'Assignee name, or "none" for unassigned tickets.'},
     label:{type:'string',maxLength:30},
+    epic:{type:'string',maxLength:20,description:'Epic id, or "none" for tickets in no epic.'},
     limit:{type:'integer',minimum:1,maximum:100,description:'Maximum tickets (default 20).'}},required:['query'],additionalProperties:false},
    annotations:{readOnlyHint:true,openWorldHint:false},
    async run(args,{state}){
-    if(Object.keys(args).some(k=>!SEARCH_ARGS.includes(k))||typeof args.query!=='string'||args.limit!==undefined&&!Number.isInteger(args.limit))throw toolError('Invalid ticket search: use query, project, status, type, priority, release, assignee, label and an integer limit.');
+    if(Object.keys(args).some(k=>!SEARCH_ARGS.includes(k))||typeof args.query!=='string'||args.limit!==undefined&&!Number.isInteger(args.limit))throw toolError('Invalid ticket search: use query, project, status, type, priority, release, assignee, label, epic and an integer limit.');
     const {query,...filter}=args;
     try{return await state.tickets.search({...filter,q:query});}
     catch(e){throw toolError(e.message==='invalid'?'Invalid ticket search: query needs at least one letter or digit (at most 200 characters), limit is 1-100, and the filters take the same values as tickets_list.':'Tickets are not available right now.');}
@@ -283,7 +381,17 @@ export default {
    ['GET','/api/tickets/search?q=&status=&assignee=&label=&release=','read','Fulltext v ticketech (i komentáře) se stejnými filtry jako seznam.'],
    ['GET','/api/tickets/people','read','Jména pro pole Řeší: účty, servisní účty a lidé z ticketů.'],
    ['PUT','/api/tickets/<ID>/attachments?name=','tickets:write','Příloha ticketu: soubor jako application/octet-stream, nejvýš 100 MB.'],
-   ['GET','/api/tickets/<ID>/attachments/<id>','read','Soubor přílohy; obrázky, text, zvuk a video přímo (i po částech přes Range), ostatní ke stažení.']]},
-  {title:'Hledání',routes:[['GET','/api/search?q=&kind=ticket|review&project=&limit=','read','Fulltext přes tickety a review; slova jako předpony, bez diakritiky.']]},
+   ['GET','/api/tickets/<ID>/attachments/<id>','read','Soubor přílohy; obrázky, text, zvuk a video přímo (i po částech přes Range), ostatní ke stažení.'],
+   ['GET','/api/tickets/projects/<id>/delete-preview','tickets:write','Co by smazání projektu odstranilo: počty, kolize referencí, rev a snapshot.'],
+   ['POST','/api/tickets/projects/delete','tickets:write','Smazání projektu {id, rev, confirmation, snapshot, deleteWiki, deleteReviews, promoteReferences}.'],
+   ['POST','/api/tickets/projects/upgrade','tickets:write','Dokončení průvodce v1 → v2 {id, rev, type, labels, settings, renameWikiHome, epics}.'],
+   ['GET','/api/tickets/epics?project=&status=','read','Epicy s počty ticketů podle stavu.'],
+   ['GET','/api/tickets/epics/<ID>','read','Jeden epic celý (spec, komentáře, historie, rev).'],
+   ['POST','/api/tickets/epics/create | update | comment | delete','tickets:write','Epic: založení, změna polí (s rev), komentář, smazání (tickety zůstanou bez epicu).'],
+   ['POST','/api/tickets/epics/<ID>/assign','tickets:write','Přiřazení ticketů {tickets:[{id, rev}]}: všechny, nebo žádný.'],
+   ['PUT','/api/tickets/epics/<ID>/attachments?name=','tickets:write','Příloha epicu, jako u ticketu.'],
+   ['GET','/api/tickets/epics/<ID>/attachments/<id>','read','Soubor přílohy epicu.'],
+   ['POST','/api/tickets/epics/attachments/delete','tickets:write','Odebrání přílohy epicu {id, attachment}.']]},
+  {title:'Hledání',routes:[['GET','/api/search?q=&kind=ticket|epic|review&project=&limit=','read','Fulltext přes tickety, epicy a review; slova jako předpony, bez diakritiky.']]},
  ],
 };

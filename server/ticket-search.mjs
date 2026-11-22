@@ -776,14 +776,15 @@ export function createTicketSearch(directory,{db,tickets,ticketFiles,env=process
   if(!db)throw new Error('Search database is required');
   if(!plain(input)||Object.keys(input).some(k=>!SEARCH_ALL_KEYS.includes(k)))throw new Error('invalid');
   const {mode='text',...query}=input;
-  if(!SEARCH_MODES.includes(mode)||(mode!=='text'&&input.kind==='review'))throw new Error('invalid');
+  // Epics and review sets have only the full-text index; the hybrid modes search tickets.
+  if(!SEARCH_MODES.includes(mode)||(mode!=='text'&&(input.kind==='review'||input.kind==='epic')))throw new Error('invalid');
   const revision=tickets.searchRevision();
   const base=db.search(query);
   const limit=Number(input.limit??20);
   await start();
   if(closed)throw new Error('Search is closed');
   let available=enabled===true;
-  if(input.kind==='review'||!QUERY_WORD.test(input.q))return {...base,mode,semanticAvailable:available};
+  if(input.kind==='review'||input.kind==='epic'||!QUERY_WORD.test(input.q))return {...base,mode,semanticAvailable:available};
   const loadedTickets=new Map();
   async function loadTicket(id){
    if(loadedTickets.has(id))return loadedTickets.get(id);
