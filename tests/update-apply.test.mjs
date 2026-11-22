@@ -1017,6 +1017,27 @@ test('adapter review regressions: post-backup stage recheck, trust reload, symli
   assert.equal(readJournal(w.inst()).step,'aborted');
  }
 
+ // 1b. Missing or corrupt staged receipt after backup is refused before any rename so rollback is never stranded.
+ {
+  const w=await world(t,{layout:'home'});
+  const f=await packageFixture(path.join(w.dir,'pkg-receipt'),{version:'1.1.0',files:{'scripts/run-tests.mjs':RUNNER,'server/index.mjs':INDEX}});
+  const origCheckpoint=w.ctx.checkpoint;
+  let removedReceipt=false;
+  w.ctx.checkpoint=name=>{
+   origCheckpoint(name);
+   if(name==='backup-verified'&&!removedReceipt){
+    removedReceipt=true;
+    const staged=readdirSync(path.dirname(w.root)).find(d=>d.startsWith('.hub-package-'));
+    assert.ok(staged,'staged package exists at backup-verified');
+    rmSync(path.join(path.dirname(w.root),staged,'.home-hub-package.json'));
+   }
+  };
+  await refused(apply(w.inst(),{package:f.file,trust:f.trustFile,migrateFromGit:true},w.ctx),/Staged package receipt is missing or changed/);
+  assert.equal(removedReceipt,true);
+  assert.equal(coreFacts(w.root).version,'1.0.0','live core was never switched when staged receipt disappeared');
+  assert.equal(readJournal(w.inst()).step,'aborted');
+ }
+
  // 2. Package preflight reloads trust policy after backup planning before extracting/running target code.
  {
   const w=await world(t,{layout:'home'});
@@ -1062,9 +1083,12 @@ test('adapter review regressions: post-backup stage recheck, trust reload, symli
   setQuarantine(w.inst().files.updates,'1.0.0',{at:'2026-11-11T08:00:00.000Z',reason:'prior core rollback'});
   const pluginOnly=await preflight(w.inst(),{plugins:{household:'v1.1.0'}},w.ctx);
   assert.deepEqual(pluginOnly.changes.map(c=>c.id),['household']);
+  const appliedPlugin=await apply(w.inst(),{plugins:{household:'v1.1.0'}},w.ctx);
+  assert.equal(appliedPlugin.journal.step,'done');
+  assert.equal(readQuarantine(w.inst().files.updates)['1.0.0']?.reason,'prior core rollback','plugin-only apply preserves core quarantine');
  }
 
- // 5. Rejected package verification does not replace the instance's saved trust selection; malformed package.json exits 1 on status --json.
+ // 5. Rejected package verification does not replace the instance's saved trust selection; failed trust-selection write cleans up staging; malformed package.json exits 1 on status --json.
  {
   const w=await world(t,{layout:'home'});
   const good=await packageFixture(path.join(w.dir,'pkg-good'),{version:'1.1.0',files:{'scripts/run-tests.mjs':RUNNER,'server/index.mjs':INDEX}});
@@ -1073,6 +1097,14 @@ test('adapter review regressions: post-backup stage recheck, trust reload, symli
   assert.equal(selectTrustFile({home:w.home}),good.trustFile);
   await refused(preflight(w.inst(),{package:good.file,trust:other.trustFile,migrateFromGit:true},w.ctx),/Package verification refused/);
   assert.equal(selectTrustFile({home:w.home}),good.trustFile,'failed verification must keep previous saved trust selection');
+
+  // If writing the trust-selection marker fails, staged package directories are cleaned up.
+  const markerPath=path.join(w.home,'update','trust-required.json');
+  rmSync(markerPath,{force:true});
+  await mkdir(markerPath,{recursive:true});
+  await assert.rejects(preflight(w.inst(),{package:good.file,trust:good.trustFile,migrateFromGit:true},w.ctx));
+  assert.deepEqual(readdirSync(path.dirname(w.root)).filter(d=>d.startsWith('.hub-package-')||d.startsWith('.hub-check-')),[],'staging dirs cleaned up after trust-selection write failure');
+  rmSync(markerPath,{recursive:true,force:true});
 
   writeFileSync(path.join(w.root,'package.json'),'{not valid json');
   const lines=[];

@@ -68,6 +68,13 @@ function packageLayout(inst,request){
  if(Object.keys(request.plugins??{}).length||(request.addPluginSources??[]).length)throw new UpdateError('Package activation keeps external plugin sources fixed. Update them in a separate Git transaction.');
 }
 
+function verifyStagedPackage(root,pkg,expectedCommit){
+ verifyStagedTree(root,{files:pkg.files},{receipt:true});
+ const receipt=packageReceipt(root);
+ if(!receipt||receipt.manifestSha256!==pkg.manifestSha256||(expectedCommit&&receipt.fullCommit!==expectedCommit))
+  throw new UpdateError('Staged package receipt is missing or changed since preflight');
+}
+
 export const packageReleaseSource=Object.freeze({
  kind:'package',
 
@@ -149,14 +156,14 @@ export const packageReleaseSource=Object.freeze({
 
  verifyPreSwitch(inst,plan){
   const p=plan.package;
-  verifyStagedTree(p.staged,{files:p.files},{receipt:true});
+  verifyStagedPackage(p.staged,p,plan.to?.core?.commit);
   const meta=authenticatePackageMetadata(p.packageFile,{trustFile:p.trustFile,repository:plan.repository,manifestDigest:p.manifestSha256,forbidden:forbiddenTrustRoots(inst)});
   if(meta.manifestSha256!==p.manifestSha256)throw new UpdateError('Package target changed since preflight');
  },
 
  applySwitch(inst,journal,plan,ctx){
   const p=journal.package;
-  verifyStagedTree(p.staged,{files:p.files},{receipt:true});
+  verifyStagedPackage(p.staged,p,journal.to?.core?.commit);
   p.status='moving-old';writeUpdateJournal(inst.files.journal,journal);refuseSocketReplacement(p.live);renameSync(p.live,p.old);ctx.checkpoint('package-old-renamed');syncDirectory(path.dirname(p.live));p.status='old-moved';writeUpdateJournal(inst.files.journal,journal);
   p.status='installing';writeUpdateJournal(inst.files.journal,journal);renameSync(p.staged,p.live);ctx.checkpoint('package-new-renamed');syncDirectory(path.dirname(p.live));p.status='installed';writeUpdateJournal(inst.files.journal,journal);
  },

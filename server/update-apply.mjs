@@ -428,11 +428,11 @@ export async function preflight(inst,request,ctx,{forApply=false,sourceLocksHeld
   repository,
   checkBackup:extra=>backupPlan(instWithTrust,extra),
  });
- if(trustFile)rememberTrustSelection(inst.home,trustFile);
- const coverage=staged.coverage??backupPlan(instWithTrust);
  const lines=[...staged.lines];
  let keepStage=false;
  try{
+  if(trustFile)rememberTrustSelection(inst.home,trustFile);
+  const coverage=staged.coverage??backupPlan(instWithTrust);
   const {target,targetCommit,targetTag,stagedDir,stagingRoot,place,stagedPluginDirs,changes,modern}=staged;
 
   // 4. Downgrade & quarantine refusal
@@ -730,7 +730,7 @@ export async function apply(inst,request,ctx){
     journal[key].status='applied';writeJournal(inst,journal);
    }
    journal.step='switched';writeJournal(inst,journal);
-   setQuarantine(inst.files.updates,plan.to.core.version,null);
+   if(Boolean(plan.package)||plan.changes.some(c=>c.id==='core'))setQuarantine(inst.files.updates,plan.to.core.version,null);
    for(const key of adapter.quarantineKeys(journal))setQuarantine(inst.files.updates,key,null);
    ctx.checkpoint();
    journal.step='starting';journal.targetMayHaveWritten=true;journal.started=true;writeJournal(inst,journal);ctx.checkpoint('target-start-intent');
