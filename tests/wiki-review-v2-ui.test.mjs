@@ -140,7 +140,7 @@ test('wiki overview & standalone space management: create, rename, link to proje
  assert.equal(idIn.value,'architecture-docs');
  fire(all(createDlg,n=>n.tagName==='form')[0],'submit');
  await flush();
- assert.deepEqual(posts[0],{url:'/api/wiki/spaces',body:{id:'architecture-docs',name:'Architecture Docs'}});
+ assert.deepEqual(posts[0],{url:'/api/wiki/spaces',body:{id:'architecture-docs',name:'Architecture Docs',create:true}});
 
  // 2. Standalone space page: breadcrumbs, detached ticket renders safely, rename, link to project, delete
  location.hash='#wiki/handbook';
@@ -157,7 +157,7 @@ test('wiki overview & standalone space management: create, rename, link to proje
  byName(renDlg,'name').value='Engineering Handbook';
  fire(all(renDlg,n=>n.tagName==='form')[0],'submit');
  await flush();
- assert.deepEqual(posts[1],{url:'/api/wiki/spaces',body:{id:'handbook',name:'Engineering Handbook'}});
+ assert.deepEqual(posts[1],{url:'/api/wiki/spaces',body:{id:'handbook',name:'Engineering Handbook',create:false}});
 
  // Link to project (only projects without a wiki are offered: alpha and quiet, not portal)
  fire(button(spaceRoot,'Link to project'),'click');
@@ -168,7 +168,7 @@ test('wiki overview & standalone space management: create, rename, link to proje
  byName(linkDlg,'projectId').value='alpha';
  fire(all(linkDlg,n=>n.tagName==='form')[0],'submit');
  await flush();
- assert.deepEqual(posts[2],{url:'/api/wiki/spaces',body:{id:'handbook',projectId:'alpha'}});
+ assert.deepEqual(posts[2],{url:'/api/wiki/spaces',body:{id:'handbook',projectId:'alpha',create:false}});
 
  // Delete space with confirmation
  fire(button(spaceRoot,'Delete wiki'),'click');

@@ -49,5 +49,5 @@ export const ADMIN_PAGES=Object.freeze(['security','versions','hardening','integ
 let pages=new Map(PAGES.map(hash=>[hash,{admin:ADMIN_PAGES.includes(hash)}]));
 // list: [{hash, admin}] from the manifest; null goes back to the core pages.
 export function setPages(list){pages=new Map((Array.isArray(list)?list:PAGES.map(hash=>({hash,admin:ADMIN_PAGES.includes(hash)}))).filter(p=>typeof p?.hash==='string'&&p.hash!==HOME_PAGE).map(p=>[p.hash,{admin:p.admin===true}]));}
-export const pageOf=hash=>{const raw=String(hash||'').replace(/^#/,'').split('/')[0];return pages.has(raw)?raw:null;};
+export const pageOf=hash=>{const raw=String(hash||'').replace(/^#/,'').split(/[/?]/)[0];return pages.has(raw)?raw:null;};
 export const pageAllowed=(page,me)=>!pages.get(page)?.admin||me?.role==='admin';

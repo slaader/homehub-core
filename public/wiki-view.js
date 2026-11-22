@@ -93,7 +93,7 @@ export function wikiPage({me,sub:project,onWikiTree}){
    if(!cleanName||!SPACE_ID.test(cleanId)){message.textContent=t('Zadej platný název a ID wiki.');return;}
    submit.disabled=true;message.textContent='';
    try{
-    const saved=await wikiApi('/api/wiki/spaces',{id:cleanId,name:cleanName});
+    const saved=await wikiApi('/api/wiki/spaces',{id:cleanId,name:cleanName,create:true});
     const spaceId=saved.id??cleanId;
     notifyWikiNavigation(spaceId,true);
     if(live&&d.open){d.close();location.hash=saved.home?editWikiHref(spaceId,saved.home):wikiHref(spaceId);}
@@ -115,7 +115,7 @@ export function wikiPage({me,sub:project,onWikiTree}){
    if(!cleanName){message.textContent=t('Zadej platný název wiki.');return;}
    submit.disabled=true;message.textContent='';
    try{
-    await wikiApi('/api/wiki/spaces',{id:spaceId,name:cleanName});
+    await wikiApi('/api/wiki/spaces',{id:spaceId,name:cleanName,create:false});
     notifyWikiNavigation(spaceId,true);
     if(live&&d.open){d.close();onDone?.();}
    }catch(error){message.textContent=wikiValidationMessage(error);}
@@ -146,7 +146,7 @@ export function wikiPage({me,sub:project,onWikiTree}){
     event.preventDefault();
     submit.disabled=true;message.textContent='';
     try{
-     await wikiApi('/api/wiki/spaces',{id:spaceId,projectId:select.value});
+     await wikiApi('/api/wiki/spaces',{id:spaceId,projectId:select.value,create:false});
      notifyWikiNavigation(spaceId,true);
      if(live&&d.open){d.close();onDone?.();}
     }catch(error){message.textContent=wikiValidationMessage(error);}
