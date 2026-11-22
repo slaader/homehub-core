@@ -404,6 +404,14 @@ test('assessRestore().coversFile works identically across v2 (including exact-fi
  writeFileSync(badManifestPath,badManifestText);
  writeFileSync(badIntegrityPath,JSON.stringify({...old.integrity,manifestSha256:digest(badManifestText)}));
  await assert.rejects(assessRestore(v1.inst,{file:v1File,manifest:badManifestPath,integrity:badIntegrityPath,entries:badManifest.roots}),/archive incomplete/);
+ // A v1 sidecar manifest whose directory mode disagrees with the tar is also rejected during read-only assessRestore().
+ const badDirManifest=structuredClone(old.manifest);
+ badDirManifest.files[0].mode=0o750;
+ const badDirText=JSON.stringify(badDirManifest,null,1)+'\n';
+ const badDirPath=v1File+'.baddir.manifest.json',badDirIntegrity=v1File+'.baddir.integrity.json';
+ writeFileSync(badDirPath,badDirText);
+ writeFileSync(badDirIntegrity,JSON.stringify({...old.integrity,manifestSha256:digest(badDirText)}));
+ await assert.rejects(assessRestore(v1.inst,{file:v1File,manifest:badDirPath,integrity:badDirIntegrity,entries:badDirManifest.roots}),/unlisted or mismatched archive entry/);
 
  // Genuine sidecar-less legacy archive created with the historical `tar -czf` writer (including macOS PAX/AppleDouble headers)
  // assesses and restores cleanly, and read-only assessment rejects missing roots and collisions.
