@@ -520,6 +520,14 @@ test('updater closure rooted at scripts/update.mjs is 100% static, acyclic, and 
  walk(entry);
  assert.deepEqual(cycles,[],'updater import graph must be acyclic');
  assert.deepEqual(dynamics,[],'updater import closure must have zero dynamic import() calls');
+ const relVisited=[...visited].map(f=>path.relative(repoRoot,f));
+ assert.ok(relVisited.includes('server/release-git.mjs'),'static closure must include server/release-git.mjs');
+ assert.ok(relVisited.includes('server/release-package.mjs'),'static closure must include server/release-package.mjs');
+ const cliSrc=readFileSync(entry,'utf8').replace(/\/\*[\s\S]*?\*\//g,'').replace(/^\s*\/\/.*$/gm,'');
+ const cliServerImports=[...cliSrc.matchAll(/(?:import|export)\s+(?:[^'"]*?\s+from\s+)?['"](\.\.\/server\/[^'"]+)['"]/g)].map(m=>m[1]).sort();
+ assert.deepEqual(cliServerImports,['../server/release-trust.mjs','../server/update-apply.mjs','../server/update-errors.mjs'],'scripts/update.mjs stays a thin CLI over update-apply, update-errors, and release-trust');
+ const applyMod=await import('../server/update-apply.mjs');
+ for(const removed of ['runMismatch','archiveEntries','makeArchive','restoreArchive'])assert.equal(removed in applyMod,false,`removed pass-through export ${removed} must not reappear`);
  for(const name of deleted)assert.equal(existsSync(path.join(repoRoot,'server',name)),false,`${name} must remain deleted`);
  const mod=await import('../server/update-backup.mjs');
  assert.deepEqual(Object.keys(mod).sort(),[

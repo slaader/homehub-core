@@ -26,16 +26,13 @@
 // Exit: 0 done; 1 refused, or failed and put back (the previous version runs); 2 usage; 3 the previous version could
 // not be brought back and the service is stopped.
 import path from 'node:path';
-import {existsSync,readFileSync,rmSync} from 'node:fs';
-import {scanBackup,backupRootSummary} from '../server/update-backup.mjs';
-import {acquireLock} from '../server/update-lock.mjs';
-import {verifyPackage} from '../server/release-package.mjs';
-import {downloadPackage,discoverReleases} from '../server/release-catalog.mjs';
-import {loadTrust,selectTrustFile,rememberTrustSelection,forbiddenTrustRoots,importTrustKey} from '../server/release-trust.mjs';
-import {updateSettings,UPDATE_INTEGRATION} from '../server/update-check.mjs';
-import {loadGithubToken,createFetchJson} from '../server/systems-upstream.mjs';
 import {fileURLToPath} from 'node:url';
-import {resolveInstance,preflight,apply,rollback,backup,status,formatStatus,realContext,readJournal,UpdateError,RollbackFailed} from '../server/update-apply.mjs';
+import {selectTrustFile,importTrustKey} from '../server/release-trust.mjs';
+import {UpdateError,RollbackFailed} from '../server/update-errors.mjs';
+import {
+ resolveInstance,preflight,apply,rollback,backup,status,formatStatus,
+ diagnoseBackup,verifyPackageTarget,downloadRelease,resolvePublishedUpdate,realContext,
+} from '../server/update-apply.mjs';
 
 const VALUE=['--to','--plugins','--site-config','--add-plugin-source','--root','--home','--data','--state','--private','--service','--health','--health-seconds','--backups','--keep','--staging','--reason','--trust','--package','--manifest-sha256','--output','--backup-root','--public-key','--fingerprint','--repository','--role','--backup-policy','--search-root','--search-max-entries','--examples'];
 const FLAG=['--no-fetch','--skip-tests','--allow-unsigned','--force','--yes','--json','--help','--latest-published','--migrate-from-git','--candidate-cover-files','--read-only'];
@@ -92,41 +89,14 @@ export function parseArgs(argv){
  out.scan={searchRoots:out.searchRoots,searchMaxEntries:scanLimit('search-max-entries',2000000,2000000),
   examples:scanLimit('examples',0,100),candidates:out.flags.has('candidate-cover-files')};
  const whole=(name,min)=>{const v=out.values[name];if(v===undefined)return undefined;if(!/^\d{1,4}$/.test(v)||Number(v)<min)throw new UsageError(`--${name} takes a whole number`);return Number(v);};
- out.options={root:out.values.root,service:out.values.service,health:out.values.health,healthSeconds:whole('health-seconds',2),backups:out.values.backups,keep:whole('keep',1),recovery:['rollback','apply','status','install'].includes(out.command),staging:out.values.staging,trust:out.values.trust,backupRoots:out.backupRoots,backupPolicy:out.values['backup-policy']};
+ out.options={root:out.values.root,service:out.values.service,health:out.values.health,healthSeconds:whole('health-seconds',2),backups:out.values.backups,keep:whole('keep',1),recovery:['rollback','apply','status','install'].includes(out.command),diagnostic:diagnostic||readOnly,staging:out.values.staging,trust:out.values.trust,backupRoots:out.backupRoots,backupPolicy:out.values['backup-policy']};
  return out;
 }
 /** The instance the flags and the environment name. A rollback without --service uses what the update it undoes was run with. */
 export function instanceFor(args,env=process.env){
  const e={...env};
  for(const [flag,name] of [['home','HOME_HUB_HOME'],['data','DATA_DIR'],['state','STATE_DIR'],['private','HOME_HUB_PRIVATE_DIR']])if(args.values[flag])e[name]=path.resolve(args.values[flag]);
- let inst=resolveInstance({env:e,options:args.options});
-
- return inst;
-}
-
-function backupDiagnostics(inst,args,out){
- let trustFile;
- try{trustFile=selectTrustFile({home:inst.home,explicit:args.values.trust});}
- catch(e){throw new UpdateError(`Trust selection refused: ${e.message}`);}
- const scanned=scanBackup({...inst,trustFile:trustFile??inst.trustFile},args.scan);
- const report=Object.fromEntries(['rootStats','totals','links','filesystems','blockers','warnings','counts','runtimeSockets','candidatePolicy'].map(k=>[k,scanned[k]]));
- if(scanned.policy)report.policy={file:scanned.policy.file,budget:scanned.policy.budget,exactFiles:scanned.policy.coverFiles.length};
- if(args.flags.has('read-only')){
-  let journal;
-  try{journal=readJournal(inst);}
-  catch(error){
-   report.blockers.push({code:'JOURNAL_UNREADABLE',message:error.message});
-   report.counts.JOURNAL_UNREADABLE=1;
-  }
-  report.journal=journal?.step??null;
-  if(journal&&!['done','rolled-back','aborted'].includes(journal.step)){
-   report.blockers.push({code:'UNFINISHED_UPDATE',message:`Recover transaction ${journal.id} before applying another update`});
-   report.counts.UNFINISHED_UPDATE=1;
-  }
- }
- // Keep the machine-readable report available by default so suggested coverage can be reviewed and copied.
- out(JSON.stringify(report,null,1));
- return report.blockers.length?1:0;
+ return resolveInstance({env:e,options:args.options});
 }
 
 export async function main(argv,{env=process.env,ctx=null,out=line=>console.log(line)}={}){
@@ -141,26 +111,32 @@ export async function main(argv,{env=process.env,ctx=null,out=line=>console.log(
  const world=ctx??realContext({log:out,checkpoint:()=>{if(signal)throw Object.assign(new Error(`interrupted (${signal})`),{interrupted:true});}});
  try{
   const inst=instanceFor(args,env);
-  if(diagnostic)return backupDiagnostics(inst,args,out);
+  if(diagnostic){
+   const report=diagnoseBackup(inst,{trust:args.values.trust,scan:args.scan,readOnly:args.flags.has('read-only')});
+   // Keep the machine-readable report available by default so suggested coverage can be reviewed and copied.
+   out(JSON.stringify(report,null,1));
+   return report.blockers.length?1:0;
+  }
   const request={core:args.tag,plugins:args.plugins,addPluginSources:args.addPluginSources,siteConfig:args.values['site-config'],fetch:!args.flags.has('no-fetch'),skipTests:args.flags.has('skip-tests'),allowUnsigned:args.flags.has('allow-unsigned'),package:args.values.package,manifestDigest:args.values['manifest-sha256'],migrateFromGit:args.flags.has('migrate-from-git'),trust:args.values.trust,force:args.flags.has('force')};
-  const repository=existsSync(path.join(inst.root,'package.json'))?JSON.parse(readFileSync(path.join(inst.root,'package.json'),'utf8')).homeHub?.updates?.repo:null;
-  const trustFile=['verify-package','download','trust-import'].includes(args.command)?selectTrustFile({home:inst.home,explicit:args.values.trust})??(args.command==='trust-import'?inst.trustFile:null):args.values.trust??inst.trustFile;
   if(args.command==='trust-import'){
-   const repo=args.values.repository??repository,role=args.values.role??'package',file=args.values['public-key'];if(!file||!args.values.fingerprint||!['package','git'].includes(role))throw new UsageError('trust-import needs --public-key FILE --fingerprint HASH [--repository OWNER/REPO] [--role package|git] and --trust FILE without an instance');if(!trustFile)throw new UsageError('trust-import requires --trust FILE or --home DIR');
-   importTrustKey({inst,trustFile,repository:repo,role,publicKeyFile:file,expectedFingerprint:args.values.fingerprint,lock:acquireLock,out});return 0;
+   const trustFile=selectTrustFile({home:inst.home,explicit:args.values.trust})??inst.trustFile;
+   const repo=args.values.repository??inst.repository,role=args.values.role??'package',file=args.values['public-key'];
+   if(!file||!args.values.fingerprint||!['package','git'].includes(role))throw new UsageError('trust-import needs --public-key FILE --fingerprint HASH [--repository OWNER/REPO] [--role package|git] and --trust FILE without an instance');
+   if(!trustFile)throw new UsageError('trust-import requires --trust FILE or --home DIR');
+   importTrustKey({inst,trustFile,repository:repo,role,publicKeyFile:file,expectedFingerprint:args.values.fingerprint,out});
+   return 0;
   }
   if(args.command==='verify-package'){
-   const site=inst.paths.siteConfig&&existsSync(inst.paths.siteConfig)?JSON.parse(readFileSync(inst.paths.siteConfig,'utf8')):null;
-   const settings=updateSettings({site,version:{updates:{repo:repository}},env});
-   const result=await verifyPackage(args.values.package,{trustFile,repository:settings.repo,manifestDigest:request.manifestDigest,compatibility:false,forbidden:forbiddenTrustRoots(inst)});rememberTrustSelection(inst.home,trustFile);out(JSON.stringify(result,null,1));return 0;
+   const result=await verifyPackageTarget(inst,{packageFile:args.values.package,trust:args.values.trust,manifestDigest:request.manifestDigest,env});
+   out(JSON.stringify(result,null,1));
+   return 0;
   }
-  if(args.command==='download'||args.flags.has('latest-published')){
-   const disabled=updateSettings({env}).envOff||Object.hasOwn(JSON.parse(existsSync(path.join(inst.paths.state,'integrations.json'))?readFileSync(path.join(inst.paths.state,'integrations.json'),'utf8'):'{}')?.disabled??{},UPDATE_INTEGRATION);if(disabled)throw new UpdateError('Update discovery is disabled; no update network requests were made.');
-   const site=inst.paths.siteConfig&&existsSync(inst.paths.siteConfig)?JSON.parse(readFileSync(inst.paths.siteConfig,'utf8')):null,settings=updateSettings({site,version:{updates:{repo:repository}},env});
-   const token=(await loadGithubToken({env})).token,fetchJson=createFetchJson({token});
-   if(args.command==='download'){if(trustFile)loadTrust(trustFile,{forbidden:forbiddenTrustRoots(inst)});const result=await downloadPackage({tag:args.tag,repository:settings.repo,trustFile,manifestDigest:request.manifestDigest,output:path.resolve(args.values.output??process.cwd()),fetchJson});rememberTrustSelection(inst.home,trustFile);out(`Verified download: ${result.file}\nManifest SHA-256: ${result.manifestSha256}`);return 0;}
-   const found=await discoverReleases({repository:settings.repo,channel:settings.channel,fetchJson});request.core=found.found.tag;if(!request.core)throw new UpdateError('No published release selected');
+  if(args.command==='download'){
+   const result=await downloadRelease(inst,{tag:args.tag,trust:args.values.trust,manifestDigest:request.manifestDigest,output:args.values.output??process.cwd(),env});
+   out(`Verified download: ${result.file}\nManifest SHA-256: ${result.manifestSha256}`);
+   return 0;
   }
+  if(args.flags.has('latest-published'))request.core=(await resolvePublishedUpdate(inst,{env})).tag;
   if(args.command==='status'){
    const s=status(inst,world);
    if(args.flags.has('json'))out(JSON.stringify(s,null,1));else for(const line of formatStatus(s))out(line);
@@ -170,7 +146,6 @@ export async function main(argv,{env=process.env,ctx=null,out=line=>console.log(
    out(`Preflight for ${inst.root}:`);
    const plan=await preflight(inst,request,world);
    for(const line of plan.lines)out(`  ${line}`);
-   if(plan.package){rmSync(plan.package.staged,{recursive:true,force:true});}
    out(`\nPreflight passed: ${plan.from.label} → ${plan.to.label}. The live installation was not switched; staging and trust selection may update local updater metadata.`);
    if(!inst.service||!inst.health)out('To apply it, also say how the hub is stopped, started and checked: --service and --health (or instance.json).');
    return 0;
@@ -188,7 +163,7 @@ export async function main(argv,{env=process.env,ctx=null,out=line=>console.log(
    return 0;
   }
   const made=await backup(inst,world);
-  out(`\nArchive: ${made.file} (${backupRootSummary(made.entries)}; ${made.files} entries). The hub is running again.`);
+  out(`\nArchive: ${made.file} (${made.summary}; ${made.files} entries). The hub is running again.`);
   return 0;
  }catch(e){
   if(e instanceof RollbackFailed){console.error(`\nROLLBACK FAILED. ${e.message}`);return 3;}
