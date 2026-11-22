@@ -77,7 +77,8 @@ wiki directories and their metadata under `STATE_DIR`.
   the rest `true`); only rows without it change, and their `rev` and ticket counter stay. Releases before
   epoch 11 refuse the file; going back needs the pre-update backup.
 - Schema 7 (data epoch 12) adds `labels`, `nextEpic` and `projectVersion: 1` to existing projects, preserving
-  their revision and ticket counter. It records the owning project separately from the Wiki space ID (Wiki
+  their revision and ticket counter. Tracker metadata retains both numbering counters when a project is deleted
+  so a reused key cannot redirect older ticket or epic links. Schema 7 also records the owning project separately from the Wiki space ID (Wiki
   schema 5), preserving page and asset keys. New projects start at version 2. The optional project wizard
   changes project features and their data after database migration. Rolling back to epoch 11 restores the
   pre-update backup.

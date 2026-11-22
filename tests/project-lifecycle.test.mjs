@@ -51,8 +51,10 @@ test('project deletion checks scopes and stale dependencies before cascading and
  await post(base+'/delete',{...deletion,deleteReviews:true,promoteReferences:false},403,writer);
  await post(base+'/delete',{...deletion,confirmation:'WRONG'},400);
  assert.equal((await preview()).snapshot,before.snapshot);
- await post('/api/tickets',{project:id,title:'New dependency'},201);
+ const updated=await post('/api/tickets/comment',{id:ticket.id,text:'A new comment'});
+ assert.equal(updated.rev,ticket.rev);
  await post(base+'/delete',deletion,409);
+ await post('/api/tickets',{project:id,title:'New dependency'},201);
  assert.equal((await get('/api/tickets/'+ticket.id)).id,ticket.id);
  await post(base+'/delete',{...deletion,snapshot:(await preview()).snapshot});
  await get('/api/tickets/'+ticket.id,404);
@@ -126,4 +128,19 @@ test('project deletion rolls back Tracker and search if a later Wiki write fails
  assert.equal((await get(base+'/'+id+'/delete-preview')).snapshot,snapshot);
  await post(base+'/delete',input);
  await get('/api/tickets/'+ticket.id,404);
+});
+
+test('reusing a project key keeps deleted ticket and epic IDs unavailable',async t=>{
+ const {post,get}=await fixture(t),id='example-app';
+ const project=await post(base,{id,key:'EX',name:'Example'},201);
+ const ticket=await post('/api/tickets',{project:id,title:'First item'},201);
+ const epic=await post('/api/tickets/epics/create',{project:id,title:'First epic'},201);
+ const {snapshot}=await get(base+'/'+id+'/delete-preview');
+ await post(base+'/delete',{id,rev:project.rev,confirmation:'EX',snapshot});
+ const replacement='replacement-app';
+ await post(base,{id:replacement,key:'EX',name:'Replacement'},201);
+ assert.equal((await post('/api/tickets',{project:replacement,title:'New item'},201)).id,'EX-2');
+ assert.equal((await post('/api/tickets/epics/create',{project:replacement,title:'New epic'},201)).id,'EX-E2');
+ await get('/api/tickets/'+ticket.id,404);
+ await get('/api/tickets/epics/'+epic.id,404);
 });

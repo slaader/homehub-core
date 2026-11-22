@@ -217,7 +217,7 @@ test('project lifecycle steps: footprint, removal in one transaction that rolls 
  await assert.rejects(s.get(t1.id),/not-found/);
  // The key can be used again; numbering starts over.
  assert.equal((await s.saveProject({id:'home-hub',key:'HH',name:'Again'},'a')).rev,1);
- assert.equal((await s.create({project:'home-hub',title:'Fresh'},'a')).id,'HH-1');
+ assert.equal((await s.create({project:'home-hub',title:'Fresh'},'a')).id,'HH-2');
  assert.equal((await s.createEpic({project:'home-hub',title:'Fresh epic'},'a')).id,'HH-E1');
 });
 

@@ -334,7 +334,9 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
   const validate=await guardText(description);
   return write((data,now,count)=>{
    const project=projectOf(data,input.project);validate(project.id);if(count('tickets')>=LIMITS.tickets)fail('limit');
-   const f=fields(input,project.id,data),id=`${project.key}-${project.next}`;project.next++;
+   const f=fields(input,project.id,data),id=`${project.key}-${project.next}`;
+   if(!TICKET_ID.test(id))fail('limit');
+   project.next++;
    const ticket={id,project:project.id,title:f.title,description:f.description??'',type:f.type??'task',status:f.status??'open',priority:f.priority??'normal',
     release:f.release??null,assignee:f.assignee??null,labels:f.labels??[],refs:f.refs??[],epic:f.epic??null,reporter:by,createdAt:now,updatedAt:now,
     closedAt:CLOSED.includes(f.status)?now:null,rev:1,comments:[],attachments:[],history:[{at:now,by,field:'created',from:null,to:f.status??'open'}]};
@@ -419,8 +421,10 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
   if(typeof prep.key!=='string'||!PROJECT_KEY.test(prep.key)||prep.name===undefined||prep.projectVersion===1)fail('invalid');
   if(data.projects.some(p=>p.key===prep.key))fail('conflict');
   if(data.projects.length>=LIMITS.projects)fail('limit');
+  const {next=1,nextEpic=1}=data.retiredKeys?.[prep.key]??{};
+  if(data.retiredKeys)delete data.retiredKeys[prep.key];
   const p={id:prep.id,key:prep.key,name:prep.name,description:prep.description??'',type:prep.type??null,labels:prep.labels??[],settings:{...PROJECT_SETTINGS,...prep.settings},
-   createdAt:now,createdBy:by,updatedAt:now,rev:1,next:1,nextEpic:1,projectVersion:2};
+   createdAt:now,createdBy:by,updatedAt:now,rev:1,next,nextEpic,projectVersion:2};
   data.projects.push(p);return {project:publicProject(p),created:true,previous:null,createWiki:prep.createWiki};
  }
  // Create a project (no rev; id and key are permanent) or change its name/description/type/labels/settings (rev
@@ -451,7 +455,9 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
   if(count('epics')>=LIMITS.epics)fail('limit');
   let n=Number.isSafeInteger(p.nextEpic)&&p.nextEpic>0?p.nextEpic:1;
   while(hasEpicQuery.get(`${p.key}-E${n}`)||data.epics.some(e=>e.id===`${p.key}-E${n}`))n++;
-  const epic={id:`${p.key}-E${n}`,project:p.id,title:f.title,description:f.description??'',spec:f.spec??'',status:f.status??'open',priority:f.priority??'normal',
+  const id=`${p.key}-E${n}`;
+  if(!EPIC_ID.test(id))fail('limit');
+  const epic={id,project:p.id,title:f.title,description:f.description??'',spec:f.spec??'',status:f.status??'open',priority:f.priority??'normal',
    release:f.release??null,assignee:f.assignee??null,labels:f.labels??[],refs:f.refs??[],reporter:by,createdAt:now,updatedAt:now,
    closedAt:CLOSED.includes(f.status)?now:null,rev:1,comments:[],attachments:[],history:[{at:now,by,field:'created',from:null,to:f.status??'open'}]};
   p.nextEpic=n+1;data.epics.push(epic);return epic;
@@ -606,7 +612,13 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
  function footprint(data,projectId){
   const p=data.projects.find(x=>x.id===projectId)||fail('not-found');
   const mine=x=>x.project===p.id,epics=data.epics.filter(mine),tickets=data.tickets.filter(mine),releases=data.releases.filter(mine);
-  const lines=[`project:${p.id}:${p.rev}`,...epics.map(e=>`epic:${e.id}:${e.rev}`),...tickets.map(t=>`ticket:${t.id}:${t.rev}`),...releases.map(r=>`release:${r.version}:${r.rev}`)].sort();
+  const recordVersion=record=>[record.rev,record.updatedAt,record.comments?.at(-1)?.id,record.attachments?.map(file=>file.id)];
+  const lines=[
+   ['project',p.id,p.rev],
+   ...epics.map(e=>['epic',e.id,...recordVersion(e)]),
+   ...tickets.map(t=>['ticket',t.id,...recordVersion(t)]),
+   ...releases.map(r=>['release',r.version,r.rev]),
+  ].map(row=>JSON.stringify(row)).sort();
   return {project:publicProject(p),counts:{epics:epics.length,tickets:tickets.length,releases:releases.length},digest:createHash('sha256').update(lines.join('\n')).digest('hex')};
  }
  // Removes the project row with its epics, tickets and releases from data (their search entries go with the rows).
@@ -616,6 +628,11 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
   const id=typeof project==='string'?project:project?.id;
   const p=data.projects.find(x=>x.id===id)||fail('not-found');
   const mine=x=>x.project===p.id,epics=data.epics.filter(mine),tickets=data.tickets.filter(mine),releases=data.releases.filter(mine);
+  // A detached document may still link to this key's old ticket or epic IDs.
+  if(p.next>1||p.nextEpic>1){
+   data.retiredKeys??={};
+   data.retiredKeys[p.key]={next:p.next??1,nextEpic:p.nextEpic??1};
+  }
   data.projects=data.projects.filter(x=>x!==p);data.epics=data.epics.filter(x=>!mine(x));data.tickets=data.tickets.filter(x=>!mine(x));data.releases=data.releases.filter(x=>!mine(x));
   const shas=[...new Set([...epics,...tickets].flatMap(x=>(x.attachments||[]).map(a=>a.sha256)))];
   return {project:publicProject(p),counts:{epics:epics.length,tickets:tickets.length,releases:releases.length},
