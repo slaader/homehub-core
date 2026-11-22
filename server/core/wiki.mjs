@@ -164,7 +164,10 @@ export default {
   }),
   route('GET',new RegExp(`^/api/wiki/tickets/(${ticket})/backlinks$`),async c=>
    c.json(200,{pages:await c.state.wiki.backlinks(c.params[1])})),
-  route('GET',new RegExp(`^/api/wiki/(${project})$`),async c=>c.json(200,await c.state.wiki.list(c.params[1]))),
+  route('GET',new RegExp(`^/api/wiki/(${project})$`),async c=>{
+   if(!exactKeys(c.query,['project'])||c.query.project!==undefined&&c.query.project!=='1')throw new Error('invalid');
+   return c.json(200,await c.state.wiki.list(c.params[1],{projectOnly:c.query.project==='1'}));
+  }),
   route('GET',new RegExp(`^/api/wiki/(${project})/pages/(${page})$`),async c=>
    c.json(200,await withProvenance(c,await c.state.wiki.get(c.params[1],c.params[2])))),
   write('/api/wiki/setup',async c=>{

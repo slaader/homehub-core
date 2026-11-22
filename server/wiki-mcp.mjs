@@ -122,7 +122,7 @@ export const wikiTools=[
   {project},['project'],async (input,{state},by)=>{
    const {id:space,home,created}=await state.wiki.setup(input,by);
    const target=space??input.project;
-   return {...mutation(await state.wiki.get(target,home)),home,created,...(space&&space!==input.project?{id:space}:{})};
+   return {...mutation(await state.wiki.get(target,home)),home,created,...(space&&space!==input.project?{spaceId:space}:{})};
   },{retry:true}),
  tool('page_create','Create a page under the selected parent, or Home when parentId is omitted. Retry with the same request ID.',
   {project,parentId:pageId,title,doc,requestId},['project','title','requestId'],async (input,{state},by,actor)=>

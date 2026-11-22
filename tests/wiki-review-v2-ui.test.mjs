@@ -109,7 +109,7 @@ test('wiki overview & standalone space management: create, rename, link to proje
    if(url==='/api/wiki/spaces')return Response.json({id:body.id,name:body.name??'Handbook',projectId:body.projectId??null,home});
    if(url==='/api/wiki/spaces/delete')return Response.json({deleted:true});
   }
-  if(url==='/api/wiki')return Response.json({projects:[spaces[0]],spaces});
+  if((url==='/api/wiki'||url==='/api/wiki?includeHidden=1'))return Response.json({projects:[spaces[0]],spaces});
   if(url.startsWith('/api/tickets?limit=1'))return Response.json({projects,releases:[],tickets:[],total:0});
   if(url.startsWith('/api/tickets?project='))return Response.json({projects,releases:[],tickets:[],total:0});
   if(url==='/api/wiki/handbook')return Response.json({enabled:true,id:'handbook',name:'Handbook',projectId:null,home,pages:[{id:home,title:'Handbook Home',parentId:null}]});

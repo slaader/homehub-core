@@ -173,4 +173,5 @@ export default {
  'Opravdu chceš trvale smazat sadu {id} ({title})? Odstraní se všechna kola, rozhodnutí i nepoužívané soubory.':'Permanently delete set {id} ({title})? All rounds, decisions and unreferenced files will be removed.',
  'Tato sada review je odpojená (jen pro čtení).':'This review set is detached (read-only).',
  'Původní projekt „{name}“ byl smazán. Všechna kola, varianty, rozhodnutí a připomínky zůstávají ke čtení; publikování dalších kol a ukládání zpětné vazby je zakázáno.':'The original project “{name}” was deleted. All rounds, variants, decisions and comments remain readable; publishing new rounds and saving feedback are disabled.',
+ "Sada je odpojená od smazaného projektu a je jen pro čtení. Přiřaď ji k projektu nebo ji smaž.":"This review set is detached from a deleted project and is read-only. Reassign it to a project or delete it.",
 };

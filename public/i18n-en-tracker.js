@@ -300,4 +300,12 @@ export default {
  'Volitelné funkce':'Optional features',
  'Založí propojenou wiki s domovskou stránkou projektu.':'Creates a linked wiki space with the project’s Home page.',
  'Zapne Review pro položky tohoto projektu.':'Enables Review for items in this project.',
+ "Neplatný požadavek na epic (zkontroluj pole, projekt, release a tickety).":"Invalid epic request (check the fields, the project, the release and the tickets).",
+ "Epic nebo ticket neexistuje.":"The epic or ticket does not exist.",
+ "Epic nebo ticket se mezitím změnil. Načti ho znovu a změnu zopakuj.":"The epic or a ticket changed in the meantime. Read it again and repeat the change.",
+ "Neplatný požadavek na projekt (zkontroluj pole a potvrzení klíčem nebo názvem).":"Invalid project request (check the fields and the confirmation by key or name).",
+ "Projekt neexistuje.":"The project does not exist.",
+ "Projekt nebo jeho obsah se od náhledu změnil. Načti náhled znovu.":"The project or what it holds changed since the preview. Load the preview again.",
+ "Na tuto volbu nemáš oprávnění; nic se nezměnilo.":"This option needs a scope you lack; nothing was changed.",
+ "Neplatné hledání (nejvýš 200 znaků, kind ticket|epic|review, limit 1–100).":"Invalid search (200 characters at most, kind ticket|epic|review, limit 1–100).",
 };

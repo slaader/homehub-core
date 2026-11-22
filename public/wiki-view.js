@@ -42,7 +42,8 @@ function storeDraft(key,draft){
  }catch{}
 }
 
-export function wikiPage({me,sub:project,onWikiTree}){
+export function wikiPage({me,sub:routeSpace,onWikiTree}){
+ let project=routeSpace;
  const root=el('section',{class:'sec tk wiki'},loadingState());
  const [hashPath,hashQuery='']=location.hash.split('?');
  const [, , selected]=hashPath.split('/');
@@ -132,7 +133,7 @@ export function wikiPage({me,sub:project,onWikiTree}){
   const body=el('div',{class:'wiki-form'},loadingState());
   const d=dialog(t('Propojit wiki s projektem'),[body],{closeButton:false});
   try{
-   const [tracker,index]=await Promise.all([wikiApi('/api/tickets?limit=1'),wikiApi('/api/wiki')]);
+   const [tracker,index]=await Promise.all([wikiApi('/api/tickets?limit=1'),wikiApi('/api/wiki?includeHidden=1')]);
    if(!live||!d.open)return;
    const taken=new Set(listSpaces(index).map(s=>s.projectId!==undefined?s.projectId:s.id).filter(Boolean));
    const eligible=(tracker?.projects??[]).filter(p=>!taken.has(p.id));
@@ -231,6 +232,11 @@ export function wikiPage({me,sub:project,onWikiTree}){
     wikiApi('/api/tickets?project='+project).catch(()=>null),
    ]);
    if(!live)return;
+   if(meta.enabled&&meta.id&&meta.id!==project){
+    project=meta.id;
+    const canonical=wikiHref(project,selected);
+    history.replaceState(history.state,'',canonical+(hashQuery?'?'+hashQuery:''));
+   }
    let tracker=initialTracker;
    const linkedProjectId=meta.projectId!==undefined?meta.projectId:(tracker?.projects?.some(p=>p.id===project)?project:null);
    if(linkedProjectId&&linkedProjectId!==project){

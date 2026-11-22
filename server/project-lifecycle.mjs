@@ -36,7 +36,9 @@ function describeDeletion(project,tracker,wiki,review,references,wikiAdapter,ref
  const dependencies=[
   [project.id,project.key,project.createdAt,project.rev],space?.id??null,
   tracker.digest,
-  fingerprint(pages,row=>row.id),fingerprint(sets,row=>row.id),fingerprint(local,row=>row.id),collisions,
+  fingerprint(pages,row=>row.id),sets.map(set=>[set.id,set.rev,set.rounds.map(round=>
+   Object.entries(round.feedback??{}).sort(([a],[b])=>a.localeCompare(b)).map(([id,decision])=>[id,decision.rev]))])
+   .sort(([a],[b])=>a.localeCompare(b)),fingerprint(local,row=>row.id),collisions,
  ];
  const snapshot=createHash('sha256').update(JSON.stringify(dependencies)).digest('hex');
  return {preview:{id:project.id,rev:project.rev,counts,collisions,snapshot},space};
@@ -117,6 +119,7 @@ export function createProjectLifecycle(hub,tickets){
    const at=new Date().toISOString();
    const trackerCleanup=a.remove(trackerData,project,by,at);
    const wikiCleanup=space&&(input.deleteWiki?w.remove(wikiData,space,at):w.detach(wikiData,space,project.name,at));
+   if(!space)w.removeUnlinkedGrants(wikiData,project.id,at);
    const reviewCleanup=r.removeProject(reviewData,project,input.deleteReviews===true,by,at);
    f.removeProject(refsData,project,{promote:input.promoteReferences===true,collisions:preview.collisions,
     ticketIds:trackerCleanup.ticketIds,epicIds:trackerCleanup.epicIds,

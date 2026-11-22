@@ -144,7 +144,7 @@ export function validateSite(raw={}){
  const tracker=keys(raw.tracker??{},['projects'],'tracker');
  const projects=list(tracker.projects??[],50,'tracker.projects').map((p,i)=>{keys(p,['id','key','name','type'],`tracker.projects[${i}]`);
   if(typeof p.id!=='string'||!/^[a-z][a-z0-9-]{1,39}$/.test(p.id)||typeof p.key!=='string'||!/^[A-Z][A-Z0-9]{1,9}$/.test(p.key))fail(`tracker.projects[${i}] needs an id (a-z, 0-9, -) and a KEY`);
-  if(p.type!==undefined&&p.type!==null&&!['app','game','other'].includes(p.type))fail(`tracker.projects[${i}].type must be app, game or other`);
+  if(p.type!==undefined&&p.type!==null&&!['web','app','game','other'].includes(p.type))fail(`tracker.projects[${i}].type must be web, app, game or other`);
   return {id:p.id,key:p.key,name:str(p.name??p.id,80,`tracker.projects[${i}].name`,{empty:false}),...(p.type?{type:p.type}:{})};});
  const security=keys(raw.security??{},['gitHost','gitUrl','certificates','order'],'security');
  const certificates=list(security.certificates??[],20,'security.certificates').map((c,i)=>{keys(c,['match','label'],`security.certificates[${i}]`);try{new RegExp(c.match);}catch{fail(`security.certificates[${i}].match must be a regular expression`);}return {match:str(c.match,200,`security.certificates[${i}].match`,{empty:false}),label:str(c.label,120,`security.certificates[${i}].label`,{empty:false})};});

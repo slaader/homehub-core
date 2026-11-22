@@ -578,10 +578,17 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
   const type='type'in input?nullable(input.type,v=>oneOf(v,PROJECT_TYPES)):undefined,labelList='labels'in input?labels(input.labels):undefined;
   const settings='settings'in input?settingsPatch(input.settings):{};
   const seen=new Set(),plan=epics.map(x=>{
-   if(!epicInput(x,['title','description','spec','ticketIds'])||!('title'in x))fail('invalid');
-   const ids=x.ticketIds===undefined?[]:Array.isArray(x.ticketIds)?x.ticketIds:fail('invalid');
-   for(const id of ids){if(typeof id!=='string'||!TICKET_ID.test(id)||seen.has(id))fail('invalid');seen.add(id);}
-   const {ticketIds,...f}=x;return {fields:epicFields(f,null,{releases:[]}),ticketIds:ids};
+   if(!epicInput(x,['title','description','spec','ticketIds','tickets'])||!('title'in x)||'ticketIds'in x&&'tickets'in x)fail('invalid');
+   const {ticketIds,tickets,...f}=x;
+   const items=tickets===undefined
+    ?ticketIds===undefined?[]:Array.isArray(ticketIds)?ticketIds.map(id=>({id})):fail('invalid')
+    :Array.isArray(tickets)?tickets:fail('invalid');
+   for(const item of items){
+    if(!onlyKeys(item,['id','rev'])||typeof item.id!=='string'||!TICKET_ID.test(item.id)||
+     tickets!==undefined&&!validRev(item.rev)||seen.has(item.id))fail('invalid');
+    seen.add(item.id);
+   }
+   return {fields:epicFields(f,null,{releases:[]}),tickets:items};
   });
   if(seen.size>LIMITS.assign)fail('invalid');
   const validate=await guardTexts(plan.flatMap(x=>[x.fields.description,x.fields.spec]));
@@ -599,11 +606,15 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
   if(counter('epics')+prepared.plan.length>LIMITS.epics)fail('limit');
   // Every ticket is checked before any is moved; the plan's ids are distinct.
   // An id that is not one of this project's tickets is invalid, whether it is missing or another project's.
-  for(const {ticketIds} of prepared.plan)for(const id of ticketIds){const t=data.tickets.find(x=>x.id===id);if(!t||t.project!==p.id)fail('invalid');}
+  for(const {tickets} of prepared.plan)for(const {id,rev} of tickets){
+   const t=data.tickets.find(x=>x.id===id);
+   if(!t||t.project!==p.id)fail('invalid');
+   if(rev!==undefined&&rev!==t.rev)fail('conflict');
+  }
   const epics=[],tickets=[];
-  for(const {fields:f,ticketIds} of prepared.plan){
+  for(const {fields:f,tickets:assigned} of prepared.plan){
    const e=addEpic(data,p,f,by,now,()=>0);epics.push(e);
-   tickets.push(...assignTickets(data,e,ticketIds.map(id=>({id})),by,now).map(t=>t.id));
+   tickets.push(...assignTickets(data,e,assigned,by,now).map(t=>t.id));
   }
   p.projectVersion=2;p.updatedAt=now;p.rev++;
   return {project:publicProject(p),epics:epics.map(e=>epicOut(e)),tickets};

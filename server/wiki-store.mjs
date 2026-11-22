@@ -380,9 +380,9 @@ export function createWikiStore(db,tickets,{mentionGuard=null,readDocument=null,
   return items;
  }
 
- async function list(id){
+ async function list(id,{projectOnly=false}={}){
   if(!matches(id,WIKI_SPACE_ID))fail('invalid');
-  const direct=await store.get('wikis',id);
+  const direct=projectOnly?null:await store.get('wikis',id);
   if(direct){
    const view=await resolveSpaceView(direct);
    return {enabled:true,id:view.id,name:view.name,projectId:view.projectId,home:view.home,pages:orderedTree(await store.list('summaries',view.id+'/'))};
@@ -797,7 +797,7 @@ export function createWikiStore(db,tickets,{mentionGuard=null,readDocument=null,
     return {wikis:null,pages:prefix,summaries:prefix};
    }
    if(action==='rename'||action==='renameHome'||action==='upgrade')return {wikis:null,pages:null,summaries:null};
-   if(action==='preview')return {wikis:null,summaries:null};
+   if(action==='preview')return {wikis:null,summaries:null,grants:projectId+'/'};
    if(action==='detach')return {wikis:null};
    return {wikis:null,pages:null,summaries:null,assets:null,uploads:null,blobs:null,receipts:null,grants:null};
   },
@@ -835,6 +835,13 @@ export function createWikiStore(db,tickets,{mentionGuard=null,readDocument=null,
    data.revision++;
    data.updatedAt=at;
    return {detached:true,space:spaceRecord(space)};
+  },
+  removeUnlinkedGrants(data,projectId,at=now()){
+   if(data.wikis.some(space=>spaceKey(space)===projectId))return;
+   const retained=data.grants.filter(grant=>grant.project!==projectId);
+   if(retained.length===data.grants.length)return;
+   data.grants=retained;
+   data.revision++;data.updatedAt=at;
   },
   remove(data,space,at=now()){
    return removeSpaceInData(data,space,at);

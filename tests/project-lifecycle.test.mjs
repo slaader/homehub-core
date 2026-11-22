@@ -78,7 +78,8 @@ test('project upgrade commits initial epics, ticket links and legacy Wiki change
  assert.equal((await get(page)).title,'Home');
  const item=await post('/api/tickets',{project:id,title:'Existing task'},201);
  const input={id,rev:project.rev,type:'web',labels:['legacy'],settings:{wiki:true,reviews:false},renameWikiHome:true};
- const epic={title:'First epic',ticketIds:[item.id]};
+ const epic={title:'First epic',tickets:[{id:item.id,rev:item.rev}]};
+ await post(base+'/upgrade',{...input,epics:[{...epic,tickets:[{id:item.id,rev:item.rev+1}]}]},409);
  await post(base+'/upgrade',{...input,epics:[epic,{title:'Unavailable ticket',ticketIds:['OTH-1']}]},400);
  assert.equal((await get(page)).title,'Home');
  assert.equal((await get('/api/tickets/'+item.id)).epic,null);
@@ -143,4 +144,42 @@ test('reusing a project key keeps deleted ticket and epic IDs unavailable',async
  assert.equal((await post('/api/tickets/epics/create',{project:replacement,title:'New epic'},201)).id,'EX-E2');
  await get('/api/tickets/'+ticket.id,404);
  await get('/api/tickets/epics/'+epic.id,404);
+});
+
+test('new Review feedback invalidates a deletion preview and pre-Wiki grants do not survive deletion',async t=>{
+ const {post,get}=await fixture(t),id='example-app';
+ const project=await post(base,{id,key:'EX',name:'Example'},201);
+ const publish=project=>post('/api/review/publish',{project,title:'Review fixture',items:[
+  {id:'sample',title:'Sample',kind:'html',variants:[{id:'a',media:[{type:'text/html',html:'<p>Fixture</p>'}]}]},
+ ]},201);
+ const own=await publish(id),shared=await publish('home-hub');
+ await post('/api/admin/wiki/sources',{project:id,kind:'review',set:shared.id,enabled:true});
+ assert.equal((await get('/api/wiki/'+id+'/sources')).reviewSets.some(set=>set.id===shared.id),true);
+ const preview=()=>get(base+'/'+id+'/delete-preview');
+ const old=await preview();
+ const input={id,rev:project.rev,confirmation:'EX',snapshot:old.snapshot,deleteReviews:true};
+ await post('/api/review/feedback',{set:own.id,round:1,item:'sample',rev:0,variant:'a',status:'accept'});
+ assert.equal((await get('/api/review/sets/'+own.id)).rev,own.rev);
+ await post(base+'/delete',input,409);
+ await post(base+'/delete',{...input,snapshot:(await preview()).snapshot});
+ await post(base,{id,key:'EX',name:'Replacement'},201);
+ assert.equal((await get('/api/wiki/'+id+'/sources')).reviewSets.some(set=>set.id===shared.id),false);
+});
+
+test('project Wiki lookup disambiguates existing standalone spaces and preserves MCP page IDs',async t=>{
+ const {post,get,writer}=await fixture(t),id='example-app';
+ const first=await post(base,{id,key:'EX',name:'Example',createWiki:true},201);
+ const {snapshot}=await get(base+'/'+id+'/delete-preview');
+ await post(base+'/delete',{id,rev:first.rev,confirmation:'EX',snapshot});
+ await post(base,{id,key:'EX',name:'Replacement'},201);
+ const space=await post('/api/wiki/spaces',{id:'handbook',name:'Handbook',create:true},201);
+ assert.equal((await get('/api/wiki/'+id+'?project=1')).enabled,false);
+ await post('/api/wiki/spaces',{id:space.id,projectId:id,create:false});
+ assert.equal((await get('/api/wiki/'+id+'?project=1')).id,space.id);
+ assert.equal((await get('/api/wiki/'+id)).projectId,null);
+ const {result}=await post('/mcp',{jsonrpc:'2.0',id:1,method:'tools/call',
+  params:{name:'wiki_setup',arguments:{project:id}}},200,writer);
+ assert.equal(result.isError,false);
+ assert.deepEqual([result.structuredContent.id,result.structuredContent.pageId,result.structuredContent.spaceId],
+  [space.home,space.home,space.id]);
 });

@@ -830,7 +830,7 @@ test('project tracker opens Home in edit mode after setup and shows readers only
  let enabled=false,posts=0;
  globalThis.fetch=async(url,options={})=>{
   if(url==='/api/tickets?project=home-hub')return Response.json(data);
-  if(url==='/api/wiki/home-hub')return Response.json({enabled,home});
+  if(url==='/api/wiki/home-hub'||url==='/api/wiki/home-hub?project=1')return Response.json({enabled,home});
   assert.equal(url,'/api/wiki/setup');
   assert.deepEqual(JSON.parse(options.body),{project:'home-hub'});
   posts++;

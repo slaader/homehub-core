@@ -196,9 +196,9 @@ Additive routes and MCP tools (final schemas to be mirrored in [API.md](API.md) 
 |---|---|---|---|
 | Projects | `POST /api/tickets/projects` (extended: `type:'web'`, `labels`, `projectVersion`, optional `createWiki`), `POST /api/tickets/projects/delete` | `project_save` (extended), `project_delete` | `tickets:write` (+ `review:write` / `references:write` per options) |
 | Epics | `GET /api/tickets/epics`, `GET /api/tickets/epics/<ID>`, `POST /api/tickets/epics/create`, `POST /api/tickets/epics/update`, `POST /api/tickets/epics/comment`, `POST /api/tickets/epics/delete`, `POST /api/tickets/epics/<ID>/assign`, `PUT/GET/POST /api/tickets/epics/<ID>/attachments...` | `epics_list`, `epic_get`, `epic_create`, `epic_update`, `epic_comment`, `epic_delete` | `read` / `tickets:write` |
-| Tickets | `POST /api/tickets/create`, `POST /api/tickets/update`, `GET /api/tickets` (extended with `epic`) | `tickets_list`, `ticket_create`, `ticket_update` (extended with `epic`) | `read` / `tickets:write` |
+| Tickets | `POST /api/tickets`, `POST /api/tickets/update`, `GET /api/tickets` (extended with `epic`) | `tickets_list`, `ticket_create`, `ticket_update` (extended with `epic`) | `read` / `tickets:write` |
 | Wiki spaces | `GET /api/wiki`, `POST /api/wiki/spaces` (create/rename/attach), `POST /api/wiki/spaces/delete` | `wiki_spaces_list`, `wiki_space_create`, `wiki_space_update`, `wiki_space_delete` | `read` / `tickets:write` |
-| Review | `POST /api/review/sets/delete`, `POST /api/review/sets/reassign` (for detached sets); `GET /api/review?project=none` | `review_set_delete`, `review_set_reassign` | `review:write` |
+| Review | `POST /api/review/sets/delete`, `POST /api/review/sets/reassign` (for detached sets); `GET /api/review?detached=true` | `review_set_delete`, `review_set_reassign` | `review:write` |
 | References | Existing routes extended with `kind:'epic'` | Existing tools extended with `kind:'epic'` | `read` / `tickets:write` / `references:write` |
 
 ## 8. Acceptance criteria

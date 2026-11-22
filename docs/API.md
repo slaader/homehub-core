@@ -991,9 +991,9 @@ title that still uses the previous default.
   disambiguates conflicting labels with the project key. These endpoints require `tickets:write`, plus
   `review:write` or `references:write` when requesting Review deletion or reference promotion respectively.
 - `POST /api/tickets/projects/upgrade` accepts
-  `{id, rev, type, labels, settings, renameWikiHome?, epics:[{title, description?, spec?, ticketIds?}]}`
+  `{id, rev, type, labels, settings, renameWikiHome?, epics:[{title, description?, spec?, tickets?:[{id, rev}]}]}`
   with `tickets:write`. It applies the profile, settings, optional Wiki home rename, initial epics and ticket
-  assignments together and moves a v1 project to v2. Existing projects are usable before upgrading.
+  assignments together, checking the selected tickets' revisions, and moves a v1 project to v2. Existing projects are usable before upgrading.
 
 ### Epics
 
@@ -1076,7 +1076,10 @@ base32 characters and returns parents before their alphabetically ordered childr
 
 In page, asset and upload operations, the existing `project` parameter is the immutable Wiki space ID.
 A standalone space has `projectId:null`; linked spaces store their owning project's ID. Hidden spaces
-remain directly readable. Space management is also available through MCP `wiki_spaces_list`,
+remain directly readable. Use `GET /api/wiki/<projectId>?project=1` to look up only the space linked to a
+project, then use the returned space ID for page requests. MCP `wiki_setup` returns separate `spaceId`
+when the linked space has a different ID, and preserves the Home page ID in `id` and `pageId`.
+Space management is also available through MCP `wiki_spaces_list`,
 `wiki_space_create`, `wiki_space_update` and `wiki_space_delete`.
 
 A page contains `{id, project, parentId, title, doc, links, assets, rev, createdAt, createdBy, updatedAt,

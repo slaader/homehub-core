@@ -303,7 +303,7 @@ test('v1 -> v2 Upgrade Wizard: walks 4 steps with local refs, renameWikiHome, in
  globalThis.fetch=async(url,opts={})=>{
   if(url.startsWith('/api/tickets?project=legacy-app'))return Response.json({projects,releases:[],tickets,total:2});
   if(url.startsWith('/api/tickets/epics?project=legacy-app'))return Response.json({epics:[]});
-  if(url==='/api/wiki/legacy-app')return Response.json({enabled:true,home:'whomepage1234',pages:[{id:'whomepage1234',title:'Home',parentId:null},{id:'wpage22222222',title:'Notes',parentId:'whomepage1234'}]});
+  if(url==='/api/wiki/legacy-app?project=1')return Response.json({enabled:true,home:'whomepage1234',pages:[{id:'whomepage1234',title:'Home',parentId:null},{id:'wpage22222222',title:'Notes',parentId:'whomepage1234'}]});
   if(url==='/api/review?project=legacy-app&status=all')return Response.json({sets:[{id:'R-1',title:'Old layout'}]});
   if(url.startsWith('/api/references?'))return Response.json({items:[{kind:'custom',id:'r'+'2'.repeat(32),label:'Legacy Term'}],total:1});
   if(opts.method==='POST'&&url==='/api/tickets/projects/upgrade'){
@@ -363,7 +363,7 @@ test('v1 -> v2 Upgrade Wizard: walks 4 steps with local refs, renameWikiHome, in
   id:'legacy-app',rev:4,type:'web',labels:['v2','web'],
   settings:{color:null,view:'board',releases:true,reviews:true,wiki:true,globalReferences:true},
   renameWikiHome:true,
-  epics:[{title:'Core Modernization',description:'First wave',ticketIds:['LEG-1']}],
+  epics:[{title:'Core Modernization',description:'First wave',tickets:[{id:'LEG-1',rev:1}]}],
  });
  assert.doesNotMatch(root.textContent,/This project is on v1/,'v1 banner removed after upgrade');
 });
