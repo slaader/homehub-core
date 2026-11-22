@@ -75,13 +75,14 @@ export const packageReleaseSource=Object.freeze({
   packageLayout(inst,request);
   const core=live[0];
   if(core.dirty.length)throw new UpdateError('Git checkout has tracked edits; migration refuses to replace them.');
-  const options={trust,trustFile,repository,manifestDigest:request.manifestDigest,stagingParent:path.dirname(inst.root),keepStage:true,forbidden:forbiddenTrustRoots(inst)};
+  const metaOptions={trust,trustFile,repository,manifestDigest:request.manifestDigest,stagingParent:path.dirname(inst.root),keepStage:true,forbidden:forbiddenTrustRoots(inst)};
+  const verifyOptions={...metaOptions,trust:trustFile?undefined:trust};
   let verified,coverage;
   try{
-   const {manifest}=authenticatePackageMetadata(request.package,options);
+   const {manifest}=authenticatePackageMetadata(request.package,metaOptions);
    const packageBytes=manifest.artifact.uncompressedBytes+8192*manifest.files.length;
    coverage=checkBackup?.({packageBytes})??null;
-   verified=await verifyPackage(request.package,options);
+   verified=await verifyPackage(request.package,verifyOptions);
   }catch(e){
    if(e instanceof UpdateError)throw e;
    throw new UpdateError(`Package verification refused: ${e.message}`);
@@ -155,6 +156,7 @@ export const packageReleaseSource=Object.freeze({
 
  applySwitch(inst,journal,plan,ctx){
   const p=journal.package;
+  verifyStagedTree(p.staged,{files:p.files},{receipt:true});
   p.status='moving-old';writeUpdateJournal(inst.files.journal,journal);refuseSocketReplacement(p.live);renameSync(p.live,p.old);ctx.checkpoint('package-old-renamed');syncDirectory(path.dirname(p.live));p.status='old-moved';writeUpdateJournal(inst.files.journal,journal);
   p.status='installing';writeUpdateJournal(inst.files.journal,journal);renameSync(p.staged,p.live);ctx.checkpoint('package-new-renamed');syncDirectory(path.dirname(p.live));p.status='installed';writeUpdateJournal(inst.files.journal,journal);
  },

@@ -89,7 +89,7 @@ export function parseArgs(argv){
  out.scan={searchRoots:out.searchRoots,searchMaxEntries:scanLimit('search-max-entries',2000000,2000000),
   examples:scanLimit('examples',0,100),candidates:out.flags.has('candidate-cover-files')};
  const whole=(name,min)=>{const v=out.values[name];if(v===undefined)return undefined;if(!/^\d{1,4}$/.test(v)||Number(v)<min)throw new UsageError(`--${name} takes a whole number`);return Number(v);};
- out.options={root:out.values.root,service:out.values.service,health:out.values.health,healthSeconds:whole('health-seconds',2),backups:out.values.backups,keep:whole('keep',1),recovery:['rollback','apply','status','install'].includes(out.command),staging:out.values.staging,trust:out.values.trust,backupRoots:out.backupRoots,backupPolicy:out.values['backup-policy']};
+ out.options={root:out.values.root,service:out.values.service,health:out.values.health,healthSeconds:whole('health-seconds',2),backups:out.values.backups,keep:whole('keep',1),recovery:['rollback','apply','status','install'].includes(out.command),diagnostic:diagnostic||readOnly,staging:out.values.staging,trust:out.values.trust,backupRoots:out.backupRoots,backupPolicy:out.values['backup-policy']};
  return out;
 }
 /** The instance the flags and the environment name. A rollback without --service uses what the update it undoes was run with. */

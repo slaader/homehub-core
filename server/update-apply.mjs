@@ -200,7 +200,17 @@ export function resolveInstance({env=process.env,root=repoRoot,options={}}={}){
   sources.push({id,kind:'plugins',dir:base,plugins:[path.basename(dir)]});
  }
  const work=home??path.join(core,'backups');
- const repository=readJson(path.join(core,'package.json'))?.homeHub?.updates?.repo??null;
+ const pkgPath=path.join(core,'package.json');
+ let repository=null;
+ if(existsSync(pkgPath)){
+  if(options.diagnostic)repository=readJson(pkgPath)?.homeHub?.updates?.repo??null;
+  else{
+   let pkg;
+   try{pkg=JSON.parse(readFileSync(pkgPath,'utf8'));}
+   catch(e){throw new UpdateError(`${pkgPath} is not valid JSON: ${e.message}`);}
+   repository=pkg?.homeHub?.updates?.repo??null;
+  }
+ }
  return Object.freeze({home,root:core,env,repository,instanceHash:hashOf(instanceBytes),paths,service,health,keep:backups.keep,sources:Object.freeze(sources),
   backupRoots:options.backupRoots??[],backupPolicyFile:options.backupPolicy?path.resolve(options.backupPolicy):null,
   driverSource:path.resolve(core)===path.resolve(repoRoot)?null:repoRoot,trustFile:options.trust??(home?path.join(home,'update','trust.json'):null),
@@ -384,7 +394,7 @@ export async function preflight(inst,request,ctx,{forApply=false,sourceLocksHeld
  catch(e){throw new UpdateError(`Trust selection refused: ${e.message}`);}
  let trust=null;
  if(trustFile){
-  try{trust=loadTrust(trustFile,{forbidden:forbiddenTrustRoots(inst)});rememberTrustSelection(inst.home,trustFile);}
+  try{trust=loadTrust(trustFile,{forbidden:forbiddenTrustRoots(inst)});}
   catch(e){throw new UpdateError(`Trust policy refused: ${e.message}`);}
  }
  const instWithTrust={...inst,trustFile:trustFile??inst.trustFile};
@@ -418,6 +428,7 @@ export async function preflight(inst,request,ctx,{forApply=false,sourceLocksHeld
   repository,
   checkBackup:extra=>backupPlan(instWithTrust,extra),
  });
+ if(trustFile)rememberTrustSelection(inst.home,trustFile);
  const coverage=staged.coverage??backupPlan(instWithTrust);
  const lines=[...staged.lines];
  let keepStage=false;
@@ -429,9 +440,10 @@ export async function preflight(inst,request,ctx,{forApply=false,sourceLocksHeld
    throw new UpdateError(`${target.version} is lower than what is installed (${installed.version}). Going back is "rollback", and only to the version the last update came from.`);
   if(target.dataEpoch<installed.dataEpoch)
    throw new UpdateError(`${targetTag??target.version} has data epoch ${target.dataEpoch}, lower than the installed ${installed.dataEpoch}: it could not read this instance's state.`);
+  const coreChanges=Boolean(request.package)||changes.some(c=>c.id==='core');
   const quarantines=readQuarantine(inst.files.updates);
-  const quarantined=[target.version,...staged.quarantineKeys].map(k=>quarantines[k]).find(Boolean);
-  if(staged.hasChange&&quarantined&&!request.force)
+  const quarantined=[...(coreChanges?[target.version]:[]),...staged.quarantineKeys].map(k=>quarantines[k]).find(Boolean);
+  if(coreChanges&&quarantined&&!request.force)
    throw new UpdateError(`${target.version} was tried here on ${String(quarantined.at).slice(0,10)} and rolled back${quarantined.reason?` (${quarantined.reason})`:''}. --force tries it again.`);
 
   // 5. Compatibility, data epoch, and site/instance staging
@@ -500,7 +512,8 @@ export async function preflight(inst,request,ctx,{forApply=false,sourceLocksHeld
 
   // 7. Would it start, with this instance's site and these plugins
   const index=path.join(stagedDir,'server','index.mjs');
-  const hasCheck=existsSync(index)&&/'--check'/.test(readFileSync(index,'utf8'));
+  if(!existsSync(index))throw new UpdateError(`${target.version} has no server/index.mjs; refusing.`);
+  const hasCheck=/'--check'/.test(readFileSync(index,'utf8'));
   if(staged.requireCheck&&!hasCheck)throw new UpdateError('New packages require a startup --check capability');
   if(hasCheck){
    say('Start-up check with this instance\'s configuration:');
@@ -514,9 +527,10 @@ export async function preflight(inst,request,ctx,{forApply=false,sourceLocksHeld
   const extraLines=staged.finalizeStage()??[];
   lines.push(...extraLines);
 
+  const isChanged=source=>source.id==='core'?Boolean(request.package)||changes.some(c=>c.id==='core'):changes.some(c=>c.id===source.id);
   const expectedPlugins=stagedPluginDirs.flatMap(({source,rel,dir})=>pluginFacts(dir).map(p=>{
-   const fpDir=!changes.some(c=>c.id===source.id)?path.join(source.dir,rel):dir;
-   return {id:p.id,version:p.version,...(modern?{fingerprint:contentFingerprint(path.join(dir,p.id)),sourceFingerprint:pluginSourceFingerprint(fpDir)}:{})};
+   const fpDir=isChanged(source)?dir:path.join(source.dir,rel);
+   return {id:p.id,version:p.version,...(modern?{fingerprint:contentFingerprint(path.join(fpDir,p.id)),sourceFingerprint:pluginSourceFingerprint(fpDir)}:{})};
   }));
   const fromCommit=core.commit??packageReceipt(inst.root)?.fullCommit??null;
   const plan={
@@ -705,6 +719,7 @@ export async function apply(inst,request,ctx){
   }catch(e){await fail(e,false);}
   try{
    if(JSON.stringify(sourceSnapshot(inst,ctx))!==JSON.stringify(plan.sourceSnapshot))throw new Error('Source/configuration topology changed after backup; refusing switch');
+   adapter.verifyPreSwitch(inst,plan,ctx);
    journal.step='switching';writeJournal(inst,journal);
    ctx.log('Switching:');
    adapter.applySwitch(inst,journal,plan,ctx);

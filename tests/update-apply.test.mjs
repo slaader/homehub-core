@@ -38,8 +38,11 @@ const INDEX=`// stands in for the server: only '--check'
 import {existsSync,readFileSync} from 'node:fs';import path from 'node:path';import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 if(existsSync(path.join(root,'FAIL_CHECK'))){console.error('plugin "p-one" needs site.json → plugins.p-one.socket');process.exit(1);}
-if(existsSync(path.join(root,'STRICT_SITE'))){const site=JSON.parse(readFileSync(process.env.HOME_HUB_SITE_CONFIG,'utf8'));if(!Array.isArray(site.devices)||'machines' in site){console.error('target needs devices, refuses machines');process.exit(1);}}
-console.info('check ok: Home Hub '+JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version+'; site '+process.env.HOME_HUB_SITE_CONFIG);
+const sitePath=process.env.HOME_HUB_SITE_CONFIG;
+let siteTag='';
+if(sitePath&&sitePath!=='none'&&existsSync(sitePath)){const site=JSON.parse(readFileSync(sitePath,'utf8'));if(existsSync(path.join(root,'STRICT_SITE'))&&(!Array.isArray(site.devices)||'machines' in site)){console.error('target needs devices, refuses machines');process.exit(1);}if(site.siteName)siteTag=' siteName='+site.siteName;}
+else if(existsSync(path.join(root,'STRICT_SITE'))){console.error('missing site config');process.exit(1);}
+console.info('check ok: Home Hub '+JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version+'; site '+sitePath+siteTag);
 `;
 const pkg=(version,epoch=1)=>JSON.stringify({name:'home-hub',version,type:'module',engines:{node:'>=22'},homeHub:{dataEpoch:epoch,updates:{repo:'example/core'}}})+'\n';
 const tree=(version,epoch=1,extra={})=>({'package.json':pkg(version,epoch),'scripts/run-tests.mjs':RUNNER,'server/index.mjs':INDEX,'.gitignore':'data/\nstate/\nprivate/\nbackups/\n',...extra});
@@ -975,7 +978,7 @@ test('release source adapter symmetry: Git tag and signed package preflights enf
   assert.equal(checkCall.env.SOFTWARE_WATCH_FILE,w.inst().paths.softwareWatch);
   assert.ok(stagedPlan.lines.some(l=>/^tests \(core\): /.test(l)));
   assert.ok(stagedPlan.lines.some(l=>/^tests \(plugins\): /.test(l)));
-  assert.ok(stagedPlan.lines.some(l=>/^check ok: Home Hub 1\.1\.0/.test(l)));
+  assert.ok(stagedPlan.lines.some(l=>/^check ok: Home Hub 1\.1\.0.*siteName=Staged$/.test(l)),'start-up --check actually reads the staged candidate site file');
   assert.equal(existsSync(checkCall.env.HOME_HUB_SITE_CONFIG),false,'staging site copy is removed after preflight');
   if(kind==='package')assert.equal(existsSync(stagedPlan.package.staged),false,'read-only preflight cleans up staged package dir');
 
@@ -990,4 +993,90 @@ test('release source adapter symmetry: Git tag and signed package preflights enf
   await refused(preflight(w.inst(),{...badCheck.request,skipTests:true},w.ctx),/start-up check.*failed/s);
   assert.deepEqual(w.svc.calls,[],'preflight never stops or starts the service');
  });
+});
+
+test('adapter review regressions: post-backup stage recheck, trust reload, symlinked external plugin, missing index, plugin quarantine, trust persistence, malformed package.json',async t=>{
+ // 1. Staged package modified after backup (before applySwitch) is refused before any rename.
+ {
+  const w=await world(t,{layout:'home'});
+  const f=await packageFixture(path.join(w.dir,'pkg-tamper'),{version:'1.1.0',files:{'scripts/run-tests.mjs':RUNNER,'server/index.mjs':INDEX}});
+  const origCheckpoint=w.ctx.checkpoint;
+  let tampered=false;
+  w.ctx.checkpoint=name=>{
+   origCheckpoint(name);
+   if(name==='backup-verified'&&!tampered){
+    tampered=true;
+    const staged=readdirSync(path.dirname(w.root)).find(d=>d.startsWith('.hub-package-'));
+    assert.ok(staged,'staged package exists at backup-verified');
+    writeFileSync(path.join(path.dirname(w.root),staged,'server','index.mjs'),INDEX+'// tampered\n');
+   }
+  };
+  await refused(apply(w.inst(),{package:f.file,trust:f.trustFile,migrateFromGit:true},w.ctx),/staged package changed/);
+  assert.equal(tampered,true);
+  assert.equal(coreFacts(w.root).version,'1.0.0','live core was never switched');
+  assert.equal(readJournal(w.inst()).step,'aborted');
+ }
+
+ // 2. Package preflight reloads trust policy after backup planning before extracting/running target code.
+ {
+  const w=await world(t,{layout:'home'});
+  const f=await packageFixture(path.join(w.dir,'pkg-revoke'),{version:'1.1.0',files:{'scripts/run-tests.mjs':'throw new Error("MUST NOT RUN")','server/index.mjs':INDEX}});
+  const {packageReleaseSource}=await import('../server/release-package.mjs');
+  const {loadTrust}=await import('../server/release-trust.mjs');
+  const inst=w.inst({trust:f.trustFile});
+  const cachedTrust=loadTrust(f.trustFile);
+  await refused(packageReleaseSource.stageTarget(inst,{package:f.file,trust:f.trustFile,migrateFromGit:true},w.ctx,cachedTrust,{
+   live:inst.sources.map(s=>({...s,git:s.id==='core',dirty:[]})),
+   trustFile:f.trustFile,
+   repository:'example/core',
+   checkBackup:()=>{
+    const doc=JSON.parse(readFileSync(f.trustFile,'utf8'));
+    doc.publishers['example/core'].packageKeys[0].status='revoked';
+    writeFileSync(f.trustFile,JSON.stringify(doc),{mode:0o600});
+    return backupPlan(inst);
+   },
+  }),/unauthorized|revoked/i);
+ }
+
+ // 3. Package update with an unchanged external plugin holding a relative symlink succeeds without rolling back.
+ {
+  const w=await world(t,{layout:'home'});
+  writeFileSync(path.join(w.plugins.root,'plugins','p-one','target.txt'),'hello\n');
+  symlinkSync('./target.txt',path.join(w.plugins.root,'plugins','p-one','link.txt'));
+  w.plugins.git('add','-A');w.plugins.git('commit','-q','-m','add relative symlink');
+  // Re-sync running hub's run.json with the updated plugin fingerprint before applying.
+  w.ctx.exec('svc',['start']);
+  const f=await packageFixture(path.join(w.dir,'pkg-symlink'),{version:'1.1.0',files:{'scripts/run-tests.mjs':RUNNER,'server/index.mjs':INDEX}});
+  const {journal}=await apply(w.inst(),{package:f.file,trust:f.trustFile,migrateFromGit:true},w.ctx);
+  assert.equal(journal.step,'done');
+  assert.equal(coreFacts(w.root).version,'1.1.0');
+ }
+
+ // 4. Git preflight refuses a release missing server/index.mjs; core quarantine does not block plugin-only updates.
+ {
+  const w=await world(t,{layout:'home'});
+  await w.upstream.commit('1.1.0-no-index',{'package.json':pkg('1.1.0'),'scripts/run-tests.mjs':RUNNER},{tag:'v1.1.0',remove:['server/index.mjs']});
+  await refused(preflight(w.inst(),{core:'v1.1.0',skipTests:true},w.ctx),/has no server\/index\.mjs/);
+
+  await w.pluginsUpstream.commit('1.1.0',{'package.json':JSON.stringify({name:'household',version:'1.1.0',homeHub:{core:'>=1.0.0 <2.0.0'}})+'\n','plugins/p-one/plugin.json':manifest('p-one','1.1.0')},{tag:'v1.1.0'});
+  setQuarantine(w.inst().files.updates,'1.0.0',{at:'2026-11-11T08:00:00.000Z',reason:'prior core rollback'});
+  const pluginOnly=await preflight(w.inst(),{plugins:{household:'v1.1.0'}},w.ctx);
+  assert.deepEqual(pluginOnly.changes.map(c=>c.id),['household']);
+ }
+
+ // 5. Rejected package verification does not replace the instance's saved trust selection; malformed package.json exits 1 on status --json.
+ {
+  const w=await world(t,{layout:'home'});
+  const good=await packageFixture(path.join(w.dir,'pkg-good'),{version:'1.1.0',files:{'scripts/run-tests.mjs':RUNNER,'server/index.mjs':INDEX}});
+  const other=await packageFixture(path.join(w.dir,'pkg-other'),{version:'1.1.0',files:{'scripts/run-tests.mjs':RUNNER,'server/index.mjs':INDEX}});
+  await preflight(w.inst(),{package:good.file,trust:good.trustFile,migrateFromGit:true},w.ctx);
+  assert.equal(selectTrustFile({home:w.home}),good.trustFile);
+  await refused(preflight(w.inst(),{package:good.file,trust:other.trustFile,migrateFromGit:true},w.ctx),/Package verification refused/);
+  assert.equal(selectTrustFile({home:w.home}),good.trustFile,'failed verification must keep previous saved trust selection');
+
+  writeFileSync(path.join(w.root,'package.json'),'{not valid json');
+  const lines=[];
+  const code=await main(['status','--json','--home',w.home],{ctx:w.ctx,out:l=>lines.push(l)});
+  assert.equal(code,1,'status --json exits 1 for malformed installed package.json');
+ }
 });
