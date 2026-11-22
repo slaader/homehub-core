@@ -1449,7 +1449,7 @@ function openUpgradeWizard(p,ctx,onDone){
   function draw(){
    msg.textContent='';msg.classList.remove('error');
    const current=steps[state.step],stepLabel=t('Krok {i} z {n}',{i:state.step+1,n:steps.length});
-   const content=el('div',{class:'tk-form'});
+   const content=el('div',{class:'tk-form tk-wizard-content'});
    if(current==='profile'){
     const typeSel=el('select',{name:'type',onchange:e=>{state.type=e.target.value;}},options(PROJECT_TYPES(),state.type,t('Bez typu')));
     const labelsIn=el('input',{name:'labels',value:state.labelsText,placeholder:'web, core, internal',oninput:e=>{state.labelsText=e.target.value;}});
@@ -1461,13 +1461,13 @@ function openUpgradeWizard(p,ctx,onDone){
     const wikiCheck=el('input',{type:'checkbox',name:'wiki',checked:state.wiki?'':null,onchange:e=>{state.wiki=e.target.checked;}});
     const reviewCheck=el('input',{type:'checkbox',name:'reviews',checked:state.reviews?'':null,onchange:e=>{state.reviews=e.target.checked;}});
     const renameCheck=offerRenameHome?el('input',{type:'checkbox',name:'renameWikiHome',checked:state.renameWikiHome?'':null,onchange:e=>{state.renameWikiHome=e.target.checked;}}):null;
-    content.append(el('h4',{},t('2. Propojená Wiki a Review')),
+    content.append(...[el('h4',{},t('2. Propojená Wiki a Review')),
      el('p',{},wikiEnabled?t('Nalezená wiki: {n} stránek.',{n:wikiPages.length}):t('Projekt zatím nemá založenou wiki.')),
      renameCheck?el('label',{class:'tk-choice'},renameCheck,el('span',{},el('strong',{},t('Přejmenovat domovskou stránku na „{title}“',{title:`${freshProject.name} Home`})),
       el('small',{},t('Aktuální název domovské stránky je „Home“.'))) ):null,
      el('p',{},reviewSets.length?t('Nalezené sady Review ({n}): {ids}',{n:reviewSets.length,ids:reviewSets.map(s=>s.id).join(', ')}):t('Žádné sady Review nebyly nalezeny.')),
      el('label',{class:'tk-choice'},wikiCheck,el('span',{},el('strong',{},'Wiki'),el('small',{},t('Zobrazit wiki v projektu a v postranním panelu.')))),
-     el('label',{class:'tk-choice'},reviewCheck,el('span',{},el('strong',{},'Review'),el('small',{},t('Nabízet Review pro položky projektu.')))));
+     el('label',{class:'tk-choice'},reviewCheck,el('span',{},el('strong',{},'Review'),el('small',{},t('Nabízet Review pro položky projektu.'))))].filter(Boolean));
    }else if(current==='references'){
     content.append(el('h4',{},t('Lokální reference')),
      el('p',{class:'sec-dim'},t('Projekt má {n} lokálních vlastních referencí. Po upgradu zůstanou dál omezené na tento projekt.',{n:localRefTotal})),
@@ -1499,7 +1499,8 @@ function openUpgradeWizard(p,ctx,onDone){
      el('p',{class:'sec-dim'},t('Projekt obsahuje {n} existujících položek.',{n:tickets.length})),
      el('label',{class:'tk-choice'},skipRadio,el('span',{},t('Epic teď nepotřebuji — nechat položky nepřiřazené (epicy mohu založit a položky přiřadit později)'))),
      el('label',{class:'tk-choice'},createRadio,el('span',{},t('Vytvořit první epicy hned teď'))),
-     builder);
+    );
+    if(builder)content.append(builder);
    }
 
    const isLast=state.step===steps.length-1;

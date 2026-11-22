@@ -7,6 +7,7 @@ import {authGuard,sessionTicket} from './session-cache.js';
 import {t,getLang,setLang,locale,LANGS} from './i18n.js';
 import {site,setSite} from './site.js';
 import {pageHeader,segmented,themeSwitch} from './ui.js';
+import {updateStatusCard} from './updates-view.js';
 
 // The role's own name when the server sent one (Vlastník, Admin, Editor, Čtenář or a custom role's name).
 export const roleLabel=me=>me?.roleName?t(me.roleName):me?.role==='admin'?t('Správce'):me?.role==='viewer'?t('Čtenář'):me?.role||'';
@@ -116,6 +117,7 @@ export function settingsView(me){
     el('section',{class:'set-card'},el('h3',{},t('Změna hesla')),
      session?[el('p',{class:'set-dim'},t('Po změně skončí všechna ostatní přihlášení tohoto účtu (jiné prohlížeče a záložky). Tokeny aplikací a API klíče platí dál.')),passwordForm(me)]
       :el('p',{class:'set-dim'},t('Heslo se dá změnit jen po přihlášení heslem v prohlížeči, ne přes token aplikace nebo API klíč.'))))),
+  updateStatusCard({canCheck:session&&me?.canAdmin===true}),
   el('section',{'aria-label':t('Uživatelská nastavení')},el('h2',{class:'set-section'},t('Uživatelská nastavení')),el('div',{class:'set-grid'},
    el('section',{class:'set-card'},el('h3',{},t('Jazyk')),
     el('p',{class:'set-dim'},t('Jazyk rozhraní. Volba platí pro tento prohlížeč.')),

@@ -348,6 +348,7 @@ test('v1 -> v2 Upgrade Wizard: walks 4 steps with local refs, renameWikiHome, in
 
  // Step 4 of 4: Epics & existing tickets
  assert.match(dlg.textContent,/Step 4 of 4/);
+ assert.doesNotMatch(dlg.textContent,/null/,'the optional Epic builder leaves no text when absent');
  const createRadio=all(dlg,n=>n.tagName==='input'&&n.getAttribute('value')==='create')[0];
  createRadio.checked=true;fire(createRadio,'change');
  const title0=byName(dlg,'epic-title-0');title0.value='Core Modernization';fire(title0,'input');

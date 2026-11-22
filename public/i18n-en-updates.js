@@ -60,4 +60,10 @@ export default {
  'Která verze Home Hubu běží, nejnovější známé vydání a stav kontroly. MCP hub_version (jen čtení).':'Which Home Hub version is running, the newest known release and the state of the check. MCP hub_version (read-only).',
  'Zkontrolovat teď (nejvýš jednou za minutu).':'Check now (at most once a minute).',
  '{version}: na tohle vydání už v patičce neupozorňovat.':'{version}: stop pointing at this release in the footer.',
+ 'Aktualizace Home Hubu':'Home Hub updates',
+ 'Nainstalovaná verze':'Installed version',
+ 'Nejnovější známé vydání':'Latest known release',
+ 'Zkontrolovat aktualizace':'Check for updates',
+ 'Kontrolu aktualizací se nepodařilo načíst.':'Could not load the update check.',
+ 'Používá se výsledek poslední kontroly.':'Showing the previous check result.',
 };

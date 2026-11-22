@@ -4,8 +4,8 @@
 // Text-safe DOM only: the release text is somebody else's prose and lands in a text node, never as HTML,
 // and the only link made from the answer must lead to the repository's releases on GitHub.
 import {el} from './views.js';
-import {authGuard} from './session-cache.js';
-import {t,locale} from './i18n.js';
+import {authGuard,sessionTicket} from './session-cache.js';
+import {t,say,locale} from './i18n.js';
 import {timeZone} from './site.js';
 import {toast} from './ui.js';
 
@@ -76,4 +76,44 @@ export function updateDetails(){
  const box=el('div',{class:'up-box',hidden:''});
  loadUpdates().then(u=>paint(box,u)).catch(()=>{});
  return box;
+}
+
+// Settings shows the cached result for everyone. Only an administrator's password session can check now.
+export function updateStatusCard({canCheck=false}={}){
+ const live=sessionTicket(),body=el('div',{'aria-live':'polite'},t('Načítám…'));
+ const feedback=el('p',{class:'set-status',role:'status'});
+ let checkUnavailable=true;
+ const check=canCheck?el('button',{type:'button',class:'ui-button',disabled:'',onclick:async()=>{
+  if(check.disabled)return;
+  check.disabled=true;feedback.textContent=t('Načítám…');
+  try{
+   const lost=authGuard(),response=await fetch('/api/updates/check',{
+    method:'POST',headers:{'Content-Type':'application/json'},body:'{}',signal:AbortSignal.timeout(15000),
+   });
+   if(!live())return;
+   if(!response.ok){lost(response);const data=await response.json().catch(()=>({}));throw new Error(t(data.error?.message||'Kontrolu aktualizací se nepodařilo načíst.'));}
+   const {checked,updates}=await response.json();
+   if(!live())return;
+   render(updates);
+   feedback.textContent=checked?'':t('Používá se výsledek poslední kontroly.');
+  }catch(error){if(live())feedback.textContent=error.message;}
+  finally{if(live())check.disabled=checkUnavailable;}
+ }},t('Zkontrolovat aktualizace')):null;
+ const render=u=>{
+  checkUnavailable=['disabled','env-off','no-repo'].includes(u.code);
+  if(check)check.disabled=checkUnavailable;
+  announce(u);
+  const link=releaseLink(u);
+  body.replaceChildren(el('dl',{class:'set-dl'},
+   el('dt',{},t('Nainstalovaná verze')),el('dd',{},u.installed?.label??'—'),
+   u.latest?el('dt',{},t('Nejnovější známé vydání')):null,
+   u.latest?el('dd',{},link?el('a',{href:link,rel:'noopener noreferrer'},u.latest.version):u.latest.version):null),
+   el('p',{class:'set-dim'},say(u.summary,u.summaryT)));
+ };
+ loadUpdates().then(u=>{if(live())render(u);}).catch(()=>{
+  if(!live())return;
+  body.textContent=t('Kontrolu aktualizací se nepodařilo načíst.');
+  if(check){checkUnavailable=false;check.disabled=false;}
+ });
+ return el('section',{class:'set-card'},el('h3',{},t('Aktualizace Home Hubu')),body,check,feedback);
 }

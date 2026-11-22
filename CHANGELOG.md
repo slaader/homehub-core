@@ -6,6 +6,13 @@ Home Hub core, newest first. One section per release; the section is the text of
 number promises is in `AGENTS.md` → Versioning. The top section is the release being prepared, `## Unreleased`
 until the release gives it its number: a change to the public surface adds its line there in the same commit.
 
+## 1.8.1
+
+### Fixed
+
+- Keep upgrade wizard choices aligned and omit text for absent steps and controls.
+- Show the installed version and update status in Settings. Administrators can check for updates there.
+
 ## 1.8.0
 
 ### Added
