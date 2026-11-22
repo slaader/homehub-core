@@ -9,6 +9,7 @@ import {installDom,Element,Text} from './fixtures/mini-dom.mjs';
 installDom();
 const {toolRows,toolGroups,toolsCard}=await import('../public/access-view.js');
 const {setLang,addStrings}=await import('../public/i18n.js');
+const {defineModule,createRegistry}=await import('../server/plugins.mjs');
 
 // What GET /api/ui/manifest sends once the legacy tools live in their own core modules.
 const MODULES=[{id:'core',core:true,title:'Home Hub'},{id:'home',core:true,title:'Overview'},{id:'inventory',core:true,title:'Inventory'},
@@ -98,16 +99,28 @@ test('read or write in words where the scope\'s name does not say it, or says ot
 });
 
 test('the table in English and without a manifest',()=>{
- addStrings({en:{'Poznámky':'Notes',lab:'Should not translate raw id'}});
+ addStrings({en:{'Poznámky':'Notes',hudba:'music'}});
  setLang('en');
  try{
-  const mods=[{id:'home',core:true,title:'Přehled'},{id:'notes',core:false,title:'Poznámky',version:'1.0.0'},{id:'lab',core:false}];
-  const card=toolsCard(toolRows([tool('notes_add','notes','notes',{write:true}),tool('notes_save','notes','write',{write:true}),tool('lab_probe','lab','read',{write:false}),tool('home_status','home','security',{write:false})],mods));
+  const schema={type:'object',properties:{}};
+  const reg=createRegistry([
+   defineModule({id:'home',title:'Přehled',scopes:{read:{label:'Čtení',desc:'Čtení',write:false},security:{label:'Bezpečnost',desc:'Bezpečnost',write:false}},
+    mcpTools:[{name:'home_status',title:'Home status',scope:'security',description:'Current state. More details.',inputSchema:schema,run:async()=>({})}]},{core:true}),
+   defineModule({id:'notes',title:'Poznámky',scopes:{notes:{label:'Poznámky',desc:'Poznámky',write:true},write:{label:'Zápis',desc:'Zápis',write:true}},
+    mcpTools:[{name:'notes_add',title:'Notes add',scope:'notes',description:'Adds a note. More details.',inputSchema:schema,run:async()=>({})},
+     {name:'notes_save',title:'Notes save',scope:'write',description:'Saves a note. More details.',inputSchema:schema,run:async()=>({})}]}),
+   defineModule({id:'hudba',mcpTools:[{name:'hudba_play',title:'Play track',scope:'read',description:'Plays music. More details.',inputSchema:schema,run:async()=>({})}]}),
+  ]);
+  const mods=reg.modules.map(({id,core,title,version})=>({id,core,title,version}));
+  assert.equal(mods.find(m=>m.id==='hudba').title,'hudba','registry fills a missing plugin title with its id');
+  const regTools=[tool('notes_add','notes','notes',{write:true}),tool('notes_save','notes','write',{write:true}),
+   tool('hudba_play','hudba','read',{write:false}),tool('home_status','home','security',{write:false})];
+  const card=toolsCard(toolRows(regTools,mods));
   const areaHeads=tags(card,'tbody').map(b=>tags(b,'th')[0]);
-  assert.deepEqual(areaHeads.map(th=>th.childNodes[0].textContent),['Notes','lab','Overview'],'titles translate at render time, raw IDs stay literal');
-  assert.deepEqual(pills(card).filter(p=>p.textContent==='plugin').map(p=>p.getAttribute('title')),['Tools added by the Notes plugin','Tools added by the lab plugin']);
+  assert.deepEqual(areaHeads.map(th=>th.childNodes[0].textContent),['Notes','hudba','Overview'],'titles translate at render time, registry ID fallback stays literal');
+  assert.deepEqual(pills(card).filter(p=>p.textContent==='plugin').map(p=>p.getAttribute('title')),['Tools added by the Notes plugin','Tools added by the hudba plugin']);
   assert.deepEqual(walk(card,e=>e.classList.contains('ax-rw')).map(e=>e.textContent),['write','read'],'bare write scope does not duplicate "write"');
-  assert.deepEqual(tags(card,'summary').map(s=>[s.textContent,s.getAttribute('aria-label')]),[['Full description','Full description: notes_add'],['Full description','Full description: notes_save'],['Full description','Full description: lab_probe'],['Full description','Full description: home_status']]);
+  assert.deepEqual(tags(card,'summary').map(s=>[s.textContent,s.getAttribute('aria-label')]),[['Full description','Full description: notes_add'],['Full description','Full description: notes_save'],['Full description','Full description: hudba_play'],['Full description','Full description: home_status']]);
   assert.deepEqual(tags(card,'th').slice(0,3).map(th=>th.textContent),['Tool','Permissions','What it does']);
   const empty=toolsCard([]);
   assert.equal(tags(empty,'table').length,0);

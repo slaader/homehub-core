@@ -486,7 +486,7 @@ export function toolLead(text){
 // (home, inventory, tracker, review, wiki, … or the older catch-all module "core") is never shown as a plugin's.
 export function toolRows(tools=site().tools||[],modules=site().modules||[]){
  return tools.map(tool=>{const [lead,rest]=toolLead(tool.description),owner=modules.find(m=>m.id===tool.module),area=owner?.title||owner?.id||tool.module||null;
-  return {name:tool.name,title:tool.title||tool.name,scope:tool.scope,write:tool.write!==false&&tool.scope!=='read',lead,rest,module:tool.module??null,area,areaTitled:Boolean(owner?.title),plugin:owner&&!owner.core?area:null};});
+  return {name:tool.name,title:tool.title||tool.name,scope:tool.scope,write:tool.write!==false&&tool.scope!=='read',lead,rest,module:tool.module??null,area,areaTitled:Boolean(owner?.title&&owner.title!==owner.id),plugin:owner&&!owner.core?area:null};});
 }
 // Consecutive rows of one module under one heading, in the order they came: nothing is sorted, so the table
 // reads exactly as tools/list does. [{module, area, plugin, rows}].
