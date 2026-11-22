@@ -6,6 +6,19 @@ Home Hub core, newest first. One section per release; the section is the text of
 number promises is in `AGENTS.md` → Versioning. The top section is the release being prepared, `## Unreleased`
 until the release gives it its number: a change to the public surface adds its line there in the same commit.
 
+## Unreleased
+
+### Added
+
+- Projects support labels, the `web` type, epics, Wiki and Review opt-ins, and a guided upgrade for existing projects.
+- Standalone Wiki spaces and project deletion can preserve linked Wikis and Review sets. Detached sets can be reassigned or deleted.
+- HTTP and MCP clients can manage epics, filter tickets by epic, and find epic references and full-text results.
+
+### Data
+
+- Data epoch 12 advances hub.db to schema 7 and Wiki metadata to schema 5. Existing projects retain their revisions,
+  settings and ticket counters. Wiki pages and assets retain their IDs. A rollback to epoch 11 uses the pre-update backup.
+
 ## 1.7.0
 
 ### Added

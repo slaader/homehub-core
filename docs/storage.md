@@ -30,7 +30,7 @@ code directory.
 
 | Where | What | Format |
 |---|---|---|
-| `state/hub.db` (+ `-wal`, `-shm`) | Tickets (projects, releases, tickets with comments and history), project wiki tree, documents, asset records, import grants, uploads and retry receipts, the review index (sets → rounds → items → feedback, blob metadata), browser sign-in sessions, the full-text search index | SQLite, `node:sqlite` built into Node, no npm package |
+| `state/hub.db` (+ `-wal`, `-shm`) | Tracker (projects, releases, epics and tickets with comments and history), Wiki spaces and trees, documents, asset records, import grants, uploads and retry receipts, the review index (sets → rounds → items → feedback, blob metadata), browser sign-in sessions, the full-text search index | SQLite, `node:sqlite` built into Node, no npm package |
 | `state/wiki/blobs/` | Verified wiki asset payloads keyed by SHA-256. Multiple wiki assets can share a payload. Include this directory and `hub.db` in the same backup | files, 0600 |
 | `state/wiki/uploads/` | Private resumable uploads and staged large wiki documents. Expire after 24 hours | files, 0600 |
 | `state/review/blobs/` | Review files (mockups, images, `.glb`), content-addressed by sha256 | files |
@@ -60,7 +60,7 @@ wiki directories and their metadata under `STATE_DIR`.
 
 `server/db.mjs` opens one connection per process (WAL mode, `0600`). The stores keep their document model:
 
-- `docs(kind, coll, id, doc)`: one JSON document per ticket, release, project, wiki, wiki page, wiki page summary, review set or blob, plus
+- `docs(kind, coll, id, doc)`: one JSON document per ticket, epic, release, project, wiki space, wiki page, wiki page summary, review set or blob, plus
   `meta(kind, doc)` for the counters (`revision`, `next`). A write runs the store's validation on the loaded
   document, then saves **only the rows that changed** and their search entries in one transaction. A
   validation error writes nothing. Optimistic `rev` checks and the per-store write queue are unchanged.
@@ -76,6 +76,12 @@ wiki directories and their metadata under `STATE_DIR`.
 - Schema 6 (data epoch 11) gives every tracker project row `settings` with its defaults (`color:null, view:'board'`,
   the rest `true`); only rows without it change, and their `rev` and ticket counter stay. Releases before
   epoch 11 refuse the file; going back needs the pre-update backup.
+- Schema 7 (data epoch 12) adds `labels`, `nextEpic` and `projectVersion: 1` to existing projects, preserving
+  their revision and ticket counter. It records the owning project separately from the Wiki space ID (Wiki
+  schema 5), preserving page and asset keys. New projects start at version 2. The optional project wizard
+  changes project features and their data after database migration. Rolling back to epoch 11 restores the
+  pre-update backup.
+
 
 Query by hand (read-only is enough; the server may keep running):
 

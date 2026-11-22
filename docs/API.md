@@ -926,25 +926,27 @@ A small tracker for your own development work, stored in `state/hub.db` ([storag
 Reading needs any sign-in (API keys: `read`); every write needs a write session or an API key with the
 `tickets:write` scope. Writes return `400/404/409 TICKETS_FAILED` for invalid input, an unknown ticket, or a
 stale `rev` / an existing release. HTTP POST bodies are limited to 16 KiB (UTF-8, including JSON);
-tracker write arguments have the same size limit over MCP. Text-field character limits do not override this byte limit.
+ordinary tracker write arguments have the same size limit over MCP. Epic create and update accept a larger
+512 KiB JSON request envelope for the escaped specification, and the Markdown itself is limited to 64 KiB of UTF-8.
+Text-field character limits do not override the applicable byte limits.
 Send only changed fields when updating. Dates must be real calendar dates in `YYYY-MM-DD` form.
 
-- **Projects** `{id, key, name, description, type, settings, rev}`; none exist until you create one in the UI, with `POST /api/tickets/projects` or MCP `project_save` (a new, empty tracker also takes the seeds listed in site.json → `tracker.projects`, once). Ticket ids are `<KEY>-<n>`, e.g. `APP-12`.
+- **Projects** `{id, key, name, description, type, labels, settings, projectVersion, rev}`; none exist until you create one in the UI, with `POST /api/tickets/projects` or MCP `project_save` (a new, empty tracker also takes the seeds listed in site.json → `tracker.projects`, once). Ticket ids are `<KEY>-<n>`, e.g. `APP-12`.
 - **Project settings** `{color, view, releases, reviews, wiki, globalReferences}`, on every project in every answer (the list, `projects_list`, a save), each field filled with its default when the project has never set it: `color` `null` or one of `slate`, `red`, `orange`, `amber`, `green`, `teal`, `blue`, `violet` (default `null`); `view` `board` or `table` (default `board`); the rest booleans, default `true`. `releases`, `reviews` and `wiki` only show or hide those parts of the project's pages: turning one off removes no record, and its routes, links and MCP tools keep working. `globalReferences: false` narrows [reference suggestions](#references) in the project to its own sources, machines and projects. See [project-settings.md](project-settings.md).
-- **Ticket** `{id, project, title, description, type: bug|feature|task, status: open|in-progress|done|cancelled, priority: low|normal|high|urgent, release: <version>|null, assignee|null, labels[], refs[], reporter, createdAt, updatedAt, closedAt|null, rev, comments[], history[]}`. `closedAt` is set on entering `done`/`cancelled` and cleared on reopening. `history` retains the latest 200 field changes (title/description only as "changed").
+- **Ticket** `{id, project, title, description, type: bug|feature|task, epic: <epic ID>|null, status: open|in-progress|done|cancelled, priority: low|normal|high|urgent, release: <version>|null, assignee|null, labels[], refs[], reporter, createdAt, updatedAt, closedAt|null, rev, comments[], history[]}`. `closedAt` is set on entering `done`/`cancelled` and cleared on reopening. `history` retains the latest 200 field changes (title/description only as "changed").
 - **Release** `{project, version, status: planned|released, targetDate|null, releasedAt|null, notes, rev}`. A ticket's `release` must be an existing version of the same project. The literal `none` is reserved for filtering unassigned releases/assignees and cannot be used as a version or assignee name.
 
 Routes:
 
-- `GET /api/tickets?project=&status=open|in-progress|done|cancelled|active[,…]&type=&priority=&release=<version>|none&assignee=<name>|none&label=&q=&limit=` → `{updatedAt, projects, releases:[…, counts:{open,in-progress,done,cancelled}, total], total, tickets:[… without comments/history, comments:<count>], provenance}`. Release counts are over all tickets, not just the filtered ones. `provenance` ([Provenance](#provenance)) counts who created the listed tickets (people, service accounts, projects seeded from site.json) and who changed them later.
+- `GET /api/tickets?project=&status=open|in-progress|done|cancelled|active[,…]&type=&priority=&release=<version>|none&assignee=<name>|none&label=&epic=<ID>|none&q=&limit=` → `{updatedAt, projects, releases:[…, counts:{open,in-progress,done,cancelled}, total], total, tickets:[… without comments/history, comments:<count>], provenance}`. Release counts are over all tickets, not just the filtered ones. `provenance` ([Provenance](#provenance)) counts who created the listed tickets (people, service accounts, projects seeded from site.json) and who changed them later.
 - `GET /api/tickets/<ID>` → the full ticket with `comments`, `history`, `rev` and `provenance` (its creator, then everyone who commented or changed it). The ticket writes below answer with the same shape.
 - `GET /api/tickets/search?q=<words>&project=&status=&type=&priority=&release=&assignee=&label=&limit=1..100` (default 20) → `{q, total, tickets:[… as in the list, plus snippet, score]}`. Full-text search inside tickets (title, description, comments, attachment names, labels, refs, people) with the list's field filters; `q` follows the rules of [Search](#search) and needs at least one letter or digit. Best match first; `total` counts every match. `400` for a bad parameter.
 - `GET /api/tickets/people` → `{people:[{name, kind: user|agent|other, assigned, active}]}`: the names the assignee field suggests. Sign-in accounts (`user`) and service accounts (`agent`) that are not disabled, then every name tickets already carry (`other`), the busiest assignee first. `assigned` counts tickets assigned to the name, `active` those still open or in progress. Names and counts only: no ids, roles or scopes.
-- `POST /api/tickets` `{project, title, description?, type?, status?, priority?, release?, assignee?, labels?, refs?}` → `201` ticket. Defaults: `task`, `open`, `normal`.
+- `POST /api/tickets` `{project, title, description?, type?, status?, priority?, release?, assignee?, labels?, refs?, epic?}` → `201` ticket. Defaults: `task`, `open`, `normal`.
 - `POST /api/tickets/update` `{id, rev, …fields to change}` → ticket. `rev` must be the one you read; otherwise `409`.
 - `POST /api/tickets/comment` `{id, text}` → ticket. Append-only, no `rev`.
 - `POST /api/tickets/releases` `{project, version, status?, targetDate?, releasedAt?, notes?, rev?}` → release. Omit `rev` to create; pass it to change. `released` without a date stamps today.
-- `POST /api/tickets/projects` `{id, key, name, description?, type?, settings?}` → `201` new project; `{id, rev, name?, description?, type?, settings?}` → `200` changed project. `id` and `key` never change. `settings` is partial: the fields it names are validated and replace the project's, every other field keeps its value (`{}` changes none). An unknown field or value is `400` and writes nothing; every save, settings included, needs the current `rev` (otherwise `409`) and raises it by one. `tickets:write`, like every tracker write.
+- `POST /api/tickets/projects` `{id, key, name, description?, type?, labels?, settings?, createWiki?}` → `201` new project; `{id, rev, name?, description?, type?, labels?, settings?}` → `200` changed project. `id` and `key` never change. `settings` is partial: the fields it names are validated and replace the project's, every other field keeps its value (`{}` changes none). An unknown field or value is `400` and writes nothing; every save, settings included, needs the current `rev` (otherwise `409`) and raises it by one. `tickets:write`, like every tracker write.
 
 MCP `tickets_list` uses `query` for text search and an integer `limit` of 1–200 (default 50); HTTP uses `q` and supports `limit` of 1–5000. `release_save` accepts `releasedAt` as well as `targetDate`. MCP `ticket_search` takes `query` plus the same filters as `GET /api/tickets/search` and returns the same document.
 
@@ -971,7 +973,29 @@ The web UI (`#projects`, `#projects/<id>`, `#items`, `#items/<ID>`, `#releases`)
 
 An agent that should file tickets needs `tickets:write`: a custom selection, the Editor preset or full access (see Access → service accounts).
 
-Projects carry `type`: `app`, `game`, `other` or `null`, and `settings` (above). `POST /api/tickets/projects` and MCP `project_save` accept both, with the same partial-settings rules.
+Projects carry `type` (`web`, `app`, `game`, `other` or `null`), up to 10 ticket-style `labels`, and
+`settings` (above). APIs that omit settings keep the existing defaults. A create with `createWiki: true` saves the project
+and a linked Wiki with a titled home page together. A project rename also updates the linked Wiki name and any home
+title that still uses the previous default.
+
+### Project upgrade and deletion
+
+- `GET /api/tickets/projects/<id>/delete-preview` and MCP `project_delete_preview {id}` return
+  `{id, rev, counts, collisions:[{id, label, newLabel}], snapshot}`. The counts cover epics, tickets, releases,
+  Wiki pages, Review sets and local references.
+- `POST /api/tickets/projects/delete` and MCP `project_delete` accept
+  `{id, rev, confirmation, snapshot, deleteWiki?, deleteReviews?, promoteReferences?}`. Pass the project key
+  or name as the confirmation and obtain a fresh preview after a revision or dependency conflict. The project
+  and its epics, tickets and releases are deleted together. Wiki and Review data are detached by default.
+  When local references exist, explicitly choose whether to promote them. Promotion preserves their IDs and
+  disambiguates conflicting labels with the project key. These endpoints require `tickets:write`, plus
+  `review:write` or `references:write` when requesting Review deletion or reference promotion respectively.
+- `POST /api/tickets/projects/upgrade` accepts
+  `{id, rev, type, labels, settings, renameWikiHome?, epics:[{title, description?, spec?, ticketIds?}]}`
+  with `tickets:write`. It applies the profile, settings, optional Wiki home rename, initial epics and ticket
+  assignments together and moves a v1 project to v2. Existing projects are usable before upgrading.
+
+See [Projects v2](projects-v2.md) for Epic and linked-entity behavior.
 
 
 ### Hybrid ticket search
