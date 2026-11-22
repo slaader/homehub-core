@@ -60,17 +60,23 @@ const blockFrame=(page,id)=>`/api/wiki/frame/${page.project}/${page.id}/${id}`;
 const ticketStates={
  open:['Otevřený','warn'],'in-progress':['Rozpracovaný','info'],done:['Hotovo','ok'],cancelled:['Zrušený','dim'],
 };
+// A ticket the project's tracker did not list (another project's, or one that is gone) is shown as a ticket
+// Reference, which looks its label up and marks it missing; the editor reads a ticket Reference back as a ticket run.
 export function ticketChip(id,ticket,editing=false){
- if(!ticket){
-  const chip=referenceChip({kind:'ticket',id,label:id},editing);
-  if(editing){chip.removeAttribute('data-ref-kind');chip.setAttribute('data-ticket',id);}
-  return chip;
- }
+ if(!ticket)return referenceChip({kind:'ticket',id,label:id},editing);
  const [label,tone]=ticketStates[ticket?.status]??[];
  const contents=[el('b',{class:'tk-mono'},id),ticket.title?' '+ticket.title:null,
   label?[' ',el('span',{class:`sec-pill ${tone}`},t(label))]:null];
  if(editing)return el('span',{class:'wiki-ticket ref-chip',contenteditable:'false','data-ticket':id},contents);
  return el('a',{class:'wiki-ticket ref-chip',href:'#items/'+id},contents);
+}
+
+// The chip a folded inventory cell previews for a Mention or a ticket: it looks like the chip in the cell, but it
+// is plain text that cannot be followed or focused. `text` is what the cell's own chip reads. Other runs: null.
+export function inlineTeaserChip(run,text){
+ if(run.t==='ref')return referenceChip(run,true);
+ if(run.t==='ticket')return el('span',{class:'wiki-ticket ref-chip'},text);
+ return null;
 }
 
 function textNode(run){
