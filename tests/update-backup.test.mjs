@@ -394,6 +394,16 @@ test('assessRestore().coversFile works identically across v2 (including exact-fi
  assert.equal(v1Assessed.coversFile(v1Payload,{sha256:digest('wrong'),mode:0o640}),false);
  assert.equal(v1Assessed.coversFile(v1.inst.paths.data),false);
  assert.equal(v1Assessed.coversFile(path.join(v1.dir,'outside.txt')),false);
+ // A v1 sidecar manifest listing an extra root/file missing from the tar is rejected during read-only assessRestore().
+ const extraV1Root=path.join(v1.dir,'v1-extra');mkdirSync(extraV1Root);
+ const badManifest=structuredClone(old.manifest);
+ badManifest.roots.push({id:'root-0002',canonical:extraV1Root,logical:extraV1Root,parent:v1.dir,existed:true,link:null});
+ badManifest.files.push({path:'root-0002',type:'directory',mode:0o700,bytes:0,sha256:null},{path:'root-0002/missing.json',type:'file',mode:0o640,bytes:4,sha256:digest('test')});
+ const badManifestText=JSON.stringify(badManifest,null,1)+'\n';
+ const badManifestPath=v1File+'.bad.manifest.json',badIntegrityPath=v1File+'.bad.integrity.json';
+ writeFileSync(badManifestPath,badManifestText);
+ writeFileSync(badIntegrityPath,JSON.stringify({...old.integrity,manifestSha256:digest(badManifestText)}));
+ await assert.rejects(assessRestore(v1.inst,{file:v1File,manifest:badManifestPath,integrity:badIntegrityPath,entries:badManifest.roots}),/archive incomplete/);
 
  // Genuine sidecar-less legacy archive created with the historical `tar -czf` writer (including macOS PAX/AppleDouble headers)
  // assesses and restores cleanly, and read-only assessment rejects missing roots and collisions.

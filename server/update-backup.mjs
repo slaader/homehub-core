@@ -1160,26 +1160,21 @@ export async function assessRestore(inst,backup,journal=null){
   for(const r of description.manifest.roots)refuseSocketReplacement(r.canonical);
   verifyOldGraph(description.manifest.roots,progress);
   const {manifest,legacy}=description;
-  let legacyFiles=null;
-  if(legacy){
-   const allowedRoots=new Set(manifest.roots.map(r=>r.legacyName));
-   const entries=await inspectArchive(backup.file,{release:false,legacy:true,allowedRoots});
-   const presentRoots=new Set(entries.map(e=>e.path.split('/')[0]));
-   for(const r of manifest.roots)if(r.existed&&!presentRoots.has(rootPrefix(r)))throw new Error(`missing archive root: ${r.id}`);
-   for(const e of entries.filter(e=>e.type==='symlink')){
-    const r=manifest.roots.find(r=>e.path===rootPrefix(r)||e.path.startsWith(rootPrefix(r)+'/'));
-    if(!r)throw new Error('unmapped backup symlink');
-    validateLink(e,r,manifest.roots,{includeAliases:false});
-   }
-   legacyFiles=new Map(entries.map(e=>[e.path,e]));
-  }else if(manifest.files){
-   const presentRoots=new Set(manifest.files.map(e=>e.path.split('/')[0]));
-   for(const r of manifest.roots)if(r.existed&&!presentRoots.has(rootPrefix(r)))throw new Error(`missing archive root: ${r.id}`);
+  const allowedRoots=legacy?new Set(manifest.roots.map(r=>r.legacyName)):null;
+  const expected=manifest.files?new Map(manifest.files.map(f=>[f.path,f])):null;
+  const entries=await inspectArchive(backup.file,{release:false,legacy,allowedRoots,expected});
+  const presentRoots=new Set(entries.map(e=>e.path.split('/')[0]));
+  for(const r of manifest.roots)if(r.existed&&!presentRoots.has(rootPrefix(r)))throw new Error(`missing archive root: ${r.id}`);
+  for(const e of entries.filter(e=>e.type==='symlink')){
+   const r=manifest.roots.find(r=>e.path===rootPrefix(r)||e.path.startsWith(rootPrefix(r)+'/'));
+   if(!r)throw new Error('unmapped backup symlink');
+   validateLink(e,r,manifest.roots,{includeAliases:false});
   }
+  const inspected=new Map(entries.map(e=>[e.path,e]));
   const coversFile=(file,expect)=>{
    const wanted=archiveEntryPathFor(manifest.roots,file);
    if(!wanted)return false;
-   const entry=legacyFiles?legacyFiles.get(wanted):manifest.files?.find(e=>e.path===wanted);
+   const entry=inspected.get(wanted);
    if(!entry||entry.type!=='file')return false;
    return matchExpect(entry,expect);
   };
