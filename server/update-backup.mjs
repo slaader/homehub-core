@@ -1,6 +1,6 @@
 // Pre-update instance snapshot, streaming v2 archive, socket-preserving restore and legacy v1 recovery.
 // Static imports only: the updater may run from the checkout it switches.
-import {constants,lstatSync,fstatSync,realpathSync,readlinkSync,opendirSync,readdirSync,statfsSync,mkdirSync,mkdtempSync,rmSync,cpSync,renameSync,openSync,readSync,writeSync,closeSync,fchmodSync,fsyncSync,linkSync,symlinkSync,lchmodSync,createReadStream,createWriteStream} from 'node:fs';
+import {constants,lstatSync,fstatSync,realpathSync,readlinkSync,opendirSync,readdirSync,statfsSync,mkdirSync,mkdtempSync,rmdirSync,rmSync,cpSync,renameSync,openSync,readSync,writeSync,closeSync,fchmodSync,fsyncSync,linkSync,symlinkSync,lchmodSync,createReadStream,createWriteStream} from 'node:fs';
 import path from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 import {Readable,Transform} from 'node:stream';
@@ -1016,7 +1016,11 @@ async function restoreLegacy(inst,ctx,backup,journal,{manifest,legacy}){
   validateRoots(inst,manifest.roots,progress);
   verifyOldGraph(manifest.roots,progress);
   const result=installRoots(inst,ctx,manifest.roots,progress,aside,save);
-  for(const p of progress)removeRestoreStage(p.stageDir);
+  // Legacy progress records do not prove the stage directory is empty or isolated; remove it only when empty.
+  for(const p of progress){
+   try{rmdirSync(p.stageDir);syncDirectory(path.dirname(p.stageDir));}
+   catch(e){if(!['ENOENT','ENOTEMPTY','EEXIST'].includes(e.code))throw e;}
+  }
   return result;
  }finally{rmSync(scratch,{recursive:true,force:true});}
 }
@@ -1102,20 +1106,115 @@ function installRoots(inst,ctx,roots,progress,aside,save){
  return aside;
 }
 
-function resolveFileTarget(file){
- if(typeof file!=='string'||!path.isAbsolute(file)||file.includes('\0'))return null;
- try{return path.join(canonicalPath(path.dirname(file)),path.basename(file));}
- catch{return path.resolve(file);}
-}
-
 function archiveEntryPathFor(roots,file){
- const target=resolveFileTarget(file);
- if(!target)return null;
- for(const r of roots){
-  if(!hasPayload(r)||!withinPath(target,r.canonical))continue;
-  return target===r.canonical?r.id:`${r.id}/${path.relative(r.canonical,target).split(path.sep).join('/')}`;
+ if(typeof file!=='string'||!path.isAbsolute(file)||file.includes('\0'))return null;
+ const matchTarget=target=>{
+  for(const r of roots){
+   if(!hasPayload(r))continue;
+   for(const base of [r.canonical,r.logical]){
+    if(!base||!withinPath(target,base))continue;
+    const prefix=rootPrefix(r);
+    return target===base?prefix:`${prefix}/${path.relative(base,target).split(path.sep).join('/')}`;
+   }
+  }
+  return null;
+ };
+ // Match the journal/canonical path directly against archived roots first, without traversing live symlinks
+ // that an update may have placed at an archived root's old location. Only if unnormalized ancestor prefixes
+ // (e.g. /tmp -> /private/tmp) differ, canonicalize progressively higher ancestors outside the target leaf.
+ const resolved=path.resolve(file);
+ const direct=matchTarget(resolved);
+ if(direct)return direct;
+ const suffix=[];
+ for(let cur=resolved;;){
+  const parent=path.dirname(cur);
+  suffix.unshift(path.basename(cur));
+  if(parent===cur)break;
+  cur=parent;
+  try{
+   const candidate=path.join(canonicalPath(cur),...suffix);
+   const hit=matchTarget(candidate);
+   if(hit)return hit;
+  }catch{}
  }
  return null;
+}
+
+function tarField(b,start,size){
+ const part=b.subarray(start,start+size),end=part.indexOf(0);
+ if(end>=0&&part.subarray(end).some(v=>v!==0))throw new Error('nonzero archive field after NUL');
+ return new TextDecoder('utf-8',{fatal:true}).decode(end<0?part:part.subarray(0,end));
+}
+
+function tarOctal(b,start,size){
+ const raw=b.subarray(start,start+size);
+ if(raw[0]&128)throw new Error('unsupported archive numeric encoding');
+ const text=raw.toString('ascii').replace(/[\0 ]+$/,'').replace(/^ +/,'');
+ if(!/^[0-7]*$/.test(text))throw new Error('invalid archive octal');
+ const v=parseInt(text||'0',8);
+ if(!Number.isSafeInteger(v))throw new Error('unsafe archive integer');
+ return v;
+}
+
+async function scanLegacyArchive(file,roots){
+ const st=lstatSync(file);
+ if(!st.isFile()||st.size>ARCHIVE_LIMITS.compressed)throw new Error('compressed archive exceeds local limit');
+ const input=createReadStream(file),unzip=createGunzip();
+ input.on('error',e=>unzip.destroy(e));
+ input.pipe(unzip);
+ const reader=new Reader(unzip),entries=new Map(),names=new Set(roots.map(r=>r.legacyName));
+ let count=0,ended=false;
+ try{
+  for(;;){
+   const b=await reader.take(512);
+   if(reader.total>ARCHIVE_LIMITS.expanded)throw new Error('expanded archive exceeds local limit');
+   if(b.every(v=>v===0)){
+    const next=await reader.take(512);
+    if(next.some(v=>v!==0))throw new Error('invalid archive end marker');
+    ended=true;break;
+   }
+   if(++count>ARCHIVE_LIMITS.entries)throw new Error('too many archive entries');
+   const declared=tarOctal(b,148,8),sum=b.reduce((a,v,i)=>a+(i>=148&&i<156?32:v),0);
+   if(sum!==declared)throw new Error('invalid archive header checksum');
+   if(tarField(b,257,6)!=='ustar'||!['00','  ',''].includes(tarField(b,263,2)))throw new Error('unsupported archive format');
+   const type=String.fromCharCode(b[156]||48),prefix=tarField(b,345,155);
+   let name=(prefix?prefix+'/':'')+tarField(b,0,100);
+   if(type==='5'&&name.endsWith('/'))name=name.slice(0,-1);
+   if(name.startsWith('./'))name=name.slice(2);
+   archivePath(name,{release:false});
+   if(!names.has(name.split('/')[0]))throw new Error('legacy archive has unplanned roots');
+   if(entries.has(name))throw new Error('duplicate archive path');
+   const bytes=tarOctal(b,124,12),mode=tarOctal(b,100,8);
+   if(bytes>ARCHIVE_LIMITS.file||mode&0o7000)throw new Error('unsafe archive size or mode');
+   if(!['0','5','2'].includes(type))throw new Error('unsupported archive entry type');
+   if(type!=='0'&&bytes!==0)throw new Error('non-file archive entry has data');
+   let hash=null;
+   if(type==='0'){
+    const h=createHash('sha256');
+    let left=bytes;
+    while(left){
+     const chunk=await reader.take(Math.min(left,65536));
+     if(reader.total>ARCHIVE_LIMITS.expanded)throw new Error('expanded archive exceeds local limit');
+     h.update(chunk);left-=chunk.length;
+    }
+    hash=h.digest('hex');
+    const padding=(512-bytes%512)%512;
+    if(padding&&(await reader.take(padding)).some(v=>v!==0))throw new Error('nonzero archive padding');
+   }
+   entries.set(name,{path:name,type:type==='0'?'file':type==='5'?'directory':'symlink',mode:mode&0o777,bytes,sha256:hash});
+  }
+  if(reader.buffer.subarray(reader.offset).some(v=>v!==0))throw new Error('unexpected trailing archive content');
+  let tail=reader.buffer.length-reader.offset;
+  for(;;){
+   const next=await reader.iter.next();
+   if(next.done)break;
+   tail+=next.value.length;
+   if(next.value.some(v=>v!==0))throw new Error('unexpected trailing archive content');
+   if(reader.total+tail>ARCHIVE_LIMITS.expanded)throw new Error('expanded archive exceeds local limit');
+  }
+  if(!ended)throw new Error('missing archive terminator');
+  return entries;
+ }finally{input.destroy();unzip.destroy();}
 }
 
 function matchExpect(entry,expect){
@@ -1138,12 +1237,13 @@ export async function assessRestore(inst,backup,journal=null){
   validateRoots(inst,description.manifest.roots,progress);
   for(const r of description.manifest.roots)refuseSocketReplacement(r.canonical);
   verifyOldGraph(description.manifest.roots,progress);
-  const {manifest}=description;
+  const {manifest,legacy}=description;
+  const legacyFiles=legacy?await scanLegacyArchive(backup.file,manifest.roots):null;
   const coversFile=(file,expect)=>{
-   if(!manifest.files)return false;
    const wanted=archiveEntryPathFor(manifest.roots,file);
    if(!wanted)return false;
-   const entry=manifest.files.find(e=>e.path===wanted&&e.type==='file');
+   const entry=legacyFiles?legacyFiles.get(wanted):manifest.files?.find(e=>e.path===wanted);
+   if(!entry||entry.type!=='file')return false;
    return matchExpect(entry,expect);
   };
   return {...description,coversFile};

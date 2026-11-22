@@ -350,6 +350,24 @@ test('assessRestore().coversFile works identically across v2 (including exact-fi
  assert.equal(assessed.coversFile(outside),false,'uncovered paths return false');
  assert.equal(assessed.coversFile(path.join(inst.paths.data,'nonexistent')),false);
 
+ // Moving an archived directory (or subdirectory) and leaving a symlink at its old path must NOT break coversFile.
+ const movedConfig=path.join(dir,'config-moved');
+ const subDir=path.join(inst.paths.config,'sub'),movedSub=path.join(dir,'sub-moved');
+ mkdirSync(subDir);
+ const subFile=path.join(subDir,'nested.json');
+ writeFileSync(subFile,'{"ok":true}\n',{mode:0o640});
+ const movedBackup=await createBackup(inst,ctx,'covers-moved');
+ const movedAssessed=await assessRestore(inst,movedBackup);
+ const subHash=digest('{"ok":true}\n');
+ renameSync(subDir,movedSub);
+ symlinkSync(movedSub,subDir);
+ assert.equal(movedAssessed.coversFile(subFile,{sha256:subHash,mode:0o640}),true,'coversFile matches archived subdir even when replaced by a live symlink');
+ rmSync(subDir);renameSync(movedSub,subDir);
+ renameSync(inst.paths.config,movedConfig);
+ symlinkSync(movedConfig,inst.paths.config);
+ assert.equal(movedAssessed.coversFile(subFile,{sha256:subHash,mode:0o640}),true,'coversFile matches archived root even when live root dir was replaced by a symlink');
+ rmSync(inst.paths.config);renameSync(movedConfig,inst.paths.config);
+
  // v1 sidecar archive and legacy sidecar-less archive (separate fixture without live sockets)
  const v1=fixture(t);
  const old=JSON.parse(readFileSync(new URL('./fixtures/update/backup-v1.json',import.meta.url),'utf8'));
@@ -368,14 +386,48 @@ test('assessRestore().coversFile works identically across v2 (including exact-fi
  assert.equal(v1Assessed.coversFile(v1.inst.paths.data),false);
  assert.equal(v1Assessed.coversFile(path.join(v1.dir,'outside.txt')),false);
 
- // Legacy archive without sidecar manifest has no authenticated entry inventory
+ // Genuine sidecar-less legacy archive inspects archive contents for coversFile and preserves unexpected stageDir files on resume.
+ const {writeArchive}=await import('../server/release-archive.mjs');
  const legacyRoot=path.join(v1.dir,'legacy-root');mkdirSync(legacyRoot);
- const legacyAssessed=await assessRestore(v1.inst,{file:v1File,entries:[{parent:v1.dir,name:'legacy-root'}]});
- assert.equal(legacyAssessed.coversFile(path.join(legacyRoot,'payload')),false);
+ const legacySrc=path.join(legacyRoot,'site.json');
+ writeFileSync(legacySrc,'{"legacy":1}\n',{mode:0o640});
+ const legacyArchive=path.join(v1.inst.backups,'legacy-only.tgz');
+ await writeArchive(legacyArchive,[
+  {path:'legacy-root',type:'directory',mode:0o700,bytes:0},
+  {path:'legacy-root/site.json',type:'file',mode:0o640,bytes:Buffer.byteLength('{"legacy":1}\n'),source:legacySrc},
+ ],{release:false});
+ const legacyBackup={file:legacyArchive,entries:[{parent:v1.dir,name:'legacy-root'}]};
+ const legacyAssessed=await assessRestore(v1.inst,legacyBackup);
+ const legacyHash=digest('{"legacy":1}\n');
+ assert.equal(legacyAssessed.coversFile(legacySrc),true);
+ assert.equal(legacyAssessed.coversFile(legacySrc,{sha256:legacyHash,mode:0o640}),true);
+ assert.equal(legacyAssessed.coversFile(legacySrc,{sha256:legacyHash,mode:0o600}),false);
+ assert.equal(legacyAssessed.coversFile(legacySrc,{sha256:digest('wrong'),mode:0o640}),false);
+ assert.equal(legacyAssessed.coversFile(legacyRoot),false);
+ assert.equal(legacyAssessed.coversFile(path.join(v1.dir,'outside.txt')),false);
+
+ // Resumed legacy restore uses empty-directory removal on stageDir and preserves unexpected files inside it.
+ const stageDir=path.join(v1.dir,'.hub-restore-legacy-extra');
+ const stagedRoot=path.join(stageDir,'root');
+ mkdirSync(stagedRoot,{recursive:true,mode:0o700});
+ writeFileSync(path.join(stagedRoot,'site.json'),'{"legacy":1}\n',{mode:0o640});
+ const unrelated=path.join(stageDir,'keep-me.txt');
+ writeFileSync(unrelated,'do not delete');
+ writeFileSync(legacySrc,'{"mutated":2}\n',{mode:0o640});
+ const legacyJournal={
+  schemaVersion:2,id:'legacy-resume',startedAt:new Date(v1.ctx.now()).toISOString(),step:'rolling-back',epochRose:true,
+  from:{label:'v1.0.0',core:{version:'1.0.0'},expect:{version:'1.0.0'}},
+  to:{label:'v1.1.0',core:{version:'1.1.0'},expect:{version:'1.1.0'}},
+  changes:[],settings:{root:v1.inst.root,state:v1.inst.paths.state,service:{stop:['true'],start:['true']},health:{url:'http://127.0.0.1:1/healthz',seconds:2}},
+  restoreRoots:[{id:'root-0001',live:legacyRoot,stageDir,staged:stagedRoot,aside:legacyRoot+'.failed-legacy',existed:true,status:'prepared'}],
+ };
+ await restoreBackup(v1.inst,v1.ctx,legacyBackup,legacyJournal);
+ assert.equal(readFileSync(legacySrc,'utf8'),'{"legacy":1}\n');
+ assert.equal(readFileSync(unrelated,'utf8'),'do not delete','legacy stageDir cleanup preserves unexpected files');
 });
 
 test('updater closure rooted at scripts/update.mjs is 100% static, acyclic, and update-backup exports stay narrow',async()=>{
- const repoRoot=path.resolve(path.dirname(new URL(import.meta.url).pathname),'..');
+ const repoRoot=path.resolve(import.meta.dirname,'..');
  const entry=path.join(repoRoot,'scripts','update.mjs');
  const visited=new Set(),stack=[],cycles=[],dynamics=[];
  const deleted=['backup-scan.mjs','backup-archive.mjs','backup-policy.mjs','restore-sockets.mjs'];
