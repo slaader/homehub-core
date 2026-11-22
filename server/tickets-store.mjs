@@ -617,7 +617,7 @@ export function createTicketStore(root,{db=openDb(path.join(root,'hub.db')),seed
   const shas=[...new Set([...epics,...tickets].flatMap(x=>(x.attachments||[]).map(a=>a.sha256)))];
   return {project:publicProject(p),counts:{epics:epics.length,tickets:tickets.length,releases:releases.length},
    epicIds:epics.map(e=>e.id),ticketIds:tickets.map(t=>t.id),files:shas,
-   async cleanup(){const removed=[];if(!blobs)return removed;for(const sha of shas)if(!(await fileInUse(sha))){await blobs.remove(sha);removed.push(sha);}return removed;}};
+   async cleanup(){const removed=[];if(!blobs)return removed;for(const sha of shas)if(await blobs.remove(sha,fileInUse))removed.push(sha);return removed;}};
  }
  // Standalone upgrade with the tracker alone (no wiki rename): the same steps in one transaction of this store.
  async function upgradeProject(input,by){

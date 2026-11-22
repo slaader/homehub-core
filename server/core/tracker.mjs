@@ -76,7 +76,7 @@ async function serveAttachment({url,req,res,state,error},found){
  try{await pipeline(createReadStream(f.path,{start:range.start,end:range.end}),res);}catch{res.destroy();}
 }
 // Files a committed deletion left without any ticket or epic naming them. A failure leaves an orphan, never a loss.
-async function removeFiles(state,shas){for(const sha of shas||[])try{if(!(await state.tickets.fileInUse(sha)))await state.ticketFiles.remove(sha);}catch{}}
+async function removeFiles(state,shas){for(const sha of shas||[])try{await state.ticketFiles.remove(sha,state.tickets.fileInUse);}catch{}}
 // The write log names what a write touched; a failed write names nothing (never rejected argument text).
 const write=(path,status,run,{error=ticketsError,...extra}={})=>({method:'POST',...(path instanceof RegExp?{match:path}:{path}),scope:'tickets:write',error,...extra,async handler(c){c.subject=null;const saved=await run(c);c.subject=saved.subject;return c.json(typeof status==='function'?status(c):status,withProvenance(c,saved.body));}});
 const who=c=>c.principal.username;
@@ -165,13 +165,14 @@ export default {
     // that is still sending reaches many of them as a broken connection, not as the 409 or 404 it is.
     try{if((await tickets.get(id)).attachments.length>=TICKET_ATTACHMENTS)throw new Error('limit');}
     catch(e){let read=0;try{for await(const chunk of c.req){read+=chunk.length;if(read>FILE_LIMITS.file)break;}}catch{}throw e;}
-    const file=await ticketFiles.put(c.req,{name:c.url.searchParams.get('name'),declaredLength:Number(c.req.headers['content-length'])});
-    c.subject=id;return c.json(201,withProvenance(c,await tickets.attach(id,file,who(c))));}},
+    const saved=await ticketFiles.put(c.req,{name:c.url.searchParams.get('name'),declaredLength:Number(c.req.headers['content-length'])},
+     file=>tickets.attach(id,file,who(c)));
+    c.subject=id;return c.json(201,withProvenance(c,saved));}},
   write('/api/tickets',201,async c=>{const ticket=await c.state.tickets.create(c.input,who(c));return {subject:ticket.id,body:ticket};}),
   write('/api/tickets/update',200,async c=>{const saved=await c.state.tickets.update(c.input,who(c));return {subject:saved.id||saved.project,body:saved};}),
   write('/api/tickets/comment',200,async c=>{const saved=await c.state.tickets.comment(c.input,who(c));return {subject:saved.id||saved.project,body:saved};}),
   write('/api/tickets/releases',200,async c=>{const saved=await c.state.tickets.saveRelease(c.input,who(c));return {subject:saved.id||saved.project,body:saved};}),
-  write('/api/tickets/attachments/delete',200,async c=>{const out=await c.state.tickets.detach(c.input,who(c));if(!out.used)await c.state.ticketFiles.remove(out.removed.sha256);return {subject:out.ticket.id,body:out.ticket};}),
+  write('/api/tickets/attachments/delete',200,async c=>{const out=await c.state.tickets.detach(c.input,who(c));if(!out.used)await c.state.ticketFiles.remove(out.removed.sha256,c.state.tickets.fileInUse);return {subject:out.ticket.id,body:out.ticket};}),
   write('/api/tickets/projects',c=>c.input?.rev===undefined?201:200,async c=>{const saved=await c.state.projectLifecycle.save(c.input,who(c));return {subject:saved.id,body:saved};},{error:projectsError}),
   // Project deletion and the v1 → v2 upgrade (docs/projects-v2.md §5, §6). The preview's snapshot goes back with the deletion.
   {method:'GET',match:/^\/api\/tickets\/projects\/([a-z][a-z0-9-]{1,39})\/delete-preview$/,scope:'tickets:write',error:projectsError,handler:async c=>c.json(200,await c.state.projectLifecycle.preview(c.params[1],c.principal))},
@@ -185,13 +186,14 @@ export default {
   write('/api/tickets/epics/comment',200,async c=>{const epic=await c.state.tickets.commentEpic(c.input,who(c));return {subject:epic.id,body:epic};},{error:epicsError}),
   write('/api/tickets/epics/delete',200,async c=>{const out=await c.state.tickets.deleteEpic(c.input,who(c));await removeFiles(c.state,out.unused);return {subject:out.id,body:{id:out.id,project:out.project,detached:out.detached}};},{error:epicsError}),
   write(/^\/api\/tickets\/epics\/([A-Z][A-Z0-9]{1,9}-E[1-9][0-9]{0,5})\/assign$/,200,async c=>{const out=await c.state.tickets.assignEpic(c.params[1],c.input,who(c));return {subject:out.epic.id,body:out};},{error:epicsError}),
-  write('/api/tickets/epics/attachments/delete',200,async c=>{const out=await c.state.tickets.detachEpic(c.input,who(c));if(!out.used)await c.state.ticketFiles.remove(out.removed.sha256);return {subject:out.epic.id,body:out.epic};},{error:epicsError}),
+  write('/api/tickets/epics/attachments/delete',200,async c=>{const out=await c.state.tickets.detachEpic(c.input,who(c));if(!out.used)await c.state.ticketFiles.remove(out.removed.sha256,c.state.tickets.fileInUse);return {subject:out.epic.id,body:out.epic};},{error:epicsError}),
   {method:'PUT',match:/^\/api\/tickets\/epics\/([A-Z][A-Z0-9]{1,9}-E[1-9][0-9]{0,5})\/attachments$/,scope:'tickets:write',raw:true,contentType:'application/octet-stream',error:epicsError,
    async handler(c){const {tickets,ticketFiles}=c.state,id=c.params[1];
     try{if((await tickets.getEpic(id)).attachments.length>=TICKET_ATTACHMENTS)throw new Error('limit');}
     catch(e){let read=0;try{for await(const chunk of c.req){read+=chunk.length;if(read>FILE_LIMITS.file)break;}}catch{}throw e;}
-    const file=await ticketFiles.put(c.req,{name:c.url.searchParams.get('name'),declaredLength:Number(c.req.headers['content-length'])});
-    c.subject=id;return c.json(201,withProvenance(c,await tickets.attachEpic(id,file,who(c))));}},
+    const saved=await ticketFiles.put(c.req,{name:c.url.searchParams.get('name'),declaredLength:Number(c.req.headers['content-length'])},
+     file=>tickets.attachEpic(id,file,who(c)));
+    c.subject=id;return c.json(201,withProvenance(c,saved));}},
   {method:'GET',match:/^\/api\/tickets\/epics\/([A-Z][A-Z0-9]{1,9}-E[1-9][0-9]{0,5})\/attachments\/([0-9a-f-]{36})$/,error:epicsError,handler:c=>serveAttachment(c,c.state.tickets.epicAttachment(c.params[1],c.params[2]))},
   {method:'GET',path:'/api/tickets',error:ticketsError,handler:async c=>c.json(200,await listed(c))},
   // Full-text search inside tickets with the list's field filters (status, assignee, label, release, …).
@@ -336,8 +338,8 @@ export default {
      const sha=createHash('sha256').update(bytes).digest('hex');
      if(ticket.attachments.some(a=>a.sha256===sha))return ticket;
      if(ticket.attachments.length>=TICKET_ATTACHMENTS)throw new Error('limit');
-     const file=await state.ticketFiles.put([bytes],{name:own,declaredLength:bytes.length});
-     return t.attach(id,file,principal.username,{deduplicate:true});
+     return state.ticketFiles.put([bytes],{name:own,declaredLength:bytes.length},
+      file=>t.attach(id,file,principal.username,{deduplicate:true}));
     });
    }},
   {name:'search',scope:'read',title:'Home Hub: full-text search',

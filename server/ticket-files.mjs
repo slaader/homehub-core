@@ -73,8 +73,9 @@ export function createTicketFiles(root){
   let total=0,names=[];try{names=await readdir(dir);}catch(e){if(e.code!=='ENOENT')throw e;}
   for(const n of names)try{total+=(await stat(path.join(dir,n))).size;}catch{}return used=total;
  })().catch(e=>{loading=null;throw e;});}
- // body: async iterable of Buffers. Returns {sha256,size,type,name}.
- async function put(body,{name,declaredLength}){
+ // Stream bytes outside the queue. Publish the digest and its record together with respect
+ // to cleanup. Without a record callback, return the file metadata to the caller.
+ async function put(body,{name,declaredLength},attach){
   if(Number.isFinite(declaredLength)&&declaredLength>FILE_LIMITS.file)fail('too-large');
   await mkdir(dir,{recursive:true,mode:0o700});await sweep();await usage();
   const temp=path.join(dir,'.upload-'+randomUUID()),hash=createHash('sha256'),fh=await open(temp,'wx',0o600);let size=0,head=Buffer.alloc(0),held=0,closed=false;
@@ -87,17 +88,27 @@ export function createTicketFiles(root){
    }
    await fh.close();closed=true;if(!size)fail('invalid');
    const sha256=hash.digest('hex'),clean=cleanName(name);
-   await serial(async()=>{
+   return await serial(async()=>{
     let exists=false;try{await stat(file(sha256));exists=true;}catch(e){if(e.code!=='ENOENT')throw e;}
     if(exists)await rm(temp,{force:true});else{await rename(temp,file(sha256));used+=size;}
     reserved-=held;held=0;
+    const metadata={sha256,size,type:sniff(head,clean),name:clean};
+    return attach?attach(metadata):metadata;
    });
-   return {sha256,size,type:sniff(head,clean),name:clean};
   }finally{
    reserved-=held;if(!closed)await fh.close().catch(()=>{});await rm(temp,{force:true});
   }
  }
- async function remove(sha){return serial(async()=>{try{await usage();const s=await stat(file(sha));await rm(file(sha),{force:true});used-=s.size;}catch(e){if(e.code!=='ENOENT')throw e;}});}
+ async function remove(sha,inUse){
+  return serial(async()=>{
+   if(inUse&&await inUse(sha))return false;
+   try{
+    await usage();
+    const s=await stat(file(sha));await rm(file(sha),{force:true});used-=s.size;
+    return true;
+   }catch(e){if(e.code!=='ENOENT')throw e;return false;}
+  });
+ }
  async function read(sha){const p=file(sha);try{return {path:p,size:(await stat(p)).size};}catch{fail('not-found');}}
  async function readText(sha,maxBytes=256*1024){
   const fh=await open(file(sha),'r');

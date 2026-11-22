@@ -158,3 +158,26 @@ test('ticket attachments: a full ticket refuses before the file is stored; temp 
  await files.put((async function*(){yield Buffer.from('second file');})(),{name:'b.txt'});
  assert.ok((await readdir(path.join(dir,'attachments'))).includes('.upload-running'),'an upload in flight is never swept');
 });
+
+test('cleanup rechecks references after an identical upload has saved its attachment record',async t=>{
+ const dir=await mkdtemp(path.join(os.tmpdir(),'ticket-files-race-'));
+ t.after(()=>rm(dir,{recursive:true,force:true}));
+ const files=createTicketFiles(dir);
+ const first=await files.put([PNG],{name:'first.png'});
+ const saving=Promise.withResolvers(),resume=Promise.withResolvers();
+ let live=false;
+ const upload=files.put([PNG],{name:'second.png'},async metadata=>{
+  saving.resolve();
+  await resume.promise;
+  live=true;
+  return metadata;
+ });
+ await saving.promise;
+ const cleanup=files.remove(first.sha256,()=>live);
+ resume.resolve();
+ assert.equal((await upload).sha256,first.sha256);
+ assert.equal(await cleanup,false);
+ assert.equal((await files.read(first.sha256)).size,PNG.length);
+ assert.equal(await files.remove(first.sha256,()=>false),true);
+ await assert.rejects(files.read(first.sha256),/not-found/);
+});
