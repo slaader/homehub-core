@@ -141,7 +141,7 @@ export function createProjectLifecycle(hub,tickets){
    {store:w.store,selection:w.select(input.id,'upgrade')},
   ],([data,wikis],[count])=>{
    const project=checkSelection(data,selected);
-   if(project.rev!==prepared.rev||project.projectVersion!==1)fail('conflict');
+   if(project.rev!==prepared.rev)fail('conflict');
    const at=new Date().toISOString(),space=w.space(wikis,input.id);
    if(input.renameWikiHome){
     if(!space)fail('conflict');

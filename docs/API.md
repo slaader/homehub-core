@@ -995,7 +995,27 @@ title that still uses the previous default.
   with `tickets:write`. It applies the profile, settings, optional Wiki home rename, initial epics and ticket
   assignments together and moves a v1 project to v2. Existing projects are usable before upgrading.
 
-See [Projects v2](projects-v2.md) for Epic and linked-entity behavior.
+### Epics
+
+- `GET /api/tickets/epics` and MCP `epics_list` return `{total, epics}` with counts of linked tickets per
+  status. Optional filters are `project`, `status`, `priority`, `release`, `assignee`, `label` and `limit`.
+- `GET /api/tickets/epics/<ID>` and MCP `epic_get {id}` return the full epic, including its specification,
+  comments, history, attachments and current revision. IDs have the form `<KEY>-E<n>`.
+- `POST /api/tickets/epics/create` and MCP `epic_create` accept `{project, title, description?, spec?, status?,
+  priority?, release?, assignee?, labels?, refs?}`. The update counterparts accept `{id, rev, …fields to change}`.
+  Writes require `tickets:write`. An epic status change leaves linked ticket statuses as they were.
+- `POST /api/tickets/epics/comment` and MCP `epic_comment` append `{id, text}`.
+- `POST /api/tickets/epics/<ID>/assign` moves a batch of existing same-project tickets into the epic.
+  Send `{tickets:[{id, rev}]}`. If any ticket is missing, stale or belongs to another project, the batch makes
+  no changes. Individual ticket updates can also set `epic` to the epic ID or clear it with `null`.
+- `POST /api/tickets/epics/delete` and MCP `epic_delete` accept `{id, rev}`. Linked tickets stay in the tracker
+  with `epic: null`.
+- `PUT /api/tickets/epics/<ID>/attachments?name=…`, `GET /api/tickets/epics/<ID>/attachments/<attachment id>`,
+  and `POST /api/tickets/epics/attachments/delete` (with `{id, attachment}`) share the ticket file storage and
+  response safety rules. Use `![name]` to refer to an attachment from the epic's Markdown.
+
+Global full-text search accepts `kind=epic`. The `epic=none` ticket filter finds unassigned tickets.
+See [Projects v2](projects-v2.md) for the linked-entity behavior.
 
 
 ### Hybrid ticket search
