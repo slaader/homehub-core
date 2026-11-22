@@ -15,7 +15,7 @@ import {createAuth} from './auth.mjs';
 import {openDb} from './db.mjs';
 import {createAccessStore,apiBearerOf,validCredentials} from './access-store.mjs';
 import {registerScopes,scopeFor,scopeIds,sessionOnly,useRoutes} from './scopes.mjs';
-import {createMcp,MCP_TOOLS} from './mcp.mjs';
+import {createMcp} from './mcp.mjs';
 import {createAppTokens,bearerOf} from './app-tokens.mjs';
 import {APP_AUTHOR} from './provenance.mjs';
 import {createAgentStore,agentBearerOf} from './agent-store.mjs';
@@ -68,7 +68,7 @@ export const CORE_MODULES=Object.freeze([sessionModule,shellModule,accessModule,
 export const STARTUP_PLUGINS=Object.freeze(await loadPlugins(undefined,{site:loadedSite()}));
 // Core + plugins as one registry; scopes of every module join the scope table (server/scopes.mjs).
 export function buildRegistry(plugins=STARTUP_PLUGINS){
- const registry=createRegistry([...CORE_MODULES,...plugins.map(p=>Object.isFrozen(p)&&p.routes?p:defineModule(p))],{reservedTools:MCP_TOOLS.map(t=>t.name)});
+ const registry=createRegistry([...CORE_MODULES,...plugins.map(p=>Object.isFrozen(p)&&p.routes?p:defineModule(p))]);
  for(const m of registry.modules)registerScopes(m.core?'core':m.id,m.scopes);
  return registry;
 }
@@ -134,9 +134,7 @@ export function createHandler(options) {
   const assets=new Map(registry.assets);
   for(const image of siteImages(siteImagesDirectory===undefined?(options.site?null:siteConfigPath()&&path.join(path.dirname(siteConfigPath()),'images')):siteImagesDirectory)){
    if(assets.has(image.url))throw new Error(`site image ${image.url} clashes with an asset of module "${assets.get(image.url).module}"`);assets.set(image.url,image);}
-  const home=states.get('home'),tracker=states.get('tracker'),inventory=states.get('inventory');
-  const mcp=createMcp({version:version.version,tools:registry.tools,instructions:registry.instructions,ctx:{home:()=>home.payload(),search:q=>tracker.fullTextSearch(q),tickets:tracker.tickets,ticketFiles:tracker.ticketFiles,review:states.get('review').review,
-   inventory:{read:inventory.read,put:inventory.put},log:entry=>accessStore.logApi(entry),moduleContext:id=>({state:states.get(id),hub})}});
+  const mcp=createMcp({version:version.version,tools:registry.tools,instructions:registry.instructions,ctx:{log:entry=>accessStore.logApi(entry),moduleContext:id=>({state:states.get(id),hub})}});
   // A request has ten seconds to arrive whole, answered or not: a refusal that went out at once does not let the
   // rest of the request trickle in for longer. Only a raw upload may take longer: a file streamed by its route,
   // which is reached after the sign-in, origin and scope checks (the server's requestTimeout bounds that one).
@@ -252,7 +250,7 @@ export function createHandler(options) {
     }
   };
   handler.mcpBusiness=mcp.business; // Internal experiment/test seam; uses this exact registry, stores and audit.
-  handler.hub=hub;handler.registry=registry;handler.state=hub.state;handler.thermo=home.thermoPoller;
+  handler.hub=hub;handler.registry=registry;handler.state=hub.state;handler.thermo=states.get('home').thermoPoller;
   // Every background reader the modules declared (Thermo pull, plugin pollers). A failure to start is logged, not fatal.
   handler.ready=()=>integrationSecrets.ready();
   handler.start=async()=>{await handler.ready();return Promise.all(registry.pollers.map(p=>Promise.resolve().then(()=>p.start(states.get(p.module),hub)).catch(e=>console.error(`Poller ${p.module}/${p.id} failed to start:`,e.message))));};
