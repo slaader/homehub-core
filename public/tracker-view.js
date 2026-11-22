@@ -1044,7 +1044,7 @@ async function epicPage(wrap,ctx){
  if(!first)return;
  const [epic,people]=first;
  const second=await load(wrap,Promise.all([
-  api('/api/tickets?project='+encodeURIComponent(epic.project)+'&limit=200'),
+  api('/api/tickets?project='+encodeURIComponent(epic.project)+'&limit=5000'),
   api('/api/review?project='+encodeURIComponent(epic.project)+'&status=all').catch(()=>null),
  ]));
  if(!second)return;
@@ -1060,7 +1060,7 @@ function renderEpic(wrap,ctx,epic,state={}){
  const projectTickets=(meta.tickets||[]).filter(tk=>tk.project===epic.project);
  const linkedTickets=projectTickets.filter(tk=>tk.epic===epic.id);
  const counts=epicCounts(epic,projectTickets);
- const openCount=linkedTickets.filter(tk=>ACTIVE.includes(tk.status)).length;
+ const openCount=counts.open+counts['in-progress'];
  const reloadEpic=()=>epicPage(wrap,ctx).catch(e=>fail(msg,e));
  const write=async(button,request,nextState={})=>{
   if(button)button.disabled=true;const epoch=sessionEpoch;let updated;
@@ -1393,7 +1393,7 @@ function openUpgradeWizard(p,ctx,onDone){
   let ticketData,wikiData,reviewData,refData;
   try{
    [ticketData,wikiData,reviewData,refData]=await Promise.all([
-    api('/api/tickets?project='+encodeURIComponent(p.id)+'&limit=200'),
+    api('/api/tickets?project='+encodeURIComponent(p.id)+'&limit=5000'),
     wikiApi(wikiApiPath(encodeURIComponent(p.id))).catch(()=>({enabled:false,pages:[]})),
     api('/api/review?project='+encodeURIComponent(p.id)+'&status=all').catch(()=>({sets:[]})),
     api('/api/references?'+new URLSearchParams({scope:'local',project:p.id,kind:'custom',limit:'100'})).catch(()=>({items:[],total:0})),
