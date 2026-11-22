@@ -16,6 +16,8 @@ function inline(nodes,marks=[],tail=true){
   if(node.nodeType===3)return node.data?run(node.data,marks):[];
   if(node.nodeType!==1)return [];
   const last=tail&&i===list.length-1;
+  // A ticket is never a ref run (wiki-doc.js): a ticket Reference chip is the ticket the tracker did not list.
+  if(node.dataset.refKind==='ticket')return {t:'ticket',id:node.dataset.refId};
   if(node.dataset.refKind)return {t:'ref',kind:node.dataset.refKind,id:node.dataset.refId,label:node.dataset.refLabel};
   if(node.dataset.ticket)return {t:'ticket',id:node.dataset.ticket};
   if(node.tagName==='BR')return last?[]:run('\n',marks);
