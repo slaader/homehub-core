@@ -122,19 +122,34 @@ function wrap(db,file){
    const colls={};for(const r of st.rows.all(kind))(colls[r.coll]??=[]).push([r.id,JSON.parse(r.doc)]);
    const data=join(JSON.parse(m.doc),colls);return data;
   }
-  function save(data,{full=false,selection=null,previous=snapshot,inTransaction=false}={}){
+  // Writes the rows of data that differ from previous, inside the caller's transaction. A row that previous had and
+  // data no longer has is deleted together with its search entry (deletes first, so a row that takes over a search
+  // id keeps it). Returns what to do once the transaction has committed: in-memory state only follows a commit.
+  function persist(data,{full=false,selection=null,previous=snapshot}={}){
    const {meta,colls}=split(data),next=new Map();
    for(const [coll,rows] of Object.entries(colls))if(!selection||Object.hasOwn(selection,coll))for(const [id,doc] of rows)next.set(stamp(coll,id),{coll,id,doc,json:JSON.stringify(doc)});
-   const apply=()=>{
-    st.putMeta.run(kind,JSON.stringify(meta));
-    for(const [key,r] of next)if(full||previous?.get(key)!==r.json){
-     st.put.run(kind,r.coll,r.id,r.json);const e=search(r.coll,r.doc);
-     if(e){st.unindex.run(e.kind,e.id);st.index.run(e.kind,e.id,e.project??null,e.updated??null,e.title??'',e.body??'');}
-    }
-    if(previous)for(const key of previous.keys())if(!next.has(key)){const [coll,id]=key.split('\u0000');st.del.run(kind,coll,id);}
-   };
-   if(inTransaction)apply();else tx(apply);
-   snapshot=selection?null:new Map([...next].map(([k,r])=>[k,r.json]));generation++;
+   st.putMeta.run(kind,JSON.stringify(meta));
+   if(previous)for(const [key,json] of previous)if(!next.has(key)){
+    const [coll,id]=key.split('\u0000');st.del.run(kind,coll,id);
+    const e=json===undefined?null:search(coll,JSON.parse(json));if(e)st.unindex.run(e.kind,e.id);
+   }
+   for(const [key,r] of next)if(full||previous?.get(key)!==r.json){
+    st.put.run(kind,r.coll,r.id,r.json);const e=search(r.coll,r.doc);
+    if(e){st.unindex.run(e.kind,e.id);st.index.run(e.kind,e.id,e.project??null,e.updated??null,e.title??'',e.body??'');}
+   }
+   return ()=>{snapshot=selection?null:new Map([...next].map(([k,r])=>[k,r.json]));generation++;};
+  }
+  function save(data,options={}){let after;tx(()=>{after=persist(data,options);});after();}
+  // The selected rows inside an open transaction. null selects a whole subcollection, a string an id prefix, an id
+  // array only those rows. Other rows are never loaded, rewritten or removed.
+  function select(selection){
+   const colls={},previous=new Map();
+   for(const [coll,ids] of Object.entries(selection)){
+    const rows=ids===null?st.coll.all(kind,coll):typeof ids==='string'?st.range.all(kind,coll,ids,ids+'\uffff'):
+     [...new Set(ids)].flatMap(id=>{const r=st.row.get(kind,coll,id);return r?[{id,...r}]:[];});
+    colls[coll]=rows.map(r=>{previous.set(stamp(coll,r.id),r.doc);return [r.id,JSON.parse(r.doc)];});
+   }
+   return {data:join(JSON.parse(st.meta.get(kind).doc),colls),previous};
   }
   function reindex(data){
    const {colls}=split(data);
@@ -168,25 +183,52 @@ function wrap(db,file){
    // Indexed reads do not load unrelated documents or replace a writer's snapshot.
    async get(coll,id){await ensure();const row=st.row.get(kind,coll,id);return row?JSON.parse(row.doc):null;},
    async list(coll,prefix){await ensure();const rows=prefix===undefined?st.coll.all(kind,coll):st.range.all(kind,coll,prefix,prefix+'\uffff');return rows.map(r=>JSON.parse(r.doc));},
-   // Selected read-modify-write in one synchronous transaction. null selects a whole subcollection;
-   // an id array selects only those rows. Other rows are never loaded, rewritten or removed.
-   async change(selection,fn,{durable=false}={}){
-    await ensure();return (durable?durableTx:tx)(()=>{
-     const colls={},previous=new Map();
-     for(const [coll,ids] of Object.entries(selection)){
-      const rows=ids===null?st.coll.all(kind,coll):typeof ids==='string'?st.range.all(kind,coll,ids,ids+'\uffff'):
-       [...new Set(ids)].flatMap(id=>{const r=st.row.get(kind,coll,id);return r?[{id,...r}]:[];});
-      colls[coll]=rows.map(r=>{previous.set(stamp(coll,r.id),r.doc);return [r.id,JSON.parse(r.doc)];});
-     }
-     const data=join(JSON.parse(st.meta.get(kind).doc),colls),result=fn(data,coll=>st.count.get(kind,coll).n);
-     save(data,{selection,previous,inTransaction:true});return result;
-    });
-   },
+   // Selected read-modify-write in one synchronous transaction (changeCollections with this store alone).
+   change(selection,fn,options){return changeCollections([{store,selection}],([data],[count])=>fn(data,count),options);},
    // The caller serialises writes (one queue per store), so read → change → write cannot interleave.
    async write(data){await ensure();save(data);},
    async reindex(){await ensure();reindex(load());},
   };
+  internals.set(store,{kind,ensure,select,persist,count:coll=>st.count.get(kind,coll).n});
   return store;
+ }
+
+ // One transaction over selected rows of several collections (docs/storage.md). entries: [{store, selection}, …],
+ // each store a collection of this database, at most once. Every collection is made ready before BEGIN; fn then
+ // runs synchronously inside the transaction with the selected data of each, in entry order, and a count
+ // function per collection (coll → rows, as the transaction sees them): fn([data…], [count…]). A throw rolls all
+ // of them back; otherwise each collection saves its changed selected rows (deleted rows lose their search
+ // entries too) and the in-memory state of each follows only once the commit succeeded. durable commits with
+ // synchronous=FULL (before a caller removes files the old rows needed); readOnly reads one consistent snapshot
+ // and writes nothing. Returns what fn returns.
+ const internals=new WeakMap();
+ async function changeCollections(entries,fn,{durable=false,readOnly=false}={}){
+  if(!Array.isArray(entries)||!entries.length||typeof fn!=='function')throw new TypeError('changeCollections needs entries and a function');
+  const parts=entries.map(entry=>{
+   const part=internals.get(entry?.store);
+   if(!part)throw new TypeError('changeCollections: not a collection of this database');
+   if(!entry.selection||typeof entry.selection!=='object'||Array.isArray(entry.selection))throw new TypeError('changeCollections: selection must be an object');
+   return {part,selection:entry.selection};
+  });
+  if(new Set(parts.map(p=>p.part.kind)).size!==parts.length)throw new TypeError('changeCollections: a collection appears twice');
+  for(const {part} of parts)await part.ensure();
+  let after=[];
+  const body=()=>{
+   const loaded=parts.map(({part,selection})=>part.select(selection));
+   const result=fn(loaded.map(l=>l.data),parts.map(({part})=>part.count));
+   if(result&&typeof result.then==='function')throw new TypeError('changeCollections: fn must be synchronous');
+   if(!readOnly)after=parts.map(({part,selection},i)=>part.persist(loaded[i].data,{selection,previous:loaded[i].previous}));
+   return result;
+  };
+  let result;
+  if(readOnly){
+   db.exec('BEGIN');
+   try{result=body();}finally{try{db.exec('ROLLBACK');}catch{}}
+   return result;
+  }
+  result=(durable?durableTx:tx)(body);
+  for(const done of after)done();
+  return result;
  }
 
  // Hashed sign-in sessions, so a restart or deploy no longer signs everyone out.
@@ -224,5 +266,5 @@ function wrap(db,file){
  // How many documents of each kind the index holds: lets a client tell "nothing to search yet" from "no match".
  const indexed=q('SELECT kind,count(*) n FROM search GROUP BY kind');
  function searchStats(){const out=Object.fromEntries(KINDS.map(k=>[k,0]));for(const r of indexed.all())if(Object.hasOwn(out,r.kind))out[r.kind]=Number(r.n);return out;}
- return {file,db,collection,sessions,search,searchStats,flushWal,close(){open.delete(file);db.close();}};
+ return {file,db,collection,changeCollections,sessions,search,searchStats,flushWal,close(){open.delete(file);db.close();}};
 }
