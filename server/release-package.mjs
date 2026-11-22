@@ -70,8 +70,10 @@ function packageLayout(inst,request){
 
 function verifyStagedPackage(root,pkg,expectedCommit){
  verifyStagedTree(root,{files:pkg.files},{receipt:true});
- const receipt=packageReceipt(root);
- if(!receipt||receipt.manifestSha256!==pkg.manifestSha256||(expectedCommit&&receipt.fullCommit!==expectedCommit))
+ let receipt;
+ try{receipt=strictJson(boundedRegularFile(path.join(root,'.home-hub-package.json'),16384,'package receipt'),{limit:16384});}
+ catch{throw new UpdateError('Staged package receipt is missing or changed since preflight');}
+ if(!receipt||receipt.schemaVersion!==RECEIPT_SCHEMA||receipt.manifestSha256!==pkg.manifestSha256||(expectedCommit&&receipt.fullCommit!==expectedCommit))
   throw new UpdateError('Staged package receipt is missing or changed since preflight');
 }
 

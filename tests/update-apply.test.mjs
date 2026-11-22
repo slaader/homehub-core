@@ -1017,24 +1017,31 @@ test('adapter review regressions: post-backup stage recheck, trust reload, symli
   assert.equal(readJournal(w.inst()).step,'aborted');
  }
 
- // 1b. Missing or corrupt staged receipt after backup is refused before any rename so rollback is never stranded.
- {
+ // 1b. Missing or symlinked staged receipt after backup is refused before any rename so rollback is never stranded.
+ for(const mode of ['missing','symlink']){
   const w=await world(t,{layout:'home'});
-  const f=await packageFixture(path.join(w.dir,'pkg-receipt'),{version:'1.1.0',files:{'scripts/run-tests.mjs':RUNNER,'server/index.mjs':INDEX}});
+  const f=await packageFixture(path.join(w.dir,`pkg-receipt-${mode}`),{version:'1.1.0',files:{'scripts/run-tests.mjs':RUNNER,'server/index.mjs':INDEX}});
   const origCheckpoint=w.ctx.checkpoint;
-  let removedReceipt=false;
+  let mutated=false;
   w.ctx.checkpoint=name=>{
    origCheckpoint(name);
-   if(name==='backup-verified'&&!removedReceipt){
-    removedReceipt=true;
+   if(name==='backup-verified'&&!mutated){
+    mutated=true;
     const staged=readdirSync(path.dirname(w.root)).find(d=>d.startsWith('.hub-package-'));
     assert.ok(staged,'staged package exists at backup-verified');
-    rmSync(path.join(path.dirname(w.root),staged,'.home-hub-package.json'));
+    const receiptPath=path.join(path.dirname(w.root),staged,'.home-hub-package.json');
+    if(mode==='missing')rmSync(receiptPath);
+    else{
+     const outside=path.join(w.dir,'external-receipt.json');
+     writeFileSync(outside,readFileSync(receiptPath));
+     rmSync(receiptPath);
+     symlinkSync(outside,receiptPath);
+    }
    }
   };
   await refused(apply(w.inst(),{package:f.file,trust:f.trustFile,migrateFromGit:true},w.ctx),/Staged package receipt is missing or changed/);
-  assert.equal(removedReceipt,true);
-  assert.equal(coreFacts(w.root).version,'1.0.0','live core was never switched when staged receipt disappeared');
+  assert.equal(mutated,true);
+  assert.equal(coreFacts(w.root).version,'1.0.0',`live core was never switched when staged receipt was ${mode}`);
   assert.equal(readJournal(w.inst()).step,'aborted');
  }
 
