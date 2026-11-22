@@ -1059,7 +1059,9 @@ base32 characters and returns parents before their alphabetically ordered childr
 
 | Request | Response |
 |---|---|
-| `GET /api/wiki` | `{projects:[{id, name, home}]}` for projects with a wiki |
+| `GET /api/wiki` | Legacy `projects:[{id, name, home}]` and `spaces:[{id, name, projectId, home, count, …}]`. The spaces list hides linked wikis with `settings.wiki=false`; `?includeHidden=1` adds those spaces with a `visible` flag |
+| `POST /api/wiki/spaces` with `{id, name?, projectId?, create?}` | Create, rename or attach a space with `tickets:write`. Attachment preserves the space ID and page URLs |
+| `POST /api/wiki/spaces/delete` with `{id}` | Delete a standalone space and its pages with `tickets:write` |
 | `GET /api/wiki/<project>` | `{enabled:false}` or `{enabled:true, home, pages:[{id, project, parentId, title, rev, updatedAt, updatedBy, links}]}` |
 | `POST /api/wiki/setup` with `{project}` | `201 {created:true, home}` on setup and `200 {created:false, home}` on repeat |
 | `GET /api/wiki/<project>/pages/<id>` | Page including its document, asset metadata and provenance |
@@ -1071,6 +1073,11 @@ base32 characters and returns parents before their alphabetically ordered childr
 | `POST /api/wiki/preview` with `{source}` | `200 {token}` for a draft HTML preview. The token expires in 10 minutes and is bound to its author |
 | `GET /api/wiki/frame/<project>/<id>/<block>` | Sandboxed static HTML block |
 | `GET /api/wiki/frame/preview/<token>` | Sandboxed static HTML preview |
+
+In page, asset and upload operations, the existing `project` parameter is the immutable Wiki space ID.
+A standalone space has `projectId:null`; linked spaces store their owning project's ID. Hidden spaces
+remain directly readable. Space management is also available through MCP `wiki_spaces_list`,
+`wiki_space_create`, `wiki_space_update` and `wiki_space_delete`.
 
 A page contains `{id, project, parentId, title, doc, links, assets, rev, createdAt, createdBy, updatedAt,
 updatedBy, history, provenance}`. The server derives `links:{tickets:[…]}` and retains up to 50 entries
@@ -1206,11 +1213,16 @@ Binary uploads accept file bytes only. See [document format and an example](wiki
 Variants agents propose for a project (HTML mockups, images, 3D models as `.glb`, clips as `.mp4`/`.webm`, audio tracks), decided in `#review`. The full contract is in
 [review.md](review.md). Writes need `review:write` for API keys.
 
-- `GET /api/review?project=&ticket=ID|unlinked&status=open|active|done|archived|all&feedback=pending` → `{sets:[summary], provenance}`.
+- `GET /api/review?project=&detached=true|false&ticket=ID|unlinked&status=open|active|done|archived|all&feedback=pending` → `{sets:[summary], detachedCount, provenance}`. `detached=true` selects sets with no project; `project=none` still selects the project whose ID is `none`.
 - `GET /api/review/sets/<R-n>` → the full set with all rounds, decisions, comments and `provenance`. Publishing a round counts as the record (`unit: rounds`), a decision or comment as a change ([Provenance](#provenance)).
 - `HEAD|GET /api/review/blobs/<sha256>` → a published file (range requests); `GET /api/review/frame/<sha256>` → a sandboxed HTML mockup.
 - `PUT /api/review/blobs/<sha256>?offset=&size=` (`application/octet-stream`, ≤ 8 MiB per chunk) → `{received,size,complete}`; `409` with `received` on a wrong offset.
-- `POST /api/review/publish` (≤ 64 kB) → `201` new set or `200` next round; `POST /api/review/feedback` (≤ 64 kB) `{set, round, item, rev, variant, status, note?, comments?, attachments?, editComments?:[{id, text}], deleteComments?:[id]}` (edit or delete your own saved comments; someone else's → `403`); `POST /api/review/sets` `{id, rev, status?, title?, tickets?}`. Ticket links replace the existing array (at most 20 input entries, duplicates normalized); omitted preserves, `[]` clears. New links must exist in the same project; stale rev → `409`. No round or feedback timestamp changes. Validation is not a cross-store transaction.
+- `POST /api/review/publish` (≤ 64 kB) → `201` new set or `200` next round; `POST /api/review/feedback` (≤ 64 kB) `{set, round, item, rev, variant, status, note?, comments?, attachments?, editComments?:[{id, text}], deleteComments?:[id]}` (edit or delete your own saved comments; someone else's → `403`); `POST /api/review/sets` `{id, rev, status?, title?, tickets?}`. Ticket links replace the existing array (at most 20 input entries, duplicates normalized); omitted preserves, `[]` clears. New links must exist in the same project; stale rev → `409`. No round or feedback timestamp changes. Same-project ticket links are checked at the write transaction.
+- Detached sets keep their rounds and feedback, with `project:null` and `detachedProjectName`. Requested
+  publication, feedback and metadata edits are refused. `POST /api/review/sets/delete` and MCP
+  `review_set_delete` accept `{id, rev}`; `POST /api/review/sets/reassign` and MCP `review_set_reassign`
+  accept `{id, rev, project}`. Both require `review:write`. Reassignment clears ticket links that do not belong
+  to the destination project and reports them as `removedTickets`.
 - MCP: `review_list`, `review_get` (`read`); `review_publish`, `review_set_save` (`review:write`; same metadata fields as HTTP). `review_get` adds the set `rev`. Publication adds `warnings` for deprecated unlinked creation while preserving omitted/empty tickets and existing sets. Upload files with `scripts/review-push.mjs`.
 - The page compares alternatives side by side, one at a time or with explicitly aligned, dimension/timing-checked swipe. Independent approval deliverables use local playback; explicit aligned approval against a reference remains comparable. The first visible variant is audible after the user starts playback; hidden media pauses and playback errors offer retry. The page counts the round's
   decisions and shows comments as threads with the round that answered them. With no set on the hub it explains
@@ -1218,16 +1230,15 @@ Variants agents propose for a project (HTML mockups, images, 3D models as `.glb`
 
 ### Search
 
-Full-text search over tickets (id, title, description, comments, labels, refs, people) and review sets (title,
-description, round notes, item and variant texts, notes, comments). `read` is enough for API keys.
+Full-text search over tickets, epics (including specification and attachment names) and review sets. `read` is enough for API keys.
 
-- `GET /api/search?q=<words>&kind=ticket|review&project=<id>&limit=1..100` (default 20) →
-  `{q,total,results:[{kind,id,project,updatedAt,title,snippet,score,meta}],indexed:{ticket,review}}`, best match first.
+- `GET /api/search?q=<words>&kind=ticket|epic|review&project=<id>&limit=1..100` (default 20) →
+  `{q,total,results:[{kind,id,project,updatedAt,title,snippet,score,meta}],indexed:{ticket,epic,review}}`, best match first.
 - `meta` says what a hit is right now, so a result list needs no second request: for a ticket
   `{status,type,priority,assignee,release}`, for a review set `{status,done,feedbackPending,round,items,decided}`.
 - `indexed` counts the documents the index holds per kind. All zeros means there is nothing to search yet (an
   empty hub), which is not the same as a query without matches. An empty `q` returns no results, only `indexed`.
-- A query that is exactly an id (`APP-12`, `R-3`, any case) puts that record first.
+- A query that is exactly an id (`APP-12`, `APP-E1`, `R-3`, any case) puts that record first.
 - `q` is plain words (≤ 200 characters, at most 12 words), never query syntax: every word must match, as a prefix,
   ignoring case and diacritics (`prihlas` finds `Přihlášení`). A title hit ranks above a body hit.
 - In `title` and `snippet` the matched words are wrapped in `\u0001` … `\u0002`; render them as text (e.g. `<mark>`

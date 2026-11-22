@@ -173,6 +173,10 @@ export function createReferences(hub){
   FROM docs WHERE kind='references' AND coll IN ('local','global')`);
  const sharedQuery=hub.db.db.prepare("SELECT id FROM docs WHERE kind='references' AND coll='notes' AND json_extract(doc,'$.shared')=1");
  const lookup=createReferenceLookup(hub.db);
+ const nativeTarget=hub.db.db.prepare('SELECT 1 FROM docs WHERE kind=? AND coll=? AND id=?');
+ const targetRows={project:['tickets','projects'],ticket:['tickets','tickets'],epic:['tickets','epics'],wiki:['wiki','summaries']};
+ const stillExists=(kind,id)=>!Object.hasOwn(targetRows,kind)||Boolean(nativeTarget.get(...targetRows[kind],id));
+
 
  function capacity(records,item,except){
   if(records.length>=2000&&!except)fail('limit');
@@ -298,6 +302,7 @@ export function createReferences(hub){
   if(local&&!(await tickets.projects()).some(p=>p.id===project))fail('invalid');
   const id=updating?input.id:(input.kind==='model'?'m':'r')+randomBytes(16).toString('hex');
   return store.change({[scope]:local?project+'/':null},data=>{
+   if(local&&!stillExists('project',project))fail('invalid');
    const records=data[scope],old=records.find(r=>r.id===id);
    if(updating){if(!old)fail('not-found');requireRev(input.rev,old.rev);}
    else if(old)fail('conflict');
@@ -331,6 +336,7 @@ export function createReferences(hub){
     share&&!['ticket','epic','wiki'].includes(input.kind))fail('invalid');
   const note=share?undefined:description(input.description);
   return store.change({notes:[referenceKey(input)]},(data,count)=>{
+   if(!stillExists(input.kind,input.id))fail('not-found');
    const record=data.notes[0]??{kind:input.kind,id:input.id,description:'',rev:0};
    requireRev(input.rev,record.rev);
    if(!data.notes.length&&count('notes')>=5000)fail('limit');

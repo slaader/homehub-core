@@ -203,7 +203,7 @@ test('wiki spaces: standalone create/rename/attach/delete, immutable space id, s
 
  // GET /api/wiki returns legacy projects + spaces, and respects settings.wiki = false while keeping direct reads working.
  const indexBefore=await json(fetch(h.origin+'/api/wiki',{headers:reader.headers}),200);
- assert.deepEqual(indexBefore.projects,[{id:'handbook',name:'Home Hub',home:created.home,projectId:'home-hub'}]);
+ assert.deepEqual(indexBefore.projects,[{id:'home-hub',name:'Home Hub',home:created.home}]);
  assert.deepEqual(indexBefore.spaces.map(s=>s.id).sort(),['extra-notes','handbook']);
 
  const projList=(await json(fetch(h.origin+'/api/tickets',{headers:reader.headers}),200)).projects;
@@ -211,7 +211,7 @@ test('wiki spaces: standalone create/rename/attach/delete, immutable space id, s
  await json(h.post('/api/tickets/projects',{id:'home-hub',rev:hh.rev,settings:{wiki:false}},writer.headers),200);
 
  const indexHidden=await json(fetch(h.origin+'/api/wiki',{headers:reader.headers}),200);
- assert.deepEqual(indexHidden.projects,[]);
+ assert.deepEqual(indexHidden.projects,indexBefore.projects,'legacy project index stays readable');
  assert.deepEqual(indexHidden.spaces.map(s=>s.id),['extra-notes']);
  const indexAll=await json(fetch(h.origin+'/api/wiki?includeHidden=1',{headers:reader.headers}),200);
  assert.equal(indexAll.spaces.find(s=>s.id==='handbook').visible,false);
@@ -375,28 +375,15 @@ test('references: epic lookup, summaries, mention guard, sharing, usages and fol
  const db=openDb(path.join(dir,'hub.db'));
  t.after(()=>db.close());
  const seed=[{id:'alpha',key:'APP',name:'Alpha App'},{id:'beta',key:'BETA',name:'Beta App'}];
- const baseTickets=createTicketStore(path.join(dir,'tickets'),{db,seedProjects:seed});
- // Simulate Lane A's epic hooks on tickets store.
- const epics=new Map([
-  ['APP-E1',{id:'APP-E1',project:'alpha',title:'Combat Overhaul',updatedAt:'2026-11-22T10:00:00.000Z'}],
-  ['BETA-E1',{id:'BETA-E1',project:'beta',title:'Audio Engine',updatedAt:'2026-11-22T10:00:00.000Z'}],
- ]);
- const tickets={
-  ...baseTickets,
-  epicProjectSync:id=>epics.get(id)?.project??null,
-  epicReferenceSummaries:async()=>[...epics.values()],
-  findMentionUsages:async(kind,id)=>{
-   const base=await baseTickets.findMentionUsages(kind,id);
-   if(kind==='epic'&&id==='APP-E1'){
-    base.push({source:{kind:'epic',id:'APP-E1',label:'Combat Overhaul',project:'alpha',href:'#epics/APP-E1'},field:'spec',updatedAt:'2026-11-22T10:00:00.000Z',excerpt:'Self spec mention'});
-   }
-   return base;
-  },
- };
+ const tickets=createTicketStore(path.join(dir,'tickets'),{db,seedProjects:seed});
  let refs;
  const wiki=createWikiStore(db,tickets,{mentionGuard:list=>refs.prepareMentionGuard(list)});
  const stubHub={db,site:{devices:[],lanCidrs:[]},state:id=>id==='tracker'?{tickets}:id==='wiki'?{wiki}:id==='home'?{homeDevices:{list:async()=>[],siteOverrides:async()=>({})}}:null};
  refs=createReferences(stubHub);
+
+ const epic=await tickets.createEpic({project:'alpha',title:'Combat Overhaul'},'alice');
+ await tickets.createEpic({project:'beta',title:'Audio Engine'},'alice');
+ await tickets.updateEpic({id:epic.id,rev:epic.rev,spec:'@[Combat Overhaul](ref:epic/APP-E1)'},'alice');
 
  // Epics appear in references_search, references_suggest, resolve, and reference_get.
  const found=await refs.search({kind:'epic',project:'alpha'});

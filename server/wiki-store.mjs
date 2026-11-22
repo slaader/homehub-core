@@ -400,10 +400,9 @@ export function createWikiStore(db,tickets,{mentionGuard=null,readDocument=null,
   const projectMap=new Map(projects.map(p=>[p.id,p]));
   const allSpaces=wikis.map(spaceRecord);
   for(const s of allSpaces)if(s.projectId)byProjectId.set(s.projectId,s);
-  const linkedProjects=projects.filter(p=>byProjectId.has(p.id)&&(includeHidden||p.settings?.wiki!==false)).map(p=>{
-   const s=byProjectId.get(p.id);
-   return {id:s.id,name:p.name,home:s.home,...(s.id!==p.id?{projectId:p.id}:{})};
-  });
+  const linkedProjects=projects.filter(p=>byProjectId.has(p.id)).map(p=>({
+   id:p.id,name:p.name,home:byProjectId.get(p.id).home,
+  }));
   const listedSpaces=allSpaces.filter(s=>{
    if(!s.projectId)return true;
    const p=projectMap.get(s.projectId);

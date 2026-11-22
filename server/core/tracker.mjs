@@ -133,8 +133,8 @@ const EPIC_ROUTE=/^\/api\/tickets\/epics\/([A-Z][A-Z0-9]{1,9}-E[1-9][0-9]{0,5})$
 export default {
  id:'tracker',title:'Project Tracker',
  mcpInstructions:[
-  'Tracker: projects_list, tickets_list, ticket_get, epic_get. ticket_search finds words; ticket_hybrid_search includes attachments (ticket_search_status: coverage). search includes epics, reviews. ticket_attachment_get reads files.',
-  {scope:'tickets:write',text:'With tickets:write: project_save then ticket_create. ticket_update uses the returned rev; ticket_comment appends. release_save/project_save: omit rev to create. epic_* edit epics; project_delete takes project_delete_preview\'s snapshot. ticket_attachment_put: up to 32 KiB; larger files use HTTP.'},
+  'Tracker: projects_list, tickets_list, ticket_get, epic_get. ticket_search and ticket_hybrid_search find tickets. search also finds epics and reviews. ticket_attachment_get reads files.',
+  {scope:'tickets:write',text:'With tickets:write: project_save then ticket_create. ticket_update uses the returned rev; ticket_comment appends. release_save/project_save: omit rev to create. project_delete takes project_delete_preview\'s snapshot. ticket_attachment_put: up to 32 KiB; larger files use HTTP.'},
  ],
  assets:['tracker-view.js','tracker-md.js','tracker-attach.js','search-view.js','platform-settings-view.js','tickets.css','i18n-en-tracker.js'],
  nav:[
