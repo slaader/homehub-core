@@ -752,21 +752,36 @@ test('constructor-option provider keeps base cache fingerprint, opt-out during s
  const child=spawnSync(process.execPath,['--input-type=module','-e',script],{encoding:'utf8',timeout:15000});
  assert.equal(child.status,0,`standalone whenIdle exited with ${child.status}: ${child.stderr}`);
 
- // 4. Hybrid opt-out during searchAll hydration returns ticket-only lexical results with zero semantic hits and zero reviews.
+ // 4. Hybrid opt-out during searchAll hydration returns attachment-only lexical results without double-reading tickets,
+ //    and initial indexing responses while semantic is disabled preserve mode/state from search().
+ const fInit=await fixture(t,{});
+ await fInit.tickets.create({project:'sample',title:'starting indexing check'},'alice');
+ await fInit.search.start();
+ const initHyb=await fInit.search.searchAll({q:'starting',mode:'hybrid'});
+ const initSem=await fInit.search.searchAll({q:'starting',mode:'semantic'});
+ assert.equal(initHyb.mode,'hybrid');
+ assert.equal(initHyb.attachmentSearch.state,'indexing');
+ assert.equal(initSem.mode,'semantic');
+ assert.equal(initSem.attachmentSearch.state,'indexing');
+
  const fHyb=await fixture(t,{embed,semanticEnabled:true});
- const lexTk=await fHyb.tickets.create({project:'sample',title:'hyboptoutword ticket'},'alice');
+ const lexTk=await fHyb.tickets.create({project:'sample',title:'plain ticket'},'alice');
+ const lexAtt=await fHyb.files.put([Buffer.from('hyboptoutattachneedle in file')],{name:'opt.txt'});
+ await fHyb.tickets.attach(lexTk.id,lexAtt,'alice');
  const semOnlyTk=await fHyb.tickets.create({project:'sample',title:'completely unrelated'},'alice');
  assert.ok(semOnlyTk.id);
  await fHyb.search.start();await fHyb.search.whenIdle();
  let relHyb,entHyb;
  const hybEntered=new Promise(r=>{entHyb=r;}),hybBlocked=new Promise(r=>{relHyb=r;});
  const origHybGet=fHyb.tickets.get;
+ const hybReads=new Map();
  let pausedOnce=false;
- fHyb.tickets.get=async(...args)=>{
+ fHyb.tickets.get=async(id,...args)=>{
+  hybReads.set(id,(hybReads.get(id)??0)+1);
   if(!pausedOnce){pausedOnce=true;entHyb();await hybBlocked;}
-  return origHybGet(...args);
+  return origHybGet(id,...args);
  };
- const hybPending=fHyb.search.searchAll({q:'hyboptoutword',mode:'hybrid'});
+ const hybPending=fHyb.search.searchAll({q:'hyboptoutattachneedle',mode:'hybrid'});
  await hybEntered;
  await fHyb.search.setEnabled({enabled:false});
  relHyb();
@@ -775,8 +790,9 @@ test('constructor-option provider keeps base cache fingerprint, opt-out during s
  assert.equal(hybAfter.mode,'text');
  assert.equal(hybAfter.semanticAvailable,false);
  assert.deepEqual(hybAfter.results.map(r=>r.id),[lexTk.id]);
+ assert.equal(hybReads.get(lexTk.id),1,'surviving lexical ticket is hydrated once across initial and fallback passes');
 
- // 5. Backward wall-clock adjustment during retry delay never strands embedding or extraction retries.
+ // 5. Backward wall-clock adjustment AFTER retry deadline is recorded never strands embedding retries.
  const origDateNow=Date.now;
  let offsetMs=0;
  Date.now=()=>origDateNow()+offsetMs;
@@ -784,7 +800,7 @@ test('constructor-option provider keeps base cache fingerprint, opt-out during s
  let embedAttempts=0;
  const flakyEmbed=async texts=>{
   embedAttempts++;
-  if(embedAttempts===1){offsetMs=-250;throw new Error('transient');}
+  if(embedAttempts===1){setImmediate(()=>{offsetMs=-250;});throw new Error('transient');}
   return texts.map(()=>[1,0]);
  };
  const fClock=await fixture(t,{embed:flakyEmbed,semanticEnabled:true,retryMs:40,maxRetries:2});

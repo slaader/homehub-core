@@ -784,12 +784,19 @@ export function createTicketSearch(directory,{db,tickets,ticketFiles,env=process
   if(closed)throw new Error('Search is closed');
   let available=enabled===true;
   if(input.kind==='review'||!QUERY_WORD.test(input.q))return {...base,mode,semanticAvailable:available};
+  const loadedTickets=new Map();
+  async function loadTicket(id){
+   if(loadedTickets.has(id))return loadedTickets.get(id);
+   const ticket=await tickets.get(id).catch(()=>null);
+   loadedTickets.set(id,ticket);
+   return ticket;
+  }
   async function hydrateTicketHits(sources,initial){
    const results=[...initial],seen=new Set(results.filter(r=>r.kind==='ticket').map(r=>r.id));
    for(const source of sources){
     if(seen.has(source.ticket))continue;
     seen.add(source.ticket);
-    const ticket=await tickets.get(source.ticket).catch(()=>null);
+    const ticket=await loadTicket(source.ticket);
     if(!ticket||(source.attachment&&!ticket.attachments.some(a=>a.id===source.attachment)))continue;
     results.push({
      kind:'ticket',
@@ -811,7 +818,7 @@ export function createTicketSearch(directory,{db,tickets,ticketFiles,env=process
   if(mode!=='text')base.results=[];
   const results=await hydrateTicketHits(found.results,base.results);
   available=enabled===true;
-  if(mode!=='text'&&(toggleGen!==semanticGeneration||(found.mode!=='text'&&!available))){
+  if(mode!=='text'&&toggleGen!==semanticGeneration){
    if(mode==='hybrid'){
     // Opt-out or semantic change during hydration: discard stale semantic hits and return ticket-only lexical hits.
     const lex=await search({query:input.q,...(input.project?{project:input.project}:{}),mode:'text',limit:100});
