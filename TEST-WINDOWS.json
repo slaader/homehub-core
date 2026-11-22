@@ -144,15 +144,15 @@
     },
     "projects-v2-browser": {
       "category": "ui-smoke",
-      "scope": "Project opt-ins, Epic routes, migration wizard, standalone Wiki, detached Review, settings and narrow layouts in isolated Chrome",
+      "scope": "Project opt-ins, Epic routes, wizard controls and translations, standalone Wiki, detached Review, Settings and narrow layouts in isolated Chrome",
       "commands": [
         "node ~/.config/agent-workflows/studio/local-tests/home-hub/projects-v2-smoke.mjs \"$(git rev-parse HEAD)\""
       ],
       "budget_seconds": 120,
       "budget_approval": null,
       "last_run": {
-        "duration_seconds": 5.456,
-        "finished_at": "2026-11-22T17:05:14.714Z",
+        "duration_seconds": 5.229,
+        "finished_at": "2026-11-22T17:46:02.729Z",
         "result": "passed"
       }
     }
