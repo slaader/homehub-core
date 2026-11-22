@@ -1,8 +1,7 @@
 // Core module "tracker": projects, releases, tickets with attachments, and the full-text search over
 // tickets and review sets. Projects are created in the UI (or seeded once from site.json → tracker.projects).
 import path from 'node:path';
-import {createPlatformSearch} from '../platform-search-settings.mjs';
-import {fullTextSearch} from '../full-text-search.mjs';
+import {createTicketSearch} from '../ticket-search.mjs';
 import {createReadStream} from 'node:fs';
 import {pipeline} from 'node:stream/promises';
 import {createTicketStore,ticketAuthors,TICKET_ID,TICKET_TYPES,TICKET_PRIORITIES,TICKET_ATTACHMENTS} from '../tickets-store.mjs';
@@ -55,10 +54,16 @@ async function people({state,hub}){
 // without one request per hit. The index itself only knows the text.
 async function describeHits(results,{state,hub}){
  if(!results.length)return results;
- const tickets=results.some(r=>r.kind==='ticket')?new Map((await state.tickets.list()).tickets.map(t=>[t.id,t])):new Map();
+ const missingTicketIds=[...new Set(results.filter(r=>r.kind==='ticket'&&!r.meta).map(r=>r.id))];
+ const tickets=new Map();
+ if(missingTicketIds.length){
+  const loaded=await Promise.all(missingTicketIds.map(id=>state.tickets.get(id).catch(()=>null)));
+  for(const t of loaded)if(t)tickets.set(t.id,t);
+ }
  let sets=new Map();
- if(results.some(r=>r.kind==='review'))try{sets=new Map((await hub.state('review').review.list({status:'all'})).sets.map(s=>[s.id,s]));}catch{}
+ if(results.some(r=>r.kind==='review'&&!r.meta))try{sets=new Map((await hub.state('review').review.list({status:'all'})).sets.map(s=>[s.id,s]));}catch{}
  return results.map(r=>{
+  if(r.meta)return r;
   const t=r.kind==='ticket'?tickets.get(r.id):null,s=r.kind==='review'?sets.get(r.id):null;
   return {...r,...(t?{meta:{status:t.status,type:t.type,priority:t.priority,assignee:t.assignee,release:t.release}}:{}),
    ...(s?{meta:{status:s.status,done:s.done,feedbackPending:s.feedbackPending,round:s.round.n,items:s.round.items,decided:s.round.decided}}:{})};
@@ -83,8 +88,8 @@ export default {
  setup(hub){
   const dir=path.join(hub.stateDirectory,'tickets');
   const tickets=createTicketStore(dir,{db:hub.db,seedProjects:hub.site.tracker.projects,mentionGuard:refs=>hub.state('references').prepareMentionGuard(refs)}),ticketFiles=createTicketFiles(dir);
-  const ticketSearch=createPlatformSearch(dir,{db:hub.db,tickets,ticketFiles,...hub.options.ticketSearch});
-  return {tickets,ticketFiles,ticketSearch,fullTextSearch:input=>fullTextSearch({db:hub.db,tickets,ticketSearch},input)};
+  const ticketSearch=createTicketSearch(dir,{db:hub.db,tickets,ticketFiles,...hub.options.ticketSearch});
+  return {tickets,ticketFiles,ticketSearch,fullTextSearch:input=>ticketSearch.searchAll(input)};
  },
  pollers:[{id:'ticket-search',start:state=>state.ticketSearch.start(),stop:state=>state.ticketSearch.close()}],
  routes:[
@@ -126,7 +131,7 @@ export default {
   // Full-text search over tickets and review sets (title, description, comments, notes); plain words, diacritics ignored.
   // `indexed` counts what the index holds per kind (0 everywhere = nothing to search yet); each hit carries `meta`.
   {method:'GET',path:'/api/search',error:searchError,async handler(c){const {query,json,hub}=c;if(Object.keys(query).some(k=>!['q','kind','project','limit','mode'].includes(k)))throw new Error('invalid');
-    const found=await c.state.fullTextSearch({...query,limit:query.limit===undefined?20:query.limit});
+    const found=await c.state.ticketSearch.searchAll({...query,limit:query.limit===undefined?20:query.limit});
     return json(200,{...found,results:await describeHits(found.results,c),indexed:hub.db.searchStats()});}},
  ],
  mcpTools:[

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {hub} from './hub-helper.mjs';
-import {createPlatformSearch} from '../server/platform-search-settings.mjs';
+import {createTicketSearch} from '../server/ticket-search.mjs';
 
 test('platform search: session-admin only, explicit opt-in, persistent opt-out and no default query embeddings',async t=>{
  let inputs=0,queries=0;
@@ -36,7 +36,7 @@ test('platform search: session-admin only, explicit opt-in, persistent opt-out a
  await service.search({query:'meaning',mode:'semantic'});assert.equal(queries,before+1);
  assert.equal((await h.post('/api/admin/platform/search',{enabled:false},h.admin)).status,200);await service.whenIdle();const stopped=inputs;
  assert.equal((await service.search({query:'meaning',mode:'semantic'})).state,'disabled');assert.equal(inputs,stopped);
- const {tickets,ticketFiles}=h.handler.state('tracker');const reopened=createPlatformSearch(h.handler.hub.stateDirectory+'/tickets',{db:h.handler.hub.db,tickets,ticketFiles,env:{},embed,modelFingerprint:'platform-test'});
+ const {tickets,ticketFiles}=h.handler.state('tracker');const reopened=createTicketSearch(h.handler.hub.stateDirectory+'/tickets',{db:h.handler.hub.db,tickets,ticketFiles,env:{},embed,modelFingerprint:'platform-test'});
  t.after(()=>reopened.close());assert.equal((await reopened.settings()).enabled,false,'administrator preference survives reopen');
  const manifest=async headers=>(await (await fetch(h.origin+'/api/ui/manifest',{headers})).json()).nav.flatMap(x=>x.items||[]);
  assert.ok((await manifest(h.admin)).some(x=>x.hash==='platform-settings'));
@@ -47,7 +47,7 @@ test('platform opt-in survives a restart while default search remains text',asyn
  const h=await hub(t,{ticketSearch:{env:{},embed:async xs=>xs.map(()=>[1,0]),modelFingerprint:'persist-opt-in'}});
  const {tickets,ticketFiles,ticketSearch}=h.handler.state('tracker');
  await ticketSearch.setEnabled({enabled:true});await ticketSearch.close();
- const reopened=createPlatformSearch(h.dir+'/tickets',{db:h.handler.hub.db,tickets,ticketFiles,env:{},embed:async xs=>xs.map(()=>[1,0]),modelFingerprint:'persist-opt-in'});
+ const reopened=createTicketSearch(h.dir+'/tickets',{db:h.handler.hub.db,tickets,ticketFiles,env:{},embed:async xs=>xs.map(()=>[1,0]),modelFingerprint:'persist-opt-in'});
  t.after(()=>reopened.close());
  const settings=await reopened.settings();assert.equal(settings.enabled,true);assert.equal(settings.defaultMode,'text');
  await reopened.whenIdle();assert.equal((await reopened.search({query:'unmatched'})).requestedMode,'text');
@@ -60,7 +60,7 @@ test('platform search: unconfigured provider cannot be enabled and semantic sett
  assert.equal((await h.post('/api/admin/platform/search',{enabled:true},h.admin)).status,400);
  assert.equal('token'in settings,false);assert.equal('url'in settings,false);
  const {tickets,ticketFiles}=h.handler.state('tracker');
- assert.throws(()=>createPlatformSearch(h.dir+'/tickets',{db:h.handler.hub.db,tickets,ticketFiles,env:{HOME_HUB_TICKET_EMBEDDING_URL:'http://example.com/v1/embeddings',HOME_HUB_TICKET_EMBEDDING_MODEL:'example'}}),/embedding endpoint/,'invalid provider configuration is refused before opt-in can be persisted');
+ assert.throws(()=>createTicketSearch(h.dir+'/tickets',{db:h.handler.hub.db,tickets,ticketFiles,env:{HOME_HUB_TICKET_EMBEDDING_URL:'http://example.com/v1/embeddings',HOME_HUB_TICKET_EMBEDDING_MODEL:'example'}}),/embedding endpoint/,'invalid provider configuration is refused before opt-in can be persisted');
  for(const asset of ['/platform-settings-view.js','/settings-view.js','/settings.css'])assert.equal((await fetch(h.origin+asset)).status,200);
  assert.equal((await fetch(h.origin+'/healthz')).status,200);
 });

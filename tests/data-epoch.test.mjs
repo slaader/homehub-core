@@ -11,8 +11,7 @@ import {TRUST_SCHEMA,TRUST_REQUIREMENT_SCHEMA} from '../server/release-trust.mjs
 import {JOURNAL_SCHEMA} from '../server/update-journal.mjs';
 import {POLICY_SCHEMA} from '../server/backup-policy.mjs';
 import {BACKUP_SCHEMA} from '../server/update-backup.mjs';
-import {PLATFORM_SEARCH_SCHEMA} from '../server/platform-search-settings.mjs';
-import {TICKET_SEARCH_SCHEMA} from '../server/ticket-search-index.mjs';
+import {PLATFORM_SEARCH_SCHEMA,TICKET_SEARCH_SCHEMA} from '../server/ticket-search.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readPackage} from '../server/version.mjs';
