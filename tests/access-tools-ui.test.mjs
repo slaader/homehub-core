@@ -8,7 +8,7 @@ import {installDom,Element,Text} from './fixtures/mini-dom.mjs';
 
 installDom();
 const {toolRows,toolGroups,toolsCard}=await import('../public/access-view.js');
-const {setLang}=await import('../public/i18n.js');
+const {setLang,addStrings}=await import('../public/i18n.js');
 
 // What GET /api/ui/manifest sends once the legacy tools live in their own core modules.
 const MODULES=[{id:'core',core:true,title:'Home Hub'},{id:'home',core:true,title:'Overview'},{id:'inventory',core:true,title:'Inventory'},
@@ -93,17 +93,21 @@ test('the table: one body per module run, plugin headings tagged, words beside t
 test('read or write in words where the scope\'s name does not say it, or says otherwise',()=>{
  setLang('cs');
  const words=tools=>walk(toolsCard(toolRows(tools,MODULES)),e=>e.classList.contains('ax-rw')).map(e=>e.textContent);
- assert.deepEqual(words([tool('a','home'),tool('b','home','security:read',{write:false}),tool('c','home','home:write'),tool('d','notes','notes:write')]),[]);
- assert.deepEqual(words([tool('e','lab','lab',{write:true}),tool('f','lab','security',{write:false}),tool('g','lab','tickets:write',{write:false})]),['zápis','čtení','čtení']);
+ assert.deepEqual(words([tool('a','home'),tool('b','home','security:read',{write:false}),tool('c','home','home:write'),tool('d','notes','notes:write'),tool('w','notes','write',{write:true})]),[]);
+ assert.deepEqual(words([tool('e','lab','lab',{write:true}),tool('f','lab','security',{write:false}),tool('g','lab','tickets:write',{write:false}),tool('h','lab','thread',{write:false}),tool('i','lab','override',{write:true})]),['zápis','čtení','čtení','čtení','zápis']);
 });
 
 test('the table in English and without a manifest',()=>{
+ addStrings({en:{'Poznámky':'Notes',lab:'Should not translate raw id'}});
  setLang('en');
  try{
-  const card=toolsCard(toolRows([tool('notes_add','notes','notes',{write:true}),tool('home_status','home','security',{write:false})],MODULES));
-  assert.deepEqual(pills(card).filter(p=>p.textContent==='plugin').map(p=>p.getAttribute('title')),['Tools added by the Notes plugin']);
-  assert.deepEqual(walk(card,e=>e.classList.contains('ax-rw')).map(e=>e.textContent),['write','read']);
-  assert.deepEqual(tags(card,'summary').map(s=>[s.textContent,s.getAttribute('aria-label')]),[['Full description','Full description: notes_add'],['Full description','Full description: home_status']]);
+  const mods=[{id:'home',core:true,title:'Přehled'},{id:'notes',core:false,title:'Poznámky',version:'1.0.0'},{id:'lab',core:false}];
+  const card=toolsCard(toolRows([tool('notes_add','notes','notes',{write:true}),tool('notes_save','notes','write',{write:true}),tool('lab_probe','lab','read',{write:false}),tool('home_status','home','security',{write:false})],mods));
+  const areaHeads=tags(card,'tbody').map(b=>tags(b,'th')[0]);
+  assert.deepEqual(areaHeads.map(th=>th.childNodes[0].textContent),['Notes','lab','Overview'],'titles translate at render time, raw IDs stay literal');
+  assert.deepEqual(pills(card).filter(p=>p.textContent==='plugin').map(p=>p.getAttribute('title')),['Tools added by the Notes plugin','Tools added by the lab plugin']);
+  assert.deepEqual(walk(card,e=>e.classList.contains('ax-rw')).map(e=>e.textContent),['write','read'],'bare write scope does not duplicate "write"');
+  assert.deepEqual(tags(card,'summary').map(s=>[s.textContent,s.getAttribute('aria-label')]),[['Full description','Full description: notes_add'],['Full description','Full description: notes_save'],['Full description','Full description: lab_probe'],['Full description','Full description: home_status']]);
   assert.deepEqual(tags(card,'th').slice(0,3).map(th=>th.textContent),['Tool','Permissions','What it does']);
   const empty=toolsCard([]);
   assert.equal(tags(empty,'table').length,0);
