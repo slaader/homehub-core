@@ -1,11 +1,8 @@
 import {toolError} from './tool-error.mjs';
 import {WIKI_LIMITS} from '../public/wiki-doc.js';
-import {wikiPageUrl} from './wiki-store.mjs';
+import {MAX_LIST,MAX_ROWS,wikiActor,wikiPageUrl} from './wiki-store.mjs';
 import {wikiProblem} from './wiki-errors.mjs';
 import {decodeWikiChunk,MANIFEST_FILES,MCP_CHUNK} from './wiki-assets.mjs';
-import {MAX_LIST,MAX_ROWS,wikiPatch,wikiRead} from './wiki-authoring.mjs';
-
-export const wikiActor=({principal:p})=>p.authKind+':'+(p.accountId??p.id??p.username);
 
 const str=(description,extra={})=>({type:'string',description,...extra});
 const id=str('Stable ID');
@@ -59,13 +56,6 @@ function compact(meta){
  return {id:meta.id,project:meta.project,meta,mcpContent:[{type:'text',text:JSON.stringify(meta)}]};
 }
 
-export async function wikiSave(state,input,by,actor){
- if(input?.documentUploadId===undefined)return state.wiki.update(input,by,actor);
- const {documentUploadId,...rest}=input;
- if(rest.doc!==undefined)throw new Error('invalid');
- return state.wiki.update({...rest,doc:await state.assets.document(documentUploadId,rest.project,actor)},by,actor);
-}
-
 function tool(name,description,properties,required,run,{read=false,retry=false,scope=read?'read':'tickets:write',constraints}={}){
  const inputSchema={...object(properties,required),...constraints};
  return {name:'wiki_'+name,description,scope,inputSchema,
@@ -92,7 +82,7 @@ export const wikiTools=[
    columnIds:stringList('Filter by column IDs',WIKI_LIMITS.columns),...window()},['project'],async ({project,pageId,...input},{state})=>{
    if(pageId===undefined)pageId=(await state.wiki.list(project)).home;
    if(!pageId)throw new Error('not-found');
-   const page=await state.wiki.get(project,pageId),data=await wikiRead(state.wiki,page,input);
+   const page=await state.wiki.get(project,pageId),data=await state.wiki.read(page,input);
    const result={...data,...mutation(page)};
    if(input.mode===undefined||input.mode==='full')return result;
    return compact({...result,mode:input.mode});
@@ -110,8 +100,8 @@ export const wikiTools=[
    mutation(await state.wiki.move({...input,id},by))),
  tool('page_save','Rename, replace or patch inventory cells on a page using its revision. Upload oversized UTF-8 JSON with purpose=document and pass documentUploadId after finish.',
   {...pageArgs,title,doc,documentUploadId:uploadId,patch},['project','pageId','rev'],async ({pageId:id,...input},{state},by,actor)=>{
-   if(input.patch===undefined)return mutation(await wikiSave(state,{...input,id},by,actor));
-   const {page,patch}=await wikiPatch(state.wiki,{...input,id},by,actor);
+   if(input.patch===undefined)return mutation(await state.wiki.save({...input,id},by,actor));
+   const {page,patch}=await state.wiki.patch({...input,id},by,actor);
    return compact({...mutation(page),patch});
   }),
  tool('upload_manifest','Plan uploads for up to 50 local files by SHA-256. Use each uploaded asset ID, or send file bytes to a new or resumable session. Retry the manifest to recover IDs and offsets.',

@@ -3,13 +3,21 @@ import {exactKeys,WIKI_LIMITS} from '../public/wiki-doc.js';
 import {validFullName} from './git-lfs-providers.mjs';
 import {validImportPath,validImportRef} from './git-lfs-git.mjs';
 import {REVIEW_ID} from './review-store.mjs';
-import {wikiCollection,wikiKey} from './wiki-store.mjs';
-import {collectionPage,pagination} from './wiki-authoring.mjs';
+import {collectionPage,pagination,wikiCollection,wikiKey} from './wiki-store.mjs';
+import {CONNECTION_ID,isConnectionId,sanitizeWikiFilename} from './wiki-assets.mjs';
+
+export {CONNECTION_ID,isConnectionId};
+export function grantMatches(stored,expected){
+ if(!stored||!expected||typeof stored!=='object'||typeof expected!=='object')return false;
+ if(expected.kind!=='lfs'&&expected.kind!=='review')return false;
+ const keys=Object.keys(expected);
+ if(Object.keys(stored).length!==keys.length)return false;
+ return keys.every(key=>Object.hasOwn(stored,key)&&Object.is(stored[key],expected[key]));
+}
 
 const fail=code=>{throw new Error(code);};
 const lfsKey=(project,connection,repo)=>wikiKey(project,'lfs/'+connection+'/'+repo);
 const reviewKey=(project,set)=>wikiKey(project,'review/'+set);
-const isConnection=id=>typeof id==='string'&&/^c[a-f0-9]{10}$/.test(id);
 const isReview=set=>typeof set==='string'&&REVIEW_ID.test(set);
 const canRead=principal=>principal?.scopes?.includes('read')===true;
 const audience='project-readers';
@@ -78,7 +86,7 @@ export function createWikiSources(db,wiki,assets,{lfs,review}){
   const {kind,connection,repo,set}=input;
   let grant;
   if(kind==='lfs'){
-   if(set!==undefined||!isConnection(connection)||!validFullName(repo))fail('invalid');
+   if(set!==undefined||!isConnectionId(connection)||!validFullName(repo))fail('invalid');
    const key=lfsKey(project,connection,repo),identity=lfs()?.importIdentity(connection);
    if(input.enabled&&!identity)fail('not-found');
    const downloadOrigin=externalOrigin(input.downloadOrigin);
@@ -131,7 +139,7 @@ export function createWikiSources(db,wiki,assets,{lfs,review}){
   const base={project,audience};
   if(connection!==undefined||repo!==undefined){
    if(kind==='review'||[setId,roundNumber,itemId,variantId].some(value=>value!==undefined)||
-    !isConnection(connection)||!validFullName(repo))fail('invalid-target');
+    !isConnectionId(connection)||!validFullName(repo))fail('invalid-target');
    const key=lfsKey(project,connection,repo),grant=await store.get('grants',key);
    if(!grant)fail('source-not-granted');
    const git=lfs();
@@ -176,7 +184,7 @@ export function createWikiSources(db,wiki,assets,{lfs,review}){
   const {id:project}=await wiki.projectOf(input.project);
   const source=input.source;
   if(source?.kind==='lfs'){
-   if(!exactKeys(source,['kind','connection','repo','ref','path'])||!isConnection(source.connection)||!validFullName(source.repo)||
+   if(!exactKeys(source,['kind','connection','repo','ref','path'])||!isConnectionId(source.connection)||!validFullName(source.repo)||
     !validImportRef(source.ref)||!validImportPath(source.path))fail('invalid-target');
    const grant=await store.get('grants',lfsKey(project,source.connection,source.repo));
    const git=lfs();
@@ -188,7 +196,7 @@ export function createWikiSources(db,wiki,assets,{lfs,review}){
     catch(error){throw sourceError(error);}
     const download=pinned.body;
     pinned.body=async()=>{try{return await download();}catch(error){throw sourceError(error);}};
-    return await assets.ingest(project,pinned,actor,grant);
+    return await assets.ingest(project,pinned,actor,grant,grantMatches);
    });
   }
   if(source?.kind!=='review'||!exactKeys(source,['kind','set','round','item','variant','media'])||
@@ -208,11 +216,10 @@ export function createWikiSources(db,wiki,assets,{lfs,review}){
   const match=await reviews.media(digest);
   const fallback={'text/html':'html','model/gltf-binary':'glb','image/jpeg':'jpg','audio/mp4':'m4a','audio/mpeg':'mp3'};
   const suffix=fallback[type]??type.split('/')[1];
-  const fileName=name?.toWellFormed().replace(/[\x00-\x1f\x7f/\\]/g,'_').trim();
   const choice=reviewChoice(set,round,item,variant,index);
-  const result=await assets.ingest(project,{name:fileName&&fileName!=='.'&&fileName!=='..'?fileName:`${item.id}-${variant.id}-${index+1}.${suffix}`,
+  const result=await assets.ingest(project,{name:sanitizeWikiFilename(name,`${item.id}-${variant.id}-${index+1}.${suffix}`),
    size:match.size,digest,type,body:()=>createReadStream(match.file),
-   source:{...choice.source,project:set.project,digest}},actor,grant);
+   source:{...choice.source,project:set.project,digest}},actor,grant,grantMatches);
   return {...result,review:choice.review,captionSuggestion:choice.captionSuggestion};
  }
 
