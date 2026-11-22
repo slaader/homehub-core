@@ -215,10 +215,10 @@ test('project lifecycle steps: footprint, removal in one transaction that rolls 
  assert.deepEqual((await s.list()).tickets.map(x=>x.id),[keep.id]);
  assert.deepEqual(ftsIds(db,'ticket'),[keep.id]);assert.deepEqual(ftsIds(db,'epic'),[]);
  await assert.rejects(s.get(t1.id),/not-found/);
- // The key can be used again; numbering starts over.
+ // Reusing the key continues both counters so earlier links stay unavailable.
  assert.equal((await s.saveProject({id:'home-hub',key:'HH',name:'Again'},'a')).rev,1);
  assert.equal((await s.create({project:'home-hub',title:'Fresh'},'a')).id,'HH-2');
- assert.equal((await s.createEpic({project:'home-hub',title:'Fresh epic'},'a')).id,'HH-E1');
+ assert.equal((await s.createEpic({project:'home-hub',title:'Fresh epic'},'a')).id,'HH-E2');
 });
 
 test('upgrade: a version-1 project moves to 2 once, with its profile, epics and ticket assignments, or not at all',async t=>{
