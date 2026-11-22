@@ -1,12 +1,21 @@
 // Authentication precedes payload processing and every target-code execution.
-import {readFileSync,lstatSync,mkdirSync,mkdtempSync,rmSync,readdirSync,chmodSync} from 'node:fs';
-import path from 'node:path';import os from 'node:os';
-import {loadTrust,verifyManifestSignature} from './release-trust.mjs';
-import {strictJson,fields,sha256,fileHash,boundedRegularFile,durableWrite} from './safe-fs.mjs';
+// Also implements the Release Source adapter interface for signed release packages.
+// Static imports only: the updater may run from the checkout it switches.
+import {existsSync,readFileSync,lstatSync,statSync,mkdirSync,mkdtempSync,rmSync,readdirSync,chmodSync,cpSync,renameSync,realpathSync} from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import {loadTrust,verifyManifestSignature,forbiddenTrustRoots} from './release-trust.mjs';
+import {strictJson,fields,sha256,fileHash,boundedRegularFile,durableWrite,withinPath,syncDirectory} from './safe-fs.mjs';
 import {archivePath,extractArchive,ARCHIVE_LIMITS} from './release-archive.mjs';
 import {parse,validRange,satisfies,compare} from './semver.mjs';
+import {packageReceipt} from './build-info.mjs';
+import {refuseSocketReplacement} from './update-backup.mjs';
+import {UpdateError} from './update-errors.mjs';
+import {writeUpdateJournal} from './update-journal.mjs';
+
 export const PACKAGE_SCHEMA=1,RECEIPT_SCHEMA=1;
 export const UPDATER_VERSION='1.0.0';
+
 export function packageSidecars(file){if(!file.endsWith('-node-source.tar.gz'))throw new Error('package name must end in -node-source.tar.gz');const base=file.slice(0,-19);return {manifest:base+'.manifest.json',signature:base+'.manifest.sig.json'};}
 export function validateManifest(m,{repository,tag=null,manifestDigest=null,bytes=null,compatibility=true}={}){
  fields(m,['schemaVersion','product','repository','version','tag','fullCommit','dataEpoch','nodeRange','minimumUpdaterVersion','platforms','architectures','readinessProtocol','artifact','files'],'manifest');
@@ -42,3 +51,154 @@ export function verifyStagedTree(root,manifest,{receipt=false}={}){
  const want=new Map(manifest.files.map(f=>[f.path,f])),found=[];
  const walk=(dir,relative='')=>{for(const entry of readdirSync(dir,{withFileTypes:true})){const name=relative?relative+'/'+entry.name:entry.name;if(receipt&&name==='.home-hub-package.json')continue;const file=path.join(dir,entry.name);if(entry.isDirectory())walk(file,name);else{if(!entry.isFile())throw new Error('unexpected staged special entry');const spec=want.get(name),st=lstatSync(file);if(!spec||st.size!==spec.bytes||(st.mode&0o777)!==spec.mode||fileHash(file)!==spec.sha256)throw new Error(`staged package changed: ${name}`);found.push(name);}}};walk(root);if(found.length!==want.size)throw new Error('staged package file coverage changed');return true;
 }
+
+function packageLayout(inst,request){
+ if(request.core)throw new UpdateError('Conflicting Git and package targets');
+ if(!inst.home)throw new UpdateError('Managed package updates require HOME_HUB_HOME with configuration, state, private files and plugins outside core. Relocate the instance first (docs/updating.md).');
+ const st=lstatSync(inst.root),parent=statSync(path.dirname(inst.root));
+ if(!st.isDirectory()||st.isSymbolicLink()||st.dev!==parent.dev)throw new UpdateError('Package core must be a regular replaceable directory on its parent filesystem; symlinks and mount-point swaps are unsupported.');
+ if(existsSync(path.join(inst.root,'.git'))){
+  if(!lstatSync(path.join(inst.root,'.git')).isDirectory())throw new UpdateError('Linked Git worktrees cannot migrate. Use an independent checkout.');
+  if(!request.migrateFromGit)throw new UpdateError('Git migration requires explicit --migrate-from-git; the complete old checkout is retained.');
+ }
+ for(const file of [...Object.values(inst.paths).filter(v=>typeof v==='string'),...inst.sources.slice(1).map(s=>s.dir),path.join(inst.home,'instance.json')])
+  if(withinPath(path.resolve(file),inst.root))throw new UpdateError(`Mutable instance path is inside replaceable core: ${file}. Relocate it before using packages.`);
+ try{refuseSocketReplacement(inst.root);}catch(e){throw new UpdateError(`Package core cannot be replaced: ${e.message}`);}
+ if(inst.sources[0].plugins.length)throw new UpdateError('Move in-tree household plugins to an external plugin source before package migration.');
+ if(Object.keys(request.plugins??{}).length||(request.addPluginSources??[]).length)throw new UpdateError('Package activation keeps external plugin sources fixed. Update them in a separate Git transaction.');
+}
+
+export const packageReleaseSource=Object.freeze({
+ kind:'package',
+
+ async stageTarget(inst,request,ctx,trust,{live,trustFile,repository,checkBackup}={}){
+  packageLayout(inst,request);
+  const core=live[0];
+  if(core.dirty.length)throw new UpdateError('Git checkout has tracked edits; migration refuses to replace them.');
+  const options={trust,trustFile,repository,manifestDigest:request.manifestDigest,stagingParent:path.dirname(inst.root),keepStage:true,forbidden:forbiddenTrustRoots(inst)};
+  let verified,coverage;
+  try{
+   const {manifest}=authenticatePackageMetadata(request.package,options);
+   const packageBytes=manifest.artifact.uncompressedBytes+8192*manifest.files.length;
+   coverage=checkBackup?.({packageBytes})??null;
+   verified=await verifyPackage(request.package,options);
+  }catch(e){
+   if(e instanceof UpdateError)throw e;
+   throw new UpdateError(`Package verification refused: ${e.message}`);
+  }
+  const stage=verified.stage,m=verified.manifest;
+  const siteStaging=realpathSync(mkdtempSync(path.join(path.dirname(inst.root),'.hub-check-')));
+  const cleanupWorkspace=()=>rmSync(siteStaging,{recursive:true,force:true});
+  const cleanup=()=>{cleanupWorkspace();rmSync(stage,{recursive:true,force:true});};
+  try{
+   const place=s=>s.id==='core'?stage:path.join(siteStaging,s.id);
+   for(const source of live.slice(1))cpSync(source.dir,place(source),{recursive:true,filter:f=>!['.git','node_modules'].includes(path.basename(f))});
+   const target={version:m.version,dataEpoch:m.dataEpoch,node:m.nodeRange};
+   const pkgRecord={
+    live:inst.root,
+    old:inst.root+'.previous-'+path.basename(stage),
+    staged:stage,
+    status:'prepared',
+    manifestSha256:verified.manifestSha256,
+    artifact:m.artifact,
+    files:m.files,
+    trustFile,
+    packageFile:path.resolve(request.package),
+   };
+   const lines=[
+    `package signature: verified (${verified.keyId}); manifest ${verified.manifestSha256}`,
+    `exact release: ${m.tag} @ ${m.fullCommit}`,
+    'readiness: exact boot/process/plugin identity for 10 consecutive seconds after startup',
+   ];
+   return {
+    kind:'package',
+    target,
+    targetCommit:m.fullCommit,
+    targetTag:m.tag,
+    stagedDir:stage,
+    stagingRoot:siteStaging,
+    place,
+    stagedPluginDirs:live.flatMap(s=>s.plugins.map(rel=>({source:s,rel,dir:path.join(place(s),rel)}))),
+    copiedLocalPlugins:false,
+    changes:[],
+    hasChange:true,
+    coverage,
+    quarantineKeys:[verified.manifestSha256],
+    strictPlugins:true,
+    requireCheck:true,
+    modern:true,
+    packageDigest:verified.manifestSha256,
+    lines,
+    journalFields:{package:pkgRecord},
+    keepStageOnSuccess:true,
+    describe:()=>`${m.version} @ ${m.fullCommit.slice(0,7)}`,
+    finalizeStage:()=>{
+     verifyStagedTree(stage,m);
+     writePackageReceipt(stage,verified);
+     return [];
+    },
+    cleanupWorkspace,
+    cleanup,
+   };
+  }catch(e){
+   cleanup();
+   throw e;
+  }
+ },
+
+ verifyPreSwitch(inst,plan){
+  const p=plan.package;
+  verifyStagedTree(p.staged,{files:p.files},{receipt:true});
+  const meta=authenticatePackageMetadata(p.packageFile,{trustFile:p.trustFile,repository:plan.repository,manifestDigest:p.manifestSha256,forbidden:forbiddenTrustRoots(inst)});
+  if(meta.manifestSha256!==p.manifestSha256)throw new UpdateError('Package target changed since preflight');
+ },
+
+ applySwitch(inst,journal,plan,ctx){
+  const p=journal.package;
+  p.status='moving-old';writeUpdateJournal(inst.files.journal,journal);refuseSocketReplacement(p.live);renameSync(p.live,p.old);ctx.checkpoint('package-old-renamed');syncDirectory(path.dirname(p.live));p.status='old-moved';writeUpdateJournal(inst.files.journal,journal);
+  p.status='installing';writeUpdateJournal(inst.files.journal,journal);renameSync(p.staged,p.live);ctx.checkpoint('package-new-renamed');syncDirectory(path.dirname(p.live));p.status='installed';writeUpdateJournal(inst.files.journal,journal);
+ },
+
+ verifyRollbackPreStop(inst,journal){
+  if(journal.package.status!=='restored'&&existsSync(journal.package.old))refuseSocketReplacement(journal.package.live);
+ },
+
+ hasMoved(inst,journal){
+  return existsSync(journal.package.old);
+ },
+
+ verifyRollbackTarget(inst,journal){
+  if(packageReceipt(inst.root)?.manifestSha256!==journal.package.manifestSha256)throw new UpdateError('Installed core differs from the last package; rollback refuses unrelated edits.');
+ },
+
+ rollbackSwitch(inst,journal){
+  const p=journal.package;
+  // Reconcile intent even when a process died between rename and its completion record.
+  if(p.status==='prepared'&&existsSync(p.live)&&!existsSync(p.old))return;
+  if(p.status==='moving-old'&&existsSync(p.live)&&!existsSync(p.old))return;
+  if(p.status==='restored')return;
+  if(!existsSync(p.old)){
+   if(p.status==='restoring'&&existsSync(p.live)){p.status='restored';writeUpdateJournal(inst.files.journal,journal);return;}
+   throw new Error('Retained previous core is missing; manual recovery required');
+  }
+  if(existsSync(p.live)){
+   verifyStagedTree(p.live,{files:p.files},{receipt:true});
+   const receipt=packageReceipt(p.live);
+   if(receipt?.manifestSha256!==p.manifestSha256)throw new Error('Core no longer matches the installed package; refusing to overwrite unrelated code');
+   p.failed??=p.live+'.failed-'+path.basename(p.staged);
+   p.status='moving-failed';writeUpdateJournal(inst.files.journal,journal);
+   refuseSocketReplacement(p.live);renameSync(p.live,p.failed);syncDirectory(path.dirname(p.live));
+  }
+  p.status='restoring';writeUpdateJournal(inst.files.journal,journal);
+  renameSync(p.old,p.live);syncDirectory(path.dirname(p.live));
+  p.status='restored';writeUpdateJournal(inst.files.journal,journal);
+ },
+
+ quarantineKeys(journal){
+  return [journal.package.manifestSha256];
+ },
+
+ failedPath(journal){
+  return journal.package?.failed??null;
+ },
+});

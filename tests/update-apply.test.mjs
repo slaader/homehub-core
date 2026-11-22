@@ -18,7 +18,7 @@ import path from 'node:path';
 
 // No global git configuration reaches these repositories (a signing key, a hooks path, an identity).
 Object.assign(process.env,{GIT_CONFIG_GLOBAL:'/dev/null',GIT_CONFIG_SYSTEM:'/dev/null',GIT_AUTHOR_NAME:'Alice',GIT_AUTHOR_EMAIL:'alice@example.com',GIT_COMMITTER_NAME:'Alice',GIT_COMMITTER_EMAIL:'alice@example.com'});
-const {resolveInstance,preflight,apply,rollback,recover,backup,status,formatStatus,readJournal,setQuarantine,readQuarantine,runMismatch,coreFacts,pluginFacts,realExec,UpdateError,RollbackFailed}=await import('../server/update-apply.mjs');
+const {resolveInstance,preflight,apply,rollback,recover,backup,status,formatStatus,readJournal,setQuarantine,readQuarantine,coreFacts,pluginFacts,realExec,UpdateError,RollbackFailed}=await import('../server/update-apply.mjs');
 const {backupPlan}=await import('../server/update-backup.mjs');
 const {parseService,parseHealth,parseBackups,UpdateConfigError}=await import('../server/update-config.mjs');
 const {readInstance}=await import('../server/plugins.mjs');
@@ -896,4 +896,98 @@ test('update journal accepts legacy schema-3 journals with unnormalized absolute
  assert.deepEqual(validateJournal(legacy),legacy);
  await writeFile(file,JSON.stringify(legacy)+'\n',{mode:0o600});
  assert.deepEqual(readUpdateJournal(file),legacy);
+});
+
+test('release source adapter symmetry: Git tag and signed package preflights enforce the exact same 7 checks',async t=>{
+ for(const kind of ['git','package'])await t.test(`${kind} adapter`,async t=>{
+  const w=await world(t,{layout:'home'});
+  let ssh=null,gitKey=null;
+  if(kind==='git'){
+   ssh=path.join(w.dir,'sym-git-key');
+   execFileSync('ssh-keygen',['-q','-t','ed25519','-N','','-f',ssh],{stdio:'pipe'});
+   w.upstream.git('config','gpg.format','ssh');
+   w.upstream.git('config','user.signingkey',ssh);
+   const text=readFileSync(ssh+'.pub','utf8').trim();
+   gitKey={text,...gitPublicKey(text)};
+  }
+  let seq=0;
+  async function publish({version='1.1.0',epoch=1,extra={},revoked=false}={}){
+   seq++;
+   const tag='v'+version;
+   if(kind==='git'){
+    const trustFile=path.join(w.dir,`trust-${seq}.json`);
+    const trust={schemaVersion:1,publishers:{'example/core':{gitSigners:[{id:gitKey.id,fingerprint:gitKey.fingerprint,publicKey:gitKey.text,role:'git',status:revoked?'revoked':'active'}],packageKeys:[]}}};
+    writeFileSync(trustFile,JSON.stringify(trust),{mode:0o600});
+    const prevTags=w.upstream.git('tag','--list',tag);
+    if(prevTags){w.upstream.git('tag','-d',tag);if(w.hub.git('tag','--list',tag))w.hub.git('tag','-d',tag);}
+    const commit=await w.upstream.commit(`sym-${seq}-${version}`,tree(version,epoch,extra),{remove:['FAIL_TESTS','FAIL_CHECK','STRICT_SITE'].filter(k=>!(k in extra))});
+    w.upstream.git('tag','-s','-m',`release ${tag}`,tag);
+    return {request:{core:tag,trust:trustFile},quarantineKey:'git-'+commit};
+   }
+   const f=await packageFixture(path.join(w.dir,`pkg-${seq}`),{version,epoch,files:{'scripts/run-tests.mjs':RUNNER,'server/index.mjs':INDEX,...extra}});
+   if(revoked){
+    const doc=JSON.parse(readFileSync(f.trustFile,'utf8'));
+    doc.publishers['example/core'].packageKeys[0].status='revoked';
+    writeFileSync(f.trustFile,JSON.stringify(doc),{mode:0o600});
+   }
+   return {request:{package:f.file,trust:f.trustFile,migrateFromGit:true},quarantineKey:f.manifestSha256};
+  }
+
+  // 1. Trust: revoked key is refused even with allowUnsigned/force and runs zero target code.
+  const badTrust=await publish({version:'1.1.0',extra:{'scripts/run-tests.mjs':'throw new Error("MUST NOT RUN")'},revoked:true});
+  await refused(preflight(w.inst(),{...badTrust.request,allowUnsigned:true,force:true},w.ctx),kind==='git'?/no authorized Git signers/:(/unauthorized/));
+  assert.equal(w.svc.execs.filter(e=>e.args.some(a=>a.endsWith('run-tests.mjs'))).length,0);
+
+  // 2. Running identity (forApply): mismatched commit refuses before touching the service.
+  const valid=await publish({version:'1.1.0'});
+  const runFile=path.join(w.state,'run.json'),savedRun=readFileSync(runFile,'utf8');
+  writeFileSync(runFile,JSON.stringify({...JSON.parse(savedRun),commit:'0000000'}));
+  await refused(preflight(w.inst(),valid.request,w.ctx,{forApply:true}),/running hub commit differs/);
+  writeFileSync(runFile,savedRun);
+
+  // 3. Downgrade & quarantine: lower version refused; exact target quarantine refused unless --force.
+  const lower=await publish({version:'0.9.0'});
+  await refused(preflight(w.inst(),lower.request,w.ctx),/0\.9\.0 is lower than what is installed \(1\.0\.0\)/);
+  setQuarantine(w.inst().files.updates,valid.quarantineKey,{at:'2026-11-11T08:00:00.000Z',reason:'prior failure'});
+  await refused(preflight(w.inst(),valid.request,w.ctx),/1\.1\.0 was tried here on 2026-11-11 and rolled back \(prior failure\)\. --force/);
+  const forced=await preflight(w.inst(),{...valid.request,force:true},w.ctx);
+  assert.equal(forced.to.core.version,'1.1.0');
+  setQuarantine(w.inst().files.updates,valid.quarantineKey,null);
+
+  // 4. Plugin compatibility & requires: incompatible core range and missing dependency are both refused.
+  const incompatibleCore=await publish({version:'2.0.0'});
+  await refused(preflight(w.inst(),incompatibleCore.request,w.ctx),/Plugin p-one 1\.0\.0 supports Home Hub >=1\.0\.0 <2\.0\.0; the target is 2\.0\.0/);
+  const origPluginHead=w.plugins.git('rev-parse','HEAD');
+  await w.plugins.commit('missing dependency',{'plugins/p-one/plugin.json':manifest('p-one','1.0.0',{requires:{'missing-plugin':'^1.0.0'}})});
+  await refused(preflight(w.inst(),valid.request,w.ctx),/Plugin p-one needs plugin missing-plugin/);
+  w.plugins.git('reset','--hard',origPluginHead);
+
+  // 5. Site staging: explicit --site-config is checked in stage while the live site stays untouched.
+  const liveSite=path.join(w.home,'config','site.json'),origSite=readFileSync(liveSite,'utf8');
+  const candidateSite=path.join(w.dir,'candidate-site.json');
+  writeFileSync(candidateSite,'{"siteName":"Staged"}\n');
+  w.svc.execs.length=0;
+  const stagedPlan=await preflight(w.inst(),{...valid.request,siteConfig:candidateSite},w.ctx);
+  assert.equal(readFileSync(liveSite,'utf8'),origSite,'live site file must not be touched during preflight');
+  assert.equal(JSON.parse(stagedPlan.siteChange.text).siteName,'Staged');
+  const checkCall=w.svc.execs.find(e=>e.args.includes('--check'));
+  assert.notEqual(checkCall.env.HOME_HUB_SITE_CONFIG,liveSite);
+  assert.equal(checkCall.env.SOFTWARE_WATCH_FILE,w.inst().paths.softwareWatch);
+  assert.ok(stagedPlan.lines.some(l=>/^tests \(core\): /.test(l)));
+  assert.ok(stagedPlan.lines.some(l=>/^tests \(plugins\): /.test(l)));
+  assert.ok(stagedPlan.lines.some(l=>/^check ok: Home Hub 1\.1\.0/.test(l)));
+  assert.equal(existsSync(checkCall.env.HOME_HUB_SITE_CONFIG),false,'staging site copy is removed after preflight');
+  if(kind==='package')assert.equal(existsSync(stagedPlan.package.staged),false,'read-only preflight cleans up staged package dir');
+
+  // 6. Target tests: FAIL_TESTS refuses unless --skip-tests is passed.
+  const badTests=await publish({version:'1.1.1',extra:{FAIL_TESTS:''}});
+  await refused(preflight(w.inst(),badTests.request,w.ctx),/npm test of the target failed/);
+  const skipped=await preflight(w.inst(),{...badTests.request,skipTests:true},w.ctx);
+  assert.ok(skipped.lines.includes('tests: SKIPPED (--skip-tests)'));
+
+  // 7. Start-up --check: FAIL_CHECK refuses even when --skip-tests is passed.
+  const badCheck=await publish({version:'1.1.2',extra:{FAIL_CHECK:''}});
+  await refused(preflight(w.inst(),{...badCheck.request,skipTests:true},w.ctx),/start-up check.*failed/s);
+  assert.deepEqual(w.svc.calls,[],'preflight never stops or starts the service');
+ });
 });
