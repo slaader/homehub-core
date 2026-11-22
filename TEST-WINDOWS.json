@@ -127,6 +127,34 @@
         "finished_at": "2026-11-21T17:13:32Z",
         "result": "passed"
       }
+    },
+    "projects-v2": {
+      "category": "feature",
+      "scope": "Projects v2 migration, atomic lifecycle, epics, linked stores and UI contracts",
+      "commands": [
+        "npm test -- tests/project-lifecycle.test.mjs tests/projects-v2-tracker.test.mjs tests/projects-v2-lane-b.test.mjs tests/projects-v2-ui.test.mjs tests/epics-ui.test.mjs tests/wiki-review-v2-ui.test.mjs"
+      ],
+      "budget_seconds": 120,
+      "budget_approval": null,
+      "last_run": {
+        "duration_seconds": 5.2,
+        "finished_at": "2026-11-22T17:00:26.214Z",
+        "result": "passed"
+      }
+    },
+    "projects-v2-browser": {
+      "category": "ui-smoke",
+      "scope": "Project opt-ins, Epic routes, migration wizard, standalone Wiki, detached Review, settings and narrow layouts in isolated Chrome",
+      "commands": [
+        "node ~/.config/agent-workflows/studio/local-tests/home-hub/projects-v2-smoke.mjs \"$(git rev-parse HEAD)\""
+      ],
+      "budget_seconds": 120,
+      "budget_approval": null,
+      "last_run": {
+        "duration_seconds": 5.539,
+        "finished_at": "2026-11-22T17:00:13.229Z",
+        "result": "passed"
+      }
     }
   }
 }
