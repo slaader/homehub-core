@@ -119,7 +119,7 @@ export function createProjectLifecycle(hub,tickets){
    const at=new Date().toISOString();
    const trackerCleanup=a.remove(trackerData,project,by,at);
    const wikiCleanup=space&&(input.deleteWiki?w.remove(wikiData,space,at):w.detach(wikiData,space,project.name,at));
-   if(!space)w.removeUnlinkedGrants(wikiData,project.id,at);
+   w.removeUnlinkedGrants(wikiData,project.id,at);
    const reviewCleanup=r.removeProject(reviewData,project,input.deleteReviews===true,by,at);
    f.removeProject(refsData,project,{promote:input.promoteReferences===true,collisions:preview.collisions,
     ticketIds:trackerCleanup.ticketIds,epicIds:trackerCleanup.epicIds,
