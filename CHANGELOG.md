@@ -6,7 +6,7 @@ Home Hub core, newest first. One section per release; the section is the text of
 number promises is in `AGENTS.md` → Versioning. The top section is the release being prepared, `## Unreleased`
 until the release gives it its number: a change to the public surface adds its line there in the same commit.
 
-## Unreleased
+## 1.7.0
 
 ### Added
 
@@ -16,6 +16,13 @@ until the release gives it its number: a change to the public surface adds its l
 ### Changed
 
 - `GET /api/ui/manifest` now reports `home_status` with `module: "home"` (owned by the `home` core module alongside `device_*`), and similarly reports the inventory, tracker/search, and review MCP tools under their owning core modules (`inventory`, `tracker`, `review`) instead of `core`.
+- Users & API → Connect groups the MCP tool reference by module in exact `tools/list` order, translates titled modules cleanly, and labels read/write scopes without relying on colour alone.
+- Consolidated core subsystems into deeper modules with unified interfaces: References (`server/references.mjs`), Safe-FS & Release Trust (`server/safe-fs.mjs`, `server/release-trust.mjs`), Ticket Search (`server/ticket-search.mjs`), Instance Backup & Archive Inspection (`server/update-backup.mjs`, `server/release-archive.mjs`), Release Source Adapters & thin updater CLI (`server/release-git.mjs`, `server/release-package.mjs`, `server/update-apply.mjs`, `scripts/update.mjs`), atomic Wiki authoring (`server/wiki-store.mjs`), and domain-free MCP dispatch (`server/mcp.mjs`).
+
+### Fixed
+
+- Hardened pre-switch package receipt, trust-policy reload, staged-tree reverification, and read-only backup assessment (including v1 directory modes, legacy macOS PAX/AppleDouble and GNU tar archives, and symlink/forbidden-root checks).
+- Wiki inventory cell patches now execute atomically inside a single SQLite transaction without loading unrelated project assets.
 
 ### Plugin contract
 
