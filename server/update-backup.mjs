@@ -1164,12 +1164,17 @@ export async function assessRestore(inst,backup,journal=null){
   if(legacy){
    const allowedRoots=new Set(manifest.roots.map(r=>r.legacyName));
    const entries=await inspectArchive(backup.file,{release:false,legacy:true,allowedRoots});
+   const presentRoots=new Set(entries.map(e=>e.path.split('/')[0]));
+   for(const r of manifest.roots)if(r.existed&&!presentRoots.has(rootPrefix(r)))throw new Error(`missing archive root: ${r.id}`);
    for(const e of entries.filter(e=>e.type==='symlink')){
     const r=manifest.roots.find(r=>e.path===rootPrefix(r)||e.path.startsWith(rootPrefix(r)+'/'));
     if(!r)throw new Error('unmapped backup symlink');
     validateLink(e,r,manifest.roots,{includeAliases:false});
    }
    legacyFiles=new Map(entries.map(e=>[e.path,e]));
+  }else if(manifest.files){
+   const presentRoots=new Set(manifest.files.map(e=>e.path.split('/')[0]));
+   for(const r of manifest.roots)if(r.existed&&!presentRoots.has(rootPrefix(r)))throw new Error(`missing archive root: ${r.id}`);
   }
   const coversFile=(file,expect)=>{
    const wanted=archiveEntryPathFor(manifest.roots,file);

@@ -396,7 +396,7 @@ test('assessRestore().coversFile works identically across v2 (including exact-fi
  assert.equal(v1Assessed.coversFile(path.join(v1.dir,'outside.txt')),false);
 
  // Genuine sidecar-less legacy archive created with the historical `tar -czf` writer (including macOS PAX/AppleDouble headers)
- // assesses and restores cleanly, and read-only assessment rejects case-fold collisions before service stop.
+ // assesses and restores cleanly, and read-only assessment rejects missing roots and collisions.
  const legacyRoot=path.join(v1.dir,'legacy-root');mkdirSync(legacyRoot);
  const legacySrc=path.join(legacyRoot,'site.json');
  writeFileSync(legacySrc,'{"legacy":1}\n',{mode:0o640});
@@ -412,6 +412,42 @@ test('assessRestore().coversFile works identically across v2 (including exact-fi
  assert.equal(legacyAssessed.coversFile(legacySrc,{sha256:digest('wrong'),mode:0o640}),false);
  assert.equal(legacyAssessed.coversFile(legacyRoot),false);
  assert.equal(legacyAssessed.coversFile(path.join(v1.dir,'outside.txt')),false);
+
+ // Missing declared root in a legacy archive is rejected during read-only assessRestore() before service stop.
+ const extraMissing=path.join(v1.dir,'legacy-missing');mkdirSync(extraMissing);
+ await assert.rejects(assessRestore(v1.inst,{file:legacyArchive,entries:[{parent:v1.dir,name:'legacy-root'},{parent:v1.dir,name:'legacy-missing'}]}),/missing archive root: root-0002/);
+
+ // Explicit GNU-format tar fixture ('ustar  \0' header) including an ordinary '._notes' regular file assesses and restores cleanly on macOS and Linux.
+ const {gzipSync}=await import('node:zlib');
+ const gnuHeader=(name,type,mode,bytes)=>{
+  const b=Buffer.alloc(512);
+  const put=(s,off,len)=>Buffer.from(s).copy(b,off,0,len);
+  put(name,0,100);put(mode.toString(8).padStart(7,'0')+'\0',100,8);put('0000000\0',108,8);put('0000000\0',116,8);
+  put(bytes.toString(8).padStart(11,'0')+'\0',124,12);put('00000000000\0',136,12);b.fill(32,148,156);
+  put(type,156,1);put('ustar  \0',257,8);
+  const sum=b.reduce((a,v)=>a+v,0);put(sum.toString(8).padStart(6,'0')+'\0 ',148,8);
+  return b;
+ };
+ const gnuRoot=path.join(v1.dir,'gnu-root');mkdirSync(gnuRoot);
+ const gnuFile=path.join(gnuRoot,'cfg.json'),gnuBytes=Buffer.from('{"gnu":true}\n');
+ const gnuNotes=path.join(gnuRoot,'._notes'),gnuNotesBytes=Buffer.from('ordinary notes\n');
+ writeFileSync(gnuFile,'{"mutated":true}\n',{mode:0o640});
+ const padFor=len=>Buffer.alloc((512-len%512)%512);
+ const gnuTar=Buffer.concat([
+  gnuHeader('gnu-root/','5',0o700,0),
+  gnuHeader('gnu-root/cfg.json','0',0o640,gnuBytes.length),gnuBytes,padFor(gnuBytes.length),
+  gnuHeader('gnu-root/._notes','0',0o640,gnuNotesBytes.length),gnuNotesBytes,padFor(gnuNotesBytes.length),
+  Buffer.alloc(1024),
+ ]);
+ const gnuArchive=path.join(v1.inst.backups,'gnu-legacy.tgz');
+ writeFileSync(gnuArchive,gzipSync(gnuTar));
+ const gnuBackup={file:gnuArchive,entries:[{parent:v1.dir,name:'gnu-root'}]};
+ const gnuAssessed=await assessRestore(v1.inst,gnuBackup);
+ assert.equal(gnuAssessed.coversFile(gnuFile,{sha256:digest(gnuBytes),mode:0o640}),true,'GNU-format legacy archive passes coversFile');
+ assert.equal(gnuAssessed.coversFile(gnuNotes,{sha256:digest(gnuNotesBytes),mode:0o640}),true,'ordinary ._ file without AppleDouble magic passes coversFile');
+ await restoreBackup(v1.inst,v1.ctx,gnuBackup,null,gnuAssessed);
+ assert.equal(readFileSync(gnuFile,'utf8'),'{"gnu":true}\n','GNU-format legacy archive restores cleanly');
+ assert.equal(readFileSync(gnuNotes,'utf8'),'ordinary notes\n','ordinary ._ file restores with intact text');
 
  // Case-fold collision inside a legacy archive is rejected during read-only assessRestore() before restore/stop.
  const {writeArchive}=await import('../server/release-archive.mjs');

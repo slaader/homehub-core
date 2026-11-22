@@ -56,28 +56,36 @@ async function walkArchive(file,root,{release=true,limits=ARCHIVE_LIMITS,expecte
  const input=createReadStream(file),unzip=createGunzip();input.on('error',e=>unzip.destroy(e));input.pipe(unzip);const reader=new Reader(unzip),seen=new Map(),folded=new Map(),entries=[],links=[],directoryModes=[],directories=new Set();let ended=false,pax=null;
  try{for(;;){const b=await reader.take(512);if(reader.total>limits.expanded)throw new Error('expanded archive exceeds local limit');if(b.every(v=>v===0)){const next=await reader.take(512);if(next.some(v=>v!==0))throw new Error('invalid archive end marker');ended=true;break;}
   if(entries.length>=limits.entries)throw new Error('too many archive entries');const declared=octal(b,148,8),sum=b.reduce((a,v,i)=>a+(i>=148&&i<156?32:v),0);if(sum!==declared)throw new Error('invalid archive header checksum');
-  if(field(b,257,6)!=='ustar'||!['00','  ',''].includes(field(b,263,2)))throw new Error('unsupported archive format');
+  const magic=field(b,257,6),ver=field(b,263,2),gnu=legacy&&magic==='ustar '&&ver===' ';
+  if(!gnu&&(magic!=='ustar'||!['00','  ',''].includes(ver)))throw new Error('unsupported archive format');
   const type=String.fromCharCode(b[156]||48),bytes=octal(b,124,12),mode=octal(b,100,8);
-  // Historical BSD/macOS tar emits PAX extended headers ('x'/'g') and AppleDouble '._*' metadata sidecars.
-  if(legacy&&(type==='x'||type==='g')){
-   if(bytes>65536)throw new Error('PAX header exceeds local limit');
+  // Historical BSD/macOS tar emits PAX extended headers ('x'/'g') and AppleDouble '._*' metadata sidecars;
+  // GNU tar emits 'ustar  \0' headers and optional 'L'/'K' long-name records.
+  if(legacy&&(type==='x'||type==='g'||type==='L'||type==='K')){
+   if(bytes>65536)throw new Error('extended archive header exceeds local limit');
    const payload=bytes?await reader.take(bytes):Buffer.alloc(0);
    if(reader.total>limits.expanded)throw new Error('expanded archive exceeds local limit');
    const padding=(512-bytes%512)%512;if(padding&&(await reader.take(padding)).some(v=>v!==0))throw new Error('nonzero archive padding');
-   if(type==='x')pax=parsePax(payload);
+   if(type==='x')pax={...(pax??{}),...parsePax(payload)};
+   else if(type==='L'||type==='K')pax={...(pax??{}),[type==='L'?'path':'linkpath']:utf8.decode(payload).replace(/\0+$/,'')};
    continue;
   }
   const entryPax=pax;pax=null;
-  const prefix=field(b,345,155);let name=entryPax?.path??((prefix?prefix+'/':'')+field(b,0,100));
+  const prefix=gnu?'':field(b,345,155);let name=entryPax?.path??((prefix?prefix+'/':'')+field(b,0,100));
   if(type==='5'&&name.endsWith('/'))name=name.slice(0,-1);if(legacy&&name.startsWith('./'))name=name.slice(2);
   const actualBytes=entryPax?.size!==undefined?Number(entryPax.size):bytes;
   if(!Number.isSafeInteger(actualBytes)||actualBytes<0||actualBytes>limits.file||mode&0o7000)throw new Error('unsafe archive size or mode');
-  if(legacy&&type==='0'&&path.posix.basename(name).startsWith('._')){
-   const payload=actualBytes?await reader.take(actualBytes):Buffer.alloc(0);
+  let prefetched=null;
+  if(legacy&&type==='0'&&path.posix.basename(name).startsWith('._')&&actualBytes>=4){
+   const head=await reader.take(4);
    if(reader.total>limits.expanded)throw new Error('expanded archive exceeds local limit');
-   const padding=(512-actualBytes%512)%512;if(padding&&(await reader.take(padding)).some(v=>v!==0))throw new Error('nonzero archive padding');
-   if(payload.length>=4&&payload.subarray(0,4).equals(APPLEDOUBLE_MAGIC))continue;
-   throw new Error('legacy archive has unplanned roots');
+   if(head.equals(APPLEDOUBLE_MAGIC)){
+    let left=actualBytes-4;
+    while(left){const chunk=await reader.take(Math.min(left,65536));if(reader.total>limits.expanded)throw new Error('expanded archive exceeds local limit');left-=chunk.length;}
+    const padding=(512-actualBytes%512)%512;if(padding&&(await reader.take(padding)).some(v=>v!==0))throw new Error('nonzero archive padding');
+    continue;
+   }
+   prefetched=head;
   }
   archivePath(name,{release});
   if(allowedRoots&&!allowedRoots.has(name.split('/')[0]))throw new Error('legacy archive has unplanned roots');
@@ -91,7 +99,13 @@ async function walkArchive(file,root,{release=true,limits=ARCHIVE_LIMITS,expecte
   else if(kind==='symlink'){linkTarget=entryPax?.linkpath??field(b,157,100);if(!linkTarget||/[\x00-\x1f]/.test(linkTarget))throw new Error('invalid archive link');if(expected&&spec.link!==linkTarget)throw new Error('archive link mismatch');if(dest)links.push([dest,linkTarget]);}
   else {
    const fd=dest?openSync(dest,'wx',0o600):null,h=createHash('sha256');
-   try{let left=actualBytes;while(left){const chunk=await reader.take(Math.min(left,65536));if(reader.total>limits.expanded)throw new Error('expanded archive exceeds local limit');if(fd!==null){let offset=0;while(offset<chunk.length){const written=writeSync(fd,chunk,offset,chunk.length-offset);if(!written)throw new Error('short archive write');offset+=written;}}h.update(chunk);left-=chunk.length;}hash=h.digest('hex');}finally{if(fd!==null)closeSync(fd);}
+   const emit=chunk=>{if(fd!==null){let offset=0;while(offset<chunk.length){const written=writeSync(fd,chunk,offset,chunk.length-offset);if(!written)throw new Error('short archive write');offset+=written;}}h.update(chunk);};
+   try{
+    let left=actualBytes;
+    if(prefetched){emit(prefetched);left-=prefetched.length;}
+    while(left){const chunk=await reader.take(Math.min(left,65536));if(reader.total>limits.expanded)throw new Error('expanded archive exceeds local limit');emit(chunk);left-=chunk.length;}
+    hash=h.digest('hex');
+   }finally{if(fd!==null)closeSync(fd);}
    if(spec&&hash!==spec.sha256)throw new Error(`archive content hash mismatch: ${name}`);if(dest)chmodSync(dest,spec?.mode??(mode&0o777));const padding=(512-actualBytes%512)%512;if(padding&&(await reader.take(padding)).some(v=>v!==0))throw new Error('nonzero archive padding');
   }
   seen.set(name,kind);entries.push({path:name,type:kind,bytes:actualBytes,mode:mode&0o777,sha256:hash,...(kind==='symlink'?{link:linkTarget}:{})});
